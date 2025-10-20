@@ -382,6 +382,14 @@ func (g *DevnetGenerator) updateBankBalances(appState map[string]json.RawMessage
 		Coins:   sdk.NewCoins(sdk.NewCoin(appcfg.GovAttoDenom, totalBondedAmount)),
 	}
 
+	notBondedPoolAddr := authtypes.NewModuleAddress(stakingtypes.NotBondedPoolName).String()
+
+	var blockedAddrs = []string{notBondedPoolAddr}
+
+	for _, blockedAddr := range blockedAddrs {
+		delete(balanceMap, blockedAddr)
+	}
+
 	// Add balances for validators (will overwrite if addresses already exist)
 	for _, val := range g.validators {
 		balanceMap[val.AccountAddress.String()] = banktypes.Balance{
