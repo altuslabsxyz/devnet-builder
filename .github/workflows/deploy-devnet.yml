@@ -1,0 +1,556 @@
+name: Deploy Devnet
+
+on:
+  workflow_dispatch:
+    inputs:
+      stable_tag:
+        description: 'Stable repository tag version (optional, defaults to stable-devnet tag)'
+        required: false
+        type: string
+        default: ''
+      v_home:
+        description: 'V_HOME environment variable path'
+        required: true
+        type: string
+        default: '/data/.stable'
+      daemon_name:
+        description: 'System daemon name'
+        required: true
+        type: string
+        default: 'stable.service'
+      validators:
+        description: 'Number of validators to create'
+        required: true
+        type: number
+        default: 4
+      accounts:
+        description: 'Number of dummy accounts to create'
+        required: true
+        type: number
+        default: 10
+      account_balance:
+        description: 'Balance for each account (e.g., "1000000000000000000000astable,500000000000000000000agasusdt")'
+        required: true
+        type: string
+        default: '1000000000000000000000astable,500000000000000000000agasusdt'
+      validator_balance:
+        description: 'Balance for each validator (e.g., "1000000000000000000000astable,500000000000000000000agasusdt")'
+        required: true
+        type: string
+        default: '1000000000000000000000astable,500000000000000000000agasusdt'
+      validator_stake:
+        description: 'Stake amount for each validator (in astable)'
+        required: true
+        type: string
+        default: '100000000000000000000'
+      chain_id:
+        description: 'Chain ID (optional, defaults to from genesis)'
+        required: false
+        type: string
+        default: 'stabletestnet_2200-1'
+      devnet_output_dir:
+        description: 'Devnet builder output directory'
+        required: true
+        type: string
+        default: './devnet'
+      devnet_base_dir:
+        description: 'Base directory to deploy devnet nodes'
+        required: true
+        type: string
+        default: '/data/.devnet'
+
+jobs:
+  deploy-devnet:
+    runs-on: [self-hosted, ubuntu]
+
+    env:
+      V_HOME: ${{ inputs.v_home }}
+      DAEMON_NAME: ${{ inputs.daemon_name }}
+      STABLE_TAG: ${{ inputs.stable_tag }}
+      VALIDATORS: ${{ inputs.validators }}
+      ACCOUNTS: ${{ inputs.accounts }}
+      ACCOUNT_BALANCE: ${{ inputs.account_balance }}
+      VALIDATOR_BALANCE: ${{ inputs.validator_balance }}
+      VALIDATOR_STAKE: ${{ inputs.validator_stake }}
+      CHAIN_ID: ${{ inputs.chain_id }}
+      DEVNET_OUTPUT_DIR: ${{ inputs.devnet_output_dir }}
+      DEVNET_BASE_DIR: ${{ inputs.devnet_base_dir }}
+
+    steps:
+      - name: Checkout stable-devnet repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Get current tag version
+        id: get_tag
+        run: |
+          if [ -n "${{ env.STABLE_TAG }}" ]; then
+            TAG="${{ env.STABLE_TAG }}"
+            echo "Using provided tag: $TAG"
+          else
+            TAG=$(git describe --tags --exact-match 2>/dev/null || git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -z "$TAG" ]; then
+              echo "Error: No tag found and no tag provided"
+              exit 1
+            fi
+            echo "Using current repository tag: $TAG"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "STABLE_TAG=$TAG" >> $GITHUB_ENV
+
+      - name: Verify system daemon is running
+        id: check_daemon
+        run: |
+          echo "Checking if $DAEMON_NAME is running..."
+          if ! systemctl is-active --quiet "$DAEMON_NAME"; then
+            echo "Error: System daemon '$DAEMON_NAME' is not running"
+            systemctl status "$DAEMON_NAME" || true
+            exit 1
+          fi
+          echo "System daemon '$DAEMON_NAME' is running"
+          systemctl status "$DAEMON_NAME" --no-pager
+
+      - name: Check node sync status
+        id: check_sync
+        run: |
+          echo "Checking node sync status at localhost:26657/status..."
+          MAX_RETRIES=5
+          RETRY_COUNT=0
+
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if SYNC_STATUS=$(curl -s http://localhost:26657/status | jq -r '.result.sync_info.catching_up' 2>/dev/null); then
+              if [ "$SYNC_STATUS" = "false" ]; then
+                echo "Node is fully synced (catching_up: false)"
+                break
+              else
+                echo "Warning: Node is still catching up (catching_up: $SYNC_STATUS)"
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+                if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                  echo "Retrying in 10 seconds... ($RETRY_COUNT/$MAX_RETRIES)"
+                  sleep 10
+                else
+                  echo "Error: Node is not fully synced after $MAX_RETRIES attempts"
+                  exit 1
+                fi
+              fi
+            else
+              echo "Error: Failed to fetch sync status from localhost:26657/status"
+              curl -s http://localhost:26657/status || echo "Failed to connect to endpoint"
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo "Retrying in 10 seconds... ($RETRY_COUNT/$MAX_RETRIES)"
+                sleep 10
+              else
+                exit 1
+              fi
+            fi
+          done
+
+      - name: Setup stable repository symbolic link
+        id: setup_stable_link
+        run: |
+          STABLE_LINK_PATH="${GITHUB_WORKSPACE}/stable"
+          EXPECTED_TAG="${{ steps.get_tag.outputs.tag }}"
+          STABLE_REPO_URL="https://github.com/stablelabs/stable.git"
+
+          echo "Setting up stable repository symbolic link in current repository..."
+          echo "Expected tag: $EXPECTED_TAG"
+          echo "Stable repository URL: $STABLE_REPO_URL"
+
+          # Remove existing symbolic link if exists
+          if [ -L "$STABLE_LINK_PATH" ]; then
+            echo "Removing existing symbolic link..."
+            rm -f "$STABLE_LINK_PATH"
+          fi
+
+          # Remove directory if exists
+          if [ -d "$STABLE_LINK_PATH" ]; then
+            echo "Warning: stable/ directory exists but is not a symbolic link. Removing..."
+            rm -rf "$STABLE_LINK_PATH"
+          fi
+
+          # Search for existing stable repository clones
+          STABLE_SEARCH_PATHS=(
+            "/data/stable"
+            "/data/.stable"
+            "$HOME/stable"
+            "$HOME/.stable"
+            "/opt/stable"
+            "/tmp/stable-cache"
+          )
+
+          STABLE_REPO_PATH=""
+          for SEARCH_PATH in "${STABLE_SEARCH_PATHS[@]}"; do
+            if [ -d "$SEARCH_PATH/.git" ]; then
+              cd "$SEARCH_PATH"
+              # Check if it's the correct repository
+              REMOTE_URL=$(git config --get remote.origin.url 2>/dev/null || echo "")
+              if [[ "$REMOTE_URL" == *"stablelabs/stable"* ]]; then
+                STABLE_REPO_PATH="$SEARCH_PATH"
+                echo "Found existing stable repository at: $STABLE_REPO_PATH"
+                break
+              fi
+            fi
+          done
+
+          # Clone stable repository if not found
+          if [ -z "$STABLE_REPO_PATH" ]; then
+            echo "Stable repository not found. Cloning..."
+            STABLE_REPO_PATH="/tmp/stable-cache"
+
+            if [ -d "$STABLE_REPO_PATH" ]; then
+              rm -rf "$STABLE_REPO_PATH"
+            fi
+
+            git clone "$STABLE_REPO_URL" "$STABLE_REPO_PATH"
+            echo "Cloned stable repository to: $STABLE_REPO_PATH"
+          else
+            # Fetch latest tags from existing repository
+            echo "Fetching latest tags..."
+            cd "$STABLE_REPO_PATH"
+            git fetch --tags --force
+          fi
+
+          # Checkout the correct tag
+          cd "$STABLE_REPO_PATH"
+          echo "Checking out tag: $EXPECTED_TAG"
+
+          if ! git rev-parse "$EXPECTED_TAG" >/dev/null 2>&1; then
+            echo "Error: Tag $EXPECTED_TAG does not exist in stable repository"
+            echo "Available tags:"
+            git tag | tail -20
+            exit 1
+          fi
+
+          git checkout "$EXPECTED_TAG"
+
+          # Verify checkout
+          CURRENT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "")
+          if [ "$CURRENT_TAG" != "$EXPECTED_TAG" ]; then
+            echo "Error: Failed to checkout tag $EXPECTED_TAG (current: $CURRENT_TAG)"
+            exit 1
+          fi
+
+          echo "Successfully checked out tag: $CURRENT_TAG"
+
+          # Create symbolic link in current repository
+          cd "$GITHUB_WORKSPACE"
+          ln -sf "$STABLE_REPO_PATH" "$STABLE_LINK_PATH"
+
+          # Verify symbolic link
+          if [ ! -L "$STABLE_LINK_PATH" ]; then
+            echo "Error: Failed to create symbolic link"
+            exit 1
+          fi
+
+          LINK_TARGET=$(readlink -f "$STABLE_LINK_PATH")
+          echo "Symbolic link created: $STABLE_LINK_PATH -> $LINK_TARGET"
+
+          # Verify the link points to correct version
+          cd "$STABLE_LINK_PATH"
+          VERIFY_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "")
+          echo "Verified stable version: $VERIFY_TAG"
+
+          if [ "$VERIFY_TAG" != "$EXPECTED_TAG" ]; then
+            echo "Error: Symbolic link points to wrong version (expected: $EXPECTED_TAG, got: $VERIFY_TAG)"
+            exit 1
+          fi
+
+          echo "stable_path=$STABLE_LINK_PATH" >> $GITHUB_OUTPUT
+
+      - name: Build stabled binary
+        id: build_stabled
+        run: |
+          STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
+
+          echo "Building stabled binary from: $STABLE_PATH"
+          cd "$STABLE_PATH"
+
+          # Clean previous builds
+          make clean || true
+
+          # Build stabled
+          echo "Running make build..."
+          make build
+
+          # Verify build output
+          if [ ! -f "./build/stabled" ]; then
+            echo "Error: stabled binary not found at ./build/stabled"
+            ls -la ./build/ || echo "Build directory not found"
+            exit 1
+          fi
+
+          echo "Build successful"
+          ./build/stabled version
+          echo "stabled_binary=$STABLE_PATH/build/stabled" >> $GITHUB_OUTPUT
+
+      - name: Export genesis from running chain
+        id: export_genesis
+        run: |
+          STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
+          STABLED_BINARY="${{ steps.build_stabled.outputs.stabled_binary }}"
+          GENESIS_EXPORT_PATH="${GITHUB_WORKSPACE}/genesis-export.json"
+
+          echo "Exporting genesis from running chain..."
+          echo "V_HOME: $V_HOME"
+          echo "Using stabled binary: $STABLED_BINARY"
+
+          # Export genesis
+          cd "$STABLE_PATH"
+          ./build/stabled export --home "$V_HOME" > "$GENESIS_EXPORT_PATH"
+
+          # Verify export
+          if [ ! -f "$GENESIS_EXPORT_PATH" ]; then
+            echo "Error: Genesis export failed"
+            exit 1
+          fi
+
+          GENESIS_SIZE=$(stat -f%z "$GENESIS_EXPORT_PATH" 2>/dev/null || stat -c%s "$GENESIS_EXPORT_PATH" 2>/dev/null)
+          echo "Genesis exported successfully (size: $GENESIS_SIZE bytes)"
+
+          # Validate JSON
+          if ! jq empty "$GENESIS_EXPORT_PATH" 2>/dev/null; then
+            echo "Error: Exported genesis is not valid JSON"
+            exit 1
+          fi
+
+          echo "genesis_file=$GENESIS_EXPORT_PATH" >> $GITHUB_OUTPUT
+
+      - name: Build devnet with devnet-builder
+        id: build_devnet
+        run: |
+          GENESIS_FILE="${{ steps.export_genesis.outputs.genesis_file }}"
+
+          echo "Building devnet using devnet-builder..."
+          echo "Genesis file: $GENESIS_FILE"
+          echo "Validators: $VALIDATORS"
+          echo "Accounts: $ACCOUNTS"
+          echo "Account balance: $ACCOUNT_BALANCE"
+          echo "Validator balance: $VALIDATOR_BALANCE"
+          echo "Validator stake: $VALIDATOR_STAKE"
+          echo "Chain ID: $CHAIN_ID"
+          echo "Output directory: $DEVNET_OUTPUT_DIR"
+
+          # Build devnet-builder if not exists
+          if [ ! -f "./build/devnet-builder" ]; then
+            echo "Building devnet-builder..."
+            make build
+          fi
+
+          # Build command
+          BUILD_CMD="./build/devnet-builder build \"$GENESIS_FILE\" \
+            --validators $VALIDATORS \
+            --accounts $ACCOUNTS \
+            --account-balance \"$ACCOUNT_BALANCE\" \
+            --validator-balance \"$VALIDATOR_BALANCE\" \
+            --validator-stake \"$VALIDATOR_STAKE\" \
+            --output \"$DEVNET_OUTPUT_DIR\""
+
+          # Add chain-id if provided
+          if [ -n "$CHAIN_ID" ]; then
+            BUILD_CMD="$BUILD_CMD --chain-id \"$CHAIN_ID\""
+          fi
+
+          echo "Executing: $BUILD_CMD"
+          eval $BUILD_CMD
+
+          # Verify devnet creation
+          if [ ! -d "$DEVNET_OUTPUT_DIR" ]; then
+            echo "Error: Devnet directory not created"
+            exit 1
+          fi
+
+          echo "Devnet created successfully"
+          ls -la "$DEVNET_OUTPUT_DIR"
+
+          # Count created nodes
+          NODE_COUNT=$(find "$DEVNET_OUTPUT_DIR" -maxdepth 1 -type d -name "node*" | wc -l)
+          echo "Created $NODE_COUNT validator nodes"
+
+          if [ "$NODE_COUNT" -ne "$VALIDATORS" ]; then
+            echo "Warning: Expected $VALIDATORS nodes but found $NODE_COUNT"
+          fi
+
+      - name: Upload devnet artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: devnet-${{ steps.get_tag.outputs.tag }}-${{ github.run_number }}
+          path: ${{ env.DEVNET_OUTPUT_DIR }}
+          retention-days: 30
+          compression-level: 9
+
+      - name: Deploy devnet to system
+        id: deploy_devnet
+        run: |
+          echo "Deploying devnet to $DEVNET_BASE_DIR..."
+
+          # Create base directory if not exists
+          sudo mkdir -p "$DEVNET_BASE_DIR"
+          sudo chown -R $(whoami):$(whoami) "$DEVNET_BASE_DIR"
+
+          # Backup existing devnet if exists
+          if [ -d "$DEVNET_BASE_DIR" ] && [ "$(ls -A $DEVNET_BASE_DIR)" ]; then
+            BACKUP_DIR="${DEVNET_BASE_DIR}_backup_$(date +%Y%m%d_%H%M%S)"
+            echo "Backing up existing devnet to: $BACKUP_DIR"
+            sudo mv "$DEVNET_BASE_DIR" "$BACKUP_DIR"
+            sudo mkdir -p "$DEVNET_BASE_DIR"
+            sudo chown -R $(whoami):$(whoami) "$DEVNET_BASE_DIR"
+          fi
+
+          # Copy devnet files to system directory
+          echo "Copying devnet files to $DEVNET_BASE_DIR..."
+          cp -r "$DEVNET_OUTPUT_DIR"/* "$DEVNET_BASE_DIR/"
+
+          # Verify deployment
+          echo "Verifying deployment..."
+          ls -la "$DEVNET_BASE_DIR"
+
+          # Count deployed nodes
+          NODE_COUNT=$(find "$DEVNET_BASE_DIR" -maxdepth 1 -type d -name "node*" | wc -l)
+          echo "Deployed $NODE_COUNT validator nodes to $DEVNET_BASE_DIR"
+
+      - name: Stop existing screen sessions
+        id: stop_screens
+        run: |
+          echo "Stopping existing devnet screen sessions..."
+
+          # Find and stop all node screen sessions
+          for i in $(seq 0 $((VALIDATORS - 1))); do
+            NODE_NAME="node$i"
+            if screen -list | grep -q "\.$NODE_NAME\s"; then
+              echo "Stopping screen session: $NODE_NAME"
+              screen -S "$NODE_NAME" -X quit || true
+            fi
+          done
+
+          echo "All existing screen sessions stopped"
+
+      - name: Start devnet nodes with screen
+        id: start_nodes
+        run: |
+          STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
+          STABLED_BINARY="$STABLE_PATH/build/stabled"
+
+          echo "Starting devnet nodes with screen..."
+          echo "Using stabled binary: $STABLED_BINARY"
+
+          # Verify stabled binary exists
+          if [ ! -f "$STABLED_BINARY" ]; then
+            echo "Error: stabled binary not found at $STABLED_BINARY"
+            exit 1
+          fi
+
+          # Make sure stabled is executable
+          chmod +x "$STABLED_BINARY"
+
+          # Start each validator node
+          for i in $(seq 0 $((VALIDATORS - 1))); do
+            NODE_NAME="node$i"
+            NODE_HOME="$DEVNET_BASE_DIR/$NODE_NAME"
+            LOG_FILE="$DEVNET_BASE_DIR/$NODE_NAME.log"
+
+            echo "Starting $NODE_NAME..."
+            echo "  Home: $NODE_HOME"
+            echo "  Log: $LOG_FILE"
+
+            # Verify node directory exists
+            if [ ! -d "$NODE_HOME" ]; then
+              echo "Error: Node directory not found: $NODE_HOME"
+              exit 1
+            fi
+
+            # Create new screen session with logging
+            screen -dmS "$NODE_NAME" -L -Logfile "$LOG_FILE" \
+              bash -c "cd $STABLE_PATH && ./build/stabled start --home $NODE_HOME --chain-id $CHAIN_ID; exec bash"
+
+            # Wait a moment for the screen to start
+            sleep 2
+
+            # Verify screen session is running
+            if screen -list | grep -q "\.$NODE_NAME\s"; then
+              echo "$NODE_NAME started successfully"
+            else
+              echo "Warning: Failed to start screen session for $NODE_NAME"
+            fi
+          done
+
+          echo ""
+          echo "All nodes started. Screen sessions:"
+          screen -list
+
+      - name: Verify nodes are running
+        id: verify_nodes
+        run: |
+          echo "Waiting for nodes to start..."
+          sleep 10
+
+          echo "Verifying screen sessions..."
+          screen -list
+
+          # Check if all screen sessions are running
+          RUNNING_COUNT=0
+          for i in $(seq 0 $((VALIDATORS - 1))); do
+            NODE_NAME="node$i"
+            if screen -list | grep -q "\.$NODE_NAME\s"; then
+              RUNNING_COUNT=$((RUNNING_COUNT + 1))
+              echo "$NODE_NAME is running"
+            else
+              echo "Warning: $NODE_NAME is not running"
+            fi
+          done
+
+          echo ""
+          echo "Summary: $RUNNING_COUNT/$VALIDATORS nodes are running"
+
+          if [ "$RUNNING_COUNT" -ne "$VALIDATORS" ]; then
+            echo "Warning: Not all nodes are running"
+          fi
+
+          # Display log file locations
+          echo ""
+          echo "Log files:"
+          for i in $(seq 0 $((VALIDATORS - 1))); do
+            LOG_FILE="$DEVNET_BASE_DIR/node$i.log"
+            if [ -f "$LOG_FILE" ]; then
+              echo "  node$i: $LOG_FILE"
+            fi
+          done
+
+      - name: Display deployment summary
+        id: summary
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "Devnet Deployment Summary"
+          echo "=========================================="
+          echo "Tag: ${{ steps.get_tag.outputs.tag }}"
+          echo "Chain ID: $CHAIN_ID"
+          echo "Validators: $VALIDATORS"
+          echo "Accounts: $ACCOUNTS"
+          echo "Devnet Directory: $DEVNET_BASE_DIR"
+          echo "=========================================="
+          echo ""
+          echo "Screen Sessions:"
+          screen -list
+          echo ""
+          echo "Devnet Structure:"
+          ls -la "$DEVNET_BASE_DIR"
+          echo ""
+          echo "Log Files:"
+          for i in $(seq 0 $((VALIDATORS - 1))); do
+            LOG_FILE="$DEVNET_BASE_DIR/node$i.log"
+            if [ -f "$LOG_FILE" ]; then
+              LOG_SIZE=$(stat -f%z "$LOG_FILE" 2>/dev/null || stat -c%s "$LOG_FILE" 2>/dev/null)
+              echo "  node$i: $LOG_FILE ($LOG_SIZE bytes)"
+            fi
+          done
+          echo ""
+          echo "To view node logs:"
+          echo "  tail -f $DEVNET_BASE_DIR/node0.log"
+          echo ""
+          echo "To attach to screen session:"
+          echo "  screen -r node0"
+          echo ""
+          echo "=========================================="
