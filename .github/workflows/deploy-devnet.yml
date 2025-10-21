@@ -505,6 +505,14 @@ jobs:
               sleep 1
             fi
 
+            # Initialize node with stabled
+            echo "  Initializing $NODE_NAME with stabled..."
+            "$STABLED_BINARY" init "$NODE_NAME" \
+              --home "$NODE_HOME" \
+              --chain-id "$ACTUAL_CHAIN_ID"
+
+            echo "  Node initialized successfully"
+
             # Configure ports based on node index
             if [ $i -le 3 ]; then
               # Nodes 0-3: Use port pattern replacement
