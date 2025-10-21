@@ -433,32 +433,18 @@ jobs:
           NODE_COUNT=$(find "$DEVNET_BASE_DIR" -maxdepth 1 -type d -name "node*" | wc -l)
           echo "Deployed $NODE_COUNT validator nodes to $DEVNET_BASE_DIR"
 
-      - name: Stop existing screen sessions
-        id: stop_screens
-        run: |
-          echo "Stopping existing devnet screen sessions..."
-
-          # Find and stop all node screen sessions
-          for i in $(seq 0 $((VALIDATORS - 1))); do
-            NODE_NAME="node$i"
-            if screen -list | grep -q "\.$NODE_NAME\s"; then
-              echo "Stopping screen session: $NODE_NAME"
-              screen -S "$NODE_NAME" -X quit || true
-            fi
-          done
-
-          echo "All existing screen sessions stopped"
-
       - name: Start devnet nodes with screen
         id: start_nodes
         run: |
           STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
           STABLED_BINARY="$STABLE_PATH/build/stabled"
           ACTUAL_CHAIN_ID="${{ steps.build_devnet.outputs.actual_chain_id }}"
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
           echo "Starting devnet nodes with screen..."
           echo "Using stabled binary: $STABLED_BINARY"
           echo "Chain ID: $ACTUAL_CHAIN_ID"
+          echo "Timestamp: $TIMESTAMP"
 
           # Verify stabled binary exists
           if [ ! -f "$STABLED_BINARY" ]; then
@@ -469,15 +455,42 @@ jobs:
           # Make sure stabled is executable
           chmod +x "$STABLED_BINARY"
 
-          # Start each validator node
+          # Function to find available port
+          find_available_port() {
+            local start_port=$1
+            shift
+            local excluded_ports=("$@")
+            local port=$start_port
+
+            while [ $port -lt $((start_port + 1000)) ]; do
+              local is_excluded=false
+              for excluded in "${excluded_ports[@]}"; do
+                if [ "$port" = "$excluded" ]; then
+                  is_excluded=true
+                  break
+                fi
+              done
+
+              if [ "$is_excluded" = false ] && ! lsof -i:$port > /dev/null 2>&1; then
+                echo $port
+                return 0
+              fi
+              port=$((port + 1))
+            done
+
+            echo "Error: Could not find available port starting from $start_port" >&2
+            exit 1
+          }
+
+          # Configure and start each validator node
           for i in $(seq 0 $((VALIDATORS - 1))); do
             NODE_NAME="node$i"
             NODE_HOME="$DEVNET_BASE_DIR/$NODE_NAME"
-            LOG_FILE="$DEVNET_BASE_DIR/$NODE_NAME.log"
+            LOG_FILE="$DEVNET_BASE_DIR/${NODE_NAME}_${TIMESTAMP}.log"
+            CONFIG_FILE="$NODE_HOME/config/config.toml"
+            APP_CONFIG_FILE="$NODE_HOME/config/app.toml"
 
-            echo "Starting $NODE_NAME..."
-            echo "  Home: $NODE_HOME"
-            echo "  Log: $LOG_FILE"
+            echo "Configuring $NODE_NAME..."
 
             # Verify node directory exists
             if [ ! -d "$NODE_HOME" ]; then
@@ -485,7 +498,95 @@ jobs:
               exit 1
             fi
 
-            # Create new screen session with logging
+            # Stop existing screen session if it exists
+            if screen -list | grep -q "\.$NODE_NAME\s"; then
+              echo "  Stopping existing screen session: $NODE_NAME"
+              screen -S "$NODE_NAME" -X quit || true
+              sleep 1
+            fi
+
+            # Configure ports based on node index
+            if [ $i -le 3 ]; then
+              # Nodes 0-3: Use port pattern replacement
+              PORT_PATTERN=$((i * 100 + 66))
+
+              if [ $i -eq 2 ]; then
+                # node2: keep 266 as is (no replacement needed)
+                echo "  Keeping default ports for $NODE_NAME (266 pattern)"
+              else
+                # Replace 266 with calculated pattern
+                echo "  Replacing port pattern 266 -> $PORT_PATTERN in $NODE_NAME"
+                cp "$CONFIG_FILE" "${CONFIG_FILE}.bak"
+                sed -i.tmp "s/266/${PORT_PATTERN}/g" "$CONFIG_FILE"
+                rm -f "${CONFIG_FILE}.tmp"
+              fi
+            else
+              # node4+: Use dynamic port assignment
+              echo "  Using dynamic port assignment for $NODE_NAME"
+
+              # Find available ports
+              RPC_PORT=$(find_available_port 26657)
+              P2P_PORT=$(find_available_port 26656 $RPC_PORT)
+              PROXY_APP_PORT=$(find_available_port 26658 $RPC_PORT $P2P_PORT)
+
+              echo "  Assigned ports: RPC=$RPC_PORT, P2P=$P2P_PORT, ProxyApp=$PROXY_APP_PORT"
+
+              # Update config.toml with awk
+              cp "$CONFIG_FILE" "${CONFIG_FILE}.bak"
+              awk -v rpc_port="$RPC_PORT" -v p2p_port="$P2P_PORT" -v proxy_port="$PROXY_APP_PORT" '
+              {
+                if ($0 ~ /^proxy_app = "tcp:\/\/.*:[0-9]+"/) {
+                  print "proxy_app = \"tcp://0.0.0.0:" proxy_port "\""
+                  next
+                }
+
+                if ($0 ~ /^\[rpc\]/) {
+                  in_rpc = 1
+                  in_p2p = 0
+                }
+                else if ($0 ~ /^\[p2p\]/) {
+                  in_rpc = 0
+                  in_p2p = 1
+                }
+                else if ($0 ~ /^\[.*\]/) {
+                  in_rpc = 0
+                  in_p2p = 0
+                }
+
+                if (in_rpc && $0 ~ /^laddr = "tcp:\/\//) {
+                  print "laddr = \"tcp://0.0.0.0:" rpc_port "\""
+                  next
+                }
+
+                if (in_p2p && $0 ~ /^laddr = "tcp:\/\//) {
+                  print "laddr = \"tcp://0.0.0.0:" p2p_port "\""
+                  next
+                }
+
+                print
+              }
+              ' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp"
+              mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+            fi
+
+            # Configure app.toml - disable all services except for node2
+            cp "$APP_CONFIG_FILE" "${APP_CONFIG_FILE}.bak"
+
+            if [ $i -eq 2 ]; then
+              # node2: keep enable = true (all services enabled)
+              echo "  Keeping all services enabled for $NODE_NAME"
+            else
+              # All other nodes: disable all services
+              echo "  Disabling all services for $NODE_NAME"
+              sed -i.tmp 's/enable = true/enable = false/g' "$APP_CONFIG_FILE"
+              rm -f "${APP_CONFIG_FILE}.tmp"
+            fi
+
+            # Start node with screen
+            echo "  Starting $NODE_NAME..."
+            echo "    Home: $NODE_HOME"
+            echo "    Log: $LOG_FILE"
+
             screen -dmS "$NODE_NAME" -L -Logfile "$LOG_FILE" \
               bash -c "cd $STABLE_PATH && ./build/stabled start --home $NODE_HOME --chain-id $ACTUAL_CHAIN_ID; exec bash"
 
@@ -494,14 +595,14 @@ jobs:
 
             # Verify screen session is running
             if screen -list | grep -q "\.$NODE_NAME\s"; then
-              echo "$NODE_NAME started successfully"
+              echo "  $NODE_NAME started successfully"
             else
-              echo "Warning: Failed to start screen session for $NODE_NAME"
+              echo "  Warning: Failed to start screen session for $NODE_NAME"
             fi
           done
 
           echo ""
-          echo "All nodes started. Screen sessions:"
+          echo "All nodes configured and started. Screen sessions:"
           screen -list
 
       - name: Verify nodes are running
