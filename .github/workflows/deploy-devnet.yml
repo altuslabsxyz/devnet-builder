@@ -320,6 +320,17 @@ jobs:
           # Build devnet-builder if not exists
           if [ ! -f "./build/devnet-builder" ]; then
             echo "Building devnet-builder..."
+
+            # Reset stable directory to original commit state
+            STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
+            echo "Resetting stable directory to clean state..."
+            cd "$STABLE_PATH"
+            git reset --hard
+            git clean -fd
+
+            # Return to devnet-builder directory
+            cd "$GITHUB_WORKSPACE"
+
             make build
           fi
 
