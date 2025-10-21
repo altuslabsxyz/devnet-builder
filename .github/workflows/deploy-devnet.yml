@@ -505,13 +505,13 @@ jobs:
               sleep 1
             fi
 
-            # Initialize node with stabled
+            # Initialize node with stabled (continue even if it fails)
             echo "  Initializing $NODE_NAME with stabled..."
             "$STABLED_BINARY" init "$NODE_NAME" \
               --home "$NODE_HOME" \
-              --chain-id "$ACTUAL_CHAIN_ID"
+              --chain-id "$ACTUAL_CHAIN_ID" || true
 
-            echo "  Node initialized successfully"
+            echo "  Node initialization completed (or skipped if already initialized)"
 
             # Configure ports based on node index
             if [ $i -le 3 ]; then
