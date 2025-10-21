@@ -321,11 +321,17 @@ jobs:
           if [ ! -f "./build/devnet-builder" ]; then
             echo "Building devnet-builder..."
 
-            # Reset stable directory to original commit state
+            # Get the exact commit hash from submodule
+            cd "$GITHUB_WORKSPACE"
+            SUBMODULE_COMMIT=$(git ls-tree HEAD stable | awk '{print $3}')
+            echo "Submodule commit hash: $SUBMODULE_COMMIT"
+
+            # Reset stable directory to exact submodule commit
             STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
-            echo "Resetting stable directory to clean state..."
+            echo "Resetting stable directory to submodule commit: $SUBMODULE_COMMIT"
             cd "$STABLE_PATH"
-            git reset --hard
+            git fetch --all
+            git reset --hard "$SUBMODULE_COMMIT"
             git clean -fd
 
             # Return to devnet-builder directory
