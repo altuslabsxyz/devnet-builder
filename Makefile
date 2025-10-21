@@ -18,7 +18,7 @@ $(BUILDDIR)/:
 # Build devnet-builder
 build: $(BUILDDIR)/
 	@echo "Building devnet-builder..."
-	@go build -mod=mod -o $(BUILDDIR)/$(BINARY_NAME) ./cmd/devnet-builder
+	@GOWORK=off go build -o $(BUILDDIR)/$(BINARY_NAME) ./cmd/devnet-builder
 	@echo "Build successful: $(BUILDDIR)/$(BINARY_NAME)"
 
 # Clean build artifacts
@@ -30,13 +30,13 @@ clean:
 # Install to GOPATH/bin
 install:
 	@echo "Installing devnet-builder..."
-	@go install -mod=mod ./cmd/devnet-builder
+	@GOWORK=off go install ./cmd/devnet-builder
 	@echo "Install complete"
 
 # Run tests
 test:
 	@echo "Running tests..."
-	@go test -mod=mod -v ./...
+	@GOWORK=off go test -v ./...
 
 # Display help
 help:
