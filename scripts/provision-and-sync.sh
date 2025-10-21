@@ -93,19 +93,32 @@ echo "=========================================="
 echo ""
 
 # Function to find available port
+# Usage: find_available_port START_PORT [EXCLUDED_PORTS...]
 find_available_port() {
   local start_port=$1
+  shift
+  local excluded_ports=("$@")
   local port=$start_port
 
   while [ $port -lt $((start_port + 1000)) ]; do
-    if ! lsof -i:$port > /dev/null 2>&1; then
+    # Check if port is in excluded list
+    local is_excluded=false
+    for excluded in "${excluded_ports[@]}"; do
+      if [ "$port" = "$excluded" ]; then
+        is_excluded=true
+        break
+      fi
+    done
+
+    # Check if port is available (not in use and not excluded)
+    if [ "$is_excluded" = false ] && ! lsof -i:$port > /dev/null 2>&1; then
       echo $port
       return 0
     fi
     port=$((port + 1))
   done
 
-  echo "Error: Could not find available port starting from $start_port"
+  echo "Error: Could not find available port starting from $start_port" >&2
   exit 1
 }
 
@@ -121,9 +134,9 @@ fi
 # Step 1.5: Configure ports and settings
 echo "[1.5/6] Configuring ports and app settings..."
 
-# Find available ports
+# Find available ports (ensure they don't overlap)
 RPC_PORT=$(find_available_port 26657)
-P2P_PORT=$(find_available_port 26656)
+P2P_PORT=$(find_available_port 26656 $RPC_PORT)
 
 echo "    Using RPC port: $RPC_PORT"
 echo "    Using P2P port: $P2P_PORT"
