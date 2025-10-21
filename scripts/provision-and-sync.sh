@@ -92,6 +92,23 @@ echo "Skip Sync: $SKIP_SYNC"
 echo "=========================================="
 echo ""
 
+# Function to find available port
+find_available_port() {
+  local start_port=$1
+  local port=$start_port
+
+  while [ $port -lt $((start_port + 1000)) ]; do
+    if ! lsof -i:$port > /dev/null 2>&1; then
+      echo $port
+      return 0
+    fi
+    port=$((port + 1))
+  done
+
+  echo "Error: Could not find available port starting from $start_port"
+  exit 1
+}
+
 # Step 1: Initialize chain if not exists
 if [ ! -d "$WORK_DIR" ]; then
   echo "[1/6] Initializing chain..."
@@ -100,6 +117,49 @@ if [ ! -d "$WORK_DIR" ]; then
 else
   echo "[1/6] Chain directory already exists: $WORK_DIR"
 fi
+
+# Step 1.5: Configure ports and settings
+echo "[1.5/6] Configuring ports and app settings..."
+
+# Find available ports
+RPC_PORT=$(find_available_port 26657)
+P2P_PORT=$(find_available_port 26656)
+
+echo "    Using RPC port: $RPC_PORT"
+echo "    Using P2P port: $P2P_PORT"
+
+# Update config.toml with available ports
+if [ -f "$CONFIG_FILE" ]; then
+  # Backup original config
+  cp "$CONFIG_FILE" "${CONFIG_FILE}.bak"
+
+  # Update RPC laddr (127.0.0.1:26657)
+  sed -i.tmp "s|laddr = \"tcp://127.0.0.1:26657\"|laddr = \"tcp://127.0.0.1:$RPC_PORT\"|g" "$CONFIG_FILE"
+
+  # Update P2P laddr (0.0.0.0:26656)
+  sed -i.tmp "s|laddr = \"tcp://0.0.0.0:26656\"|laddr = \"tcp://0.0.0.0:$P2P_PORT\"|g" "$CONFIG_FILE"
+
+  # Remove sed backup files
+  rm -f "${CONFIG_FILE}.tmp"
+
+  echo "    Updated config.toml ports"
+fi
+
+# Update app.toml - disable all "enable = true" settings
+if [ -f "$APP_CONFIG_FILE" ]; then
+  # Backup original app config
+  cp "$APP_CONFIG_FILE" "${APP_CONFIG_FILE}.bak"
+
+  # Disable all enable = true settings
+  sed -i.tmp 's/enable = true/enable = false/g' "$APP_CONFIG_FILE"
+
+  # Remove sed backup files
+  rm -f "${APP_CONFIG_FILE}.tmp"
+
+  echo "    Updated app.toml settings"
+fi
+
+echo "    Configuration complete"
 
 # Step 2: Stop any existing process
 echo "[2/6] Checking for existing processes..."
