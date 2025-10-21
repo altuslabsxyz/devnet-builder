@@ -1,5 +1,7 @@
 name: Deploy Devnet
 
+run-name: Devnet-${{ inputs.target_chain_id }}-${{ github.run_number }}
+
 on:
   workflow_dispatch:
     inputs:
