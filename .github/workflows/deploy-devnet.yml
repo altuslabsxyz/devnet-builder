@@ -6,10 +6,13 @@ on:
   workflow_dispatch:
     inputs:
       stable_tag:
-        description: 'Stable repository tag version (optional, defaults to stable-devnet tag)'
-        required: false
-        type: string
-        default: ''
+        description: 'Stable repository tag version'
+        required: true
+        type: choice
+        options:
+          - v0.8.1-testnet
+          - v0.8.0-testnet
+        default: 'v0.8.1-testnet'
       target_chain_id:
         description: 'Target chain-id to export'
         required: true
@@ -85,17 +88,8 @@ jobs:
       - name: Get current tag version
         id: get_tag
         run: |
-          if [ -n "${{ env.STABLE_TAG }}" ]; then
-            TAG="${{ env.STABLE_TAG }}"
-            echo "Using provided tag: $TAG"
-          else
-            TAG=$(git describe --tags --exact-match 2>/dev/null || git describe --tags --abbrev=0 2>/dev/null || echo "")
-            if [ -z "$TAG" ]; then
-              echo "Error: No tag found and no tag provided"
-              exit 1
-            fi
-            echo "Using current repository tag: $TAG"
-          fi
+          TAG="${{ env.STABLE_TAG }}"
+          echo "Using provided tag: $TAG"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "STABLE_TAG=$TAG" >> $GITHUB_ENV
 
