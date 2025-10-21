@@ -229,7 +229,7 @@ jobs:
 
           # Build stabled with proper environment variables
           echo "Running make build..."
-          GOARCH=amd64 LEDGER_ENABLED=false make build
+          GOARCH=amd64 make build
 
           # Verify build output
           if [ ! -f "./build/stabled" ]; then
