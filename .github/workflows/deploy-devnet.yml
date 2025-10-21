@@ -8,34 +8,18 @@ on:
         required: false
         type: string
         default: ''
-      export_mode:
-        description: 'Genesis export mode: "running" (from running node) or "sync" (provision & sync new chain)'
+      target_chain_id:
+        description: 'Target chain-id to export'
         required: true
         type: choice
         options:
-          - running
-          - sync
-        default: 'sync'
-      target_chain_id:
-        description: 'Target chain-id to export (for sync mode)'
-        required: false
-        type: string
+          - stabletestnet_2200-1
         default: 'stabletestnet_2200-1'
       target_rpc_endpoint:
-        description: 'Target chain RPC endpoint (for sync mode, e.g., https://stable-rpc.testnet.chain0.dev/)'
+        description: 'Target chain RPC endpoint (e.g., https://stable-rpc.testnet.chain0.dev/)'
         required: false
         type: string
         default: 'https://stable-rpc.testnet.chain0.dev/'
-      v_home:
-        description: 'V_HOME environment variable path (for running mode)'
-        required: false
-        type: string
-        default: '/data/.stable'
-      daemon_name:
-        description: 'System daemon name (for running mode)'
-        required: false
-        type: string
-        default: 'stable.service'
       validators:
         description: 'Number of validators to create'
         required: true
@@ -47,20 +31,20 @@ on:
         type: number
         default: 10
       account_balance:
-        description: 'Balance for each account (e.g., "1000000000000000000000astable,500000000000000000000agasusdt")'
-        required: true
+        description: 'Balance for each account (optional, e.g., "1000000000000000000000astable,500000000000000000000agasusdt")'
+        required: false
         type: string
-        default: '1000000000000000000000astable,500000000000000000000agasusdt'
+        default: ''
       validator_balance:
-        description: 'Balance for each validator (e.g., "1000000000000000000000astable,500000000000000000000agasusdt")'
-        required: true
+        description: 'Balance for each validator (optional, e.g., "1000000000000000000000astable,500000000000000000000agasusdt")'
+        required: false
         type: string
-        default: '1000000000000000000000astable,500000000000000000000agasusdt'
+        default: ''
       validator_stake:
-        description: 'Stake amount for each validator (in astable)'
-        required: true
+        description: 'Stake amount for each validator in astable (optional)'
+        required: false
         type: string
-        default: '100000000000000000000'
+        default: ''
       devnet_chain_id:
         description: 'Devnet Chain ID (optional, defaults to from genesis)'
         required: false
@@ -82,11 +66,8 @@ jobs:
     runs-on: [self-hosted, ubuntu]
 
     env:
-      EXPORT_MODE: ${{ inputs.export_mode }}
       TARGET_CHAIN_ID: ${{ inputs.target_chain_id }}
       TARGET_RPC_ENDPOINT: ${{ inputs.target_rpc_endpoint }}
-      V_HOME: ${{ inputs.v_home }}
-      DAEMON_NAME: ${{ inputs.daemon_name }}
       STABLE_TAG: ${{ inputs.stable_tag }}
       VALIDATORS: ${{ inputs.validators }}
       ACCOUNTS: ${{ inputs.accounts }}
@@ -120,56 +101,6 @@ jobs:
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "STABLE_TAG=$TAG" >> $GITHUB_ENV
-
-      - name: Verify system daemon is running (running mode only)
-        if: inputs.export_mode == 'running'
-        id: check_daemon
-        run: |
-          echo "Checking if $DAEMON_NAME is running..."
-          if ! systemctl is-active --quiet "$DAEMON_NAME"; then
-            echo "Error: System daemon '$DAEMON_NAME' is not running"
-            systemctl status "$DAEMON_NAME" || true
-            exit 1
-          fi
-          echo "System daemon '$DAEMON_NAME' is running"
-          systemctl status "$DAEMON_NAME" --no-pager
-
-      - name: Check node sync status (running mode only)
-        if: inputs.export_mode == 'running'
-        id: check_sync
-        run: |
-          echo "Checking node sync status at localhost:26657/status..."
-          MAX_RETRIES=5
-          RETRY_COUNT=0
-
-          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            if SYNC_STATUS=$(curl -s http://localhost:26657/status | jq -r '.result.sync_info.catching_up' 2>/dev/null); then
-              if [ "$SYNC_STATUS" = "false" ]; then
-                echo "Node is fully synced (catching_up: false)"
-                break
-              else
-                echo "Warning: Node is still catching up (catching_up: $SYNC_STATUS)"
-                RETRY_COUNT=$((RETRY_COUNT + 1))
-                if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-                  echo "Retrying in 10 seconds... ($RETRY_COUNT/$MAX_RETRIES)"
-                  sleep 10
-                else
-                  echo "Error: Node is not fully synced after $MAX_RETRIES attempts"
-                  exit 1
-                fi
-              fi
-            else
-              echo "Error: Failed to fetch sync status from localhost:26657/status"
-              curl -s http://localhost:26657/status || echo "Failed to connect to endpoint"
-              RETRY_COUNT=$((RETRY_COUNT + 1))
-              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-                echo "Retrying in 10 seconds... ($RETRY_COUNT/$MAX_RETRIES)"
-                sleep 10
-              else
-                exit 1
-              fi
-            fi
-          done
 
       - name: Setup stable repository symbolic link
         id: setup_stable_link
@@ -309,42 +240,8 @@ jobs:
           ./build/stabled version
           echo "stabled_binary=$STABLE_PATH/build/stabled" >> $GITHUB_OUTPUT
 
-      - name: Export genesis from running chain (running mode)
-        if: inputs.export_mode == 'running'
-        id: export_genesis_running
-        run: |
-          STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
-          STABLED_BINARY="${{ steps.build_stabled.outputs.stabled_binary }}"
-          GENESIS_EXPORT_PATH="${GITHUB_WORKSPACE}/genesis-export.json"
-
-          echo "Exporting genesis from running chain..."
-          echo "V_HOME: $V_HOME"
-          echo "Using stabled binary: $STABLED_BINARY"
-
-          # Export genesis
-          cd "$STABLE_PATH"
-          ./build/stabled export --home "$V_HOME" > "$GENESIS_EXPORT_PATH"
-
-          # Verify export
-          if [ ! -f "$GENESIS_EXPORT_PATH" ]; then
-            echo "Error: Genesis export failed"
-            exit 1
-          fi
-
-          GENESIS_SIZE=$(stat -f%z "$GENESIS_EXPORT_PATH" 2>/dev/null || stat -c%s "$GENESIS_EXPORT_PATH" 2>/dev/null)
-          echo "Genesis exported successfully (size: $GENESIS_SIZE bytes)"
-
-          # Validate JSON
-          if ! jq empty "$GENESIS_EXPORT_PATH" 2>/dev/null; then
-            echo "Error: Exported genesis is not valid JSON"
-            exit 1
-          fi
-
-          echo "genesis_file=$GENESIS_EXPORT_PATH" >> $GITHUB_OUTPUT
-
-      - name: Provision and sync target chain (sync mode)
-        if: inputs.export_mode == 'sync'
-        id: export_genesis_sync
+      - name: Provision and sync target chain
+        id: export_genesis
         run: |
           STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
           STABLED_BINARY="${{ steps.build_stabled.outputs.stabled_binary }}"
@@ -383,16 +280,6 @@ jobs:
 
           echo "genesis_file=$GENESIS_EXPORT_PATH" >> $GITHUB_OUTPUT
 
-      - name: Set genesis file output
-        id: export_genesis
-        run: |
-          if [ "$EXPORT_MODE" = "running" ]; then
-            GENESIS_FILE="${{ steps.export_genesis_running.outputs.genesis_file }}"
-          else
-            GENESIS_FILE="${{ steps.export_genesis_sync.outputs.genesis_file }}"
-          fi
-          echo "genesis_file=$GENESIS_FILE" >> $GITHUB_OUTPUT
-
       - name: Build devnet with devnet-builder
         id: build_devnet
         run: |
@@ -402,9 +289,21 @@ jobs:
           echo "Genesis file: $GENESIS_FILE"
           echo "Validators: $VALIDATORS"
           echo "Accounts: $ACCOUNTS"
-          echo "Account balance: $ACCOUNT_BALANCE"
-          echo "Validator balance: $VALIDATOR_BALANCE"
-          echo "Validator stake: $VALIDATOR_STAKE"
+          if [ -n "$ACCOUNT_BALANCE" ]; then
+            echo "Account balance: $ACCOUNT_BALANCE"
+          else
+            echo "Account balance: (using default)"
+          fi
+          if [ -n "$VALIDATOR_BALANCE" ]; then
+            echo "Validator balance: $VALIDATOR_BALANCE"
+          else
+            echo "Validator balance: (using default)"
+          fi
+          if [ -n "$VALIDATOR_STAKE" ]; then
+            echo "Validator stake: $VALIDATOR_STAKE"
+          else
+            echo "Validator stake: (using default)"
+          fi
           echo "Devnet Chain ID: $DEVNET_CHAIN_ID"
           echo "Output directory: $DEVNET_OUTPUT_DIR"
 
@@ -417,11 +316,23 @@ jobs:
           # Build command
           BUILD_CMD="./build/devnet-builder build \"$GENESIS_FILE\" \
             --validators $VALIDATORS \
-            --accounts $ACCOUNTS \
-            --account-balance \"$ACCOUNT_BALANCE\" \
-            --validator-balance \"$VALIDATOR_BALANCE\" \
-            --validator-stake \"$VALIDATOR_STAKE\" \
-            --output \"$DEVNET_OUTPUT_DIR\""
+            --accounts $ACCOUNTS"
+
+          # Add optional balance and stake parameters if provided
+          if [ -n "$ACCOUNT_BALANCE" ]; then
+            BUILD_CMD="$BUILD_CMD --account-balance \"$ACCOUNT_BALANCE\""
+          fi
+
+          if [ -n "$VALIDATOR_BALANCE" ]; then
+            BUILD_CMD="$BUILD_CMD --validator-balance \"$VALIDATOR_BALANCE\""
+          fi
+
+          if [ -n "$VALIDATOR_STAKE" ]; then
+            BUILD_CMD="$BUILD_CMD --validator-stake \"$VALIDATOR_STAKE\""
+          fi
+
+          # Add output directory
+          BUILD_CMD="$BUILD_CMD --output \"$DEVNET_OUTPUT_DIR\""
 
           # Add chain-id if provided
           if [ -n "$DEVNET_CHAIN_ID" ]; then
@@ -613,11 +524,8 @@ jobs:
           echo "=========================================="
           echo "Devnet Deployment Summary"
           echo "=========================================="
-          echo "Export Mode: $EXPORT_MODE"
-          if [ "$EXPORT_MODE" = "sync" ]; then
-            echo "Target Chain ID: $TARGET_CHAIN_ID"
-            echo "Target RPC Endpoint: $TARGET_RPC_ENDPOINT"
-          fi
+          echo "Target Chain ID: $TARGET_CHAIN_ID"
+          echo "Target RPC Endpoint: $TARGET_RPC_ENDPOINT"
           echo "Stable Tag: ${{ steps.get_tag.outputs.tag }}"
           echo "Devnet Chain ID: $ACTUAL_CHAIN_ID"
           echo "Validators: $VALIDATORS"
