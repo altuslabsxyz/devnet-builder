@@ -148,14 +148,14 @@ if [ -f "$CONFIG_FILE" ]; then
   # Backup original config
   cp "$CONFIG_FILE" "${CONFIG_FILE}.bak"
 
-  # Update RPC laddr (127.0.0.1:26657)
-  sed -i.tmp "s|laddr = \"tcp://127.0.0.1:26657\"|laddr = \"tcp://127.0.0.1:$RPC_PORT\"|g" "$CONFIG_FILE"
+  # Update RPC laddr (127.0.0.1:26657 -> 0.0.0.0:PORT)
+  sed -i.tmp "s|laddr = \"tcp://127.0.0.1:26657\"|laddr = \"tcp://0.0.0.0:$RPC_PORT\"|g" "$CONFIG_FILE"
 
-  # Update P2P laddr (0.0.0.0:26656)
+  # Update P2P laddr (0.0.0.0:26656 -> 0.0.0.0:PORT)
   sed -i.tmp "s|laddr = \"tcp://0.0.0.0:26656\"|laddr = \"tcp://0.0.0.0:$P2P_PORT\"|g" "$CONFIG_FILE"
 
-  # Update proxy_app (127.0.0.1:26658)
-  sed -i.tmp "s|proxy_app = \"tcp://127.0.0.1:26658\"|proxy_app = \"tcp://127.0.0.1:$PROXY_APP_PORT\"|g" "$CONFIG_FILE"
+  # Update proxy_app (127.0.0.1:26658 -> 0.0.0.0:PORT)
+  sed -i.tmp "s|proxy_app = \"tcp://127.0.0.1:26658\"|proxy_app = \"tcp://0.0.0.0:$PROXY_APP_PORT\"|g" "$CONFIG_FILE"
 
   # Remove sed backup files
   rm -f "${CONFIG_FILE}.tmp"
