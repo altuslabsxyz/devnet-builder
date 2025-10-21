@@ -137,9 +137,11 @@ echo "[1.5/6] Configuring ports and app settings..."
 # Find available ports (ensure they don't overlap)
 RPC_PORT=$(find_available_port 26657)
 P2P_PORT=$(find_available_port 26656 $RPC_PORT)
+PROXY_APP_PORT=$(find_available_port 26658 $RPC_PORT $P2P_PORT)
 
 echo "    Using RPC port: $RPC_PORT"
 echo "    Using P2P port: $P2P_PORT"
+echo "    Using Proxy App port: $PROXY_APP_PORT"
 
 # Update config.toml with available ports
 if [ -f "$CONFIG_FILE" ]; then
@@ -151,6 +153,9 @@ if [ -f "$CONFIG_FILE" ]; then
 
   # Update P2P laddr (0.0.0.0:26656)
   sed -i.tmp "s|laddr = \"tcp://0.0.0.0:26656\"|laddr = \"tcp://0.0.0.0:$P2P_PORT\"|g" "$CONFIG_FILE"
+
+  # Update proxy_app (127.0.0.1:26658)
+  sed -i.tmp "s|proxy_app = \"tcp://127.0.0.1:26658\"|proxy_app = \"tcp://127.0.0.1:$PROXY_APP_PORT\"|g" "$CONFIG_FILE"
 
   # Remove sed backup files
   rm -f "${CONFIG_FILE}.tmp"
