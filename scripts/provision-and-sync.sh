@@ -306,8 +306,8 @@ if [ "$SKIP_SYNC" = false ] && [ -n "$RPC_ENDPOINT" ]; then
       exit 1
     fi
 
-    # Check sync status
-    if SYNC_STATUS=$(curl -s http://127.0.0.1:26657/status 2>/dev/null | jq -r .result.sync_info.catching_up 2>/dev/null); then
+    # Check sync status using dynamically assigned RPC port
+    if SYNC_STATUS=$(curl -s http://127.0.0.1:$RPC_PORT/status 2>/dev/null | jq -r .result.sync_info.catching_up 2>/dev/null); then
       if [ "$SYNC_STATUS" = "false" ]; then
         echo "    State-sync completed successfully"
         break
@@ -315,7 +315,7 @@ if [ "$SKIP_SYNC" = false ] && [ -n "$RPC_ENDPOINT" ]; then
         echo "    Still syncing... (${WAIT_COUNT}s elapsed)"
       fi
     else
-      echo "    Waiting for RPC to be available... (${WAIT_COUNT}s elapsed)"
+      echo "    Waiting for RPC to be available on port $RPC_PORT... (${WAIT_COUNT}s elapsed)"
     fi
   done
 
