@@ -50,11 +50,6 @@ on:
         required: false
         type: string
         default: ''
-      devnet_output_dir:
-        description: 'Devnet builder output directory'
-        required: true
-        type: string
-        default: './devnet'
       devnet_base_dir:
         description: 'Base directory to deploy devnet nodes'
         required: true
@@ -75,7 +70,7 @@ jobs:
       VALIDATOR_BALANCE: ${{ inputs.validator_balance }}
       VALIDATOR_STAKE: ${{ inputs.validator_stake }}
       DEVNET_CHAIN_ID: ${{ inputs.devnet_chain_id }}
-      DEVNET_OUTPUT_DIR: ${{ inputs.devnet_output_dir }}
+      DEVNET_OUTPUT_DIR: './devnet'
       DEVNET_BASE_DIR: ${{ inputs.devnet_base_dir }}
 
     steps:
