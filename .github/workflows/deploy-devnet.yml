@@ -97,6 +97,16 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "STABLE_TAG=$TAG" >> $GITHUB_ENV
 
+      - name: Setup Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: "^1.22"
+
+      - name: Configure Git to use PAT
+        run: |
+          git config --global url."https://${{ secrets.GH_PAT }}:@github.com/".insteadOf "https://github.com/"
+          echo "GOPRIVATE=github.com/stablelabs/*" >> $GITHUB_ENV
+
       - name: Setup stable repository symbolic link
         id: setup_stable_link
         run: |
@@ -220,9 +230,9 @@ jobs:
           # Clean previous builds
           make clean || true
 
-          # Build stabled
+          # Build stabled with proper environment variables
           echo "Running make build..."
-          make build
+          GOARCH=amd64 LEDGER_ENABLED=false make build
 
           # Verify build output
           if [ ! -f "./build/stabled" ]; then
