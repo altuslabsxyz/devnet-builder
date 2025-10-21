@@ -18,6 +18,7 @@ RPC_ENDPOINT=""
 STABLED_BINARY=""
 BASE_DIR="/data"
 OUTPUT_FILE="genesis-export.json"
+PERSISTENT_PEERS=""
 SKIP_SYNC=false
 
 # Parse command line arguments
@@ -41,6 +42,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --output-file)
       OUTPUT_FILE="$2"
+      shift 2
+      ;;
+    --persistent-peers)
+      PERSISTENT_PEERS="$2"
       shift 2
       ;;
     --skip-sync)
@@ -148,8 +153,8 @@ if [ -f "$CONFIG_FILE" ]; then
   # Backup original config
   cp "$CONFIG_FILE" "${CONFIG_FILE}.bak"
 
-  # Use awk to update ports section by section
-  awk -v rpc_port="$RPC_PORT" -v p2p_port="$P2P_PORT" -v proxy_port="$PROXY_APP_PORT" '
+  # Use awk to update ports and peers section by section
+  awk -v rpc_port="$RPC_PORT" -v p2p_port="$P2P_PORT" -v proxy_port="$PROXY_APP_PORT" -v peers="$PERSISTENT_PEERS" '
   {
     # Update proxy_app at the beginning of file
     if ($0 ~ /^proxy_app = "tcp:\/\/127\.0\.0\.1:[0-9]+"/) {
@@ -183,6 +188,16 @@ if [ -f "$CONFIG_FILE" ]; then
       next
     }
 
+    # Update persistent_peers in P2P section
+    if (in_p2p && $0 ~ /^persistent_peers = /) {
+      if (peers != "") {
+        print "persistent_peers = \"" peers "\""
+      } else {
+        print
+      }
+      next
+    }
+
     # Print all other lines as-is
     print
   }
@@ -191,7 +206,11 @@ if [ -f "$CONFIG_FILE" ]; then
   # Replace original with updated file
   mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
 
-  echo "    Updated config.toml ports (RPC=$RPC_PORT, P2P=$P2P_PORT, ProxyApp=$PROXY_APP_PORT)"
+  if [ -n "$PERSISTENT_PEERS" ]; then
+    echo "    Updated config.toml ports (RPC=$RPC_PORT, P2P=$P2P_PORT, ProxyApp=$PROXY_APP_PORT) and peers"
+  else
+    echo "    Updated config.toml ports (RPC=$RPC_PORT, P2P=$P2P_PORT, ProxyApp=$PROXY_APP_PORT)"
+  fi
 fi
 
 # Update app.toml - disable all "enable = true" settings

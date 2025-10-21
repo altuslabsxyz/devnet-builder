@@ -55,11 +55,11 @@ on:
         required: false
         type: string
         default: ''
-      devnet_base_dir:
-        description: 'Base directory to deploy devnet nodes'
-        required: true
+      persistent_peers:
+        description: 'Persistent peers (e.g., "nodeID@host:port,nodeID@host:port")'
+        required: false
         type: string
-        default: '/data/.devnet'
+        default: ''
 
 jobs:
   deploy-devnet:
@@ -68,6 +68,7 @@ jobs:
     env:
       TARGET_CHAIN_ID: ${{ inputs.target_chain_id }}
       TARGET_RPC_ENDPOINT: ${{ inputs.target_rpc_endpoint }}
+      PERSISTENT_PEERS: ${{ inputs.persistent_peers }}
       STABLE_TAG: ${{ inputs.stable_tag }}
       VALIDATORS: ${{ inputs.validators }}
       ACCOUNTS: ${{ inputs.accounts }}
@@ -76,7 +77,7 @@ jobs:
       VALIDATOR_STAKE: ${{ inputs.validator_stake }}
       DEVNET_CHAIN_ID: ${{ inputs.devnet_chain_id }}
       DEVNET_OUTPUT_DIR: './devnet'
-      DEVNET_BASE_DIR: ${{ inputs.devnet_base_dir }}
+      DEVNET_BASE_DIR: '/data/.devnet'
 
     steps:
       - name: Checkout stable-devnet repository
@@ -256,13 +257,21 @@ jobs:
           # Make provision script executable
           chmod +x "${GITHUB_WORKSPACE}/scripts/provision-and-sync.sh"
 
+          # Build provision command
+          PROVISION_CMD="${GITHUB_WORKSPACE}/scripts/provision-and-sync.sh \
+            --chain-id \"$TARGET_CHAIN_ID\" \
+            --rpc-endpoint \"$TARGET_RPC_ENDPOINT\" \
+            --stabled-binary \"$STABLED_BINARY\" \
+            --base-dir \"/data\" \
+            --output-file \"$GENESIS_EXPORT_PATH\""
+
+          # Add persistent peers if provided
+          if [ -n "$PERSISTENT_PEERS" ]; then
+            PROVISION_CMD="$PROVISION_CMD --persistent-peers \"$PERSISTENT_PEERS\""
+          fi
+
           # Run provision and sync script
-          "${GITHUB_WORKSPACE}/scripts/provision-and-sync.sh" \
-            --chain-id "$TARGET_CHAIN_ID" \
-            --rpc-endpoint "$TARGET_RPC_ENDPOINT" \
-            --stabled-binary "$STABLED_BINARY" \
-            --base-dir "/data" \
-            --output-file "$GENESIS_EXPORT_PATH"
+          eval $PROVISION_CMD
 
           # Verify export
           if [ ! -f "$GENESIS_EXPORT_PATH" ]; then
