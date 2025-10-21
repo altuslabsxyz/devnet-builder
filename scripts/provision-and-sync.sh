@@ -148,19 +148,50 @@ if [ -f "$CONFIG_FILE" ]; then
   # Backup original config
   cp "$CONFIG_FILE" "${CONFIG_FILE}.bak"
 
-  # Update RPC laddr (127.0.0.1:26657 -> 0.0.0.0:PORT)
-  sed -i.tmp "s|laddr = \"tcp://127.0.0.1:26657\"|laddr = \"tcp://0.0.0.0:$RPC_PORT\"|g" "$CONFIG_FILE"
+  # Use awk to update ports section by section
+  awk -v rpc_port="$RPC_PORT" -v p2p_port="$P2P_PORT" -v proxy_port="$PROXY_APP_PORT" '
+  {
+    # Update proxy_app at the beginning of file
+    if ($0 ~ /^proxy_app = "tcp:\/\/127\.0\.0\.1:[0-9]+"/) {
+      print "proxy_app = \"tcp://0.0.0.0:" proxy_port "\""
+      next
+    }
 
-  # Update P2P laddr (0.0.0.0:26656 -> 0.0.0.0:PORT)
-  sed -i.tmp "s|laddr = \"tcp://0.0.0.0:26656\"|laddr = \"tcp://0.0.0.0:$P2P_PORT\"|g" "$CONFIG_FILE"
+    # Track which section we are in
+    if ($0 ~ /^\[rpc\]/) {
+      in_rpc = 1
+      in_p2p = 0
+    }
+    else if ($0 ~ /^\[p2p\]/) {
+      in_rpc = 0
+      in_p2p = 1
+    }
+    else if ($0 ~ /^\[.*\]/) {
+      in_rpc = 0
+      in_p2p = 0
+    }
 
-  # Update proxy_app (127.0.0.1:26658 -> 0.0.0.0:PORT)
-  sed -i.tmp "s|proxy_app = \"tcp://127.0.0.1:26658\"|proxy_app = \"tcp://0.0.0.0:$PROXY_APP_PORT\"|g" "$CONFIG_FILE"
+    # Update RPC laddr
+    if (in_rpc && $0 ~ /^laddr = "tcp:\/\//) {
+      print "laddr = \"tcp://0.0.0.0:" rpc_port "\""
+      next
+    }
 
-  # Remove sed backup files
-  rm -f "${CONFIG_FILE}.tmp"
+    # Update P2P laddr
+    if (in_p2p && $0 ~ /^laddr = "tcp:\/\//) {
+      print "laddr = \"tcp://0.0.0.0:" p2p_port "\""
+      next
+    }
 
-  echo "    Updated config.toml ports"
+    # Print all other lines as-is
+    print
+  }
+  ' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp"
+
+  # Replace original with updated file
+  mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+
+  echo "    Updated config.toml ports (RPC=$RPC_PORT, P2P=$P2P_PORT, ProxyApp=$PROXY_APP_PORT)"
 fi
 
 # Update app.toml - disable all "enable = true" settings
