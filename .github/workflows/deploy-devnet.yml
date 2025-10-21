@@ -21,10 +21,10 @@ on:
           - stabletestnet_2200-1
         default: 'stabletestnet_2200-1'
       target_rpc_endpoint:
-        description: 'Target chain RPC endpoint (e.g., https://stable-rpc.testnet.chain0.dev/)'
+        description: 'Target chain RPC endpoint (e.g., http://37.187.147.27:26657/)'
         required: false
         type: string
-        default: 'https://stable-rpc.testnet.chain0.dev/'
+        default: 'http://37.187.147.27:26657/'
       validators:
         description: 'Number of validators to create'
         required: true
@@ -59,7 +59,7 @@ on:
         description: 'Persistent peers (e.g., "nodeID@host:port,nodeID@host:port")'
         required: false
         type: string
-        default: ''
+        default: '5ed0f977a26ccf290e184e364fb04e268ef16430@37.187.147.27:26656'
 
 jobs:
   deploy-devnet:
