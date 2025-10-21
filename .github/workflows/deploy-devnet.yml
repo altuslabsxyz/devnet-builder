@@ -8,14 +8,32 @@ on:
         required: false
         type: string
         default: ''
-      v_home:
-        description: 'V_HOME environment variable path'
+      export_mode:
+        description: 'Genesis export mode: "running" (from running node) or "sync" (provision & sync new chain)'
         required: true
+        type: choice
+        options:
+          - running
+          - sync
+        default: 'sync'
+      target_chain_id:
+        description: 'Target chain-id to export (for sync mode)'
+        required: false
+        type: string
+        default: 'stabletestnet_2200-1'
+      target_rpc_endpoint:
+        description: 'Target chain RPC endpoint (for sync mode, e.g., https://stable-rpc.testnet.chain0.dev/)'
+        required: false
+        type: string
+        default: 'https://stable-rpc.testnet.chain0.dev/'
+      v_home:
+        description: 'V_HOME environment variable path (for running mode)'
+        required: false
         type: string
         default: '/data/.stable'
       daemon_name:
-        description: 'System daemon name'
-        required: true
+        description: 'System daemon name (for running mode)'
+        required: false
         type: string
         default: 'stable.service'
       validators:
@@ -43,11 +61,11 @@ on:
         required: true
         type: string
         default: '100000000000000000000'
-      chain_id:
-        description: 'Chain ID (optional, defaults to from genesis)'
+      devnet_chain_id:
+        description: 'Devnet Chain ID (optional, defaults to from genesis)'
         required: false
         type: string
-        default: 'stabletestnet_2200-1'
+        default: ''
       devnet_output_dir:
         description: 'Devnet builder output directory'
         required: true
@@ -64,6 +82,9 @@ jobs:
     runs-on: [self-hosted, ubuntu]
 
     env:
+      EXPORT_MODE: ${{ inputs.export_mode }}
+      TARGET_CHAIN_ID: ${{ inputs.target_chain_id }}
+      TARGET_RPC_ENDPOINT: ${{ inputs.target_rpc_endpoint }}
       V_HOME: ${{ inputs.v_home }}
       DAEMON_NAME: ${{ inputs.daemon_name }}
       STABLE_TAG: ${{ inputs.stable_tag }}
@@ -72,7 +93,7 @@ jobs:
       ACCOUNT_BALANCE: ${{ inputs.account_balance }}
       VALIDATOR_BALANCE: ${{ inputs.validator_balance }}
       VALIDATOR_STAKE: ${{ inputs.validator_stake }}
-      CHAIN_ID: ${{ inputs.chain_id }}
+      DEVNET_CHAIN_ID: ${{ inputs.devnet_chain_id }}
       DEVNET_OUTPUT_DIR: ${{ inputs.devnet_output_dir }}
       DEVNET_BASE_DIR: ${{ inputs.devnet_base_dir }}
 
@@ -100,7 +121,8 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "STABLE_TAG=$TAG" >> $GITHUB_ENV
 
-      - name: Verify system daemon is running
+      - name: Verify system daemon is running (running mode only)
+        if: inputs.export_mode == 'running'
         id: check_daemon
         run: |
           echo "Checking if $DAEMON_NAME is running..."
@@ -112,7 +134,8 @@ jobs:
           echo "System daemon '$DAEMON_NAME' is running"
           systemctl status "$DAEMON_NAME" --no-pager
 
-      - name: Check node sync status
+      - name: Check node sync status (running mode only)
+        if: inputs.export_mode == 'running'
         id: check_sync
         run: |
           echo "Checking node sync status at localhost:26657/status..."
@@ -286,8 +309,9 @@ jobs:
           ./build/stabled version
           echo "stabled_binary=$STABLE_PATH/build/stabled" >> $GITHUB_OUTPUT
 
-      - name: Export genesis from running chain
-        id: export_genesis
+      - name: Export genesis from running chain (running mode)
+        if: inputs.export_mode == 'running'
+        id: export_genesis_running
         run: |
           STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
           STABLED_BINARY="${{ steps.build_stabled.outputs.stabled_binary }}"
@@ -318,6 +342,57 @@ jobs:
 
           echo "genesis_file=$GENESIS_EXPORT_PATH" >> $GITHUB_OUTPUT
 
+      - name: Provision and sync target chain (sync mode)
+        if: inputs.export_mode == 'sync'
+        id: export_genesis_sync
+        run: |
+          STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
+          STABLED_BINARY="${{ steps.build_stabled.outputs.stabled_binary }}"
+          GENESIS_EXPORT_PATH="${GITHUB_WORKSPACE}/genesis-export.json"
+
+          echo "Provisioning and syncing target chain..."
+          echo "Target Chain ID: $TARGET_CHAIN_ID"
+          echo "Target RPC Endpoint: $TARGET_RPC_ENDPOINT"
+          echo "Using stabled binary: $STABLED_BINARY"
+
+          # Make provision script executable
+          chmod +x "${GITHUB_WORKSPACE}/scripts/provision-and-sync.sh"
+
+          # Run provision and sync script
+          "${GITHUB_WORKSPACE}/scripts/provision-and-sync.sh" \
+            --chain-id "$TARGET_CHAIN_ID" \
+            --rpc-endpoint "$TARGET_RPC_ENDPOINT" \
+            --stabled-binary "$STABLED_BINARY" \
+            --base-dir "/data" \
+            --output-file "$GENESIS_EXPORT_PATH"
+
+          # Verify export
+          if [ ! -f "$GENESIS_EXPORT_PATH" ]; then
+            echo "Error: Genesis export failed"
+            exit 1
+          fi
+
+          GENESIS_SIZE=$(stat -f%z "$GENESIS_EXPORT_PATH" 2>/dev/null || stat -c%s "$GENESIS_EXPORT_PATH" 2>/dev/null)
+          echo "Genesis exported successfully (size: $GENESIS_SIZE bytes)"
+
+          # Validate JSON
+          if ! jq empty "$GENESIS_EXPORT_PATH" 2>/dev/null; then
+            echo "Error: Exported genesis is not valid JSON"
+            exit 1
+          fi
+
+          echo "genesis_file=$GENESIS_EXPORT_PATH" >> $GITHUB_OUTPUT
+
+      - name: Set genesis file output
+        id: export_genesis
+        run: |
+          if [ "$EXPORT_MODE" = "running" ]; then
+            GENESIS_FILE="${{ steps.export_genesis_running.outputs.genesis_file }}"
+          else
+            GENESIS_FILE="${{ steps.export_genesis_sync.outputs.genesis_file }}"
+          fi
+          echo "genesis_file=$GENESIS_FILE" >> $GITHUB_OUTPUT
+
       - name: Build devnet with devnet-builder
         id: build_devnet
         run: |
@@ -330,7 +405,7 @@ jobs:
           echo "Account balance: $ACCOUNT_BALANCE"
           echo "Validator balance: $VALIDATOR_BALANCE"
           echo "Validator stake: $VALIDATOR_STAKE"
-          echo "Chain ID: $CHAIN_ID"
+          echo "Devnet Chain ID: $DEVNET_CHAIN_ID"
           echo "Output directory: $DEVNET_OUTPUT_DIR"
 
           # Build devnet-builder if not exists
@@ -349,8 +424,8 @@ jobs:
             --output \"$DEVNET_OUTPUT_DIR\""
 
           # Add chain-id if provided
-          if [ -n "$CHAIN_ID" ]; then
-            BUILD_CMD="$BUILD_CMD --chain-id \"$CHAIN_ID\""
+          if [ -n "$DEVNET_CHAIN_ID" ]; then
+            BUILD_CMD="$BUILD_CMD --chain-id \"$DEVNET_CHAIN_ID\""
           fi
 
           echo "Executing: $BUILD_CMD"
@@ -371,6 +446,15 @@ jobs:
 
           if [ "$NODE_COUNT" -ne "$VALIDATORS" ]; then
             echo "Warning: Expected $VALIDATORS nodes but found $NODE_COUNT"
+          fi
+
+          # Extract actual chain-id from genesis if not provided
+          if [ -z "$DEVNET_CHAIN_ID" ]; then
+            ACTUAL_CHAIN_ID=$(jq -r '.chain_id' "$DEVNET_OUTPUT_DIR/node0/config/genesis.json")
+            echo "Extracted chain-id from genesis: $ACTUAL_CHAIN_ID"
+            echo "actual_chain_id=$ACTUAL_CHAIN_ID" >> $GITHUB_OUTPUT
+          else
+            echo "actual_chain_id=$DEVNET_CHAIN_ID" >> $GITHUB_OUTPUT
           fi
 
       - name: Upload devnet artifact
@@ -432,9 +516,11 @@ jobs:
         run: |
           STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
           STABLED_BINARY="$STABLE_PATH/build/stabled"
+          ACTUAL_CHAIN_ID="${{ steps.build_devnet.outputs.actual_chain_id }}"
 
           echo "Starting devnet nodes with screen..."
           echo "Using stabled binary: $STABLED_BINARY"
+          echo "Chain ID: $ACTUAL_CHAIN_ID"
 
           # Verify stabled binary exists
           if [ ! -f "$STABLED_BINARY" ]; then
@@ -463,7 +549,7 @@ jobs:
 
             # Create new screen session with logging
             screen -dmS "$NODE_NAME" -L -Logfile "$LOG_FILE" \
-              bash -c "cd $STABLE_PATH && ./build/stabled start --home $NODE_HOME --chain-id $CHAIN_ID; exec bash"
+              bash -c "cd $STABLE_PATH && ./build/stabled start --home $NODE_HOME --chain-id $ACTUAL_CHAIN_ID; exec bash"
 
             # Wait a moment for the screen to start
             sleep 2
@@ -521,12 +607,19 @@ jobs:
       - name: Display deployment summary
         id: summary
         run: |
+          ACTUAL_CHAIN_ID="${{ steps.build_devnet.outputs.actual_chain_id }}"
+
           echo ""
           echo "=========================================="
           echo "Devnet Deployment Summary"
           echo "=========================================="
-          echo "Tag: ${{ steps.get_tag.outputs.tag }}"
-          echo "Chain ID: $CHAIN_ID"
+          echo "Export Mode: $EXPORT_MODE"
+          if [ "$EXPORT_MODE" = "sync" ]; then
+            echo "Target Chain ID: $TARGET_CHAIN_ID"
+            echo "Target RPC Endpoint: $TARGET_RPC_ENDPOINT"
+          fi
+          echo "Stable Tag: ${{ steps.get_tag.outputs.tag }}"
+          echo "Devnet Chain ID: $ACTUAL_CHAIN_ID"
           echo "Validators: $VALIDATORS"
           echo "Accounts: $ACCOUNTS"
           echo "Devnet Directory: $DEVNET_BASE_DIR"
