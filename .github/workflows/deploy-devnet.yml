@@ -18,8 +18,8 @@ on:
         required: true
         type: choice
         options:
-          - stabletestnet_2200-1
-        default: 'stabletestnet_2200-1'
+          - stabletestnet_2201-1
+        default: 'stabletestnet_2201-1'
       target_rpc_endpoint:
         description: 'Target chain RPC endpoint (e.g., http://37.187.147.27:26657/)'
         required: false
