@@ -460,6 +460,25 @@ jobs:
           mkdir -p "$LOG_DIR"
           echo "Log directory: $LOG_DIR"
           
+          # Stop all existing devnet services before starting
+          echo ""
+          echo "Step 0: Stopping existing devnet services..."
+          for i in $(seq 0 $((VALIDATORS - 1))); do
+            NODE_NAME="node$i"
+            SERVICE_NAME="devnet-${NODE_NAME}"
+          
+            if systemctl list-units --full -all | grep -Fq "${SERVICE_NAME}.service"; then
+              echo "  Stopping existing service: $SERVICE_NAME"
+              sudo systemctl stop "$SERVICE_NAME" --force || true
+              sudo systemctl disable "$SERVICE_NAME" || true
+            fi
+          done
+          
+          # Wait for services to fully stop
+          sleep 2
+          echo "All existing services stopped"
+
+
           # Function to find available port
           find_available_port() {
             local start_port=$1
