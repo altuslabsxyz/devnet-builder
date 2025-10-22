@@ -305,7 +305,7 @@ if [ "$SKIP_SYNC" = false ] && [ -n "$RPC_ENDPOINT" ]; then
 
   # Start stabled for state-sync
   echo "    Starting stabled for state-sync..."
-  "$STABLED_BINARY" start --home "$WORK_DIR" > "$WORK_DIR/sync.log" 2>&1 &
+  "$STABLED_BINARY" start --home "$WORK_DIR" --chain-id $CHAIN_ID > "$WORK_DIR/sync.log" 2>&1 &
   STABLED_PID=$!
 
   echo "    Waiting for state-sync to complete (PID: $STABLED_PID)..."
