@@ -433,35 +433,40 @@ jobs:
           NODE_COUNT=$(find "$DEVNET_BASE_DIR" -maxdepth 1 -type d -name "node*" | wc -l)
           echo "Deployed $NODE_COUNT validator nodes to $DEVNET_BASE_DIR"
 
-      - name: Start devnet nodes with screen
+      - name: Start devnet nodes with systemd
         id: start_nodes
         run: |
           STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
           STABLED_BINARY="$STABLE_PATH/build/stabled"
           ACTUAL_CHAIN_ID="${{ steps.build_devnet.outputs.actual_chain_id }}"
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-
-          echo "Starting devnet nodes with screen..."
+          
+          echo "Starting devnet nodes with systemd..."
           echo "Using stabled binary: $STABLED_BINARY"
           echo "Chain ID: $ACTUAL_CHAIN_ID"
           echo "Timestamp: $TIMESTAMP"
-
+          
           # Verify stabled binary exists
           if [ ! -f "$STABLED_BINARY" ]; then
             echo "Error: stabled binary not found at $STABLED_BINARY"
             exit 1
           fi
-
+          
           # Make sure stabled is executable
           chmod +x "$STABLED_BINARY"
-
+          
+          # Create log directory
+          LOG_DIR="$DEVNET_BASE_DIR/logs"
+          mkdir -p "$LOG_DIR"
+          echo "Log directory: $LOG_DIR"
+          
           # Function to find available port
           find_available_port() {
             local start_port=$1
             shift
             local excluded_ports=("$@")
             local port=$start_port
-
+          
             while [ $port -lt $((start_port + 1000)) ]; do
               local is_excluded=false
               for excluded in "${excluded_ports[@]}"; do
@@ -470,18 +475,18 @@ jobs:
                   break
                 fi
               done
-
+          
               if [ "$is_excluded" = false ] && ! lsof -i:$port > /dev/null 2>&1; then
                 echo $port
                 return 0
               fi
               port=$((port + 1))
             done
-
+          
             echo "Error: Could not find available port starting from $start_port" >&2
             exit 1
           }
-
+          
           # Step 1: Configure all validator nodes (but don't start yet)
           echo "Step 1: Configuring all nodes..."
           for i in $(seq 0 $((VALIDATORS - 1))); do
@@ -489,35 +494,36 @@ jobs:
             NODE_HOME="$DEVNET_BASE_DIR/$NODE_NAME"
             CONFIG_FILE="$NODE_HOME/config/config.toml"
             APP_CONFIG_FILE="$NODE_HOME/config/app.toml"
-
+          
             echo "Configuring $NODE_NAME..."
-
+          
             # Verify node directory exists
             if [ ! -d "$NODE_HOME" ]; then
               echo "Error: Node directory not found: $NODE_HOME"
               exit 1
             fi
-
-            # Stop existing screen session if it exists
-            if screen -list | grep -q "\.$NODE_NAME\s"; then
-              echo "  Stopping existing screen session: $NODE_NAME"
-              screen -S "$NODE_NAME" -X quit || true
+          
+            # Stop existing systemd service if it exists
+            SERVICE_NAME="devnet-${NODE_NAME}"
+            if systemctl list-units --full -all | grep -Fq "${SERVICE_NAME}.service"; then
+              echo "  Stopping existing service: $SERVICE_NAME"
+              sudo systemctl stop "$SERVICE_NAME" --force || true
               sleep 1
             fi
-
+          
             # Initialize node with stabled (continue even if it fails)
             echo "  Initializing $NODE_NAME with stabled..."
             "$STABLED_BINARY" init "$NODE_NAME" \
               --home "$NODE_HOME" \
               --chain-id "$ACTUAL_CHAIN_ID" || true
-
+          
             echo "  Node initialization completed (or skipped if already initialized)"
-
+          
             # Configure ports based on node index
             if [ $i -le 3 ]; then
               # Nodes 0-3: Use port pattern replacement
               PORT_PATTERN=$((i * 100 + 66))
-
+          
               if [ $i -eq 2 ]; then
                 # node2: keep 266 as is (no replacement needed)
                 echo "  Keeping default ports for $NODE_NAME (266 pattern)"
@@ -531,14 +537,14 @@ jobs:
             else
               # node4+: Use dynamic port assignment
               echo "  Using dynamic port assignment for $NODE_NAME"
-
+          
               # Find available ports
               RPC_PORT=$(find_available_port 26657)
               P2P_PORT=$(find_available_port 26656 $RPC_PORT)
               PROXY_APP_PORT=$(find_available_port 26658 $RPC_PORT $P2P_PORT)
-
+          
               echo "  Assigned ports: RPC=$RPC_PORT, P2P=$P2P_PORT, ProxyApp=$PROXY_APP_PORT"
-
+          
               # Update config.toml with awk
               cp "$CONFIG_FILE" "${CONFIG_FILE}.bak"
               awk -v rpc_port="$RPC_PORT" -v p2p_port="$P2P_PORT" -v proxy_port="$PROXY_APP_PORT" '
@@ -547,7 +553,7 @@ jobs:
                   print "proxy_app = \"tcp://0.0.0.0:" proxy_port "\""
                   next
                 }
-
+          
                 if ($0 ~ /^\[rpc\]/) {
                   in_rpc = 1
                   in_p2p = 0
@@ -560,26 +566,26 @@ jobs:
                   in_rpc = 0
                   in_p2p = 0
                 }
-
+          
                 if (in_rpc && $0 ~ /^laddr = "tcp:\/\//) {
                   print "laddr = \"tcp://0.0.0.0:" rpc_port "\""
                   next
                 }
-
+          
                 if (in_p2p && $0 ~ /^laddr = "tcp:\/\//) {
                   print "laddr = \"tcp://0.0.0.0:" p2p_port "\""
                   next
                 }
-
+          
                 print
               }
               ' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp"
               mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
             fi
-
+          
             # Configure app.toml - disable all services except for node2
             cp "$APP_CONFIG_FILE" "${APP_CONFIG_FILE}.bak"
-
+          
             if [ $i -eq 2 ]; then
               # node2: keep enable = true (all services enabled)
               echo "  Keeping all services enabled for $NODE_NAME"
@@ -589,126 +595,242 @@ jobs:
               sed -i.tmp 's/enable = true/enable = false/g' "$APP_CONFIG_FILE"
               rm -f "${APP_CONFIG_FILE}.tmp"
             fi
-
+          
             echo "  $NODE_NAME configuration completed"
           done
-
+          
           # Step 2: Collect peer information from all nodes
           echo ""
           echo "Step 2: Collecting peer information..."
           PERSISTENT_PEERS_LIST=()
-
+          
           for i in $(seq 0 $((VALIDATORS - 1))); do
             NODE_NAME="node$i"
             NODE_HOME="$DEVNET_BASE_DIR/$NODE_NAME"
             CONFIG_FILE="$NODE_HOME/config/config.toml"
-
+          
             # Get node ID
             NODE_ID=$("$STABLED_BINARY" comet show-node-id --home "$NODE_HOME")
-
+          
             # Extract P2P port from config.toml
             P2P_PORT=$(grep -A 20 "^\[p2p\]" "$CONFIG_FILE" | grep "^laddr" | head -1 | sed 's/.*://; s/".*//')
-
+          
             # Build peer address
             PEER_ADDR="${NODE_ID}@127.0.0.1:${P2P_PORT}"
             PERSISTENT_PEERS_LIST+=("$PEER_ADDR")
-
+          
             echo "  $NODE_NAME: $PEER_ADDR"
           done
-
+          
           # Join all peers with comma
           PERSISTENT_PEERS=$(IFS=,; echo "${PERSISTENT_PEERS_LIST[*]}")
           echo ""
           echo "Collected persistent_peers: $PERSISTENT_PEERS"
-
+          
           # Step 3: Update all nodes with persistent_peers and P2P settings
           echo ""
           echo "Step 3: Updating P2P configuration..."
           for i in $(seq 0 $((VALIDATORS - 1))); do
             NODE_NAME="node$i"
             CONFIG_FILE="$DEVNET_BASE_DIR/$NODE_NAME/config/config.toml"
-
+          
             echo "  Updating $NODE_NAME P2P settings..."
-
+          
             # Update persistent_peers, allow_duplicate_ip, and addr_book_strict
             sed -i.tmp \
               -e "s|^persistent_peers = .*|persistent_peers = \"$PERSISTENT_PEERS\"|" \
               -e "s|^allow_duplicate_ip = .*|allow_duplicate_ip = true|" \
               -e "s|^addr_book_strict = .*|addr_book_strict = false|" \
               "$CONFIG_FILE"
-
+          
             rm -f "${CONFIG_FILE}.tmp"
           done
-
+          
           echo "P2P configuration updated for all nodes"
-
-          # Step 4: Start all nodes with screen
+          
+          # Step 4: Create log path helper script
           echo ""
-          echo "Step 4: Starting all nodes..."
+          echo "Step 4: Creating log path helper script..."
+          LOG_PATH_SCRIPT="/usr/local/bin/devnet-log-path.sh"
+          
+          if [ ! -f "$LOG_PATH_SCRIPT" ]; then
+            cat <<'LOGSCRIPT' | sudo tee "$LOG_PATH_SCRIPT" >/dev/null
+          #!/usr/bin/env bash
+          NODE="${1:-unknown}"
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+          echo "/data/.devnet/logs/devnet_${NODE}_${TIMESTAMP}.log"
+          LOGSCRIPT
+          
+            sudo chmod +x "$LOG_PATH_SCRIPT"
+            echo "  Log path script created: $LOG_PATH_SCRIPT"
+          else
+            echo "  Log path script already exists: $LOG_PATH_SCRIPT"
+          fi
+          
+          # Step 5: Create and start systemd services for all nodes
+          echo ""
+          echo "Step 5: Creating systemd services..."
           for i in $(seq 0 $((VALIDATORS - 1))); do
             NODE_NAME="node$i"
             NODE_HOME="$DEVNET_BASE_DIR/$NODE_NAME"
-            LOG_FILE="$DEVNET_BASE_DIR/${NODE_NAME}_${TIMESTAMP}.log"
-
-            echo "  Starting $NODE_NAME..."
-            echo "    Home: $NODE_HOME"
-            echo "    Log: $LOG_FILE"
-
-            screen -dmS "$NODE_NAME" -L -Logfile "$LOG_FILE" \
-              bash -c "cd $STABLE_PATH && ./build/stabled start --home $NODE_HOME --chain-id $ACTUAL_CHAIN_ID; exec bash"
-
-            # Wait a moment for the screen to start
+            SERVICE_NAME="devnet-${NODE_NAME}"
+            SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+            DROPIN_DIR="/etc/systemd/system/${SERVICE_NAME}.service.d"
+            DROPIN_LOG="${DROPIN_DIR}/logging.conf"
+          
+            echo "  Creating service for $NODE_NAME..."
+          
+            # Create base service file
+            cat <<SERVICEEOF | sudo tee "$SERVICE_FILE" >/dev/null
+          [Unit]
+          Description=Devnet $NODE_NAME daemon
+          After=network-online.target
+          Wants=network-online.target
+          
+          [Service]
+          User=$(whoami)
+          WorkingDirectory=$STABLE_PATH
+          # ExecStart is overridden in drop-in
+          Restart=always
+          RestartSec=3
+          LimitNOFILE=65535
+          
+          [Install]
+          WantedBy=multi-user.target
+          SERVICEEOF
+          
+            # Create drop-in directory for logging configuration
+            sudo mkdir -p "$DROPIN_DIR"
+          
+            # Create drop-in file with logging configuration
+            cat <<DROPINEOF | sudo tee "$DROPIN_LOG" >/dev/null
+          [Service]
+          Environment=NO_COLOR=1
+          ExecStart=
+          ExecStart=/bin/bash -c '\
+            LOG=\$(/usr/local/bin/devnet-log-path.sh "${NODE_NAME}"); \
+            echo "Using log \$LOG"; \
+            exec ${STABLED_BINARY} start --home ${NODE_HOME} --chain-id ${ACTUAL_CHAIN_ID} 2>&1 \
+              | sed -u -E "s/\x1B\\[[0-9;]*[A-Za-z]//g" \
+              | tee -a "\$LOG"'
+          DROPINEOF
+          
+            echo "    Service file: $SERVICE_FILE"
+            echo "    Drop-in file: $DROPIN_LOG"
+          done
+          
+          # Reload systemd daemon
+          echo ""
+          echo "Reloading systemd daemon..."
+          sudo systemctl daemon-reload
+          
+          # Step 6: Start all services
+          echo ""
+          echo "Step 6: Starting all services..."
+          for i in $(seq 0 $((VALIDATORS - 1))); do
+            NODE_NAME="node$i"
+            SERVICE_NAME="devnet-${NODE_NAME}"
+          
+            echo "  Starting $SERVICE_NAME..."
+            sudo systemctl start "$SERVICE_NAME"
+            sudo systemctl enable "$SERVICE_NAME"
+          
+            # Wait a moment for the service to start
             sleep 2
-
-            # Verify screen session is running
-            if screen -list | grep -q "\.$NODE_NAME\s"; then
-              echo "  $NODE_NAME started successfully"
+          
+            # Verify service is running
+            if systemctl is-active --quiet "$SERVICE_NAME"; then
+              echo "  $SERVICE_NAME started successfully"
             else
-              echo "  Warning: Failed to start screen session for $NODE_NAME"
+              echo "  Warning: Failed to start $SERVICE_NAME"
+              sudo systemctl status "$SERVICE_NAME" --no-pager || true
             fi
           done
-
+          
           echo ""
-          echo "All nodes configured and started. Screen sessions:"
-          screen -list
+          echo "All nodes configured and started as systemd services"
+
 
       - name: Verify nodes are running
         id: verify_nodes
         run: |
           echo "Waiting for nodes to start..."
           sleep 10
-
-          echo "Verifying screen sessions..."
-          screen -list
-
-          # Check if all screen sessions are running
+          
+          echo "Verifying systemd services..."
+          
+          # Check if all services are running
           RUNNING_COUNT=0
           for i in $(seq 0 $((VALIDATORS - 1))); do
             NODE_NAME="node$i"
-            if screen -list | grep -q "\.$NODE_NAME\s"; then
+            SERVICE_NAME="devnet-${NODE_NAME}"
+          
+            if systemctl is-active --quiet "$SERVICE_NAME"; then
               RUNNING_COUNT=$((RUNNING_COUNT + 1))
-              echo "$NODE_NAME is running"
+              echo "$SERVICE_NAME is running"
             else
-              echo "Warning: $NODE_NAME is not running"
+              echo "Warning: $SERVICE_NAME is not running"
+              sudo systemctl status "$SERVICE_NAME" --no-pager || true
             fi
           done
-
+          
           echo ""
           echo "Summary: $RUNNING_COUNT/$VALIDATORS nodes are running"
-
+          
           if [ "$RUNNING_COUNT" -ne "$VALIDATORS" ]; then
             echo "Warning: Not all nodes are running"
           fi
-
+          
           # Display log file locations
           echo ""
-          echo "Log files:"
+          echo "Log files location: $DEVNET_BASE_DIR/logs/"
+          if [ -d "$DEVNET_BASE_DIR/logs" ]; then
+            ls -lht "$DEVNET_BASE_DIR/logs/" | head -20
+          fi
+
+      - name: Display deployment summary
+        id: summary
+        run: |
+          ACTUAL_CHAIN_ID="${{ steps.build_devnet.outputs.actual_chain_id }}"
+
+          echo ""
+          echo "=========================================="
+          echo "Devnet Deployment Summary"
+          echo "=========================================="
+          echo "Target Chain ID: $TARGET_CHAIN_ID"
+          echo "Target RPC Endpoint: $TARGET_RPC_ENDPOINT"
+          echo "Stable Tag: ${{ steps.get_tag.outputs.tag }}"
+          echo "Devnet Chain ID: $ACTUAL_CHAIN_ID"
+          echo "Validators: $VALIDATORS"
+          echo "Accounts: $ACCOUNTS"
+          echo "Devnet Directory: $DEVNET_BASE_DIR"
+          echo "=========================================="
+          echo ""
+          echo "Systemd Services:"
           for i in $(seq 0 $((VALIDATORS - 1))); do
-            LOG_FILE="$DEVNET_BASE_DIR/node$i.log"
-            if [ -f "$LOG_FILE" ]; then
-              echo "  node$i: $LOG_FILE"
-            fi
+            NODE_NAME="node$i"
+            SERVICE_NAME="devnet-${NODE_NAME}"
+            STATUS=$(systemctl is-active "$SERVICE_NAME" 2>/dev/null || echo "inactive")
+            echo "  $SERVICE_NAME: $STATUS"
           done
+          echo ""
+          echo "Devnet Structure:"
+          ls -la "$DEVNET_BASE_DIR"
+          echo ""
+          echo "Recent Log Files:"
+          if [ -d "$DEVNET_BASE_DIR/logs" ]; then
+            ls -lht "$DEVNET_BASE_DIR/logs/" | head -10
+          fi
+          echo ""
+          echo "Service Management Commands:"
+          echo "  View service status: sudo systemctl status devnet-node0"
+          echo "  View logs: sudo journalctl -u devnet-node0 -f"
+          echo "  View log files: tail -f $DEVNET_BASE_DIR/logs/devnet_node0_*.log"
+          echo "  Stop service: sudo systemctl stop devnet-node0"
+          echo "  Start service: sudo systemctl start devnet-node0"
+          echo "  Restart service: sudo systemctl restart devnet-node0"
+          echo ""
+          echo "=========================================="
 
       - name: Display deployment summary
         id: summary
