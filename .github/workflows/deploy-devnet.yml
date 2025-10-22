@@ -628,6 +628,9 @@ jobs:
               sed -i.tmp 's/enable = true/enable = false/g' "$APP_CONFIG_FILE"
               rm -f "${APP_CONFIG_FILE}.tmp"
             fi
+            sed -i.tmp \
+                -e 's/prometheus = false/prometheus = true/g' \
+                "$CONFIG_FILE"
           
             echo "  $NODE_NAME configuration completed"
           done
