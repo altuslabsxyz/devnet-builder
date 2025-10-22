@@ -588,6 +588,20 @@ jobs:
           
             if [ $i -eq 2 ]; then
               # node2: keep enable = true (all services enabled)
+              sed -i.tmp \
+              -e 's/enable = false/enable = true/g' \
+              -e 's/tcp:\/\/localhost:1317/tcp:\/\/0.0.0.0:1317/g' \
+              -e 's/address = "127.0.0.1:8545"/address = "0.0.0.0:8545"/g' \
+              -e 's/ws-address = "127.0.0.1:8546"/ws-address = "0.0.0.0:8546"/g' \
+              -e 's/api = "eth,net,web3"/api = "eth,txpool,personal,net,debug,web3"/g' \
+              "$APP_CONFIG_FILE"
+              
+              sed -i.tmp \
+              -e 's/laddr = "tcp:\/\/127.0.0.1:26657"/laddr = "tcp:\/\/0.0.0.0:26657"/g' \
+              "$CONFIG_FILE"
+              
+              rm -f "${APP_CONFIG_FILE}.tmp" "${CONFIG_FILE}.tmp"
+          
               echo "  Keeping all services enabled for $NODE_NAME"
             else
               # All other nodes: disable all services
