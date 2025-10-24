@@ -613,6 +613,7 @@ jobs:
               -e 's/address = "127.0.0.1:8545"/address = "0.0.0.0:8545"/g' \
               -e 's/ws-address = "127.0.0.1:8546"/ws-address = "0.0.0.0:8546"/g' \
               -e 's/api = "eth,net,web3"/api = "eth,txpool,personal,net,debug,web3"/g' \
+              -e 's/enabled-unsafe-cors = false/enabled-unsafe-cors = true/g' \
               "$APP_CONFIG_FILE"
               
               sed -i.tmp \
