@@ -527,6 +527,25 @@ jobs:
           
           # Step 1: Configure all validator nodes (but don't start yet)
           echo "Step 1: Configuring all nodes..."
+
+          # Determine which node uses default 266 prefix ports
+          # Rule: node2 (index 2) if validators >= 3, otherwise last node
+          if [ $VALIDATORS -ge 3 ]; then
+            DEFAULT_PORT_NODE=2
+          else
+            DEFAULT_PORT_NODE=$((VALIDATORS - 1))
+          fi
+
+          # Determine the main RPC node (also uses default ports)
+          MAIN_RPC_NODE=$DEFAULT_PORT_NODE
+
+          echo "Node with default ports (266 prefix): node${DEFAULT_PORT_NODE}"
+          echo "Main RPC node: node${MAIN_RPC_NODE}"
+          echo ""
+
+          # Track allocated ports to avoid conflicts
+          ALLOCATED_PORTS=(26657 26656 26658)  # Reserve default ports for the designated node
+
           for i in $(seq 0 $((VALIDATORS - 1))); do
             NODE_NAME="node$i"
             NODE_HOME="$DEVNET_BASE_DIR/$NODE_NAME"
@@ -548,42 +567,43 @@ jobs:
               --chain-id "$ACTUAL_CHAIN_ID" || true
           
             echo "  Node initialization completed (or skipped if already initialized)"
-          
-            # Configure ports based on node index
-            if [ $i -le 3 ]; then
-              # Nodes 0-3: Use port pattern replacement
-              PORT_PATTERN=$((i * 100 + 66))
-          
-              if [ $i -eq 2 ]; then
-                # node2: keep 266 as is (no replacement needed)
-                echo "  Keeping default ports for $NODE_NAME (266 pattern)"
-              else
-                # Replace 266 with calculated pattern
-                echo "  Replacing port pattern 266 -> $PORT_PATTERN in $NODE_NAME"
-                cp "$CONFIG_FILE" "${CONFIG_FILE}.bak"
-                sed -i.tmp "s/266/${PORT_PATTERN}/g" "$CONFIG_FILE"
-                rm -f "${CONFIG_FILE}.tmp"
-              fi
+
+            # Configure ports dynamically
+            if [ $i -eq $DEFAULT_PORT_NODE ]; then
+              # This node keeps default 266 prefix ports (26657, 26656, 26658)
+              echo "  Keeping default ports for $NODE_NAME (26657, 26656, 26658)"
+              NODE_RPC_PORT=26657
+              NODE_P2P_PORT=26656
+              NODE_PROXY_PORT=26658
             else
-              # node4+: Use dynamic port assignment
-              echo "  Using dynamic port assignment for $NODE_NAME"
-          
-              # Find available ports
-              RPC_PORT=$(find_available_port 26657)
-              P2P_PORT=$(find_available_port 26656 $RPC_PORT)
-              PROXY_APP_PORT=$(find_available_port 26658 $RPC_PORT $P2P_PORT)
-          
-              echo "  Assigned ports: RPC=$RPC_PORT, P2P=$P2P_PORT, ProxyApp=$PROXY_APP_PORT"
-          
+              # Find available ports dynamically for other nodes
+              echo "  Finding available ports for $NODE_NAME..."
+
+              # Find RPC port (starting from 26657)
+              NODE_RPC_PORT=$(find_available_port 26657 "${ALLOCATED_PORTS[@]}")
+              ALLOCATED_PORTS+=($NODE_RPC_PORT)
+
+              # Find P2P port (starting from 26656)
+              NODE_P2P_PORT=$(find_available_port 26656 "${ALLOCATED_PORTS[@]}")
+              ALLOCATED_PORTS+=($NODE_P2P_PORT)
+
+              # Find Proxy App port (starting from 26658)
+              NODE_PROXY_PORT=$(find_available_port 26658 "${ALLOCATED_PORTS[@]}")
+              ALLOCATED_PORTS+=($NODE_PROXY_PORT)
+
+              echo "  Assigned ports: RPC=$NODE_RPC_PORT, P2P=$NODE_P2P_PORT, ProxyApp=$NODE_PROXY_PORT"
+
               # Update config.toml with awk
               cp "$CONFIG_FILE" "${CONFIG_FILE}.bak"
-              awk -v rpc_port="$RPC_PORT" -v p2p_port="$P2P_PORT" -v proxy_port="$PROXY_APP_PORT" '
+              awk -v rpc_port="$NODE_RPC_PORT" -v p2p_port="$NODE_P2P_PORT" -v proxy_port="$NODE_PROXY_PORT" '
               {
+                # Update proxy_app at the beginning of file
                 if ($0 ~ /^proxy_app = "tcp:\/\/.*:[0-9]+"/) {
                   print "proxy_app = \"tcp://0.0.0.0:" proxy_port "\""
                   next
                 }
-          
+
+                # Track which section we are in
                 if ($0 ~ /^\[rpc\]/) {
                   in_rpc = 1
                   in_p2p = 0
@@ -596,28 +616,31 @@ jobs:
                   in_rpc = 0
                   in_p2p = 0
                 }
-          
+
+                # Update RPC laddr
                 if (in_rpc && $0 ~ /^laddr = "tcp:\/\//) {
                   print "laddr = \"tcp://0.0.0.0:" rpc_port "\""
                   next
                 }
-          
+
+                # Update P2P laddr
                 if (in_p2p && $0 ~ /^laddr = "tcp:\/\//) {
                   print "laddr = \"tcp://0.0.0.0:" p2p_port "\""
                   next
                 }
-          
+
+                # Print all other lines as-is
                 print
               }
               ' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp"
               mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
             fi
           
-            # Configure app.toml - disable all services except for node2
+            # Configure app.toml - disable all services except for main RPC node
             cp "$APP_CONFIG_FILE" "${APP_CONFIG_FILE}.bak"
-          
-            if [ $i -eq 2 ]; then
-              # node2: keep enable = true (all services enabled)
+
+            if [ $i -eq $MAIN_RPC_NODE ]; then
+              # Main RPC node: enable all services (API, gRPC, JSON-RPC)
               sed -i.tmp \
               -e 's/enable = false/enable = true/g' \
               -e 's/tcp:\/\/localhost:1317/tcp:\/\/0.0.0.0:1317/g' \
@@ -898,6 +921,60 @@ jobs:
           if [ -d "$DEVNET_BASE_DIR/logs" ]; then
             ls -lht "$DEVNET_BASE_DIR/logs/" | head -20
           fi
+
+          # Health check: Wait for main RPC node to be ready
+          MAIN_RPC_NODE=$((VALIDATORS - 1))
+          echo ""
+          echo "=========================================="
+          echo "Waiting for main RPC node (node${MAIN_RPC_NODE}) to be ready..."
+          echo "=========================================="
+
+          RPC_ENDPOINT="http://localhost:26657/status"
+          TIMEOUT_SECONDS=600  # 10 minutes
+          POLL_INTERVAL=10     # 10 seconds
+          START_TIME=$(date +%s)
+
+          echo "Polling $RPC_ENDPOINT every ${POLL_INTERVAL}s (timeout: ${TIMEOUT_SECONDS}s)"
+          echo ""
+
+          while true; do
+            CURRENT_TIME=$(date +%s)
+            ELAPSED=$((CURRENT_TIME - START_TIME))
+
+            # Check timeout
+            if [ $ELAPSED -ge $TIMEOUT_SECONDS ]; then
+              echo ""
+              echo "ERROR: Timeout reached (${TIMEOUT_SECONDS}s). Node did not become ready in time."
+              echo "Last curl attempt failed. Please check the logs:"
+              echo "  sudo journalctl -u devnet-node${MAIN_RPC_NODE} -n 100"
+              echo "  tail -100 $DEVNET_BASE_DIR/logs/devnet_node${MAIN_RPC_NODE}_*.log"
+              exit 1
+            fi
+
+            # Try to curl the status endpoint
+            echo "[${ELAPSED}s] Checking node status..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$RPC_ENDPOINT" 2>/dev/null || echo "000")
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo ""
+              echo "SUCCESS: Node is ready! (HTTP $HTTP_CODE)"
+              echo "Elapsed time: ${ELAPSED}s"
+
+              # Display node status
+              echo ""
+              echo "Node status:"
+              curl -s "$RPC_ENDPOINT" | jq '.' 2>/dev/null || curl -s "$RPC_ENDPOINT"
+              echo ""
+              break
+            else
+              echo "  HTTP $HTTP_CODE - Node not ready yet, waiting ${POLL_INTERVAL}s..."
+              sleep $POLL_INTERVAL
+            fi
+          done
+
+          echo "=========================================="
+          echo "Node verification completed successfully"
+          echo "=========================================="
 
       - name: Display deployment summary
         id: summary
