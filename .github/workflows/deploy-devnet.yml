@@ -787,6 +787,53 @@ jobs:
           echo ""
           echo "All nodes configured and started as systemd services"
 
+      - name: Export account private keys
+        id: export_private_keys
+        run: |
+          STABLED_BINARY="${{ steps.build_stabled.outputs.stabled_binary }}"
+          ACCOUNTS_DIR="$DEVNET_BASE_DIR/accounts"
+
+          echo "Exporting account private keys..."
+          echo "Accounts directory: $ACCOUNTS_DIR"
+          echo "Using stabled binary: $STABLED_BINARY"
+
+          # Check if accounts directory exists
+          if [ ! -d "$ACCOUNTS_DIR" ]; then
+            echo "Warning: Accounts directory not found at $ACCOUNTS_DIR"
+            echo "Skipping private key export"
+            exit 0
+          fi
+
+          echo ""
+          echo "=========================================="
+          echo "Account Private Keys"
+          echo "=========================================="
+
+          # List all keys and export their private keys
+          KEYS_JSON=$("$STABLED_BINARY" keys list --home "$ACCOUNTS_DIR" --keyring-backend test --output json 2>/dev/null)
+
+          if [ -z "$KEYS_JSON" ] || [ "$KEYS_JSON" = "[]" ]; then
+            echo "No keys found in accounts directory"
+            exit 0
+          fi
+
+          # Extract key names and export private keys
+          echo "$KEYS_JSON" | jq -r '.[].name' | while read -r KEY_NAME; do
+            if [ -n "$KEY_NAME" ]; then
+              PRIVATE_KEY=$("$STABLED_BINARY" keys unsafe-export-eth-key "$KEY_NAME" \
+                --home "$ACCOUNTS_DIR" \
+                --keyring-backend test 2>/dev/null)
+
+              if [ -n "$PRIVATE_KEY" ]; then
+                echo "\"$KEY_NAME\": \"$PRIVATE_KEY\""
+              else
+                echo "\"$KEY_NAME\": \"ERROR: Failed to export private key\""
+              fi
+            fi
+          done
+
+          echo "=========================================="
+          echo ""
 
       - name: Verify nodes are running
         id: verify_nodes
