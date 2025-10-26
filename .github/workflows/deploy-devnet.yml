@@ -643,7 +643,23 @@ jobs:
             sed -i.tmp \
                 -e 's/prometheus = false/prometheus = true/g' \
                 "$CONFIG_FILE"
-          
+
+            # Configure consensus parameters
+            echo "  Configuring consensus parameters for $NODE_NAME..."
+            sed -i.tmp \
+                -e '/^\[consensus\]/,/^\[/ {
+                  s/^timeout_propose = .*/timeout_propose = "5s"/
+                  s/^timeout_propose_delta = .*/timeout_propose_delta = "10ms"/
+                  s/^timeout_prevote = .*/timeout_prevote = "50ms"/
+                  s/^timeout_prevote_delta = .*/timeout_prevote_delta = "10ms"/
+                  s/^timeout_precommit = .*/timeout_precommit = "50ms"/
+                  s/^timeout_precommit_delta = .*/timeout_precommit_delta = "10ms"/
+                  s/^timeout_commit = .*/timeout_commit = "650ms"/
+                }' \
+                "$CONFIG_FILE"
+
+            rm -f "${CONFIG_FILE}.tmp"
+
             echo "  $NODE_NAME configuration completed"
           done
           
