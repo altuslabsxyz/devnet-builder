@@ -462,21 +462,40 @@ jobs:
           
           # Stop all existing devnet services before starting
           echo ""
-          echo "Step 0: Stopping existing devnet services..."
-          for i in $(seq 0 $((VALIDATORS - 1))); do
-            NODE_NAME="node$i"
-            SERVICE_NAME="devnet-${NODE_NAME}"
-          
-            if systemctl list-units --full -all | grep -Fq "${SERVICE_NAME}.service"; then
-              echo "  Stopping existing service: $SERVICE_NAME"
-              sudo systemctl stop "$SERVICE_NAME" --force || true
-              sudo systemctl disable "$SERVICE_NAME" || true
-            fi
-          done
-          
+          echo "Step 0: Stopping all existing devnet services..."
+
+          # Find all devnet-node* services (regardless of current VALIDATORS count)
+          EXISTING_SERVICES=$(sudo systemctl list-units --all --type=service --no-legend | grep -E "devnet-node[0-9]+" | awk '{print $1}' || echo "")
+
+          if [ -n "$EXISTING_SERVICES" ]; then
+            echo "Found existing devnet services:"
+            echo "$EXISTING_SERVICES"
+            echo ""
+
+            # Stop and disable each service
+            echo "$EXISTING_SERVICES" | while read -r SERVICE_NAME; do
+              if [ -n "$SERVICE_NAME" ]; then
+                echo "  Stopping and disabling: $SERVICE_NAME"
+                sudo systemctl stop "$SERVICE_NAME" --force || true
+                sudo systemctl disable "$SERVICE_NAME" || true
+              fi
+            done
+
+            # Also check for service files in /etc/systemd/system/ and remove them
+            echo ""
+            echo "Removing service files from /etc/systemd/system/..."
+            sudo find /etc/systemd/system/ -name "devnet-node*.service" -type f -exec rm -f {} \; 2>/dev/null || true
+            sudo find /etc/systemd/system/ -name "devnet-node*.service.d" -type d -exec rm -rf {} \; 2>/dev/null || true
+
+            # Reload systemd daemon after removing service files
+            sudo systemctl daemon-reload
+          else
+            echo "No existing devnet services found"
+          fi
+
           # Wait for services to fully stop
           sleep 2
-          echo "All existing services stopped"
+          echo "All existing services stopped and cleaned up"
 
 
           # Function to find available port
@@ -521,15 +540,7 @@ jobs:
               echo "Error: Node directory not found: $NODE_HOME"
               exit 1
             fi
-          
-            # Stop existing systemd service if it exists
-            SERVICE_NAME="devnet-${NODE_NAME}"
-            if systemctl list-units --full -all | grep -Fq "${SERVICE_NAME}.service"; then
-              echo "  Stopping existing service: $SERVICE_NAME"
-              sudo systemctl stop "$SERVICE_NAME" --force || true
-              sleep 1
-            fi
-          
+
             # Initialize node with stabled (continue even if it fails)
             echo "  Initializing $NODE_NAME with stabled..."
             "$STABLED_BINARY" init "$NODE_NAME" \
