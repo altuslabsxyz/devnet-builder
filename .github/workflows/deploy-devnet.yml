@@ -214,26 +214,34 @@ jobs:
             rm -f go.work.sum
           fi
 
-          # Remove go.sum to force re-download with correct versions
-          if [ -f "go.sum" ]; then
-            echo "Removing go.sum to force dependency refresh..."
-            rm -f go.sum
-          fi
+          # Remove cached go modules to force clean download
+          echo "Removing go.sum and vendor directory..."
+          rm -f go.sum
+          rm -rf vendor
+
+          # Verify replace directives in go.mod
+          echo "Verifying replace directives in go.mod..."
+          grep -A 5 "^replace (" go.mod | head -15 || true
+
+          # Ensure bytedance/sonic replace is correctly set
+          echo "Ensuring bytedance/sonic replace directive..."
+          GOWORK=off go mod edit -replace=github.com/bytedance/sonic=github.com/bytedance/sonic@v1.14.1
 
           # Tidy go.mod and download dependencies with replace directives applied
           echo "Running go mod tidy with GOWORK=off..."
-          GOWORK=off go mod tidy
+          GOWORK=off go mod tidy -v
 
-          echo "Downloading dependencies with GOWORK=off..."
-          GOWORK=off go mod download
+          # Create vendor directory to ensure correct dependencies
+          echo "Creating vendor directory with GOWORK=off..."
+          GOWORK=off go mod vendor
 
           # Clean previous builds
           echo "Cleaning previous builds..."
           make clean || true
 
-          # Build stabled with proper environment variables
-          echo "Running make build with GOWORK=off..."
-          GOARCH=amd64 GOWORK=off make build
+          # Build stabled with proper environment variables using vendor
+          echo "Running make build with GOWORK=off and vendor mode..."
+          GOARCH=amd64 GOWORK=off GOFLAGS="-mod=vendor" make build
 
           # Verify build output
           if [ ! -f "./build/stabled" ]; then
