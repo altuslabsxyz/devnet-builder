@@ -83,7 +83,8 @@ The script will:
 **Supported snapshot formats:**
 - `.tar` - Uncompressed tarball
 - `.tar.gz` - Gzip compressed tarball
-- `.tar.lz4` - LZ4 compressed tarball (recommended for speed)
+- `.tar.lz4` - LZ4 compressed tarball (fast decompression)
+- `.tar.zst` - Zstandard compressed tarball (best compression ratio)
 
 ### Option 3: Provision and Sync with State-Sync
 
@@ -155,13 +156,16 @@ The workflow automatically provisions a fresh chain using snapshot or state-sync
     - Chain ID: `stabletestnet_2201-1`
     - RPC: `https://cosmos-rpc.testnet.stable.xyz/`
     - Peers: `128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656`
+    - Default Snapshot: `https://stable-snapshot.s3.eu-central-1.amazonaws.com/snapshot.tar.lz4`
   - **mainnet**:
     - Chain ID: `stable_988-1`
     - RPC: `https://cosmos-rpc-internal.stable.xyz/`
     - Peers: `39fef24240d80e2cd5bdcbe101298c36f0d83fa1@57.129.53.87:26656`
-- `snapshot_url`: Snapshot URL to download (supports .tar, .tar.gz, .tar.lz4)
-  - **If provided**: Uses snapshot-based sync (state-sync DISABLED)
-  - **If empty**: Uses state-sync method (legacy)
+    - Default Snapshot: `https://stable-mainnet-data.s3.amazonaws.com/snapshots/stable_pruned.tar.zst`
+- `snapshot_url`: Snapshot URL to download (supports .tar, .tar.gz, .tar.lz4, .tar.zst)
+  - **If empty**: Uses default snapshot for fork_target (recommended)
+  - **If "none"**: Uses state-sync method (legacy)
+  - **If custom URL**: Uses provided snapshot URL
 - `validators`: Number of validators to create (default: 4)
 - `accounts`: Number of dummy accounts to create (default: 10)
 - `account_balance`: Balance for each account (optional, uses devnet-builder defaults if not provided)
@@ -171,11 +175,12 @@ The workflow automatically provisions a fresh chain using snapshot or state-sync
 
 **Note:**
 - If balance parameters are not provided, devnet-builder will use sensible defaults (5000 consensus power worth of astable for balances, 100 consensus power for stake)
-- **Target chain-id, RPC endpoint, and persistent peers are automatically determined by `fork_target` parameter**
-- You can override the default persistent peers by providing the `persistent_peers` parameter
-- **Sync method is automatically determined by `snapshot_url` parameter**:
-  - Provide `snapshot_url` → Snapshot-based sync (recommended, faster, state-sync disabled)
-  - Leave `snapshot_url` empty → State-sync method (legacy)
+- **Target chain-id, RPC endpoint, persistent peers, and snapshot URL are automatically determined by `fork_target` parameter**
+- You can override defaults by providing custom `persistent_peers` or `snapshot_url` parameters
+- **Default behavior uses snapshot-based sync for faster provisioning**:
+  - Leave `snapshot_url` empty → Uses default snapshot for fork_target (recommended)
+  - Set `snapshot_url` to "none" → Uses state-sync method (legacy)
+  - Provide custom URL → Uses your snapshot
 
 ### Workflow Steps
 
@@ -206,7 +211,7 @@ The workflow performs the following steps:
    - `fork_target`: Select network to fork (`testnet` or `mainnet`)
      - **testnet**: Forks from stabletestnet_2201-1
      - **mainnet**: Forks from stable_988-1
-   - `snapshot_url`: **RECOMMENDED** - Provide snapshot URL for faster sync, or leave empty to use state-sync
+   - `snapshot_url`: Leave empty to use default snapshot (recommended), set to "none" for state-sync, or provide custom URL
    - Leave other parameters as default or customize as needed
 5. Click "Run workflow"
 
@@ -292,7 +297,7 @@ Press `Ctrl+A` then `D` to detach from the screen session.
 ### provision-with-snapshot.sh Parameters (Recommended)
 
 - `--chain-id <string>`: Target chain-id (required)
-- `--snapshot-url <url>`: URL to download snapshot from (supports .tar, .tar.gz, .tar.lz4)
+- `--snapshot-url <url>`: URL to download snapshot from (supports .tar, .tar.gz, .tar.lz4, .tar.zst)
 - `--rpc-endpoint <url>`: RPC endpoint to download genesis (optional)
 - `--stabled-binary <path>`: Path to stabled binary (required)
 - `--base-dir <path>`: Base directory for chain data (default: /data)
@@ -390,7 +395,9 @@ curl http://localhost:26657/status | jq .result.sync_info.catching_up
 1. Check snapshot URL is accessible: `curl -I $SNAPSHOT_URL`
 2. Verify sufficient disk space for download and extraction
 3. Check network connectivity
-4. Ensure lz4 is installed if using .tar.lz4 format: `sudo apt-get install lz4`
+4. Ensure required decompression tools are installed:
+   - For .tar.lz4: `sudo apt-get install lz4`
+   - For .tar.zst: `sudo apt-get install zstd`
 
 ### State-sync fails (legacy method)
 

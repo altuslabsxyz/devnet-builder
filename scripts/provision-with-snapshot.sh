@@ -295,6 +295,9 @@ if [ "$SKIP_DOWNLOAD" = false ] && [ -n "$SNAPSHOT_URL" ]; then
   if [[ "$SNAPSHOT_URL" == *.tar.lz4 ]]; then
     SNAPSHOT_FILE="$BASE_DIR/snapshot.tar.lz4"
     EXTRACT_CMD="lz4 -dc \"$SNAPSHOT_FILE\" | tar xf - -C \"$DATA_DIR\""
+  elif [[ "$SNAPSHOT_URL" == *.tar.zst ]]; then
+    SNAPSHOT_FILE="$BASE_DIR/snapshot.tar.zst"
+    EXTRACT_CMD="zstd -dc \"$SNAPSHOT_FILE\" | tar xf - -C \"$DATA_DIR\""
   elif [[ "$SNAPSHOT_URL" == *.tar.gz ]]; then
     SNAPSHOT_FILE="$BASE_DIR/snapshot.tar.gz"
     EXTRACT_CMD="tar xzf \"$SNAPSHOT_FILE\" -C \"$DATA_DIR\""
@@ -302,7 +305,7 @@ if [ "$SKIP_DOWNLOAD" = false ] && [ -n "$SNAPSHOT_URL" ]; then
     SNAPSHOT_FILE="$BASE_DIR/snapshot.tar"
     EXTRACT_CMD="tar xf \"$SNAPSHOT_FILE\" -C \"$DATA_DIR\""
   else
-    echo "    Error: Unsupported snapshot format. Supported: .tar, .tar.gz, .tar.lz4"
+    echo "    Error: Unsupported snapshot format. Supported: .tar, .tar.gz, .tar.lz4, .tar.zst"
     exit 1
   fi
 
