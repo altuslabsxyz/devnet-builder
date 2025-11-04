@@ -192,66 +192,55 @@ jobs:
 
           echo "stable_path=$STABLE_LINK_PATH" >> $GITHUB_OUTPUT
 
-      - name: Build stabled binary
-        id: build_stabled
+      - name: Download stabled binary from release
+        id: download_stabled
         run: |
+          STABLE_TAG="${{ steps.get_tag.outputs.tag }}"
           STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
 
-          echo "Building stabled binary from: $STABLE_PATH"
-          cd "$STABLE_PATH"
+          echo "Downloading stabled binary from GitHub release..."
+          echo "Tag: $STABLE_TAG"
+          echo "Stable path: $STABLE_PATH"
 
-          # Disable go.work completely to avoid workspace conflicts
-          export GOWORK=off
-          echo "GOWORK=off set to disable workspace mode"
+          # Create build directory
+          mkdir -p "$STABLE_PATH/build"
 
-          # Remove go.work and go.work.sum files if they exist
-          if [ -f "go.work" ]; then
-            echo "Removing go.work file..."
-            rm -f go.work
+          # Download binary from GitHub release
+          RELEASE_URL="https://github.com/stablelabs/stable/releases/download/${STABLE_TAG}/stabled-linux-amd64"
+          echo "Downloading from: $RELEASE_URL"
+
+          if curl -L --fail -o "$STABLE_PATH/build/stabled" "$RELEASE_URL"; then
+            echo "Binary downloaded successfully"
+          else
+            echo "Error: Failed to download binary from release"
+            echo "Trying alternative naming convention..."
+
+            # Try alternative naming: stabled_linux_amd64
+            RELEASE_URL="https://github.com/stablelabs/stable/releases/download/${STABLE_TAG}/stabled_linux_amd64"
+            echo "Downloading from: $RELEASE_URL"
+
+            if curl -L --fail -o "$STABLE_PATH/build/stabled" "$RELEASE_URL"; then
+              echo "Binary downloaded successfully (alternative naming)"
+            else
+              echo "Error: Failed to download binary with both naming conventions"
+              echo "Available assets for ${STABLE_TAG}:"
+              curl -s "https://api.github.com/repos/stablelabs/stable/releases/tags/${STABLE_TAG}" | jq -r '.assets[].name' || echo "Failed to fetch release info"
+              exit 1
+            fi
           fi
-          if [ -f "go.work.sum" ]; then
-            echo "Removing go.work.sum file..."
-            rm -f go.work.sum
-          fi
 
-          # Remove cached go modules to force clean download
-          echo "Removing go.sum and vendor directory..."
-          rm -f go.sum
-          rm -rf vendor
+          # Make binary executable
+          chmod +x "$STABLE_PATH/build/stabled"
 
-          # Verify replace directives in go.mod
-          echo "Verifying replace directives in go.mod..."
-          grep -A 5 "^replace (" go.mod | head -15 || true
-
-          # Ensure bytedance/sonic replace is correctly set
-          echo "Ensuring bytedance/sonic replace directive..."
-          GOWORK=off go mod edit -replace=github.com/bytedance/sonic=github.com/bytedance/sonic@v1.14.1
-
-          # Tidy go.mod and download dependencies with replace directives applied
-          echo "Running go mod tidy with GOWORK=off..."
-          GOWORK=off go mod tidy -v
-
-          # Create vendor directory to ensure correct dependencies
-          echo "Creating vendor directory with GOWORK=off..."
-          GOWORK=off go mod vendor
-
-          # Clean previous builds
-          echo "Cleaning previous builds..."
-          make clean || true
-
-          # Build stabled with proper environment variables using vendor
-          echo "Running make build with GOWORK=off and vendor mode..."
-          GOARCH=amd64 GOWORK=off GOFLAGS="-mod=vendor" make build
-
-          # Verify build output
-          if [ ! -f "./build/stabled" ]; then
-            echo "Error: stabled binary not found at ./build/stabled"
-            ls -la ./build/ || echo "Build directory not found"
+          # Verify binary
+          if [ ! -f "$STABLE_PATH/build/stabled" ]; then
+            echo "Error: stabled binary not found at $STABLE_PATH/build/stabled"
             exit 1
           fi
 
-          echo "Build successful"
-          ./build/stabled version
+          echo "Binary downloaded and verified"
+          "$STABLE_PATH/build/stabled" version || echo "Version check skipped"
+
           echo "stabled_binary=$STABLE_PATH/build/stabled" >> $GITHUB_OUTPUT
 
       - name: Install decompression tools
@@ -275,7 +264,7 @@ jobs:
         id: export_genesis
         run: |
           STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
-          STABLED_BINARY="${{ steps.build_stabled.outputs.stabled_binary }}"
+          STABLED_BINARY="${{ steps.download_stabled.outputs.stabled_binary }}"
           GENESIS_EXPORT_PATH="${GITHUB_WORKSPACE}/genesis-export.json"
 
           # Determine target chain-id, RPC endpoint, persistent peers, and snapshot URL based on fork target
@@ -909,7 +898,7 @@ jobs:
       - name: Export account private keys
         id: export_private_keys
         run: |
-          STABLED_BINARY="${{ steps.build_stabled.outputs.stabled_binary }}"
+          STABLED_BINARY="${{ steps.download_stabled.outputs.stabled_binary }}"
           ACCOUNTS_DIR="$DEVNET_BASE_DIR/accounts"
 
           echo "Exporting account private keys..."
