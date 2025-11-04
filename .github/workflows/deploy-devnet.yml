@@ -203,6 +203,12 @@ jobs:
           # Clean previous builds
           make clean || true
 
+          # Remove go.work file to avoid conflicting replace directives
+          if [ -f "go.work" ]; then
+            echo "Removing go.work file to avoid module conflicts..."
+            rm -f go.work
+          fi
+
           # Build stabled with proper environment variables
           echo "Running make build..."
           GOARCH=amd64 make build
