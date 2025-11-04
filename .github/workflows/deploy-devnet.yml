@@ -532,18 +532,31 @@ jobs:
         run: |
           echo "Deploying devnet to $DEVNET_BASE_DIR..."
 
-          # Create base directory if not exists
-          sudo mkdir -p "$DEVNET_BASE_DIR"
-          sudo chown -R $(whoami):$(whoami) "$DEVNET_BASE_DIR"
+          # Remove old backup directories (older than 7 days)
+          echo "Removing old backup directories (older than 7 days)..."
+          DEVNET_PARENT_DIR=$(dirname "$DEVNET_BASE_DIR")
+          DEVNET_BASE_NAME=$(basename "$DEVNET_BASE_DIR")
+          OLD_BACKUPS=$(sudo find "$DEVNET_PARENT_DIR" -maxdepth 1 -type d -name "${DEVNET_BASE_NAME}_backup_*" -mtime +7 2>/dev/null || true)
+
+          if [ -n "$OLD_BACKUPS" ]; then
+            echo "Found old backups to remove:"
+            echo "$OLD_BACKUPS"
+            echo "$OLD_BACKUPS" | xargs -I {} sudo rm -rf {}
+          else
+            echo "No old backups found"
+          fi
 
           # Backup existing devnet if exists
-          if [ -d "$DEVNET_BASE_DIR" ] && [ "$(ls -A $DEVNET_BASE_DIR)" ]; then
+          if [ -d "$DEVNET_BASE_DIR" ] && [ "$(ls -A $DEVNET_BASE_DIR 2>/dev/null)" ]; then
             BACKUP_DIR="${DEVNET_BASE_DIR}_backup_$(date +%Y%m%d_%H%M%S)"
             echo "Backing up existing devnet to: $BACKUP_DIR"
             sudo mv "$DEVNET_BASE_DIR" "$BACKUP_DIR"
-            sudo mkdir -p "$DEVNET_BASE_DIR"
-            sudo chown -R $(whoami):$(whoami) "$DEVNET_BASE_DIR"
           fi
+
+          # Create fresh base directory
+          echo "Creating fresh devnet directory..."
+          sudo mkdir -p "$DEVNET_BASE_DIR"
+          sudo chown -R $(whoami):$(whoami) "$DEVNET_BASE_DIR"
 
           # Copy devnet files to system directory
           echo "Copying devnet files to $DEVNET_BASE_DIR..."
