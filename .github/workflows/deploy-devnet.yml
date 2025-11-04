@@ -279,12 +279,22 @@ jobs:
           echo "File type:"
           file "$STABLED_BINARY"
 
-          # Move binary to expected location
-          mv "$STABLED_BINARY" "$STABLE_PATH/build/stabled"
+          # Move binary to expected location if not already there
+          TARGET_PATH="$STABLE_PATH/build/stabled"
+          if [ "$STABLED_BINARY" != "./stabled" ] && [ "$STABLED_BINARY" != "stabled" ]; then
+            echo "Moving $STABLED_BINARY to $TARGET_PATH"
+            mv "$STABLED_BINARY" "$TARGET_PATH"
+          else
+            echo "Binary already in correct location (./stabled)"
+          fi
 
           # Clean up tar.gz and extracted directories
+          echo "Cleaning up..."
           rm -f "$ASSET_NAME"
           find . -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} \;
+
+          # Remove extracted documentation files
+          rm -f CHANGELOG.md LICENSE README.md
 
           # Make binary executable
           chmod +x "$STABLE_PATH/build/stabled"
