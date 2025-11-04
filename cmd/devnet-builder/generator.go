@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
+	govtypesv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	"os"
 	"path/filepath"
 	"time"
@@ -325,6 +327,10 @@ func (g *DevnetGenerator) updateGenesisAccounts(appState map[string]json.RawMess
 		return fmt.Errorf("failed to update bank balances: %w", err)
 	}
 
+	if err := g.updateGovState(appState); err != nil {
+		return fmt.Errorf("failed to update gov state: %w", err)
+	}
+
 	// Update staking state with new validators
 	if err := g.updateStakingState(appState); err != nil {
 		return fmt.Errorf("failed to update staking state: %w", err)
@@ -350,6 +356,19 @@ func (g *DevnetGenerator) updateGenesisAccounts(appState map[string]json.RawMess
 	//	return fmt.Errorf("failed to clear precompile state: %w", err)
 	//}
 
+	return nil
+}
+
+func (g *DevnetGenerator) updateGovState(appState map[string]json.RawMessage) error {
+	var govState govtypesv1.GenesisState
+	if err := g.cdc.UnmarshalJSON(appState[govtypes.ModuleName], &govState); err != nil {
+		return fmt.Errorf("failed to unmarshal gov state: %w", err)
+	}
+
+	votingPeriod := 5 * time.Minute
+	govState.Params.VotingPeriod = &votingPeriod
+
+	appState[govtypes.ModuleName] = g.cdc.MustMarshalJSON(&govState)
 	return nil
 }
 
