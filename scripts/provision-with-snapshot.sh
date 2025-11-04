@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Provision chain with snapshot download
-# This script provisions a target chain using a snapshot download instead of state-sync
+# Provision chain with snapshot download and sync
+# This script provisions a target chain using a snapshot download, syncs to latest block, and exports genesis
 
 # Usage:
 #   ./scripts/provision-with-snapshot.sh \
@@ -364,16 +364,73 @@ else
   echo "[5/7] Skipping snapshot download (--skip-download or no snapshot URL)"
 fi
 
-# Step 6: Verify data directory
-echo "[6/7] Verifying data directory..."
+# Step 6: Start node and sync to latest
+echo "[6/8] Starting node to sync to latest block..."
+
+# Start stabled to sync remaining blocks
+echo "    Starting stabled for sync..."
+"$STABLED_BINARY" start --home "$WORK_DIR" --chain-id $CHAIN_ID > "$WORK_DIR/sync.log" 2>&1 &
+STABLED_PID=$!
+
+echo "    Waiting for sync to complete (PID: $STABLED_PID)..."
+echo "    Log file: $WORK_DIR/sync.log"
+
+# Wait for sync to complete
+MAX_WAIT=1800  # 30 minutes timeout
+WAIT_COUNT=0
+while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+  sleep 5
+  WAIT_COUNT=$((WAIT_COUNT + 5))
+
+  # Check if process is still running
+  if ! kill -0 $STABLED_PID 2>/dev/null; then
+    echo "    Error: stabled process died unexpectedly"
+    tail -20 "$WORK_DIR/sync.log"
+    exit 1
+  fi
+
+  # Check sync status using dynamically assigned RPC port
+  if SYNC_STATUS=$(curl -s http://127.0.0.1:$RPC_PORT/status 2>/dev/null | jq -r .result.sync_info.catching_up 2>/dev/null); then
+    if [ "$SYNC_STATUS" = "false" ]; then
+      echo "    Sync completed successfully"
+      break
+    else
+      # Get current height
+      CURRENT_HEIGHT=$(curl -s http://127.0.0.1:$RPC_PORT/status 2>/dev/null | jq -r .result.sync_info.latest_block_height 2>/dev/null)
+      echo "    Still syncing... (height: ${CURRENT_HEIGHT:-unknown}, ${WAIT_COUNT}s elapsed)"
+    fi
+  else
+    echo "    Waiting for RPC to be available on port $RPC_PORT... (${WAIT_COUNT}s elapsed)"
+  fi
+done
+
+if [ $WAIT_COUNT -ge $MAX_WAIT ]; then
+  echo "    Error: Sync timed out after ${MAX_WAIT}s"
+  kill $STABLED_PID 2>/dev/null || true
+  exit 1
+fi
+
+# Stop stabled
+echo "    Stopping stabled..."
+kill $STABLED_PID 2>/dev/null || true
+sleep 3
+
+# Make sure it's stopped
+pkill -f "stabled.*--home.*$WORK_DIR" || true
+sleep 2
+
+echo "    Sync complete"
+
+# Step 7: Verify data directory
+echo "[7/8] Verifying data directory..."
 if [ -d "$DATA_DIR/application.db" ] || [ -d "$DATA_DIR/blockstore.db" ] || [ -f "$DATA_DIR/priv_validator_state.json" ]; then
   echo "    Data directory contains valid data"
 else
   echo "    Warning: Data directory may not contain complete snapshot data"
 fi
 
-# Step 7: Export genesis
-echo "[7/7] Exporting genesis..."
+# Step 8: Export genesis
+echo "[8/8] Exporting genesis..."
 
 # Get absolute path for output file
 if [[ "$OUTPUT_FILE" != /* ]]; then

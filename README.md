@@ -78,7 +78,8 @@ The script will:
 2. Download genesis from RPC endpoint (if provided)
 3. **Disable state-sync** in configuration
 4. Download and extract snapshot to data directory
-5. Export genesis with timestamp
+5. Start node and sync remaining blocks to latest
+6. Export genesis with timestamp
 
 **Supported snapshot formats:**
 - `.tar` - Uncompressed tarball
@@ -190,16 +191,17 @@ The workflow performs the following steps:
 2. **Get Tag Version**: Determines stable repository version
 3. **Setup Stable Repository**: Clones/checkouts stable repository at correct version
 4. **Build stabled Binary**: Compiles stabled from source
-5. **Provision and Sync Target Chain**: Provisions fresh chain using either:
-   - **Snapshot-based sync** (default): Downloads and extracts snapshot, state-sync disabled
+5. **Install Decompression Tools**: Installs lz4 and zstd for snapshot extraction
+6. **Provision and Sync Target Chain**: Provisions fresh chain using either:
+   - **Snapshot-based sync** (default): Downloads and extracts snapshot, syncs remaining blocks, state-sync disabled
    - **State-sync** (legacy): Syncs via state-sync from RPC endpoint
-6. **Build Devnet**: Creates devnet using devnet-builder
-7. **Upload Artifact**: Uploads devnet as GitHub artifact
-8. **Deploy to System**: Deploys devnet to target directory
-9. **Stop Existing Sessions**: Stops any existing systemd services
-10. **Start Nodes**: Starts all validator nodes as systemd services
-11. **Verify Deployment**: Checks node status
-12. **Display Summary**: Shows deployment information
+7. **Build Devnet**: Creates devnet using devnet-builder
+8. **Upload Artifact**: Uploads devnet as GitHub artifact
+9. **Deploy to System**: Deploys devnet to target directory
+10. **Stop Existing Sessions**: Stops any existing systemd services
+11. **Start Nodes**: Starts all validator nodes as systemd services
+12. **Verify Deployment**: Checks node status
+13. **Display Summary**: Shows deployment information
 
 ### Running the Workflow
 
