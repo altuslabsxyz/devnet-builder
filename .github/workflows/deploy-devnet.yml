@@ -257,17 +257,27 @@ jobs:
           # Extract tar.gz
           echo "Extracting $ASSET_NAME..."
           cd "$STABLE_PATH/build"
-          tar -xzf "$ASSET_NAME"
+          tar -xzf "$ASSET_NAME" -v
+
+          echo "Extracted files:"
+          ls -lah
 
           # Find the stabled binary in extracted files
+          echo "Searching for stabled binary..."
           STABLED_BINARY=$(find . -name "stabled" -type f | head -1)
 
           if [ -z "$STABLED_BINARY" ]; then
             echo "Error: stabled binary not found in extracted files"
-            echo "Extracted files:"
-            ls -la
+            echo "All files in build directory:"
+            find . -type f
             exit 1
           fi
+
+          echo "Found stabled at: $STABLED_BINARY"
+
+          # Check file type
+          echo "File type:"
+          file "$STABLED_BINARY"
 
           # Move binary to expected location
           mv "$STABLED_BINARY" "$STABLE_PATH/build/stabled"
