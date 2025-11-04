@@ -1,10 +1,24 @@
 # Stable Devnet Builder
 
-Devnet Builder is a tool to build local development networks from exported genesis files.
+
+Devnet Builder is a comprehensive tool to build and manage local development networks from exported genesis files. It supports both local usage and automated deployment via GitHub Actions.
+
+## Table of Contents
+
+- [Building](#building)
+- [Quick Start](#quick-start)
+- [Manual Usage](#manual-usage)
+  - [Option 1: Export from Running Chain](#option-1-export-from-running-chain)
+  - [Option 2: Provision and Sync Target Chain](#option-2-provision-and-sync-target-chain)
+  - [Build Devnet](#build-devnet)
+- [GitHub Actions CI/CD](#github-actions-cicd)
+- [Managing Devnet](#managing-devnet)
+- [Parameters Reference](#parameters-reference)
+- [Output Structure](#output-structure)
 
 ## Building
 
-Use the Makefile:
+Use the Makefile to build the devnet-builder binary:
 
 ```bash
 make build
@@ -19,19 +33,89 @@ Available Makefile targets:
 - `make test` - Run tests
 - `make help` - Display help message
 
-## How to Use
+## Quick Start
 
-### Step 1: Export Genesis
+The fastest way to get started is to use the automated GitHub Actions workflow. However, for local development, follow the manual usage guide below.
 
-First, export the genesis state from your running chain:
+## Manual Usage
+
+There are two ways to export genesis for building a devnet:
+
+### Option 1: Export from Running Chain
+
+If you already have a running chain, you can export its genesis directly:
 
 ```bash
-stabled export > genesis-export.json
+stabled export --home /path/to/node > genesis-export.json
 ```
 
-### Step 2: Build Devnet
+### Option 2: Provision with Snapshot (Recommended)
 
-Then, build the devnet using the exported genesis:
+To provision a fresh chain using a snapshot download (faster and more reliable than state-sync):
+
+```bash
+./scripts/provision-with-snapshot.sh \
+  --chain-id stabletestnet_2200-1 \
+  --snapshot-url https://example.com/snapshots/stabletestnet-latest.tar.lz4 \
+  --rpc-endpoint https://stable-rpc.testnet.chain0.dev/ \
+  --stabled-binary ./stable/build/stabled \
+  --base-dir /data \
+  --output-file genesis-export.json
+```
+
+**Parameters:**
+- `--chain-id`: Target chain-id to sync (required)
+- `--snapshot-url`: URL to download snapshot from (supports .tar, .tar.gz, .tar.lz4)
+- `--rpc-endpoint`: RPC endpoint to download genesis (optional)
+- `--stabled-binary`: Path to stabled binary (required)
+- `--base-dir`: Base directory for chain data (default: /data)
+- `--output-file`: Output genesis file path
+- `--persistent-peers`: Persistent peers for P2P (optional)
+- `--skip-download`: Skip snapshot download (use existing data)
+
+The script will:
+1. Initialize a new chain directory at `$BASE_DIR/.$CHAIN_ID/`
+2. Download genesis from RPC endpoint (if provided)
+3. **Disable state-sync** in configuration
+4. Download and extract snapshot to data directory
+5. Export genesis with timestamp
+
+**Supported snapshot formats:**
+- `.tar` - Uncompressed tarball
+- `.tar.gz` - Gzip compressed tarball
+- `.tar.lz4` - LZ4 compressed tarball (recommended for speed)
+
+### Option 3: Provision and Sync with State-Sync
+
+To provision a fresh chain and sync it via state-sync (legacy method):
+
+```bash
+./scripts/provision-and-sync.sh \
+  --chain-id stabletestnet_2200-1 \
+  --rpc-endpoint https://stable-rpc.testnet.chain0.dev/ \
+  --stabled-binary ./stable/build/stabled \
+  --base-dir /data \
+  --output-file genesis-export.json
+```
+
+**Parameters:**
+- `--chain-id`: Target chain-id to sync
+- `--rpc-endpoint`: RPC endpoint for state-sync
+- `--stabled-binary`: Path to stabled binary
+- `--base-dir`: Base directory for chain data (default: /data)
+- `--output-file`: Output genesis file path
+- `--skip-sync`: Skip state-sync (only initialize)
+
+The script will:
+1. Initialize a new chain directory at `$BASE_DIR/.$CHAIN_ID/`
+2. Download genesis from RPC endpoint
+3. Configure state-sync
+4. Sync the chain to latest height
+5. Export genesis with timestamp
+
+### Build Devnet
+
+Once you have the exported genesis, build the devnet:
 
 ```bash
 ./build/devnet-builder build genesis-export.json \
@@ -40,32 +124,287 @@ Then, build the devnet using the exported genesis:
   --account-balance "1000000000000000000000astable,500000000000000000000agasusdt" \
   --validator-balance "1000000000000000000000astable,500000000000000000000agasusdt" \
   --validator-stake "100000000000000000000" \
+  --chain-id stabledevnet_2200-1 \
   --output ./devnet
 ```
 
-## Parameters
+### Start Devnet Nodes
 
-- `--validators`: Number of validators to create (default: 4)
-- `--accounts`: Number of dummy accounts to create (default: 10)
-- `--account-balance`: Initial balance for each account (supports multiple denoms)
-- `--validator-balance`: Initial balance for each validator (supports multiple denoms)
-- `--validator-stake`: Staking amount for validators (base denom only)
-- `--output`: Output directory (default: ./devnet)
+After building the devnet, start all validator nodes using screen:
+
+```bash
+./scripts/manage-devnet.sh start \
+  --devnet-dir ./devnet \
+  --stabled-binary ./stable/build/stabled \
+  --validators 4
+```
+
+## GitHub Actions CI/CD
+
+The repository includes a comprehensive GitHub Actions workflow for automated devnet deployment on self-hosted runners.
+
+### Workflow Parameters
+
+The workflow automatically provisions a fresh chain using snapshot or state-sync (based on `snapshot_url` parameter) and exports genesis.
+
+#### Parameters
+
+- `stable_tag`: Stable repository tag version (choice: `v0.8.1-testnet`, `v0.8.0-testnet`)
+- `target_chain_id`: Target chain-id to export (choice: `stabletestnet_2201-1`)
+- `target_rpc_endpoint`: RPC endpoint for downloading genesis (default: `http://peer2.testnet.stable.xyz:26657/`)
+- `snapshot_url`: Snapshot URL to download (supports .tar, .tar.gz, .tar.lz4)
+  - **If provided**: Uses snapshot-based sync (state-sync DISABLED)
+  - **If empty**: Uses state-sync method (legacy)
+- `validators`: Number of validators to create (default: 4)
+- `accounts`: Number of dummy accounts to create (default: 10)
+- `account_balance`: Balance for each account (optional, uses devnet-builder defaults if not provided)
+- `validator_balance`: Balance for each validator (optional, uses devnet-builder defaults if not provided)
+- `validator_stake`: Stake amount for each validator in astable (optional, uses devnet-builder defaults if not provided)
+- `devnet_chain_id`: Devnet Chain ID (optional, defaults to from genesis)
+- `persistent_peers`: Persistent peers for P2P (default: `128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656`)
+
+**Note:**
+- If balance and stake parameters are not provided, devnet-builder will use sensible defaults (5000 consensus power worth of astable for balances, 100 consensus power for stake)
+- **Sync method is automatically determined by `snapshot_url` parameter**:
+  - Provide `snapshot_url` → Snapshot-based sync (recommended, faster, state-sync disabled)
+  - Leave `snapshot_url` empty → State-sync method (legacy)
+
+### Workflow Steps
+
+The workflow performs the following steps:
+
+1. **Checkout Repository**: Fetches stable-devnet repository
+2. **Get Tag Version**: Determines stable repository version
+3. **Setup Stable Repository**: Clones/checkouts stable repository at correct version
+4. **Build stabled Binary**: Compiles stabled from source
+5. **Provision and Sync Target Chain**: Provisions fresh chain using either:
+   - **Snapshot-based sync** (default): Downloads and extracts snapshot, state-sync disabled
+   - **State-sync** (legacy): Syncs via state-sync from RPC endpoint
+6. **Build Devnet**: Creates devnet using devnet-builder
+7. **Upload Artifact**: Uploads devnet as GitHub artifact
+8. **Deploy to System**: Deploys devnet to target directory
+9. **Stop Existing Sessions**: Stops any existing systemd services
+10. **Start Nodes**: Starts all validator nodes as systemd services
+11. **Verify Deployment**: Checks node status
+12. **Display Summary**: Shows deployment information
+
+### Running the Workflow
+
+1. Go to the Actions tab in your GitHub repository
+2. Select "Deploy Devnet" workflow
+3. Click "Run workflow"
+4. Fill in the parameters:
+   - `stable_tag`: Version to use (e.g., `v0.8.1-testnet`)
+   - `target_chain_id`: Chain to export (e.g., `stabletestnet_2201-1`)
+   - `target_rpc_endpoint`: RPC endpoint for genesis download
+   - `snapshot_url`: **RECOMMENDED** - Provide snapshot URL for faster sync, or leave empty to use state-sync
+   - Leave other parameters as default or customize as needed
+5. Click "Run workflow"
+
+The workflow will:
+- Provision and sync the target chain (using snapshot or state-sync)
+- Export its genesis
+- Build a local devnet
+- Deploy and start all validator nodes as systemd services
+
+## Managing Devnet
+
+Use the `manage-devnet.sh` script to manage running devnet nodes:
+
+### Start All Nodes
+
+```bash
+./scripts/manage-devnet.sh start \
+  --devnet-dir /data/.devnet \
+  --stabled-binary ./stable/build/stabled \
+  --validators 4
+```
+
+### Stop All Nodes
+
+```bash
+./scripts/manage-devnet.sh stop --validators 4
+```
+
+### Check Status
+
+```bash
+./scripts/manage-devnet.sh status \
+  --devnet-dir /data/.devnet \
+  --validators 4
+```
+
+### View Logs
+
+```bash
+./scripts/manage-devnet.sh logs \
+  --devnet-dir /data/.devnet \
+  --node 0
+```
+
+### Attach to Screen Session
+
+```bash
+./scripts/manage-devnet.sh attach --node 0
+```
+
+Press `Ctrl+A` then `D` to detach from the screen session.
+
+### List Screen Sessions
+
+```bash
+./scripts/manage-devnet.sh list
+```
+
+### Restart All Nodes
+
+```bash
+./scripts/manage-devnet.sh restart \
+  --devnet-dir /data/.devnet \
+  --stabled-binary ./stable/build/stabled \
+  --validators 4
+```
+
+## Parameters Reference
+
+### devnet-builder Parameters
+
+- `--validators <number>`: Number of validators to create (default: 4)
+- `--accounts <number>`: Number of dummy accounts to create (default: 10)
+- `--account-balance <coins>`: Initial balance for each account (supports multiple denoms)
+- `--validator-balance <coins>`: Initial balance for each validator (supports multiple denoms)
+- `--validator-stake <amount>`: Staking amount for validators (base denom only)
+- `--chain-id <string>`: Chain ID for devnet (optional, defaults to from genesis)
+- `--output <path>`: Output directory (default: ./devnet)
+
+**Example coin format**: `"1000000000000000000000astable,500000000000000000000agasusdt"`
+
+### provision-with-snapshot.sh Parameters (Recommended)
+
+- `--chain-id <string>`: Target chain-id (required)
+- `--snapshot-url <url>`: URL to download snapshot from (supports .tar, .tar.gz, .tar.lz4)
+- `--rpc-endpoint <url>`: RPC endpoint to download genesis (optional)
+- `--stabled-binary <path>`: Path to stabled binary (required)
+- `--base-dir <path>`: Base directory for chain data (default: /data)
+- `--output-file <path>`: Output genesis file path
+- `--persistent-peers <string>`: Persistent peers for P2P (optional)
+- `--skip-download`: Skip snapshot download (use existing data)
+
+### provision-and-sync.sh Parameters (Legacy)
+
+- `--chain-id <string>`: Target chain-id to sync (required)
+- `--rpc-endpoint <url>`: RPC endpoint for state-sync
+- `--stabled-binary <path>`: Path to stabled binary (required)
+- `--base-dir <path>`: Base directory for chain data (default: /data)
+- `--output-file <path>`: Output genesis file path
+- `--skip-sync`: Skip state-sync (only initialize)
+
+### manage-devnet.sh Parameters
+
+- `--devnet-dir <path>`: Devnet base directory (default: /data/.devnet)
+- `--stabled-binary <path>`: Path to stabled binary (required for start/restart)
+- `--validators <number>`: Number of validators (default: 4)
+- `--node <number>`: Node number (for logs/attach commands)
 
 ## Output Structure
+
+After building a devnet, the output directory will have the following structure:
 
 ```
 devnet/
 ├── node0/
 │   ├── config/
-│   │   ├── genesis.json
-│   │   └── priv_validator_key.json
+│   │   ├── genesis.json              # Genesis file for this node
+│   │   ├── config.toml               # Tendermint config
+│   │   ├── app.toml                  # Application config
+│   │   └── priv_validator_key.json   # Validator private key
 │   ├── data/
-│   │   └── priv_validator_state.json
-│   └── keyring-test/
+│   │   └── priv_validator_state.json # Validator state
+│   └── keyring-test/                 # Validator keyring
 ├── node1/
 ├── node2/
 ├── node3/
 └── accounts/
-    └── keyring-test/
+    └── keyring-test/                 # All account keys
 ```
+
+Each node directory is a complete, independent validator node with its own:
+- Configuration files
+- Validator keys
+- Keyring with validator account
+
+The `accounts/` directory contains keyrings for all generated dummy accounts.
+
+## Logs and Monitoring
+
+### Log Files
+
+When nodes are started via the management script or GitHub Actions, logs are written to:
+
+```
+$DEVNET_BASE_DIR/node0.log
+$DEVNET_BASE_DIR/node1.log
+$DEVNET_BASE_DIR/node2.log
+$DEVNET_BASE_DIR/node3.log
+```
+
+### View Logs in Real-time
+
+```bash
+tail -f /data/.devnet/node0.log
+```
+
+### Check Node Status via RPC
+
+Each node exposes RPC on different ports (configured in config.toml):
+
+```bash
+# Check node0 status
+curl http://localhost:26657/status
+
+# Check sync status
+curl http://localhost:26657/status | jq .result.sync_info.catching_up
+```
+
+## Troubleshooting
+
+### Node won't start
+
+1. Check if screen session exists: `screen -list`
+2. View logs: `tail -100 /data/.devnet/node0.log`
+3. Check if ports are available
+4. Verify stabled binary exists and is executable
+
+### Snapshot download fails
+
+1. Check snapshot URL is accessible: `curl -I $SNAPSHOT_URL`
+2. Verify sufficient disk space for download and extraction
+3. Check network connectivity
+4. Ensure lz4 is installed if using .tar.lz4 format: `sudo apt-get install lz4`
+
+### State-sync fails (legacy method)
+
+1. Check RPC endpoint is reachable: `curl $RPC_ENDPOINT/status`
+2. Verify trust height and hash are correct
+3. Check network connectivity
+4. Increase timeout in provision-and-sync.sh
+5. Consider using snapshot-based sync instead (faster and more reliable)
+
+### Genesis export fails
+
+1. Ensure node is fully synced
+2. Check disk space
+3. Verify stabled binary version matches chain version
+
+## Contributing
+
+Contributions are welcome! Please ensure:
+
+1. All scripts are executable (`chmod +x`)
+2. Scripts follow bash best practices (use `set -euo pipefail`)
+3. Error handling is comprehensive
+4. Documentation is updated
+
+## License
+
+This project is part of the Stable ecosystem. Refer to the main repository for license information.

@@ -21,10 +21,15 @@ on:
           - stabletestnet_2201-1
         default: 'stabletestnet_2201-1'
       target_rpc_endpoint:
-        description: 'Target chain RPC endpoint (e.g., http://37.187.147.27:26657/)'
+        description: 'Target chain RPC endpoint for genesis download'
         required: false
         type: string
-        default: 'http://37.187.147.27:26657/'
+        default: 'http://peer2.testnet.stable.xyz:26657/'
+      snapshot_url:
+        description: 'Snapshot URL to download (supports .tar, .tar.gz, .tar.lz4). If provided, snapshot sync is used; otherwise state-sync is used'
+        required: false
+        type: string
+        default: ''
       validators:
         description: 'Number of validators to create'
         required: true
@@ -59,7 +64,7 @@ on:
         description: 'Persistent peers (e.g., "nodeID@host:port,nodeID@host:port")'
         required: false
         type: string
-        default: '5ed0f977a26ccf290e184e364fb04e268ef16430@37.187.147.27:26656'
+        default: '128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656'
 
 jobs:
   deploy-devnet:
@@ -68,6 +73,7 @@ jobs:
     env:
       TARGET_CHAIN_ID: ${{ inputs.target_chain_id }}
       TARGET_RPC_ENDPOINT: ${{ inputs.target_rpc_endpoint }}
+      SNAPSHOT_URL: ${{ inputs.snapshot_url }}
       PERSISTENT_PEERS: ${{ inputs.persistent_peers }}
       STABLE_TAG: ${{ inputs.stable_tag }}
       VALIDATORS: ${{ inputs.validators }}
@@ -252,25 +258,66 @@ jobs:
           echo "Provisioning and syncing target chain..."
           echo "Target Chain ID: $TARGET_CHAIN_ID"
           echo "Target RPC Endpoint: $TARGET_RPC_ENDPOINT"
+          echo "Snapshot URL: $SNAPSHOT_URL"
           echo "Using stabled binary: $STABLED_BINARY"
 
-          # Make provision script executable
-          chmod +x "${GITHUB_WORKSPACE}/scripts/provision-and-sync.sh"
+          # Determine which script to use based on SNAPSHOT_URL
+          if [ -n "$SNAPSHOT_URL" ]; then
+            echo "=========================================="
+            echo "Using SNAPSHOT-BASED provisioning"
+            echo "State-sync: DISABLED"
+            echo "=========================================="
+            SCRIPT_PATH="${GITHUB_WORKSPACE}/scripts/provision-with-snapshot.sh"
 
-          # Build provision command
-          PROVISION_CMD="${GITHUB_WORKSPACE}/scripts/provision-and-sync.sh \
-            --chain-id \"$TARGET_CHAIN_ID\" \
-            --rpc-endpoint \"$TARGET_RPC_ENDPOINT\" \
-            --stabled-binary \"$STABLED_BINARY\" \
-            --base-dir \"/data\" \
-            --output-file \"$GENESIS_EXPORT_PATH\""
+            # Make provision script executable
+            chmod +x "$SCRIPT_PATH"
 
-          # Add persistent peers if provided
-          if [ -n "$PERSISTENT_PEERS" ]; then
-            PROVISION_CMD="$PROVISION_CMD --persistent-peers \"$PERSISTENT_PEERS\""
+            # Build provision command for snapshot
+            PROVISION_CMD="$SCRIPT_PATH \
+              --chain-id \"$TARGET_CHAIN_ID\" \
+              --snapshot-url \"$SNAPSHOT_URL\" \
+              --stabled-binary \"$STABLED_BINARY\" \
+              --base-dir \"/data\" \
+              --output-file \"$GENESIS_EXPORT_PATH\""
+
+            # Add RPC endpoint if provided (for genesis download)
+            if [ -n "$TARGET_RPC_ENDPOINT" ]; then
+              PROVISION_CMD="$PROVISION_CMD --rpc-endpoint \"$TARGET_RPC_ENDPOINT\""
+            fi
+
+            # Add persistent peers if provided
+            if [ -n "$PERSISTENT_PEERS" ]; then
+              PROVISION_CMD="$PROVISION_CMD --persistent-peers \"$PERSISTENT_PEERS\""
+            fi
+          else
+            echo "=========================================="
+            echo "Using STATE-SYNC provisioning (legacy)"
+            echo "State-sync: ENABLED"
+            echo "=========================================="
+            SCRIPT_PATH="${GITHUB_WORKSPACE}/scripts/provision-and-sync.sh"
+
+            # Make provision script executable
+            chmod +x "$SCRIPT_PATH"
+
+            # Build provision command for state-sync
+            PROVISION_CMD="$SCRIPT_PATH \
+              --chain-id \"$TARGET_CHAIN_ID\" \
+              --rpc-endpoint \"$TARGET_RPC_ENDPOINT\" \
+              --stabled-binary \"$STABLED_BINARY\" \
+              --base-dir \"/data\" \
+              --output-file \"$GENESIS_EXPORT_PATH\""
+
+            # Add persistent peers if provided
+            if [ -n "$PERSISTENT_PEERS" ]; then
+              PROVISION_CMD="$PROVISION_CMD --persistent-peers \"$PERSISTENT_PEERS\""
+            fi
           fi
 
-          # Run provision and sync script
+          echo ""
+          echo "Executing: $PROVISION_CMD"
+          echo ""
+
+          # Run provision script
           eval $PROVISION_CMD
 
           # Verify export
