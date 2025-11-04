@@ -198,9 +198,11 @@ jobs:
           STABLE_TAG="${{ steps.get_tag.outputs.tag }}"
           STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
           GH_TOKEN="${{ secrets.GH_PAT }}"
+          FORK_TARGET="${{ inputs.fork_target }}"
 
           echo "Downloading stabled binary from GitHub release..."
           echo "Tag: $STABLE_TAG"
+          echo "Fork target: $FORK_TARGET"
           echo "Stable path: $STABLE_PATH"
 
           # Create build directory
@@ -222,11 +224,18 @@ jobs:
           echo "Available assets:"
           echo "$RELEASE_INFO" | jq -r '.assets[].name'
 
-          # Try to find the correct asset
-          ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("stabled.*linux.*amd64")) | .name' | head -1)
+          # Find the correct asset based on fork_target
+          if [ "$FORK_TARGET" = "mainnet" ]; then
+            ASSET_PATTERN="stabled.*linux.*amd64.*mainnet.*tar.gz"
+          else
+            ASSET_PATTERN="stabled.*linux.*amd64.*testnet.*tar.gz"
+          fi
+
+          echo "Searching for asset matching pattern: $ASSET_PATTERN"
+          ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r ".assets[] | select(.name | test(\"$ASSET_PATTERN\")) | .name" | head -1)
 
           if [ -z "$ASSET_NAME" ]; then
-            echo "Error: No stabled binary found for linux-amd64"
+            echo "Error: No stabled binary found for linux-amd64 $FORK_TARGET"
             echo "Available assets:"
             echo "$RELEASE_INFO" | jq -r '.assets[].name'
             exit 1
@@ -242,8 +251,30 @@ jobs:
           # Download the asset with authentication
           curl -L -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/octet-stream" \
-            -o "$STABLE_PATH/build/stabled" \
+            -o "$STABLE_PATH/build/$ASSET_NAME" \
             "$ASSET_URL"
+
+          # Extract tar.gz
+          echo "Extracting $ASSET_NAME..."
+          cd "$STABLE_PATH/build"
+          tar -xzf "$ASSET_NAME"
+
+          # Find the stabled binary in extracted files
+          STABLED_BINARY=$(find . -name "stabled" -type f | head -1)
+
+          if [ -z "$STABLED_BINARY" ]; then
+            echo "Error: stabled binary not found in extracted files"
+            echo "Extracted files:"
+            ls -la
+            exit 1
+          fi
+
+          # Move binary to expected location
+          mv "$STABLED_BINARY" "$STABLE_PATH/build/stabled"
+
+          # Clean up tar.gz and extracted directories
+          rm -f "$ASSET_NAME"
+          find . -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} \;
 
           # Make binary executable
           chmod +x "$STABLE_PATH/build/stabled"
@@ -254,7 +285,7 @@ jobs:
             exit 1
           fi
 
-          echo "Binary downloaded and verified"
+          echo "Binary downloaded, extracted, and verified"
           "$STABLE_PATH/build/stabled" version || echo "Version check skipped"
 
           echo "stabled_binary=$STABLE_PATH/build/stabled" >> $GITHUB_OUTPUT
