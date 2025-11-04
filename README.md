@@ -147,41 +147,31 @@ The repository includes a comprehensive GitHub Actions workflow for automated de
 
 ### Workflow Parameters
 
-The workflow automatically provisions a fresh chain using snapshot or state-sync (based on `snapshot_url` parameter) and exports genesis.
+The workflow automatically provisions a fresh chain using snapshot-based sync and exports genesis.
 
 #### Parameters
 
-- `stable_tag`: Stable repository tag version (choice: `v0.8.1-testnet`, `v0.8.0-testnet`)
+- `stable_tag`: Stable repository tag version (choice: `v1.1.0`, `v1.0.0`, `v0.8.1-testnet`, `v0.8.0-testnet`)
 - `fork_target`: Fork target network (choice: `testnet`, `mainnet`)
   - **testnet**:
     - Chain ID: `stabletestnet_2201-1`
     - RPC: `https://cosmos-rpc.testnet.stable.xyz/`
     - Peers: `128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656`
-    - Default Snapshot: `https://stable-snapshot.s3.eu-central-1.amazonaws.com/snapshot.tar.lz4`
+    - Snapshot: `https://stable-snapshot.s3.eu-central-1.amazonaws.com/snapshot.tar.lz4`
   - **mainnet**:
     - Chain ID: `stable_988-1`
     - RPC: `https://cosmos-rpc-internal.stable.xyz/`
     - Peers: `39fef24240d80e2cd5bdcbe101298c36f0d83fa1@57.129.53.87:26656`
-    - Default Snapshot: `https://stable-mainnet-data.s3.amazonaws.com/snapshots/stable_pruned.tar.zst`
-- `snapshot_url`: Snapshot URL to download (supports .tar, .tar.gz, .tar.lz4, .tar.zst)
-  - **If empty**: Uses default snapshot for fork_target (recommended)
-  - **If "none"**: Uses state-sync method (legacy)
-  - **If custom URL**: Uses provided snapshot URL
+    - Snapshot: `https://stable-mainnet-data.s3.amazonaws.com/snapshots/stable_pruned.tar.zst`
 - `validators`: Number of validators to create (default: 4)
 - `accounts`: Number of dummy accounts to create (default: 10)
 - `account_balance`: Balance for each account (optional, uses devnet-builder defaults if not provided)
 - `validator_balance`: Balance for each validator (optional, uses devnet-builder defaults if not provided)
-- `devnet_chain_id`: Devnet Chain ID (optional, defaults to from genesis)
-- `persistent_peers`: Persistent peers for P2P (optional, overrides default peers for fork_target)
 
 **Note:**
 - If balance parameters are not provided, devnet-builder will use sensible defaults (5000 consensus power worth of astable for balances, 100 consensus power for stake)
-- **Target chain-id, RPC endpoint, persistent peers, and snapshot URL are automatically determined by `fork_target` parameter**
-- You can override defaults by providing custom `persistent_peers` or `snapshot_url` parameters
-- **Default behavior uses snapshot-based sync for faster provisioning**:
-  - Leave `snapshot_url` empty → Uses default snapshot for fork_target (recommended)
-  - Set `snapshot_url` to "none" → Uses state-sync method (legacy)
-  - Provide custom URL → Uses your snapshot
+- **All configuration is automatically determined by `fork_target` parameter**: chain-id, RPC endpoint, persistent peers, and snapshot URL
+- **Uses snapshot-based sync by default for faster provisioning** (state-sync disabled)
 
 ### Workflow Steps
 
@@ -209,17 +199,16 @@ The workflow performs the following steps:
 2. Select "Deploy Devnet" workflow
 3. Click "Run workflow"
 4. Fill in the parameters:
-   - `stable_tag`: Version to use (e.g., `v0.8.1-testnet`)
+   - `stable_tag`: Version to use (e.g., `v1.1.0`, `v0.8.1-testnet`)
    - `fork_target`: Select network to fork (`testnet` or `mainnet`)
      - **testnet**: Forks from stabletestnet_2201-1
      - **mainnet**: Forks from stable_988-1
-   - `snapshot_url`: Leave empty to use default snapshot (recommended), set to "none" for state-sync, or provide custom URL
    - Leave other parameters as default or customize as needed
 5. Click "Run workflow"
 
 The workflow will:
-- Automatically determine chain-id and RPC endpoint based on fork target
-- Provision and sync the target chain (using snapshot or state-sync)
+- Automatically determine chain-id, RPC endpoint, peers, and snapshot based on fork target
+- Provision and sync the target chain using snapshot
 - Export its genesis
 - Build a local devnet
 - Deploy and start all validator nodes as systemd services
