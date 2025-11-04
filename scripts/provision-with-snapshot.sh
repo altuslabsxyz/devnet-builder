@@ -291,12 +291,28 @@ if [ "$SKIP_DOWNLOAD" = false ] && [ -n "$SNAPSHOT_URL" ]; then
 
   SNAPSHOT_FILE="$BASE_DIR/snapshot.tar.lz4"
 
-  # Detect compression format from URL
+  # Detect compression format from URL and check for required tools
   if [[ "$SNAPSHOT_URL" == *.tar.lz4 ]]; then
     SNAPSHOT_FILE="$BASE_DIR/snapshot.tar.lz4"
+
+    # Check if lz4 is installed
+    if ! command -v lz4 &> /dev/null; then
+      echo "    Error: lz4 is not installed"
+      echo "    Please install it: sudo apt-get install lz4"
+      exit 1
+    fi
+
     EXTRACT_CMD="lz4 -dc \"$SNAPSHOT_FILE\" | tar xf - -C \"$DATA_DIR\""
   elif [[ "$SNAPSHOT_URL" == *.tar.zst ]]; then
     SNAPSHOT_FILE="$BASE_DIR/snapshot.tar.zst"
+
+    # Check if zstd is installed
+    if ! command -v zstd &> /dev/null; then
+      echo "    Error: zstd is not installed"
+      echo "    Please install it: sudo apt-get install zstd"
+      exit 1
+    fi
+
     EXTRACT_CMD="zstd -dc \"$SNAPSHOT_FILE\" | tar xf - -C \"$DATA_DIR\""
   elif [[ "$SNAPSHOT_URL" == *.tar.gz ]]; then
     SNAPSHOT_FILE="$BASE_DIR/snapshot.tar.gz"

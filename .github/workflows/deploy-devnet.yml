@@ -238,6 +238,23 @@ jobs:
           ./build/stabled version
           echo "stabled_binary=$STABLE_PATH/build/stabled" >> $GITHUB_OUTPUT
 
+      - name: Install decompression tools
+        run: |
+          echo "Installing snapshot decompression tools..."
+
+          # Update package list
+          sudo apt-get update -qq
+
+          # Install lz4 and zstd for snapshot decompression
+          sudo apt-get install -y -qq lz4 zstd
+
+          # Verify installations
+          echo "Installed versions:"
+          lz4 --version || echo "lz4 installation failed"
+          zstd --version || echo "zstd installation failed"
+
+          echo "Decompression tools installed successfully"
+
       - name: Provision and sync target chain
         id: export_genesis
         run: |
