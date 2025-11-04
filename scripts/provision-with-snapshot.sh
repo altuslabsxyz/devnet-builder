@@ -258,11 +258,9 @@ if pgrep -f "stabled.*--home.*$WORK_DIR" > /dev/null; then
 fi
 echo "    No conflicting processes found"
 
-# Step 3: Reset data directory
-echo "[3/7] Resetting data directory..."
-rm -rf "$DATA_DIR"
-mkdir -p "$DATA_DIR"
-echo "    Data directory reset complete"
+# Step 3: Prepare for snapshot (data will be replaced by snapshot)
+echo "[3/7] Preparing for snapshot download..."
+echo "    Data directory will be replaced by snapshot"
 
 # Step 4: Download genesis if RPC endpoint provided
 if [ -n "$RPC_ENDPOINT" ]; then
@@ -289,6 +287,10 @@ fi
 if [ "$SKIP_DOWNLOAD" = false ] && [ -n "$SNAPSHOT_URL" ]; then
   echo "[5/7] Downloading and extracting snapshot..."
 
+  # Remove existing data directory before extracting snapshot
+  echo "    Removing existing data directory..."
+  rm -rf "$DATA_DIR"
+
   SNAPSHOT_FILE="$BASE_DIR/snapshot.tar.lz4"
 
   # Detect compression format from URL and check for required tools
@@ -302,7 +304,7 @@ if [ "$SKIP_DOWNLOAD" = false ] && [ -n "$SNAPSHOT_URL" ]; then
       exit 1
     fi
 
-    EXTRACT_CMD="lz4 -dc \"$SNAPSHOT_FILE\" | tar xf - -C \"$DATA_DIR\""
+    EXTRACT_CMD="lz4 -dc \"$SNAPSHOT_FILE\" | tar xf - -C \"$WORK_DIR\""
   elif [[ "$SNAPSHOT_URL" == *.tar.zst ]]; then
     SNAPSHOT_FILE="$BASE_DIR/snapshot.tar.zst"
 
@@ -313,13 +315,13 @@ if [ "$SKIP_DOWNLOAD" = false ] && [ -n "$SNAPSHOT_URL" ]; then
       exit 1
     fi
 
-    EXTRACT_CMD="zstd -dc \"$SNAPSHOT_FILE\" | tar xf - -C \"$DATA_DIR\""
+    EXTRACT_CMD="zstd -dc \"$SNAPSHOT_FILE\" | tar xf - -C \"$WORK_DIR\""
   elif [[ "$SNAPSHOT_URL" == *.tar.gz ]]; then
     SNAPSHOT_FILE="$BASE_DIR/snapshot.tar.gz"
-    EXTRACT_CMD="tar xzf \"$SNAPSHOT_FILE\" -C \"$DATA_DIR\""
+    EXTRACT_CMD="tar xzf \"$SNAPSHOT_FILE\" -C \"$WORK_DIR\""
   elif [[ "$SNAPSHOT_URL" == *.tar ]]; then
     SNAPSHOT_FILE="$BASE_DIR/snapshot.tar"
-    EXTRACT_CMD="tar xf \"$SNAPSHOT_FILE\" -C \"$DATA_DIR\""
+    EXTRACT_CMD="tar xf \"$SNAPSHOT_FILE\" -C \"$WORK_DIR\""
   else
     echo "    Error: Unsupported snapshot format. Supported: .tar, .tar.gz, .tar.lz4, .tar.zst"
     exit 1
