@@ -200,27 +200,27 @@ jobs:
           echo "Building stabled binary from: $STABLE_PATH"
           cd "$STABLE_PATH"
 
-          # Remove go.work file to avoid conflicting replace directives
-          if [ -f "go.work" ]; then
-            echo "Found go.work file, removing to avoid module conflicts..."
-            rm -f go.work
-            echo "go.work removed"
-          else
-            echo "No go.work file found"
-          fi
+          # Disable go.work completely to avoid workspace conflicts
+          export GOWORK=off
+          echo "GOWORK=off set to disable workspace mode"
 
-          # Verify go.work is removed
+          # Remove go.work and go.work.sum files if they exist
           if [ -f "go.work" ]; then
-            echo "Error: Failed to remove go.work file"
-            exit 1
+            echo "Removing go.work file..."
+            rm -f go.work
+          fi
+          if [ -f "go.work.sum" ]; then
+            echo "Removing go.work.sum file..."
+            rm -f go.work.sum
           fi
 
           # Clean previous builds
+          echo "Cleaning previous builds..."
           make clean || true
 
           # Build stabled with proper environment variables
-          echo "Running make build..."
-          GOARCH=amd64 make build
+          echo "Running make build with GOWORK=off..."
+          GOARCH=amd64 GOWORK=off make build
 
           # Verify build output
           if [ ! -f "./build/stabled" ]; then
