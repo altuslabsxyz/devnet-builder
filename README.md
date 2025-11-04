@@ -150,8 +150,15 @@ The workflow automatically provisions a fresh chain using snapshot or state-sync
 #### Parameters
 
 - `stable_tag`: Stable repository tag version (choice: `v0.8.1-testnet`, `v0.8.0-testnet`)
-- `target_chain_id`: Target chain-id to export (choice: `stabletestnet_2201-1`)
-- `target_rpc_endpoint`: RPC endpoint for downloading genesis (default: `http://peer2.testnet.stable.xyz:26657/`)
+- `fork_target`: Fork target network (choice: `testnet`, `mainnet`)
+  - **testnet**:
+    - Chain ID: `stabletestnet_2201-1`
+    - RPC: `https://cosmos-rpc.testnet.stable.xyz/`
+    - Peers: `128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656`
+  - **mainnet**:
+    - Chain ID: `stable_988-1`
+    - RPC: `https://cosmos-rpc-internal.stable.xyz/`
+    - Peers: `39fef24240d80e2cd5bdcbe101298c36f0d83fa1@57.129.53.87:26656`
 - `snapshot_url`: Snapshot URL to download (supports .tar, .tar.gz, .tar.lz4)
   - **If provided**: Uses snapshot-based sync (state-sync DISABLED)
   - **If empty**: Uses state-sync method (legacy)
@@ -159,12 +166,13 @@ The workflow automatically provisions a fresh chain using snapshot or state-sync
 - `accounts`: Number of dummy accounts to create (default: 10)
 - `account_balance`: Balance for each account (optional, uses devnet-builder defaults if not provided)
 - `validator_balance`: Balance for each validator (optional, uses devnet-builder defaults if not provided)
-- `validator_stake`: Stake amount for each validator in astable (optional, uses devnet-builder defaults if not provided)
 - `devnet_chain_id`: Devnet Chain ID (optional, defaults to from genesis)
-- `persistent_peers`: Persistent peers for P2P (default: `128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656`)
+- `persistent_peers`: Persistent peers for P2P (optional, overrides default peers for fork_target)
 
 **Note:**
-- If balance and stake parameters are not provided, devnet-builder will use sensible defaults (5000 consensus power worth of astable for balances, 100 consensus power for stake)
+- If balance parameters are not provided, devnet-builder will use sensible defaults (5000 consensus power worth of astable for balances, 100 consensus power for stake)
+- **Target chain-id, RPC endpoint, and persistent peers are automatically determined by `fork_target` parameter**
+- You can override the default persistent peers by providing the `persistent_peers` parameter
 - **Sync method is automatically determined by `snapshot_url` parameter**:
   - Provide `snapshot_url` → Snapshot-based sync (recommended, faster, state-sync disabled)
   - Leave `snapshot_url` empty → State-sync method (legacy)
@@ -195,13 +203,15 @@ The workflow performs the following steps:
 3. Click "Run workflow"
 4. Fill in the parameters:
    - `stable_tag`: Version to use (e.g., `v0.8.1-testnet`)
-   - `target_chain_id`: Chain to export (e.g., `stabletestnet_2201-1`)
-   - `target_rpc_endpoint`: RPC endpoint for genesis download
+   - `fork_target`: Select network to fork (`testnet` or `mainnet`)
+     - **testnet**: Forks from stabletestnet_2201-1
+     - **mainnet**: Forks from stable_988-1
    - `snapshot_url`: **RECOMMENDED** - Provide snapshot URL for faster sync, or leave empty to use state-sync
    - Leave other parameters as default or customize as needed
 5. Click "Run workflow"
 
 The workflow will:
+- Automatically determine chain-id and RPC endpoint based on fork target
 - Provision and sync the target chain (using snapshot or state-sync)
 - Export its genesis
 - Build a local devnet

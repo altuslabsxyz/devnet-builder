@@ -1,6 +1,6 @@
 name: Deploy Devnet
 
-run-name: Devnet-${{ inputs.target_chain_id }}-${{ github.run_number }}
+run-name: Devnet-${{ inputs.fork_target }}-${{ github.run_number }}
 
 on:
   workflow_dispatch:
@@ -13,18 +13,14 @@ on:
           - v0.8.1-testnet
           - v0.8.0-testnet
         default: 'v0.8.1-testnet'
-      target_chain_id:
-        description: 'Target chain-id to export'
+      fork_target:
+        description: 'Fork target network'
         required: true
         type: choice
         options:
-          - stabletestnet_2201-1
-        default: 'stabletestnet_2201-1'
-      target_rpc_endpoint:
-        description: 'Target chain RPC endpoint for genesis download'
-        required: false
-        type: string
-        default: 'http://peer2.testnet.stable.xyz:26657/'
+          - testnet
+          - mainnet
+        default: 'testnet'
       snapshot_url:
         description: 'Snapshot URL to download (supports .tar, .tar.gz, .tar.lz4). If provided, snapshot sync is used; otherwise state-sync is used'
         required: false
@@ -50,29 +46,24 @@ on:
         required: false
         type: string
         default: ''
-      validator_stake:
-        description: 'Stake amount for each validator in astable (optional)'
-        required: false
-        type: string
-        default: ''
       devnet_chain_id:
         description: 'Devnet Chain ID (optional, defaults to from genesis)'
         required: false
         type: string
         default: ''
       persistent_peers:
-        description: 'Persistent peers (e.g., "nodeID@host:port,nodeID@host:port")'
+        description: 'Persistent peers (optional, overrides default peers for fork_target)'
         required: false
         type: string
-        default: '128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656'
+        default: ''
 
 jobs:
+  
   deploy-devnet:
     runs-on: [self-hosted, ubuntu]
 
     env:
-      TARGET_CHAIN_ID: ${{ inputs.target_chain_id }}
-      TARGET_RPC_ENDPOINT: ${{ inputs.target_rpc_endpoint }}
+      FORK_TARGET: ${{ inputs.fork_target }}
       SNAPSHOT_URL: ${{ inputs.snapshot_url }}
       PERSISTENT_PEERS: ${{ inputs.persistent_peers }}
       STABLE_TAG: ${{ inputs.stable_tag }}
@@ -80,7 +71,6 @@ jobs:
       ACCOUNTS: ${{ inputs.accounts }}
       ACCOUNT_BALANCE: ${{ inputs.account_balance }}
       VALIDATOR_BALANCE: ${{ inputs.validator_balance }}
-      VALIDATOR_STAKE: ${{ inputs.validator_stake }}
       DEVNET_CHAIN_ID: ${{ inputs.devnet_chain_id }}
       DEVNET_OUTPUT_DIR: './devnet'
       DEVNET_BASE_DIR: '/data/.devnet'
@@ -255,11 +245,34 @@ jobs:
           STABLED_BINARY="${{ steps.build_stabled.outputs.stabled_binary }}"
           GENESIS_EXPORT_PATH="${GITHUB_WORKSPACE}/genesis-export.json"
 
-          echo "Provisioning and syncing target chain..."
+          # Determine target chain-id, RPC endpoint, and persistent peers based on fork target
+          if [ "$FORK_TARGET" = "mainnet" ]; then
+            TARGET_CHAIN_ID="stable_988-1"
+            TARGET_RPC_ENDPOINT="https://cosmos-rpc-internal.stable.xyz/"
+            DEFAULT_PERSISTENT_PEERS="39fef24240d80e2cd5bdcbe101298c36f0d83fa1@57.129.53.87:26656"
+          else
+            TARGET_CHAIN_ID="stabletestnet_2201-1"
+            TARGET_RPC_ENDPOINT="https://cosmos-rpc.testnet.stable.xyz/"
+            DEFAULT_PERSISTENT_PEERS="128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656"
+          fi
+
+          # Use custom persistent peers if provided, otherwise use default for fork target
+          if [ -n "$PERSISTENT_PEERS" ]; then
+            FINAL_PERSISTENT_PEERS="$PERSISTENT_PEERS"
+            echo "Using custom persistent peers"
+          else
+            FINAL_PERSISTENT_PEERS="$DEFAULT_PERSISTENT_PEERS"
+            echo "Using default persistent peers for $FORK_TARGET"
+          fi
+
+          echo "=========================================="
+          echo "Fork Target: $FORK_TARGET"
           echo "Target Chain ID: $TARGET_CHAIN_ID"
           echo "Target RPC Endpoint: $TARGET_RPC_ENDPOINT"
+          echo "Persistent Peers: $FINAL_PERSISTENT_PEERS"
           echo "Snapshot URL: $SNAPSHOT_URL"
           echo "Using stabled binary: $STABLED_BINARY"
+          echo "=========================================="
 
           # Determine which script to use based on SNAPSHOT_URL
           if [ -n "$SNAPSHOT_URL" ]; then
@@ -285,9 +298,9 @@ jobs:
               PROVISION_CMD="$PROVISION_CMD --rpc-endpoint \"$TARGET_RPC_ENDPOINT\""
             fi
 
-            # Add persistent peers if provided
-            if [ -n "$PERSISTENT_PEERS" ]; then
-              PROVISION_CMD="$PROVISION_CMD --persistent-peers \"$PERSISTENT_PEERS\""
+            # Add persistent peers (use final determined peers)
+            if [ -n "$FINAL_PERSISTENT_PEERS" ]; then
+              PROVISION_CMD="$PROVISION_CMD --persistent-peers \"$FINAL_PERSISTENT_PEERS\""
             fi
           else
             echo "=========================================="
@@ -307,9 +320,9 @@ jobs:
               --base-dir \"/data\" \
               --output-file \"$GENESIS_EXPORT_PATH\""
 
-            # Add persistent peers if provided
-            if [ -n "$PERSISTENT_PEERS" ]; then
-              PROVISION_CMD="$PROVISION_CMD --persistent-peers \"$PERSISTENT_PEERS\""
+            # Add persistent peers (use final determined peers)
+            if [ -n "$FINAL_PERSISTENT_PEERS" ]; then
+              PROVISION_CMD="$PROVISION_CMD --persistent-peers \"$FINAL_PERSISTENT_PEERS\""
             fi
           fi
 
@@ -356,11 +369,6 @@ jobs:
           else
             echo "Validator balance: (using default)"
           fi
-          if [ -n "$VALIDATOR_STAKE" ]; then
-            echo "Validator stake: $VALIDATOR_STAKE"
-          else
-            echo "Validator stake: (using default)"
-          fi
           echo "Devnet Chain ID: $DEVNET_CHAIN_ID"
           echo "Output directory: $DEVNET_OUTPUT_DIR"
 
@@ -399,10 +407,6 @@ jobs:
 
           if [ -n "$VALIDATOR_BALANCE" ]; then
             BUILD_CMD="$BUILD_CMD --validator-balance \"$VALIDATOR_BALANCE\""
-          fi
-
-          if [ -n "$VALIDATOR_STAKE" ]; then
-            BUILD_CMD="$BUILD_CMD --validator-stake \"$VALIDATOR_STAKE\""
           fi
 
           # Add output directory
@@ -1029,12 +1033,32 @@ jobs:
         run: |
           ACTUAL_CHAIN_ID="${{ steps.build_devnet.outputs.actual_chain_id }}"
 
+          # Determine target chain-id, RPC endpoint, and persistent peers based on fork target
+          if [ "$FORK_TARGET" = "mainnet" ]; then
+            TARGET_CHAIN_ID="stable_988-1"
+            TARGET_RPC_ENDPOINT="https://cosmos-rpc-internal.stable.xyz/"
+            DEFAULT_PERSISTENT_PEERS="39fef24240d80e2cd5bdcbe101298c36f0d83fa1@57.129.53.87:26656"
+          else
+            TARGET_CHAIN_ID="stabletestnet_2201-1"
+            TARGET_RPC_ENDPOINT="https://cosmos-rpc.testnet.stable.xyz/"
+            DEFAULT_PERSISTENT_PEERS="128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656"
+          fi
+
+          # Use custom persistent peers if provided
+          if [ -n "$PERSISTENT_PEERS" ]; then
+            FINAL_PERSISTENT_PEERS="$PERSISTENT_PEERS"
+          else
+            FINAL_PERSISTENT_PEERS="$DEFAULT_PERSISTENT_PEERS"
+          fi
+
           echo ""
           echo "=========================================="
           echo "Devnet Deployment Summary"
           echo "=========================================="
+          echo "Fork Target: $FORK_TARGET"
           echo "Target Chain ID: $TARGET_CHAIN_ID"
           echo "Target RPC Endpoint: $TARGET_RPC_ENDPOINT"
+          echo "Persistent Peers: $FINAL_PERSISTENT_PEERS"
           echo "Stable Tag: ${{ steps.get_tag.outputs.tag }}"
           echo "Devnet Chain ID: $ACTUAL_CHAIN_ID"
           echo "Validators: $VALIDATORS"
