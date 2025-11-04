@@ -225,14 +225,24 @@ jobs:
           echo "$RELEASE_INFO" | jq -r '.assets[].name'
 
           # Find the correct asset based on fork_target
+          # Support both naming conventions:
+          # - v1.0.0: stabled-1.0.0-linux-amd64-mainnet.tar.gz
+          # - v0.8.1: stabled-0.8.1-testnet-linux-amd64.tar.gz
           if [ "$FORK_TARGET" = "mainnet" ]; then
-            ASSET_PATTERN="stabled.*linux.*amd64.*mainnet.*tar.gz"
-          else
-            ASSET_PATTERN="stabled.*linux.*amd64.*testnet.*tar.gz"
-          fi
+            echo "Searching for mainnet asset..."
+            ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("stabled.*mainnet.*linux.*amd64.*tar\\.gz")) | .name' | head -1)
 
-          echo "Searching for asset matching pattern: $ASSET_PATTERN"
-          ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r ".assets[] | select(.name | test(\"$ASSET_PATTERN\")) | .name" | head -1)
+            if [ -z "$ASSET_NAME" ]; then
+              ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("stabled.*linux.*amd64.*mainnet.*tar\\.gz")) | .name' | head -1)
+            fi
+          else
+            echo "Searching for testnet asset..."
+            ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("stabled.*testnet.*linux.*amd64.*tar\\.gz")) | .name' | head -1)
+
+            if [ -z "$ASSET_NAME" ]; then
+              ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("stabled.*linux.*amd64.*testnet.*tar\\.gz")) | .name' | head -1)
+            fi
+          fi
 
           if [ -z "$ASSET_NAME" ]; then
             echo "Error: No stabled binary found for linux-amd64 $FORK_TARGET"
