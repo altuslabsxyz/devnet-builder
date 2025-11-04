@@ -213,18 +213,27 @@ if [ -f "$CONFIG_FILE" ]; then
   fi
 fi
 
-# Update app.toml - disable all "enable = true" settings
+# Update app.toml - disable all "enable = true" settings and set evm-chain-id
 if [ -f "$APP_CONFIG_FILE" ]; then
   # Backup original app config
   cp "$APP_CONFIG_FILE" "${APP_CONFIG_FILE}.bak"
 
+  # Extract EVM chain ID from CHAIN_ID
+  # stabletestnet_2201-1 -> 2201
+  # stable_988-1 -> 988
+  EVM_CHAIN_ID=$(echo "$CHAIN_ID" | sed -E 's/.*_([0-9]+)-.*/\1/')
+  echo "    Extracted EVM chain ID: $EVM_CHAIN_ID from chain ID: $CHAIN_ID"
+
   # Disable all enable = true settings
   sed -i.tmp 's/enable = true/enable = false/g' "$APP_CONFIG_FILE"
+
+  # Set evm-chain-id
+  sed -i.tmp "s/^evm-chain-id = .*/evm-chain-id = $EVM_CHAIN_ID/" "$APP_CONFIG_FILE"
 
   # Remove sed backup files
   rm -f "${APP_CONFIG_FILE}.tmp"
 
-  echo "    Updated app.toml settings"
+  echo "    Updated app.toml settings (evm-chain-id: $EVM_CHAIN_ID)"
 fi
 
 echo "    Configuration complete"

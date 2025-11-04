@@ -192,58 +192,122 @@ jobs:
 
           echo "stable_path=$STABLE_LINK_PATH" >> $GITHUB_OUTPUT
 
-      - name: Build stabled binary
-        id: build_stabled
+      - name: Download stabled binary from release
+        id: download_stabled
         run: |
+          STABLE_TAG="${{ steps.get_tag.outputs.tag }}"
           STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
+          GH_TOKEN="${{ secrets.GH_PAT }}"
+          FORK_TARGET="${{ inputs.fork_target }}"
 
-          echo "Building stabled binary from: $STABLE_PATH"
-          cd "$STABLE_PATH"
+          echo "Downloading stabled binary from GitHub release..."
+          echo "Tag: $STABLE_TAG"
+          echo "Fork target: $FORK_TARGET"
+          echo "Stable path: $STABLE_PATH"
 
-          # Disable go.work completely to avoid workspace conflicts
-          export GOWORK=off
-          echo "GOWORK=off set to disable workspace mode"
+          # Create build directory
+          mkdir -p "$STABLE_PATH/build"
 
-          # Remove go.work and go.work.sum files if they exist
-          if [ -f "go.work" ]; then
-            echo "Removing go.work file..."
-            rm -f go.work
-          fi
-          if [ -f "go.work.sum" ]; then
-            echo "Removing go.work.sum file..."
-            rm -f go.work.sum
-          fi
+          # First, get the release information to find the correct asset
+          echo "Fetching release information for ${STABLE_TAG}..."
+          RELEASE_INFO=$(curl -s -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/stablelabs/stable/releases/tags/${STABLE_TAG}")
 
-          # Remove go.sum to force re-download with correct versions
-          if [ -f "go.sum" ]; then
-            echo "Removing go.sum to force dependency refresh..."
-            rm -f go.sum
-          fi
-
-          # Tidy go.mod and download dependencies with replace directives applied
-          echo "Running go mod tidy with GOWORK=off..."
-          GOWORK=off go mod tidy
-
-          echo "Downloading dependencies with GOWORK=off..."
-          GOWORK=off go mod download
-
-          # Clean previous builds
-          echo "Cleaning previous builds..."
-          make clean || true
-
-          # Build stabled with proper environment variables
-          echo "Running make build with GOWORK=off..."
-          GOARCH=amd64 GOWORK=off make build
-
-          # Verify build output
-          if [ ! -f "./build/stabled" ]; then
-            echo "Error: stabled binary not found at ./build/stabled"
-            ls -la ./build/ || echo "Build directory not found"
+          # Check if release exists
+          if echo "$RELEASE_INFO" | jq -e '.message' > /dev/null 2>&1; then
+            echo "Error: Release ${STABLE_TAG} not found or inaccessible"
+            echo "$RELEASE_INFO" | jq -r '.message'
             exit 1
           fi
 
-          echo "Build successful"
-          ./build/stabled version
+          # List available assets
+          echo "Available assets:"
+          echo "$RELEASE_INFO" | jq -r '.assets[].name'
+
+          # Find the correct asset based on fork_target
+          if [ "$FORK_TARGET" = "mainnet" ]; then
+            ASSET_PATTERN="stabled.*linux.*amd64.*mainnet.*tar.gz"
+          else
+            ASSET_PATTERN="stabled.*linux.*amd64.*testnet.*tar.gz"
+          fi
+
+          echo "Searching for asset matching pattern: $ASSET_PATTERN"
+          ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r ".assets[] | select(.name | test(\"$ASSET_PATTERN\")) | .name" | head -1)
+
+          if [ -z "$ASSET_NAME" ]; then
+            echo "Error: No stabled binary found for linux-amd64 $FORK_TARGET"
+            echo "Available assets:"
+            echo "$RELEASE_INFO" | jq -r '.assets[].name'
+            exit 1
+          fi
+
+          echo "Found asset: $ASSET_NAME"
+
+          # Get the asset download URL
+          ASSET_URL=$(echo "$RELEASE_INFO" | jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url")
+
+          echo "Downloading from: $ASSET_URL"
+
+          # Download the asset with authentication
+          curl -L -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/octet-stream" \
+            -o "$STABLE_PATH/build/$ASSET_NAME" \
+            "$ASSET_URL"
+
+          # Extract tar.gz
+          echo "Extracting $ASSET_NAME..."
+          cd "$STABLE_PATH/build"
+          tar -xzf "$ASSET_NAME" -v
+
+          echo "Extracted files:"
+          ls -lah
+
+          # Find the stabled binary in extracted files
+          echo "Searching for stabled binary..."
+          STABLED_BINARY=$(find . -name "stabled" -type f | head -1)
+
+          if [ -z "$STABLED_BINARY" ]; then
+            echo "Error: stabled binary not found in extracted files"
+            echo "All files in build directory:"
+            find . -type f
+            exit 1
+          fi
+
+          echo "Found stabled at: $STABLED_BINARY"
+
+          # Check file type
+          echo "File type:"
+          file "$STABLED_BINARY"
+
+          # Move binary to expected location if not already there
+          TARGET_PATH="$STABLE_PATH/build/stabled"
+          if [ "$STABLED_BINARY" != "./stabled" ] && [ "$STABLED_BINARY" != "stabled" ]; then
+            echo "Moving $STABLED_BINARY to $TARGET_PATH"
+            mv "$STABLED_BINARY" "$TARGET_PATH"
+          else
+            echo "Binary already in correct location (./stabled)"
+          fi
+
+          # Clean up tar.gz and extracted directories
+          echo "Cleaning up..."
+          rm -f "$ASSET_NAME"
+          find . -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} \;
+
+          # Remove extracted documentation files
+          rm -f CHANGELOG.md LICENSE README.md
+
+          # Make binary executable
+          chmod +x "$STABLE_PATH/build/stabled"
+
+          # Verify binary
+          if [ ! -f "$STABLE_PATH/build/stabled" ]; then
+            echo "Error: stabled binary not found at $STABLE_PATH/build/stabled"
+            exit 1
+          fi
+
+          echo "Binary downloaded, extracted, and verified"
+          "$STABLE_PATH/build/stabled" version || echo "Version check skipped"
+
           echo "stabled_binary=$STABLE_PATH/build/stabled" >> $GITHUB_OUTPUT
 
       - name: Install decompression tools
@@ -267,7 +331,7 @@ jobs:
         id: export_genesis
         run: |
           STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
-          STABLED_BINARY="${{ steps.build_stabled.outputs.stabled_binary }}"
+          STABLED_BINARY="${{ steps.download_stabled.outputs.stabled_binary }}"
           GENESIS_EXPORT_PATH="${GITHUB_WORKSPACE}/genesis-export.json"
 
           # Determine target chain-id, RPC endpoint, persistent peers, and snapshot URL based on fork target
@@ -468,18 +532,31 @@ jobs:
         run: |
           echo "Deploying devnet to $DEVNET_BASE_DIR..."
 
-          # Create base directory if not exists
-          sudo mkdir -p "$DEVNET_BASE_DIR"
-          sudo chown -R $(whoami):$(whoami) "$DEVNET_BASE_DIR"
+          # Remove old backup directories (older than 7 days)
+          echo "Removing old backup directories (older than 7 days)..."
+          DEVNET_PARENT_DIR=$(dirname "$DEVNET_BASE_DIR")
+          DEVNET_BASE_NAME=$(basename "$DEVNET_BASE_DIR")
+          OLD_BACKUPS=$(sudo find "$DEVNET_PARENT_DIR" -maxdepth 1 -type d -name "${DEVNET_BASE_NAME}_backup_*" -mtime +7 2>/dev/null || true)
+
+          if [ -n "$OLD_BACKUPS" ]; then
+            echo "Found old backups to remove:"
+            echo "$OLD_BACKUPS"
+            echo "$OLD_BACKUPS" | xargs -I {} sudo rm -rf {}
+          else
+            echo "No old backups found"
+          fi
 
           # Backup existing devnet if exists
-          if [ -d "$DEVNET_BASE_DIR" ] && [ "$(ls -A $DEVNET_BASE_DIR)" ]; then
+          if [ -d "$DEVNET_BASE_DIR" ] && [ "$(ls -A $DEVNET_BASE_DIR 2>/dev/null)" ]; then
             BACKUP_DIR="${DEVNET_BASE_DIR}_backup_$(date +%Y%m%d_%H%M%S)"
             echo "Backing up existing devnet to: $BACKUP_DIR"
             sudo mv "$DEVNET_BASE_DIR" "$BACKUP_DIR"
-            sudo mkdir -p "$DEVNET_BASE_DIR"
-            sudo chown -R $(whoami):$(whoami) "$DEVNET_BASE_DIR"
           fi
+
+          # Create fresh base directory
+          echo "Creating fresh devnet directory..."
+          sudo mkdir -p "$DEVNET_BASE_DIR"
+          sudo chown -R $(whoami):$(whoami) "$DEVNET_BASE_DIR"
 
           # Copy devnet files to system directory
           echo "Copying devnet files to $DEVNET_BASE_DIR..."
@@ -901,7 +978,7 @@ jobs:
       - name: Export account private keys
         id: export_private_keys
         run: |
-          STABLED_BINARY="${{ steps.build_stabled.outputs.stabled_binary }}"
+          STABLED_BINARY="${{ steps.download_stabled.outputs.stabled_binary }}"
           ACCOUNTS_DIR="$DEVNET_BASE_DIR/accounts"
 
           echo "Exporting account private keys..."
