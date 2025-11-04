@@ -365,7 +365,7 @@ func (g *DevnetGenerator) updateGovState(appState map[string]json.RawMessage) er
 		return fmt.Errorf("failed to unmarshal gov state: %w", err)
 	}
 
-	votingPeriod := 5 * time.Minute
+	votingPeriod := 6 * time.Minute
 	govState.Params.VotingPeriod = &votingPeriod
 
 	appState[govtypes.ModuleName] = g.cdc.MustMarshalJSON(&govState)
