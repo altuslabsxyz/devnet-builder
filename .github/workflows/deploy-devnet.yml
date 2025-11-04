@@ -200,14 +200,23 @@ jobs:
           echo "Building stabled binary from: $STABLE_PATH"
           cd "$STABLE_PATH"
 
-          # Clean previous builds
-          make clean || true
-
           # Remove go.work file to avoid conflicting replace directives
           if [ -f "go.work" ]; then
-            echo "Removing go.work file to avoid module conflicts..."
+            echo "Found go.work file, removing to avoid module conflicts..."
             rm -f go.work
+            echo "go.work removed"
+          else
+            echo "No go.work file found"
           fi
+
+          # Verify go.work is removed
+          if [ -f "go.work" ]; then
+            echo "Error: Failed to remove go.work file"
+            exit 1
+          fi
+
+          # Clean previous builds
+          make clean || true
 
           # Build stabled with proper environment variables
           echo "Running make build..."
