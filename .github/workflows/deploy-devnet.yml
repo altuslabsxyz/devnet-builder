@@ -197,6 +197,7 @@ jobs:
         run: |
           STABLE_TAG="${{ steps.get_tag.outputs.tag }}"
           STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
+          GH_TOKEN="${{ secrets.GH_PAT }}"
 
           echo "Downloading stabled binary from GitHub release..."
           echo "Tag: $STABLE_TAG"
@@ -205,29 +206,44 @@ jobs:
           # Create build directory
           mkdir -p "$STABLE_PATH/build"
 
-          # Download binary from GitHub release
-          RELEASE_URL="https://github.com/stablelabs/stable/releases/download/${STABLE_TAG}/stabled-linux-amd64"
-          echo "Downloading from: $RELEASE_URL"
+          # First, get the release information to find the correct asset
+          echo "Fetching release information for ${STABLE_TAG}..."
+          RELEASE_INFO=$(curl -s -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/stablelabs/stable/releases/tags/${STABLE_TAG}")
 
-          if curl -L --fail -o "$STABLE_PATH/build/stabled" "$RELEASE_URL"; then
-            echo "Binary downloaded successfully"
-          else
-            echo "Error: Failed to download binary from release"
-            echo "Trying alternative naming convention..."
-
-            # Try alternative naming: stabled_linux_amd64
-            RELEASE_URL="https://github.com/stablelabs/stable/releases/download/${STABLE_TAG}/stabled_linux_amd64"
-            echo "Downloading from: $RELEASE_URL"
-
-            if curl -L --fail -o "$STABLE_PATH/build/stabled" "$RELEASE_URL"; then
-              echo "Binary downloaded successfully (alternative naming)"
-            else
-              echo "Error: Failed to download binary with both naming conventions"
-              echo "Available assets for ${STABLE_TAG}:"
-              curl -s "https://api.github.com/repos/stablelabs/stable/releases/tags/${STABLE_TAG}" | jq -r '.assets[].name' || echo "Failed to fetch release info"
-              exit 1
-            fi
+          # Check if release exists
+          if echo "$RELEASE_INFO" | jq -e '.message' > /dev/null 2>&1; then
+            echo "Error: Release ${STABLE_TAG} not found or inaccessible"
+            echo "$RELEASE_INFO" | jq -r '.message'
+            exit 1
           fi
+
+          # List available assets
+          echo "Available assets:"
+          echo "$RELEASE_INFO" | jq -r '.assets[].name'
+
+          # Try to find the correct asset
+          ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("stabled.*linux.*amd64")) | .name' | head -1)
+
+          if [ -z "$ASSET_NAME" ]; then
+            echo "Error: No stabled binary found for linux-amd64"
+            echo "Available assets:"
+            echo "$RELEASE_INFO" | jq -r '.assets[].name'
+            exit 1
+          fi
+
+          echo "Found asset: $ASSET_NAME"
+
+          # Get the asset download URL
+          ASSET_URL=$(echo "$RELEASE_INFO" | jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url")
+
+          echo "Downloading from: $ASSET_URL"
+
+          # Download the asset with authentication
+          curl -L -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/octet-stream" \
+            -o "$STABLE_PATH/build/stabled" \
+            "$ASSET_URL"
 
           # Make binary executable
           chmod +x "$STABLE_PATH/build/stabled"
