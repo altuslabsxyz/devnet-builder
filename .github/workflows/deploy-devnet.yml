@@ -5,18 +5,8 @@ run-name: Devnet-${{ inputs.fork_target }}-${{ github.run_number }}
 on:
   workflow_dispatch:
     inputs:
-      stable_tag:
-        description: 'Stable repository tag version'
-        required: true
-        type: choice
-        options:
-          - v1.1.0
-          - v1.0.0
-          - v0.8.1-testnet
-          - v0.8.0-testnet
-        default: 'v0.8.1-testnet'
       fork_target:
-        description: 'Fork target network'
+        description: 'Fork target network (auto-selects stable version)'
         required: true
         type: choice
         options:
@@ -51,7 +41,6 @@ jobs:
 
     env:
       FORK_TARGET: ${{ inputs.fork_target }}
-      STABLE_TAG: ${{ inputs.stable_tag }}
       VALIDATORS: ${{ inputs.validators }}
       ACCOUNTS: ${{ inputs.accounts }}
       ACCOUNT_BALANCE: ${{ inputs.account_balance }}
@@ -66,11 +55,18 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Get current tag version
+      - name: Determine stable tag from fork target
         id: get_tag
         run: |
-          TAG="${{ env.STABLE_TAG }}"
-          echo "Using provided tag: $TAG"
+          # Auto-determine stable tag based on fork target
+          if [ "$FORK_TARGET" = "mainnet" ]; then
+            TAG="v1.0.0"
+          else
+            TAG="v0.8.1-testnet"
+          fi
+
+          echo "Fork target: $FORK_TARGET"
+          echo "Auto-selected stable tag: $TAG"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "STABLE_TAG=$TAG" >> $GITHUB_ENV
 

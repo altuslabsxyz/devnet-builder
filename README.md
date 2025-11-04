@@ -151,14 +151,15 @@ The workflow automatically provisions a fresh chain using snapshot-based sync an
 
 #### Parameters
 
-- `stable_tag`: Stable repository tag version (choice: `v1.1.0`, `v1.0.0`, `v0.8.1-testnet`, `v0.8.0-testnet`)
 - `fork_target`: Fork target network (choice: `testnet`, `mainnet`)
   - **testnet**:
+    - Stable Tag: `v0.8.1-testnet`
     - Chain ID: `stabletestnet_2201-1`
     - RPC: `https://cosmos-rpc.testnet.stable.xyz/`
     - Peers: `128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656`
     - Snapshot: `https://stable-snapshot.s3.eu-central-1.amazonaws.com/snapshot.tar.lz4`
   - **mainnet**:
+    - Stable Tag: `v1.0.0`
     - Chain ID: `stable_988-1`
     - RPC: `https://cosmos-rpc-internal.stable.xyz/`
     - Peers: `39fef24240d80e2cd5bdcbe101298c36f0d83fa1@57.129.53.87:26656`
@@ -170,7 +171,7 @@ The workflow automatically provisions a fresh chain using snapshot-based sync an
 
 **Note:**
 - If balance parameters are not provided, devnet-builder will use sensible defaults (5000 consensus power worth of astable for balances, 100 consensus power for stake)
-- **All configuration is automatically determined by `fork_target` parameter**: chain-id, RPC endpoint, persistent peers, and snapshot URL
+- **All configuration is automatically determined by `fork_target` parameter**: stable tag, chain-id, RPC endpoint, persistent peers, and snapshot URL
 - **Uses snapshot-based sync by default for faster provisioning** (state-sync disabled)
 
 ### Workflow Steps
@@ -199,15 +200,14 @@ The workflow performs the following steps:
 2. Select "Deploy Devnet" workflow
 3. Click "Run workflow"
 4. Fill in the parameters:
-   - `stable_tag`: Version to use (e.g., `v1.1.0`, `v0.8.1-testnet`)
    - `fork_target`: Select network to fork (`testnet` or `mainnet`)
-     - **testnet**: Forks from stabletestnet_2201-1
-     - **mainnet**: Forks from stable_988-1
+     - **testnet**: Uses v0.8.1-testnet, forks from stabletestnet_2201-1
+     - **mainnet**: Uses v1.0.0, forks from stable_988-1
    - Leave other parameters as default or customize as needed
 5. Click "Run workflow"
 
 The workflow will:
-- Automatically determine chain-id, RPC endpoint, peers, and snapshot based on fork target
+- Automatically determine stable version, chain-id, RPC endpoint, peers, and snapshot based on fork target
 - Provision and sync the target chain using snapshot
 - Export its genesis
 - Build a local devnet
