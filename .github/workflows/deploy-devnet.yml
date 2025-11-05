@@ -62,7 +62,7 @@ jobs:
           if [ "$FORK_TARGET" = "mainnet" ]; then
             TAG="v1.0.0"
           else
-            TAG="v0.8.1-testnet"
+            TAG="v1.1.0"
           fi
 
           echo "Fork target: $FORK_TARGET"
