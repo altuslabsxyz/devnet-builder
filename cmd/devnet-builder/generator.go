@@ -77,11 +77,11 @@ func NewDevnetGenerator(config *DevnetConfig, logger log.Logger) *DevnetGenerato
 	tempApp := app.NewApp(
 		appLogger,
 		db,
-		nil,                      // traceStore
-		false,                    // loadLatest
-		appOpts,                  // appOpts
-		appcfg.TestnetEVMChainID, // evmChainID
-		appcfg.EvmAppOptions,     // evmAppOptions
+		nil,                   // traceStore
+		false,                 // loadLatest
+		appOpts,               // appOpts
+		appcfg.GetEVMChainID(), // evmChainID
+		appcfg.EvmAppOptions,  // evmAppOptions
 	)
 
 	return &DevnetGenerator{
