@@ -370,9 +370,9 @@ func (g *DevnetGenerator) updateEpochState(appState map[string]json.RawMessage) 
 		return fmt.Errorf("failed to unmarshal epoch state: %w", err)
 	}
 
-	for _, epoch := range epochState.Epochs {
-		if epoch.Identifier == "day" {
-			epoch.Duration = time.Second * 600
+	for i := range epochState.Epochs {
+		if epochState.Epochs[i].Identifier == "day" {
+			epochState.Epochs[i].Duration = time.Second * 600
 		}
 	}
 	appState[epochstypes.ModuleName] = g.cdc.MustMarshalJSON(&epochState)
