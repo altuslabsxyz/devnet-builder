@@ -485,6 +485,45 @@ jobs:
             CURRENT_VERSION=$(git describe --tags --exact-match 2>/dev/null || echo "unknown")
             echo "Current stable version: $CURRENT_VERSION"
 
+            # Sync replace directives from stable/go.mod to devnet-builder/go.mod
+            echo "Syncing replace directives from stable to devnet-builder..."
+            cd "$GITHUB_WORKSPACE"
+
+            # Extract replace directives from stable's go.mod
+            STABLE_EVM_REPLACE=$(grep "github.com/cosmos/evm =>" "$STABLE_PATH/go.mod" || echo "")
+            STABLE_BFT_REPLACE=$(grep "github.com/cometbft/cometbft =>" "$STABLE_PATH/go.mod" || echo "")
+            STABLE_SDK_REPLACE=$(grep "github.com/cosmos/cosmos-sdk =>" "$STABLE_PATH/go.mod" || echo "")
+            STABLE_GETH_REPLACE=$(grep "github.com/ethereum/go-ethereum =>" "$STABLE_PATH/go.mod" || echo "")
+
+            echo "Stable replace directives:"
+            echo "  EVM: $STABLE_EVM_REPLACE"
+            echo "  BFT: $STABLE_BFT_REPLACE"
+            echo "  SDK: $STABLE_SDK_REPLACE"
+            echo "  GETH: $STABLE_GETH_REPLACE"
+
+            # Update devnet-builder's go.mod with stable's replace directives
+            if [ -n "$STABLE_EVM_REPLACE" ]; then
+              sed -i.bak "/github.com\/cosmos\/evm =>/c\\	$STABLE_EVM_REPLACE" go.mod
+            fi
+            if [ -n "$STABLE_BFT_REPLACE" ]; then
+              sed -i.bak "/github.com\/cometbft\/cometbft =>/c\\	$STABLE_BFT_REPLACE" go.mod
+            fi
+            if [ -n "$STABLE_SDK_REPLACE" ]; then
+              sed -i.bak "/github.com\/cosmos\/cosmos-sdk =>/c\\	$STABLE_SDK_REPLACE" go.mod
+            fi
+            if [ -n "$STABLE_GETH_REPLACE" ]; then
+              sed -i.bak "/github.com\/ethereum\/go-ethereum =>/c\\	$STABLE_GETH_REPLACE" go.mod
+            fi
+
+            rm -f go.mod.bak
+
+            echo "Updated go.mod replace directives"
+            grep -A 4 "^replace (" go.mod | head -10
+
+            # Clean go.sum and regenerate
+            rm -f go.sum
+            GOWORK=off go mod tidy
+
             # Return to devnet-builder directory and build
             cd "$GITHUB_WORKSPACE"
             make build
