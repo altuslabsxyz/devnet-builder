@@ -12,7 +12,7 @@ require (
 	github.com/cosmos/evm v0.0.0-20250320012422-2395e5845ee9
 	github.com/fatih/color v1.17.0
 	github.com/spf13/cobra v1.9.1
-	github.com/stablelabs/stable v0.0.0
+	github.com/stablelabs/stable v1.1.0
 )
 
 require (
