@@ -24,12 +24,12 @@ on:
         type: number
         default: 10
       account_balance:
-        description: 'Balance for each account (optional, e.g., "1000000000000000000000astable,500000000000000000000agasusdt")'
+        description: 'Balance for each account (optional, e.g., "1000000000000000000000astable,500000000000000000000agusdt")'
         required: false
         type: string
         default: ''
       validator_balance:
-        description: 'Balance for each validator (optional, e.g., "1000000000000000000000astable,500000000000000000000agasusdt")'
+        description: 'Balance for each validator (optional, e.g., "1000000000000000000000astable,500000000000000000000agusdt")'
         required: false
         type: string
         default: ''

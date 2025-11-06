@@ -123,8 +123,8 @@ Once you have the exported genesis, build the devnet:
 ./build/devnet-builder build genesis-export.json \
   --validators 4 \
   --accounts 10 \
-  --account-balance "1000000000000000000000astable,500000000000000000000agasusdt" \
-  --validator-balance "1000000000000000000000astable,500000000000000000000agasusdt" \
+  --account-balance "1000000000000000000000astable,500000000000000000000agusdt" \
+  --validator-balance "1000000000000000000000astable,500000000000000000000agusdt" \
   --validator-stake "100000000000000000000" \
   --chain-id stabledevnet_2200-1 \
   --output ./devnet
@@ -283,7 +283,7 @@ Press `Ctrl+A` then `D` to detach from the screen session.
 - `--chain-id <string>`: Chain ID for devnet (optional, defaults to from genesis)
 - `--output <path>`: Output directory (default: ./devnet)
 
-**Example coin format**: `"1000000000000000000000astable,500000000000000000000agasusdt"`
+**Example coin format**: `"1000000000000000000000astable,500000000000000000000agusdt"`
 
 ### provision-with-snapshot.sh Parameters (Recommended)
 

@@ -17,11 +17,11 @@ type DevnetConfig struct {
 	NumAccounts int
 
 	// Balance for each dummy account (supports multiple denoms)
-	// Format: "1000000000000000000000astable,500000000000000000000agasusdt"
+	// Format: "1000000000000000000000astable,500000000000000000000agusdt"
 	AccountBalance sdk.Coins
 
 	// Balance for each validator account (supports multiple denoms)
-	// Format: "1000000000000000000000astable,500000000000000000000agasusdt"
+	// Format: "1000000000000000000000astable,500000000000000000000agusdt"
 	ValidatorBalance sdk.Coins
 
 	// Validator stake amount (in base denom only)

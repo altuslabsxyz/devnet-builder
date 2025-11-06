@@ -395,7 +395,7 @@ func (g *DevnetGenerator) updateBankBalances(appState map[string]json.RawMessage
 		balanceMap[balance.Address] = balance
 	}
 
-	// Add bonded pool module account balance (only astable, not agasusdt)
+	// Add bonded pool module account balance (only astable, not agusdt)
 	// This will overwrite if it already exists
 	bondedPoolAddr := authtypes.NewModuleAddress(stakingtypes.BondedPoolName)
 	balanceMap[bondedPoolAddr.String()] = banktypes.Balance{

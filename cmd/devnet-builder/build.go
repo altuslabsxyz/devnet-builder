@@ -53,8 +53,8 @@ The output structure will be:
 	var validatorBalanceStr string
 	var validatorStakeStr string
 
-	cmd.Flags().StringVar(&accountBalanceStr, "account-balance", "1000000000000000000000astable,500000000000000000000agasusdt", "Balance for each account (supports multiple denoms, e.g. \"1000astable,500agasusdt\")")
-	cmd.Flags().StringVar(&validatorBalanceStr, "validator-balance", "1000000000000000000000astable,500000000000000000000agasusdt", "Balance for each validator (supports multiple denoms, e.g. \"1000astable,500agasusdt\")")
+	cmd.Flags().StringVar(&accountBalanceStr, "account-balance", "1000000000000000000000astable,500000000000000000000agusdt", "Balance for each account (supports multiple denoms, e.g. \"1000astable,500agusdt\")")
+	cmd.Flags().StringVar(&validatorBalanceStr, "validator-balance", "1000000000000000000000astable,500000000000000000000agusdt", "Balance for each validator (supports multiple denoms, e.g. \"1000astable,500agusdt\")")
 	cmd.Flags().StringVar(&validatorStakeStr, "validator-stake", "100000000000000000000", "Stake amount for each validator (in astable)")
 	cmd.Flags().StringVar(&cfg.OutputDir, "output", cfg.OutputDir, "Output directory for devnet files")
 	cmd.Flags().StringVar(&cfg.ChainID, "chain-id", "", "Chain ID (defaults to from genesis)")
@@ -66,13 +66,13 @@ The output structure will be:
 		// Parse account balance (supports multiple denoms)
 		cfg.AccountBalance, err = sdk.ParseCoinsNormalized(accountBalanceStr)
 		if err != nil {
-			return fmt.Errorf("invalid account-balance: %w (expected format: \"1000astable,500agasusdt\")", err)
+			return fmt.Errorf("invalid account-balance: %w (expected format: \"1000astable,500agusdt\")", err)
 		}
 
 		// Parse validator balance (supports multiple denoms)
 		cfg.ValidatorBalance, err = sdk.ParseCoinsNormalized(validatorBalanceStr)
 		if err != nil {
-			return fmt.Errorf("invalid validator-balance: %w (expected format: \"1000astable,500agasusdt\")", err)
+			return fmt.Errorf("invalid validator-balance: %w (expected format: \"1000astable,500agusdt\")", err)
 		}
 
 		// Parse validator stake (single denom only)
