@@ -332,9 +332,9 @@ func (g *DevnetGenerator) updateGenesisAccounts(appState map[string]json.RawMess
 		return fmt.Errorf("failed to update gov state: %w", err)
 	}
 
-	if err := g.updateEpochState(appState); err != nil {
-		return fmt.Errorf("failed to update epoch state: %w", err)
-	}
+	//if err := g.updateEpochState(appState); err != nil {
+	//	return fmt.Errorf("failed to update epoch state: %w", err)
+	//}
 
 	// Update staking state with new validators
 	if err := g.updateStakingState(appState); err != nil {
