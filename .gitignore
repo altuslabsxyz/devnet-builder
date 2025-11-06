@@ -2,3 +2,7 @@ build/
 devnet/
 .idea/
 stabled_export.json
+
+# Go workspace files (conflicts with module replace directives)
+go.work
+go.work.sum
