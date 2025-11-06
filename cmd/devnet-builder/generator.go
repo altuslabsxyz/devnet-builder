@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	epochstypes "github.com/cosmos/cosmos-sdk/x/epochs/types"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 	govtypesv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	"os"
@@ -77,11 +78,11 @@ func NewDevnetGenerator(config *DevnetConfig, logger log.Logger) *DevnetGenerato
 	tempApp := app.NewApp(
 		appLogger,
 		db,
-		nil,                   // traceStore
-		false,                 // loadLatest
-		appOpts,               // appOpts
+		nil,                    // traceStore
+		false,                  // loadLatest
+		appOpts,                // appOpts
 		appcfg.GetEVMChainID(), // evmChainID
-		appcfg.EvmAppOptions,  // evmAppOptions
+		appcfg.EvmAppOptions,   // evmAppOptions
 	)
 
 	return &DevnetGenerator{
@@ -355,6 +356,22 @@ func (g *DevnetGenerator) updateGenesisAccounts(appState map[string]json.RawMess
 	//if err := g.clearPrecompileState(appState); err != nil {
 	//	return fmt.Errorf("failed to clear precompile state: %w", err)
 	//}
+
+	return nil
+}
+
+func (g *DevnetGenerator) updateEpochState(appState map[string]json.RawMessage) error {
+	var epochState epochstypes.GenesisState
+	if err := g.cdc.UnmarshalJSON(appState[epochstypes.ModuleName], &epochState); err != nil {
+		return fmt.Errorf("failed to unmarshal epoch state: %w", err)
+	}
+
+	for _, epoch := range epochState.Epochs {
+		if epoch.Identifier == "day" {
+			epoch.Duration = time.Second * 600
+		}
+	}
+	appState[epochstypes.ModuleName] = g.cdc.MustMarshalJSON(&epochState)
 
 	return nil
 }
