@@ -467,24 +467,29 @@ jobs:
           # Build devnet-builder if not exists
           if [ ! -f "./build/devnet-builder" ]; then
             echo "Building devnet-builder..."
+            echo "Using stable version: ${{ steps.get_tag.outputs.tag }}"
 
-            # Get the exact commit hash from submodule
+            # Build devnet-builder with current stable version
+            # Note: stable is already checked out to the correct tag in "Setup stable repository symbolic link" step
             cd "$GITHUB_WORKSPACE"
-            SUBMODULE_COMMIT=$(git ls-tree HEAD stable | awk '{print $3}')
-            echo "Submodule commit hash: $SUBMODULE_COMMIT"
 
-            # Reset stable directory to exact submodule commit
+            # Verify stable path
             STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
-            echo "Resetting stable directory to submodule commit: $SUBMODULE_COMMIT"
+            if [ ! -d "$STABLE_PATH" ]; then
+              echo "Error: Stable path not found: $STABLE_PATH"
+              exit 1
+            fi
+
+            echo "Stable directory: $STABLE_PATH"
             cd "$STABLE_PATH"
-            git fetch --all
-            git reset --hard "$SUBMODULE_COMMIT"
-            git clean -fd
+            CURRENT_VERSION=$(git describe --tags --exact-match 2>/dev/null || echo "unknown")
+            echo "Current stable version: $CURRENT_VERSION"
 
-            # Return to devnet-builder directory
+            # Return to devnet-builder directory and build
             cd "$GITHUB_WORKSPACE"
-
             make build
+          else
+            echo "devnet-builder already exists, skipping build"
           fi
 
           # Build command
