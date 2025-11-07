@@ -512,15 +512,15 @@ func (g *DevnetGenerator) updateBankBalances(appState map[string]json.RawMessage
 	}
 
 	// Recalculate supply with the new TargetAddr balance
-	supplyCoins = sdk.NewCoins()
+	finalSupplyCoins := sdk.NewCoins()
 	for _, balance := range balanceMap {
 		for _, coin := range balance.Coins {
-			supplyCoins = supplyCoins.Add(coin)
+			finalSupplyCoins = finalSupplyCoins.Add(coin)
 		}
 	}
 
 	// Replace supply with new totals
-	bankState.Supply = supplyCoins
+	bankState.Supply = finalSupplyCoins
 
 	// Marshal bank state back
 	bankStateBz, err := g.cdc.MarshalJSON(&bankState)
