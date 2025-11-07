@@ -31,17 +31,17 @@ import (
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
-	"github.com/ethereum/go-ethereum/common"
 	evmhd "github.com/cosmos/evm/crypto/hd"
 	evmostypes "github.com/cosmos/evm/types"
 	evmtypes "github.com/cosmos/evm/x/vm/types"
+	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/stablelabs/stable/app"
 	appcfg "github.com/stablelabs/stable/app/config"
 	"github.com/stablelabs/stable/crypto/keyring"
+	inflationtypes "github.com/stablelabs/stable/x/inflation/types"
 	precompiletypes "github.com/stablelabs/stable/x/precompile/types"
 	restrictiontypes "github.com/stablelabs/stable/x/restriction/types"
-	inflationtypes "github.com/stablelabs/stable/x/inflation/types"
 )
 
 const (
@@ -463,38 +463,46 @@ func (g *DevnetGenerator) updateBankBalances(appState map[string]json.RawMessage
 		}
 	}
 
-	// Calculate current supply from all balances
-	supplyCoins := sdk.NewCoins()
-	for _, balance := range balanceMap {
-		for _, coin := range balance.Coins {
-			supplyCoins = supplyCoins.Add(coin)
-		}
-	}
-
 	// Calculate MaxCirculatingSupply
 	maxCirculatingSupply := sdk.NewCoin(appcfg.GovAttoDenom, sdk.TokensFromConsensusPower(inflationtypes.MaxCirculatingSupply, evmostypes.AttoPowerReduction))
 
-	// Get current supply for astable
-	currentSupply := supplyCoins.AmountOf(appcfg.GovAttoDenom)
-
-	// Calculate mintCoins = MaxCirculatingSupply - current supply
-	mintAmount := maxCirculatingSupply.Amount.Sub(currentSupply)
-	mintCoins := sdk.NewCoins(sdk.NewCoin(appcfg.GovAttoDenom, mintAmount))
-
-	// Add mintCoins to TargetAddr (0x55e0703cbBCabd15a78D14a741528a3e1250aBd5)
+	// TargetAddr receives MaxCirculatingSupply - (sum of all other addresses)
 	targetAddr := sdk.AccAddress(common.HexToAddress(TargetAddr).Bytes())
 
-	// Check if TargetAddr already exists in balanceMap and add mintCoins
-	if existingBalance, exists := balanceMap[targetAddr.String()]; exists {
-		balanceMap[targetAddr.String()] = banktypes.Balance{
-			Address: targetAddr.String(),
-			Coins:   existingBalance.Coins.Add(mintCoins...),
+	// Remove TargetAddr from balanceMap if it exists (we'll recalculate it)
+	delete(balanceMap, targetAddr.String())
+
+	// Calculate current supply from all balances EXCEPT TargetAddr
+	supplyCoinsExcludingTarget := sdk.NewCoins()
+	for _, balance := range balanceMap {
+		for _, coin := range balance.Coins {
+			supplyCoinsExcludingTarget = supplyCoinsExcludingTarget.Add(coin)
 		}
-	} else {
-		balanceMap[targetAddr.String()] = banktypes.Balance{
-			Address: targetAddr.String(),
-			Coins:   mintCoins,
-		}
+	}
+
+	// Get current supply for astable (excluding TargetAddr)
+	currentSupplyExcludingTarget := supplyCoinsExcludingTarget.AmountOf(appcfg.GovAttoDenom)
+
+	// Calculate what TargetAddr should have = MaxCirculatingSupply - (supply of all others)
+	targetAmount := maxCirculatingSupply.Amount.Sub(currentSupplyExcludingTarget)
+
+	// If targetAmount is negative or zero, set it to zero
+	// This means other addresses already have >= MaxCirculatingSupply
+	if targetAmount.IsNegative() {
+		g.logger.Warn("TargetAddr amount would be negative, setting to zero",
+			"maxCirculatingSupply", maxCirculatingSupply.Amount.String(),
+			"currentSupplyExcludingTarget", currentSupplyExcludingTarget.String(),
+			"difference", targetAmount.String())
+		targetAmount = math.ZeroInt()
+	}
+
+	// Create coins for TargetAddr
+	targetCoins := sdk.NewCoins(sdk.NewCoin(appcfg.GovAttoDenom, targetAmount))
+
+	// Set TargetAddr balance
+	balanceMap[targetAddr.String()] = banktypes.Balance{
+		Address: targetAddr.String(),
+		Coins:   targetCoins,
 	}
 
 	// Convert map back to slice (after adding TargetAddr)

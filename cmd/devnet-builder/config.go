@@ -36,7 +36,7 @@ type DevnetConfig struct {
 
 // DefaultDevnetConfig returns default configuration
 func DefaultDevnetConfig() *DevnetConfig {
-	defaultAmount := sdk.TokensFromConsensusPower(5000, evmostypes.AttoPowerReduction) // 5000 consensus power
+	defaultAmount := sdk.TokensFromConsensusPower(1000, evmostypes.AttoPowerReduction) // 1000 consensus power
 	return &DevnetConfig{
 		NumValidators:    4,
 		NumAccounts:      10,
