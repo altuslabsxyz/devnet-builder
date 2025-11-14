@@ -1,18 +1,49 @@
 name: Deploy Devnet
 
-run-name: Devnet-${{ inputs.fork_target }}-${{ github.run_number }}
+run-name: Devnet-${{ inputs.snapshot_network }}-${{ inputs.source_binary_version }}-to-${{ inputs.target_binary_version }}-${{ github.run_number }}
 
 on:
   workflow_dispatch:
     inputs:
-      fork_target:
-        description: 'Fork target network (auto-selects stable version)'
+      snapshot_network:
+        description: 'Snapshot network to fork from'
         required: true
         type: choice
         options:
           - testnet
           - mainnet
+          - custom
         default: 'testnet'
+      custom_snapshot_url:
+        description: 'Custom snapshot URL (only used when snapshot_network is "custom")'
+        required: false
+        type: string
+        default: ''
+      custom_chain_id:
+        description: 'Custom chain ID (only used when snapshot_network is "custom")'
+        required: false
+        type: string
+        default: ''
+      source_binary_version:
+        description: 'Source binary version - git ref (tag/branch/commit) compatible with snapshot'
+        required: true
+        type: string
+        default: 'v1.1.0'
+      target_binary_version:
+        description: 'Target binary version - git ref (tag/branch/commit) to run devnet with'
+        required: true
+        type: string
+        default: 'v1.1.0'
+      rpc_endpoint:
+        description: 'RPC endpoint for genesis download (optional, auto-detected for mainnet/testnet)'
+        required: false
+        type: string
+        default: ''
+      persistent_peers:
+        description: 'Persistent peers (optional, auto-detected for mainnet/testnet)'
+        required: false
+        type: string
+        default: ''
       validators:
         description: 'Number of validators to create'
         required: true
@@ -40,7 +71,9 @@ jobs:
     runs-on: [self-hosted, ubuntu]
 
     env:
-      FORK_TARGET: ${{ inputs.fork_target }}
+      SNAPSHOT_NETWORK: ${{ inputs.snapshot_network }}
+      SOURCE_BINARY_VERSION: ${{ inputs.source_binary_version }}
+      TARGET_BINARY_VERSION: ${{ inputs.target_binary_version }}
       VALIDATORS: ${{ inputs.validators }}
       ACCOUNTS: ${{ inputs.accounts }}
       ACCOUNT_BALANCE: ${{ inputs.account_balance }}
@@ -55,20 +88,58 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Determine stable tag from fork target
-        id: get_tag
+      - name: Determine snapshot configuration
+        id: snapshot_config
         run: |
-          # Auto-determine stable tag based on fork target
-          if [ "$FORK_TARGET" = "mainnet" ]; then
-            TAG="v1.1.0"
+          # Determine snapshot URL, chain ID, RPC endpoint, and persistent peers based on snapshot_network
+          if [ "$SNAPSHOT_NETWORK" = "mainnet" ]; then
+            SNAPSHOT_URL="https://stable-mainnet-data.s3.amazonaws.com/snapshots/stable_pruned.tar.zst"
+            CHAIN_ID="stable_988-1"
+            RPC_ENDPOINT="https://cosmos-rpc-internal.stable.xyz/"
+            PERSISTENT_PEERS="39fef24240d80e2cd5bdcbe101298c36f0d83fa1@57.129.53.87:26656"
+          elif [ "$SNAPSHOT_NETWORK" = "testnet" ]; then
+            SNAPSHOT_URL="https://stable-snapshot.s3.eu-central-1.amazonaws.com/snapshot.tar.lz4"
+            CHAIN_ID="stabletestnet_2201-1"
+            RPC_ENDPOINT="https://cosmos-rpc.testnet.stable.xyz/"
+            PERSISTENT_PEERS="128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656"
           else
-            TAG="v1.1.0"
+            # Custom snapshot network
+            SNAPSHOT_URL="${{ inputs.custom_snapshot_url }}"
+            CHAIN_ID="${{ inputs.custom_chain_id }}"
+            RPC_ENDPOINT="${{ inputs.rpc_endpoint }}"
+            PERSISTENT_PEERS="${{ inputs.persistent_peers }}"
+
+            if [ -z "$SNAPSHOT_URL" ] || [ -z "$CHAIN_ID" ]; then
+              echo "Error: custom_snapshot_url and custom_chain_id are required when snapshot_network is 'custom'"
+              exit 1
+            fi
           fi
 
-          echo "Fork target: $FORK_TARGET"
-          echo "Auto-selected stable tag: $TAG"
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "STABLE_TAG=$TAG" >> $GITHUB_ENV
+          # Allow manual override of RPC endpoint and persistent peers if provided
+          if [ -n "${{ inputs.rpc_endpoint }}" ]; then
+            RPC_ENDPOINT="${{ inputs.rpc_endpoint }}"
+          fi
+
+          if [ -n "${{ inputs.persistent_peers }}" ]; then
+            PERSISTENT_PEERS="${{ inputs.persistent_peers }}"
+          fi
+
+          echo "=========================================="
+          echo "Snapshot Configuration"
+          echo "=========================================="
+          echo "Snapshot Network: $SNAPSHOT_NETWORK"
+          echo "Snapshot URL: $SNAPSHOT_URL"
+          echo "Chain ID: $CHAIN_ID"
+          echo "RPC Endpoint: $RPC_ENDPOINT"
+          echo "Persistent Peers: $PERSISTENT_PEERS"
+          echo "Source Binary Version: $SOURCE_BINARY_VERSION"
+          echo "Target Binary Version: $TARGET_BINARY_VERSION"
+          echo "=========================================="
+
+          echo "snapshot_url=$SNAPSHOT_URL" >> $GITHUB_OUTPUT
+          echo "chain_id=$CHAIN_ID" >> $GITHUB_OUTPUT
+          echo "rpc_endpoint=$RPC_ENDPOINT" >> $GITHUB_OUTPUT
+          echo "persistent_peers=$PERSISTENT_PEERS" >> $GITHUB_OUTPUT
 
       - name: Setup Go
         uses: actions/setup-go@v3
@@ -80,245 +151,163 @@ jobs:
           git config --global url."https://${{ secrets.GH_PAT }}:@github.com/".insteadOf "https://github.com/"
           echo "GOPRIVATE=github.com/stablelabs/*" >> $GITHUB_ENV
 
-      - name: Setup stable repository symbolic link
-        id: setup_stable_link
+      - name: Setup source stable repository
+        id: setup_source_stable
         run: |
-          STABLE_LINK_PATH="${GITHUB_WORKSPACE}/stable"
-          EXPECTED_TAG="${{ steps.get_tag.outputs.tag }}"
+          SOURCE_STABLE_PATH="${GITHUB_WORKSPACE}/stable-source"
+          SOURCE_VERSION="$SOURCE_BINARY_VERSION"
           STABLE_REPO_URL="https://github.com/stablelabs/stable.git"
 
-          echo "Setting up stable repository symbolic link in current repository..."
-          echo "Expected tag: $EXPECTED_TAG"
+          echo "Setting up source stable repository for snapshot processing..."
+          echo "Source version: $SOURCE_VERSION"
           echo "Stable repository URL: $STABLE_REPO_URL"
 
-          # Remove existing symbolic link if exists
-          if [ -L "$STABLE_LINK_PATH" ]; then
-            echo "Removing existing symbolic link..."
-            rm -f "$STABLE_LINK_PATH"
+          # Remove existing directory if exists
+          if [ -d "$SOURCE_STABLE_PATH" ]; then
+            echo "Removing existing source stable directory..."
+            rm -rf "$SOURCE_STABLE_PATH"
           fi
 
-          # Remove directory if exists
-          if [ -d "$STABLE_LINK_PATH" ]; then
-            echo "Warning: stable/ directory exists but is not a symbolic link. Removing..."
-            rm -rf "$STABLE_LINK_PATH"
-          fi
+          # Clone and checkout source version
+          echo "Cloning stable repository for source binary..."
+          git clone "$STABLE_REPO_URL" "$SOURCE_STABLE_PATH"
 
-          # Search for existing stable repository clones
-          STABLE_SEARCH_PATHS=(
-            "/data/stable"
-            "/data/.stable"
-            "$HOME/stable"
-            "$HOME/.stable"
-            "/opt/stable"
-            "/tmp/stable-cache"
-          )
+          cd "$SOURCE_STABLE_PATH"
+          echo "Fetching all refs..."
+          git fetch --all --tags
 
-          STABLE_REPO_PATH=""
-          for SEARCH_PATH in "${STABLE_SEARCH_PATHS[@]}"; do
-            if [ -d "$SEARCH_PATH/.git" ]; then
-              cd "$SEARCH_PATH"
-              # Check if it's the correct repository
-              REMOTE_URL=$(git config --get remote.origin.url 2>/dev/null || echo "")
-              if [[ "$REMOTE_URL" == *"stablelabs/stable"* ]]; then
-                STABLE_REPO_PATH="$SEARCH_PATH"
-                echo "Found existing stable repository at: $STABLE_REPO_PATH"
-                break
-              fi
-            fi
-          done
-
-          # Clone stable repository if not found
-          if [ -z "$STABLE_REPO_PATH" ]; then
-            echo "Stable repository not found. Cloning..."
-            STABLE_REPO_PATH="/tmp/stable-cache"
-
-            if [ -d "$STABLE_REPO_PATH" ]; then
-              rm -rf "$STABLE_REPO_PATH"
-            fi
-
-            git clone "$STABLE_REPO_URL" "$STABLE_REPO_PATH"
-            echo "Cloned stable repository to: $STABLE_REPO_PATH"
-          else
-            # Fetch latest tags from existing repository
-            echo "Fetching latest tags..."
-            cd "$STABLE_REPO_PATH"
-            git fetch --tags --force
-          fi
-
-          # Checkout the correct tag
-          cd "$STABLE_REPO_PATH"
-          echo "Checking out tag: $EXPECTED_TAG"
-
-          if ! git rev-parse "$EXPECTED_TAG" >/dev/null 2>&1; then
-            echo "Error: Tag $EXPECTED_TAG does not exist in stable repository"
+          echo "Checking out source version: $SOURCE_VERSION"
+          if ! git checkout "$SOURCE_VERSION" 2>/dev/null; then
+            echo "Error: Failed to checkout $SOURCE_VERSION"
             echo "Available tags:"
             git tag | tail -20
+            echo "Available branches:"
+            git branch -r | head -20
             exit 1
           fi
-
-          git checkout "$EXPECTED_TAG"
 
           # Verify checkout
-          CURRENT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "")
-          if [ "$CURRENT_TAG" != "$EXPECTED_TAG" ]; then
-            echo "Error: Failed to checkout tag $EXPECTED_TAG (current: $CURRENT_TAG)"
-            exit 1
-          fi
+          CURRENT_REF=$(git rev-parse HEAD)
+          echo "Successfully checked out: $SOURCE_VERSION (commit: $CURRENT_REF)"
 
-          echo "Successfully checked out tag: $CURRENT_TAG"
+          echo "source_stable_path=$SOURCE_STABLE_PATH" >> $GITHUB_OUTPUT
 
-          # Create symbolic link in current repository
-          cd "$GITHUB_WORKSPACE"
-          ln -sf "$STABLE_REPO_PATH" "$STABLE_LINK_PATH"
-
-          # Verify symbolic link
-          if [ ! -L "$STABLE_LINK_PATH" ]; then
-            echo "Error: Failed to create symbolic link"
-            exit 1
-          fi
-
-          LINK_TARGET=$(readlink -f "$STABLE_LINK_PATH")
-          echo "Symbolic link created: $STABLE_LINK_PATH -> $LINK_TARGET"
-
-          # Verify the link points to correct version
-          cd "$STABLE_LINK_PATH"
-          VERIFY_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "")
-          echo "Verified stable version: $VERIFY_TAG"
-
-          if [ "$VERIFY_TAG" != "$EXPECTED_TAG" ]; then
-            echo "Error: Symbolic link points to wrong version (expected: $EXPECTED_TAG, got: $VERIFY_TAG)"
-            exit 1
-          fi
-
-          echo "stable_path=$STABLE_LINK_PATH" >> $GITHUB_OUTPUT
-
-      - name: Download stabled binary from release
-        id: download_stabled
+      - name: Build source stabled binary
+        id: build_source_binary
         run: |
-          STABLE_TAG="${{ steps.get_tag.outputs.tag }}"
-          STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
-          GH_TOKEN="${{ secrets.GH_PAT }}"
-          FORK_TARGET="${{ inputs.fork_target }}"
+          SOURCE_STABLE_PATH="${{ steps.setup_source_stable.outputs.source_stable_path }}"
+          CHAIN_ID="${{ steps.snapshot_config.outputs.chain_id }}"
 
-          echo "Downloading stabled binary from GitHub release..."
-          echo "Tag: $STABLE_TAG"
-          echo "Fork target: $FORK_TARGET"
-          echo "Stable path: $STABLE_PATH"
+          echo "Building source stabled binary..."
+          echo "Source stable path: $SOURCE_STABLE_PATH"
+          echo "Chain ID: $CHAIN_ID"
 
-          # Create build directory
-          mkdir -p "$STABLE_PATH/build"
+          cd "$SOURCE_STABLE_PATH"
 
-          # First, get the release information to find the correct asset
-          echo "Fetching release information for ${STABLE_TAG}..."
-          RELEASE_INFO=$(curl -s -H "Authorization: token $GH_TOKEN" \
-            "https://api.github.com/repos/stablelabs/stable/releases/tags/${STABLE_TAG}")
+          # Build stabled binary
+          echo "Running make install..."
+          make install
 
-          # Check if release exists
-          if echo "$RELEASE_INFO" | jq -e '.message' > /dev/null 2>&1; then
-            echo "Error: Release ${STABLE_TAG} not found or inaccessible"
-            echo "$RELEASE_INFO" | jq -r '.message'
-            exit 1
-          fi
-
-          # List available assets
-          echo "Available assets:"
-          echo "$RELEASE_INFO" | jq -r '.assets[].name'
-
-          # Find the correct asset based on fork_target
-          # Support both naming conventions:
-          # - v1.0.0: stabled-1.0.0-linux-amd64-mainnet.tar.gz
-          # - v0.8.1: stabled-0.8.1-testnet-linux-amd64.tar.gz
-          if [ "$FORK_TARGET" = "mainnet" ]; then
-            echo "Searching for mainnet asset..."
-            ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("stabled.*mainnet.*linux.*amd64.*tar\\.gz")) | .name' | head -1)
-
-            if [ -z "$ASSET_NAME" ]; then
-              ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("stabled.*linux.*amd64.*mainnet.*tar\\.gz")) | .name' | head -1)
-            fi
-          else
-            echo "Searching for testnet asset..."
-            ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("stabled.*testnet.*linux.*amd64.*tar\\.gz")) | .name' | head -1)
-
-            if [ -z "$ASSET_NAME" ]; then
-              ASSET_NAME=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("stabled.*linux.*amd64.*testnet.*tar\\.gz")) | .name' | head -1)
-            fi
-          fi
-
-          if [ -z "$ASSET_NAME" ]; then
-            echo "Error: No stabled binary found for linux-amd64 $FORK_TARGET"
-            echo "Available assets:"
-            echo "$RELEASE_INFO" | jq -r '.assets[].name'
-            exit 1
-          fi
-
-          echo "Found asset: $ASSET_NAME"
-
-          # Get the asset download URL
-          ASSET_URL=$(echo "$RELEASE_INFO" | jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url")
-
-          echo "Downloading from: $ASSET_URL"
-
-          # Download the asset with authentication
-          curl -L -H "Authorization: token $GH_TOKEN" \
-            -H "Accept: application/octet-stream" \
-            -o "$STABLE_PATH/build/$ASSET_NAME" \
-            "$ASSET_URL"
-
-          # Extract tar.gz
-          echo "Extracting $ASSET_NAME..."
-          cd "$STABLE_PATH/build"
-          tar -xzf "$ASSET_NAME" -v
-
-          echo "Extracted files:"
-          ls -lah
-
-          # Find the stabled binary in extracted files
-          echo "Searching for stabled binary..."
-          STABLED_BINARY=$(find . -name "stabled" -type f | head -1)
+          # Find the binary
+          STABLED_BINARY=$(which stabled)
 
           if [ -z "$STABLED_BINARY" ]; then
-            echo "Error: stabled binary not found in extracted files"
-            echo "All files in build directory:"
-            find . -type f
+            echo "Error: stabled binary not found after build"
             exit 1
           fi
 
-          echo "Found stabled at: $STABLED_BINARY"
+          echo "Built stabled binary at: $STABLED_BINARY"
 
-          # Check file type
-          echo "File type:"
-          file "$STABLED_BINARY"
-
-          # Move binary to expected location if not already there
-          TARGET_PATH="$STABLE_PATH/build/stabled"
-          if [ "$STABLED_BINARY" != "./stabled" ] && [ "$STABLED_BINARY" != "stabled" ]; then
-            echo "Moving $STABLED_BINARY to $TARGET_PATH"
-            mv "$STABLED_BINARY" "$TARGET_PATH"
-          else
-            echo "Binary already in correct location (./stabled)"
-          fi
-
-          # Clean up tar.gz and extracted directories
-          echo "Cleaning up..."
-          rm -f "$ASSET_NAME"
-          find . -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} \;
-
-          # Remove extracted documentation files
-          rm -f CHANGELOG.md LICENSE README.md
+          # Copy to build directory
+          mkdir -p "$SOURCE_STABLE_PATH/build"
+          cp "$STABLED_BINARY" "$SOURCE_STABLE_PATH/build/stabled"
 
           # Make binary executable
-          chmod +x "$STABLE_PATH/build/stabled"
+          chmod +x "$SOURCE_STABLE_PATH/build/stabled"
 
           # Verify binary
-          if [ ! -f "$STABLE_PATH/build/stabled" ]; then
-            echo "Error: stabled binary not found at $STABLE_PATH/build/stabled"
+          echo "Verifying source binary..."
+          "$SOURCE_STABLE_PATH/build/stabled" version
+
+          echo "source_stabled_binary=$SOURCE_STABLE_PATH/build/stabled" >> $GITHUB_OUTPUT
+
+      - name: Setup target stable repository
+        id: setup_target_stable
+        run: |
+          TARGET_STABLE_PATH="${GITHUB_WORKSPACE}/stable-target"
+          TARGET_VERSION="$TARGET_BINARY_VERSION"
+          STABLE_REPO_URL="https://github.com/stablelabs/stable.git"
+
+          echo "Setting up target stable repository for devnet execution..."
+          echo "Target version: $TARGET_VERSION"
+          echo "Stable repository URL: $STABLE_REPO_URL"
+
+          # Remove existing directory if exists
+          if [ -d "$TARGET_STABLE_PATH" ]; then
+            echo "Removing existing target stable directory..."
+            rm -rf "$TARGET_STABLE_PATH"
+          fi
+
+          # Clone and checkout target version
+          echo "Cloning stable repository for target binary..."
+          git clone "$STABLE_REPO_URL" "$TARGET_STABLE_PATH"
+
+          cd "$TARGET_STABLE_PATH"
+          echo "Fetching all refs..."
+          git fetch --all --tags
+
+          echo "Checking out target version: $TARGET_VERSION"
+          if ! git checkout "$TARGET_VERSION" 2>/dev/null; then
+            echo "Error: Failed to checkout $TARGET_VERSION"
+            echo "Available tags:"
+            git tag | tail -20
+            echo "Available branches:"
+            git branch -r | head -20
             exit 1
           fi
 
-          echo "Binary downloaded, extracted, and verified"
-          "$STABLE_PATH/build/stabled" version || echo "Version check skipped"
+          # Verify checkout
+          CURRENT_REF=$(git rev-parse HEAD)
+          echo "Successfully checked out: $TARGET_VERSION (commit: $CURRENT_REF)"
 
-          echo "stabled_binary=$STABLE_PATH/build/stabled" >> $GITHUB_OUTPUT
+          echo "target_stable_path=$TARGET_STABLE_PATH" >> $GITHUB_OUTPUT
+
+      - name: Build target stabled binary
+        id: build_target_binary
+        run: |
+          TARGET_STABLE_PATH="${{ steps.setup_target_stable.outputs.target_stable_path }}"
+
+          echo "Building target stabled binary..."
+          echo "Target stable path: $TARGET_STABLE_PATH"
+
+          cd "$TARGET_STABLE_PATH"
+
+          # Build stabled binary
+          echo "Running make install..."
+          make install
+
+          # Find the binary
+          STABLED_BINARY=$(which stabled)
+
+          if [ -z "$STABLED_BINARY" ]; then
+            echo "Error: stabled binary not found after build"
+            exit 1
+          fi
+
+          echo "Built stabled binary at: $STABLED_BINARY"
+
+          # Copy to build directory
+          mkdir -p "$TARGET_STABLE_PATH/build"
+          cp "$STABLED_BINARY" "$TARGET_STABLE_PATH/build/stabled"
+
+          # Make binary executable
+          chmod +x "$TARGET_STABLE_PATH/build/stabled"
+
+          # Verify binary
+          echo "Verifying target binary..."
+          "$TARGET_STABLE_PATH/build/stabled" version
+
+          echo "target_stabled_binary=$TARGET_STABLE_PATH/build/stabled" >> $GITHUB_OUTPUT
 
       - name: Install decompression tools
         run: |
@@ -340,30 +329,24 @@ jobs:
       - name: Provision and sync target chain
         id: export_genesis
         run: |
-          STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
-          STABLED_BINARY="${{ steps.download_stabled.outputs.stabled_binary }}"
+          SOURCE_STABLED_BINARY="${{ steps.build_source_binary.outputs.source_stabled_binary }}"
           GENESIS_EXPORT_PATH="${GITHUB_WORKSPACE}/genesis-export.json"
 
-          # Determine target chain-id, RPC endpoint, persistent peers, and snapshot URL based on fork target
-          if [ "$FORK_TARGET" = "mainnet" ]; then
-            TARGET_CHAIN_ID="stable_988-1"
-            TARGET_RPC_ENDPOINT="https://cosmos-rpc-internal.stable.xyz/"
-            PERSISTENT_PEERS="39fef24240d80e2cd5bdcbe101298c36f0d83fa1@57.129.53.87:26656"
-            SNAPSHOT_URL="https://stable-mainnet-data.s3.amazonaws.com/snapshots/stable_pruned.tar.zst"
-          else
-            TARGET_CHAIN_ID="stabletestnet_2201-1"
-            TARGET_RPC_ENDPOINT="https://cosmos-rpc.testnet.stable.xyz/"
-            PERSISTENT_PEERS="128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656"
-            SNAPSHOT_URL="https://stable-snapshot.s3.eu-central-1.amazonaws.com/snapshot.tar.lz4"
-          fi
+          # Get configuration from snapshot_config step
+          SNAPSHOT_URL="${{ steps.snapshot_config.outputs.snapshot_url }}"
+          TARGET_CHAIN_ID="${{ steps.snapshot_config.outputs.chain_id }}"
+          TARGET_RPC_ENDPOINT="${{ steps.snapshot_config.outputs.rpc_endpoint }}"
+          PERSISTENT_PEERS="${{ steps.snapshot_config.outputs.persistent_peers }}"
 
           echo "=========================================="
-          echo "Fork Target: $FORK_TARGET"
+          echo "Provisioning Chain State"
+          echo "=========================================="
+          echo "Snapshot Network: $SNAPSHOT_NETWORK"
+          echo "Snapshot URL: $SNAPSHOT_URL"
           echo "Target Chain ID: $TARGET_CHAIN_ID"
           echo "Target RPC Endpoint: $TARGET_RPC_ENDPOINT"
           echo "Persistent Peers: $PERSISTENT_PEERS"
-          echo "Snapshot URL: $SNAPSHOT_URL"
-          echo "Using stabled binary: $STABLED_BINARY"
+          echo "Using source stabled binary: $SOURCE_STABLED_BINARY"
           echo "=========================================="
 
           # Determine which script to use based on SNAPSHOT_URL
@@ -381,7 +364,7 @@ jobs:
             PROVISION_CMD="$SCRIPT_PATH \
               --chain-id \"$TARGET_CHAIN_ID\" \
               --snapshot-url \"$SNAPSHOT_URL\" \
-              --stabled-binary \"$STABLED_BINARY\" \
+              --stabled-binary \"$SOURCE_STABLED_BINARY\" \
               --base-dir \"/data\" \
               --output-file \"$GENESIS_EXPORT_PATH\""
 
@@ -408,7 +391,7 @@ jobs:
             PROVISION_CMD="$SCRIPT_PATH \
               --chain-id \"$TARGET_CHAIN_ID\" \
               --rpc-endpoint \"$TARGET_RPC_ENDPOINT\" \
-              --stabled-binary \"$STABLED_BINARY\" \
+              --stabled-binary \"$SOURCE_STABLED_BINARY\" \
               --base-dir \"/data\" \
               --output-file \"$GENESIS_EXPORT_PATH\""
 
@@ -467,41 +450,45 @@ jobs:
           # Build devnet-builder if not exists
           if [ ! -f "./build/devnet-builder" ]; then
             echo "Building devnet-builder..."
-            echo "Using stable version: ${{ steps.get_tag.outputs.tag }}"
+            echo "Using target stable version: $TARGET_BINARY_VERSION"
 
-            # Build devnet-builder with current stable version
-            # Note: stable is already checked out to the correct tag in "Setup stable repository symbolic link" step
+            # Build devnet-builder with target stable version
             cd "$GITHUB_WORKSPACE"
 
-            # Verify stable path
-            STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
-            if [ ! -d "$STABLE_PATH" ]; then
-              echo "Error: Stable path not found: $STABLE_PATH"
+            # Verify target stable path
+            TARGET_STABLE_PATH="${{ steps.setup_target_stable.outputs.target_stable_path }}"
+            if [ ! -d "$TARGET_STABLE_PATH" ]; then
+              echo "Error: Target stable path not found: $TARGET_STABLE_PATH"
               exit 1
             fi
 
-            echo "Stable directory: $STABLE_PATH"
-            cd "$STABLE_PATH"
-            CURRENT_VERSION=$(git describe --tags --exact-match 2>/dev/null || echo "unknown")
-            echo "Current stable version: $CURRENT_VERSION"
+            echo "Target stable directory: $TARGET_STABLE_PATH"
+            cd "$TARGET_STABLE_PATH"
+            CURRENT_VERSION=$(git rev-parse --short HEAD)
+            echo "Current target stable version: $TARGET_BINARY_VERSION (commit: $CURRENT_VERSION)"
 
-            # Sync replace directives from stable/go.mod to devnet-builder/go.mod
-            echo "Syncing replace directives from stable to devnet-builder..."
+            # Sync replace directives from target stable/go.mod to devnet-builder/go.mod
+            echo "Syncing replace directives from target stable to devnet-builder..."
             cd "$GITHUB_WORKSPACE"
 
-            # Extract replace directives from stable's go.mod
-            STABLE_EVM_REPLACE=$(grep "github.com/cosmos/evm =>" "$STABLE_PATH/go.mod" || echo "")
-            STABLE_BFT_REPLACE=$(grep "github.com/cometbft/cometbft =>" "$STABLE_PATH/go.mod" || echo "")
-            STABLE_SDK_REPLACE=$(grep "github.com/cosmos/cosmos-sdk =>" "$STABLE_PATH/go.mod" || echo "")
-            STABLE_GETH_REPLACE=$(grep "github.com/ethereum/go-ethereum =>" "$STABLE_PATH/go.mod" || echo "")
+            # Create symbolic link for compatibility
+            if [ ! -e "stable" ]; then
+              ln -sf "$TARGET_STABLE_PATH" "stable"
+            fi
 
-            echo "Stable replace directives:"
+            # Extract replace directives from target stable's go.mod
+            STABLE_EVM_REPLACE=$(grep "github.com/cosmos/evm =>" "$TARGET_STABLE_PATH/go.mod" || echo "")
+            STABLE_BFT_REPLACE=$(grep "github.com/cometbft/cometbft =>" "$TARGET_STABLE_PATH/go.mod" || echo "")
+            STABLE_SDK_REPLACE=$(grep "github.com/cosmos/cosmos-sdk =>" "$TARGET_STABLE_PATH/go.mod" || echo "")
+            STABLE_GETH_REPLACE=$(grep "github.com/ethereum/go-ethereum =>" "$TARGET_STABLE_PATH/go.mod" || echo "")
+
+            echo "Target stable replace directives:"
             echo "  EVM: $STABLE_EVM_REPLACE"
             echo "  BFT: $STABLE_BFT_REPLACE"
             echo "  SDK: $STABLE_SDK_REPLACE"
             echo "  GETH: $STABLE_GETH_REPLACE"
 
-            # Update devnet-builder's go.mod with stable's replace directives
+            # Update devnet-builder's go.mod with target stable's replace directives
             if [ -n "$STABLE_EVM_REPLACE" ]; then
               sed -i.bak "/github.com\/cosmos\/evm =>/c\\	$STABLE_EVM_REPLACE" go.mod
             fi
@@ -576,7 +563,7 @@ jobs:
       - name: Upload devnet artifact
         uses: actions/upload-artifact@v4
         with:
-          name: devnet-${{ steps.get_tag.outputs.tag }}-${{ github.run_number }}
+          name: devnet-${{ inputs.snapshot_network }}-${{ inputs.source_binary_version }}-to-${{ inputs.target_binary_version }}-${{ github.run_number }}
           path: ${{ env.DEVNET_OUTPUT_DIR }}
           retention-days: 30
           compression-level: 9
@@ -627,24 +614,25 @@ jobs:
       - name: Start devnet nodes with systemd
         id: start_nodes
         run: |
-          STABLE_PATH="${{ steps.setup_stable_link.outputs.stable_path }}"
-          STABLED_BINARY="$STABLE_PATH/build/stabled"
+          TARGET_STABLE_PATH="${{ steps.setup_target_stable.outputs.target_stable_path }}"
+          TARGET_STABLED_BINARY="${{ steps.build_target_binary.outputs.target_stabled_binary }}"
           ACTUAL_CHAIN_ID="${{ steps.build_devnet.outputs.actual_chain_id }}"
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-          
+
           echo "Starting devnet nodes with systemd..."
-          echo "Using stabled binary: $STABLED_BINARY"
+          echo "Using target stabled binary: $TARGET_STABLED_BINARY"
+          echo "Target binary version: $TARGET_BINARY_VERSION"
           echo "Chain ID: $ACTUAL_CHAIN_ID"
           echo "Timestamp: $TIMESTAMP"
-          
-          # Verify stabled binary exists
-          if [ ! -f "$STABLED_BINARY" ]; then
-            echo "Error: stabled binary not found at $STABLED_BINARY"
+
+          # Verify target stabled binary exists
+          if [ ! -f "$TARGET_STABLED_BINARY" ]; then
+            echo "Error: Target stabled binary not found at $TARGET_STABLED_BINARY"
             exit 1
           fi
-          
-          # Make sure stabled is executable
-          chmod +x "$STABLED_BINARY"
+
+          # Make sure target stabled is executable
+          chmod +x "$TARGET_STABLED_BINARY"
           
           # Create log directory
           LOG_DIR="$DEVNET_BASE_DIR/logs"
@@ -751,9 +739,9 @@ jobs:
               exit 1
             fi
 
-            # Initialize node with stabled (continue even if it fails)
-            echo "  Initializing $NODE_NAME with stabled..."
-            "$STABLED_BINARY" init "$NODE_NAME" \
+            # Initialize node with target stabled (continue even if it fails)
+            echo "  Initializing $NODE_NAME with target stabled..."
+            "$TARGET_STABLED_BINARY" init "$NODE_NAME" \
               --home "$NODE_HOME" \
               --chain-id "$ACTUAL_CHAIN_ID" || true
           
@@ -889,7 +877,7 @@ jobs:
             CONFIG_FILE="$NODE_HOME/config/config.toml"
           
             # Get node ID
-            NODE_ID=$("$STABLED_BINARY" comet show-node-id --home "$NODE_HOME")
+            NODE_ID=$("$TARGET_STABLED_BINARY" comet show-node-id --home "$NODE_HOME")
           
             # Extract P2P port from config.toml
             P2P_PORT=$(grep -A 20 "^\[p2p\]" "$CONFIG_FILE" | grep "^laddr" | head -1 | sed 's/.*://; s/".*//')
@@ -965,15 +953,15 @@ jobs:
           Description=Devnet $NODE_NAME daemon
           After=network-online.target
           Wants=network-online.target
-          
+
           [Service]
           User=$(whoami)
-          WorkingDirectory=$STABLE_PATH
+          WorkingDirectory=$TARGET_STABLE_PATH
           # ExecStart is overridden in drop-in
           Restart=always
           RestartSec=3
           LimitNOFILE=65535
-          
+
           [Install]
           WantedBy=multi-user.target
           SERVICEEOF
@@ -989,7 +977,7 @@ jobs:
           ExecStart=/bin/bash -c '\
             LOG=\$(/usr/local/bin/devnet-log-path.sh "${NODE_NAME}"); \
             echo "Using log \$LOG"; \
-            exec ${STABLED_BINARY} start --home ${NODE_HOME} --chain-id ${ACTUAL_CHAIN_ID} 2>&1 \
+            exec ${TARGET_STABLED_BINARY} start --home ${NODE_HOME} --chain-id ${ACTUAL_CHAIN_ID} 2>&1 \
               | sed -u -E "s/\x1B\\[[0-9;]*[A-Za-z]//g" \
               | tee -a "\$LOG"'
           DROPINEOF
@@ -1032,12 +1020,12 @@ jobs:
       - name: Export account private keys
         id: export_private_keys
         run: |
-          STABLED_BINARY="${{ steps.download_stabled.outputs.stabled_binary }}"
+          TARGET_STABLED_BINARY="${{ steps.build_target_binary.outputs.target_stabled_binary }}"
           ACCOUNTS_DIR="$DEVNET_BASE_DIR/accounts"
 
           echo "Exporting account private keys..."
           echo "Accounts directory: $ACCOUNTS_DIR"
-          echo "Using stabled binary: $STABLED_BINARY"
+          echo "Using target stabled binary: $TARGET_STABLED_BINARY"
 
           # Check if accounts directory exists
           if [ ! -d "$ACCOUNTS_DIR" ]; then
@@ -1052,7 +1040,7 @@ jobs:
           echo "=========================================="
 
           # List all keys and export their private keys
-          KEYS_JSON=$("$STABLED_BINARY" keys list --home "$ACCOUNTS_DIR" --keyring-backend test --output json 2>/dev/null)
+          KEYS_JSON=$("$TARGET_STABLED_BINARY" keys list --home "$ACCOUNTS_DIR" --keyring-backend test --output json 2>/dev/null)
 
           if [ -z "$KEYS_JSON" ] || [ "$KEYS_JSON" = "[]" ]; then
             echo "No keys found in accounts directory"
@@ -1062,7 +1050,7 @@ jobs:
           # Extract key names and export private keys
           echo "$KEYS_JSON" | jq -r '.[].name' | while read -r KEY_NAME; do
             if [ -n "$KEY_NAME" ]; then
-              PRIVATE_KEY=$("$STABLED_BINARY" keys unsafe-export-eth-key "$KEY_NAME" \
+              PRIVATE_KEY=$("$TARGET_STABLED_BINARY" keys unsafe-export-eth-key "$KEY_NAME" \
                 --home "$ACCOUNTS_DIR" \
                 --keyring-backend test 2>/dev/null)
 
@@ -1173,26 +1161,23 @@ jobs:
         run: |
           ACTUAL_CHAIN_ID="${{ steps.build_devnet.outputs.actual_chain_id }}"
 
-          # Determine target chain-id, RPC endpoint, and persistent peers based on fork target
-          if [ "$FORK_TARGET" = "mainnet" ]; then
-            TARGET_CHAIN_ID="stable_988-1"
-            TARGET_RPC_ENDPOINT="https://cosmos-rpc-internal.stable.xyz/"
-            PERSISTENT_PEERS="39fef24240d80e2cd5bdcbe101298c36f0d83fa1@57.129.53.87:26656"
-          else
-            TARGET_CHAIN_ID="stabletestnet_2201-1"
-            TARGET_RPC_ENDPOINT="https://cosmos-rpc.testnet.stable.xyz/"
-            PERSISTENT_PEERS="128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656"
-          fi
+          # Get configuration from snapshot_config step
+          SNAPSHOT_URL="${{ steps.snapshot_config.outputs.snapshot_url }}"
+          TARGET_CHAIN_ID="${{ steps.snapshot_config.outputs.chain_id }}"
+          TARGET_RPC_ENDPOINT="${{ steps.snapshot_config.outputs.rpc_endpoint }}"
+          PERSISTENT_PEERS="${{ steps.snapshot_config.outputs.persistent_peers }}"
 
           echo ""
           echo "=========================================="
           echo "Devnet Deployment Summary"
           echo "=========================================="
-          echo "Fork Target: $FORK_TARGET"
-          echo "Target Chain ID: $TARGET_CHAIN_ID"
-          echo "Target RPC Endpoint: $TARGET_RPC_ENDPOINT"
+          echo "Snapshot Network: $SNAPSHOT_NETWORK"
+          echo "Snapshot URL: $SNAPSHOT_URL"
+          echo "Source Chain ID: $TARGET_CHAIN_ID"
+          echo "Source RPC Endpoint: $TARGET_RPC_ENDPOINT"
           echo "Persistent Peers: $PERSISTENT_PEERS"
-          echo "Stable Tag: ${{ steps.get_tag.outputs.tag }}"
+          echo "Source Binary Version: $SOURCE_BINARY_VERSION"
+          echo "Target Binary Version: $TARGET_BINARY_VERSION"
           echo "Devnet Chain ID: $ACTUAL_CHAIN_ID"
           echo "Validators: $VALIDATORS"
           echo "Accounts: $ACCOUNTS"
