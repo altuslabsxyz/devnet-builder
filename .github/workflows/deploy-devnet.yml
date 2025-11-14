@@ -478,8 +478,7 @@ jobs:
               
             ls -ld stable
   
-
-  # Extract replace directives from target stable's go.mod
+            # Extract replace directives from target stable's go.mod
             STABLE_EVM_REPLACE=$(grep "github.com/cosmos/evm =>" "$TARGET_STABLE_PATH/go.mod" || echo "")
             STABLE_BFT_REPLACE=$(grep "github.com/cometbft/cometbft =>" "$TARGET_STABLE_PATH/go.mod" || echo "")
             STABLE_SDK_REPLACE=$(grep "github.com/cosmos/cosmos-sdk =>" "$TARGET_STABLE_PATH/go.mod" || echo "")
