@@ -454,13 +454,32 @@ jobs:
             # Sync replace directives from target stable/go.mod to devnet-builder/go.mod
             echo "Syncing replace directives from target stable to devnet-builder..."
             cd "$GITHUB_WORKSPACE"
-
-            # Create symbolic link for compatibility
-            if [ ! -e "stable" ]; then
-              ln -sf "$TARGET_STABLE_PATH" "stable"
+  
+            echo "Preparing 'stable' symlink -> $TARGET_STABLE_PATH"
+              
+            if [ -e stable ] && [ ! -L stable ]; then
+              echo "Existing 'stable' is not a symlink (type: $(stat -c %F stable 2>/dev/null || echo unknown)), removing..."
+              rm -rf stable
             fi
+              
+            if [ -L stable ]; then
+              CURRENT_TARGET=$(readlink stable || echo "")
+            if [ "$CURRENT_TARGET" != "$TARGET_STABLE_PATH" ]; then
+              echo "Updating 'stable' symlink: $CURRENT_TARGET -> $TARGET_STABLE_PATH"
+              rm stable
+              ln -s "$TARGET_STABLE_PATH" stable
+            else
+              echo "'stable' symlink already points to $TARGET_STABLE_PATH, keeping it"
+            fi
+            else
+              echo "Creating 'stable' symlink -> $TARGET_STABLE_PATH"
+              ln -s "$TARGET_STABLE_PATH" stable
+            fi
+              
+            ls -ld stable
+  
 
-            # Extract replace directives from target stable's go.mod
+  # Extract replace directives from target stable's go.mod
             STABLE_EVM_REPLACE=$(grep "github.com/cosmos/evm =>" "$TARGET_STABLE_PATH/go.mod" || echo "")
             STABLE_BFT_REPLACE=$(grep "github.com/cometbft/cometbft =>" "$TARGET_STABLE_PATH/go.mod" || echo "")
             STABLE_SDK_REPLACE=$(grep "github.com/cosmos/cosmos-sdk =>" "$TARGET_STABLE_PATH/go.mod" || echo "")
