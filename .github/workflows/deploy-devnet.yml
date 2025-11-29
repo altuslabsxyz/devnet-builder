@@ -130,8 +130,13 @@ jobs:
           echo "Target Binary Version: $TARGET_BINARY_VERSION"
           echo "=========================================="
 
+          # Extract EVM chain ID from chain_id (e.g., stable_988-1 -> 988, stabletestnet_2201-1 -> 2201)
+          EVM_CHAIN_ID=$(echo "$CHAIN_ID" | sed -E 's/.*_([0-9]+)-[0-9]+$/\1/')
+          echo "EVM Chain ID: $EVM_CHAIN_ID"
+
           echo "snapshot_url=$SNAPSHOT_URL" >> $GITHUB_OUTPUT
           echo "chain_id=$CHAIN_ID" >> $GITHUB_OUTPUT
+          echo "evm_chain_id=$EVM_CHAIN_ID" >> $GITHUB_OUTPUT
           echo "rpc_endpoint=$RPC_ENDPOINT" >> $GITHUB_OUTPUT
           echo "persistent_peers=$PERSISTENT_PEERS" >> $GITHUB_OUTPUT
 
@@ -186,16 +191,18 @@ jobs:
         run: |
           SOURCE_STABLE_PATH="${{ steps.setup_source_stable.outputs.source_stable_path }}"
           CHAIN_ID="${{ steps.snapshot_config.outputs.chain_id }}"
+          EVM_CHAIN_ID="${{ steps.snapshot_config.outputs.evm_chain_id }}"
 
           echo "Building source stabled binary..."
           echo "Source stable path: $SOURCE_STABLE_PATH"
           echo "Chain ID: $CHAIN_ID"
+          echo "EVM Chain ID: $EVM_CHAIN_ID"
 
           cd "$SOURCE_STABLE_PATH"
 
-          # Build stabled binary
-          echo "Running make install..."
-          make install
+          # Build stabled binary with correct EVM chain ID
+          echo "Running make install with EVM_CHAIN_ID=$EVM_CHAIN_ID..."
+          EVM_CHAIN_ID="$EVM_CHAIN_ID" make install
 
           # Find the binary
           STABLED_BINARY=$(which stabled)
@@ -265,15 +272,17 @@ jobs:
         id: build_target_binary
         run: |
           TARGET_STABLE_PATH="${{ steps.setup_target_stable.outputs.target_stable_path }}"
+          EVM_CHAIN_ID="${{ steps.snapshot_config.outputs.evm_chain_id }}"
 
           echo "Building target stabled binary..."
           echo "Target stable path: $TARGET_STABLE_PATH"
+          echo "EVM Chain ID: $EVM_CHAIN_ID"
 
           cd "$TARGET_STABLE_PATH"
 
-          # Build stabled binary
-          echo "Running make install..."
-          make install
+          # Build stabled binary with correct EVM chain ID
+          echo "Running make install with EVM_CHAIN_ID=$EVM_CHAIN_ID..."
+          EVM_CHAIN_ID="$EVM_CHAIN_ID" make install
 
           # Find the binary
           STABLED_BINARY=$(which stabled)
