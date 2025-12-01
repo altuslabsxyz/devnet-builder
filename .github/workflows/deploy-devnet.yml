@@ -406,6 +406,12 @@ jobs:
       - name: Stop existing services
         run: |
           echo "Stopping existing devnet services..."
+
+          # Stop docker compose if running
+          cd "${GITHUB_WORKSPACE}/docker"
+          DEVNET_DIR="$DEVNET_BASE_DIR" docker compose down 2>/dev/null || true
+
+          # Clean up old systemd services (migration)
           for i in $(seq 0 9); do
             sudo systemctl stop "devnet-node${i}" 2>/dev/null || true
             sudo systemctl disable "devnet-node${i}" 2>/dev/null || true
@@ -413,57 +419,38 @@ jobs:
           sudo rm -f /etc/systemd/system/devnet-node*.service
           sudo systemctl daemon-reload
 
-      - name: Start devnet with systemd
+          # Remove any orphaned containers
+          docker rm -f devnet-node0 devnet-node1 devnet-node2 devnet-node3 2>/dev/null || true
+
+      - name: Start devnet with docker compose
         run: |
           TARGET_IMAGE="${STABLED_IMAGE}:${{ inputs.target_image_tag }}"
-          CHAIN_ID="${{ steps.build.outputs.chain_id }}"
 
-          echo "Starting devnet nodes..."
-          mkdir -p "$DEVNET_BASE_DIR/logs"
+          echo "Starting devnet with docker compose..."
+          cd "${GITHUB_WORKSPACE}/docker"
 
-          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
-            NODE_HOME="$DEVNET_BASE_DIR/node${i}"
-            SERVICE_NAME="devnet-node${i}"
+          # Start with environment variables
+          DEVNET_DIR="$DEVNET_BASE_DIR" \
+          STABLED_IMAGE="${STABLED_IMAGE}" \
+          STABLED_TAG="${{ inputs.target_image_tag }}" \
+          docker compose up -d
 
-            cat <<EOF | sudo tee "/etc/systemd/system/${SERVICE_NAME}.service"
-          [Unit]
-          Description=Devnet Node ${i}
-          After=docker.service
-          Requires=docker.service
-
-          [Service]
-          Type=simple
-          User=$(whoami)
-          ExecStartPre=-/usr/bin/docker rm -f ${SERVICE_NAME}
-          ExecStart=/usr/bin/docker run --rm -u 0 --name ${SERVICE_NAME} \
-            -v ${NODE_HOME}:/data \
-            --network host \
-            ${TARGET_IMAGE} \
-            start --home /data
-          ExecStop=/usr/bin/docker stop ${SERVICE_NAME}
-          Restart=always
-          RestartSec=5
-
-          [Install]
-          WantedBy=multi-user.target
-          EOF
-
-            sudo systemctl daemon-reload
-            sudo systemctl enable "$SERVICE_NAME"
-            sudo systemctl start "$SERVICE_NAME"
-
-            echo "Started $SERVICE_NAME"
-            sleep 2
-          done
+          echo "Docker compose started"
+          docker compose ps
 
       - name: Verify deployment
         run: |
           echo "Waiting for nodes to start..."
           sleep 30
 
-          echo "Checking services..."
+          echo "Checking docker compose services..."
+          cd "${GITHUB_WORKSPACE}/docker"
+          DEVNET_DIR="$DEVNET_BASE_DIR" docker compose ps
+
+          echo ""
+          echo "Checking container status..."
           for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
-            STATUS=$(systemctl is-active "devnet-node${i}" 2>/dev/null || echo "inactive")
+            STATUS=$(docker inspect -f '{{.State.Status}}' "devnet-node${i}" 2>/dev/null || echo "not found")
             echo "  devnet-node${i}: $STATUS"
           done
 
@@ -521,9 +508,10 @@ jobs:
           echo "  gRPC: localhost:9090"
           echo ""
           echo "Commands:"
-          echo "  Status: sudo systemctl status devnet-node0"
+          echo "  Status: cd ${GITHUB_WORKSPACE}/docker && DEVNET_DIR=$DEVNET_BASE_DIR docker compose ps"
           echo "  Logs: docker logs -f devnet-node0"
-          echo "  Stop: sudo systemctl stop devnet-node0"
+          echo "  Stop: cd ${GITHUB_WORKSPACE}/docker && DEVNET_DIR=$DEVNET_BASE_DIR docker compose down"
+          echo "  Start: cd ${GITHUB_WORKSPACE}/docker && DEVNET_DIR=$DEVNET_BASE_DIR docker compose up -d"
           echo "=========================================="
 
       - name: Logout from GitHub Container Registry
