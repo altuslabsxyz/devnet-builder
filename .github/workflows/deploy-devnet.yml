@@ -236,7 +236,7 @@ jobs:
             -v "$WORK_DIR:/data" \
             --network host \
             "$SOURCE_IMAGE" \
-            start --home /data
+            start --home /data --chain-id $CHAIN_ID
 
           # Wait for sync (check every 30s, timeout 30min)
           TIMEOUT=1800
