@@ -87,14 +87,14 @@ mkdir -p "$OUTPUT_DIR"
 # Create accounts directory
 mkdir -p "$OUTPUT_DIR/accounts/keyring-test"
 
-# Function to run stabled in Docker (default home: /home/stable/.stabled, run as root)
+# Function to run stabled in Docker (run as root with explicit home)
 run_stabled() {
     local node_home="$1"
     shift
     docker run --rm -u 0 \
-        -v "${node_home}:/home/stable/.stabled" \
+        -v "${node_home}:/data" \
         "$IMAGE" \
-        "$@"
+        "$@" --home /data
 }
 
 # Step 1: Initialize nodes
@@ -105,9 +105,9 @@ for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
 
     echo "  Initializing node${i}..."
     docker run --rm -u 0 \
-        -v "${NODE_DIR}:/home/stable/.stabled" \
+        -v "${NODE_DIR}:/data" \
         "$IMAGE" \
-        init "validator${i}" --chain-id "$CHAIN_ID" 2>/dev/null
+        init "validator${i}" --chain-id "$CHAIN_ID" --home /data 2>/dev/null
 
     # Copy fixed node_key.json
     if [ -f "${NODE_KEYS_DIR}/node${i}/node_key.json" ]; then
@@ -122,9 +122,9 @@ for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
 
     echo "  Creating validator${i} key..."
     docker run --rm -u 0 \
-        -v "${NODE_DIR}:/home/stable/.stabled" \
+        -v "${NODE_DIR}:/data" \
         "$IMAGE" \
-        keys add "validator${i}" --keyring-backend test --algo eth_secp256k1 2>/dev/null || true
+        keys add "validator${i}" --keyring-backend test --algo eth_secp256k1 --home /data 2>/dev/null || true
 
     # Copy validator key to accounts directory
     cp "${NODE_DIR}/keyring-test/"* "$OUTPUT_DIR/accounts/keyring-test/" 2>/dev/null || true
@@ -136,9 +136,9 @@ ACCOUNTS_DIR="$OUTPUT_DIR/accounts"
 for i in $(seq 0 $((NUM_ACCOUNTS - 1))); do
     echo "  Creating account${i} key..."
     docker run --rm -u 0 \
-        -v "${ACCOUNTS_DIR}:/home/stable/.stabled" \
+        -v "${ACCOUNTS_DIR}:/data" \
         "$IMAGE" \
-        keys add "account${i}" --keyring-backend test --algo eth_secp256k1 2>/dev/null || true
+        keys add "account${i}" --keyring-backend test --algo eth_secp256k1 --home /data 2>/dev/null || true
 done
 
 # Step 4: Update genesis and copy to all nodes

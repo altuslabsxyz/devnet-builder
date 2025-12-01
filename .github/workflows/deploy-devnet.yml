@@ -156,12 +156,12 @@ jobs:
           sudo mkdir -p "$WORK_DIR"
           sudo chown -R $(whoami):$(whoami) "$WORK_DIR"
 
-          # Initialize chain (stabled default home: /home/stable/.stabled)
+          # Initialize chain
           echo "Initializing chain..."
           docker run --rm -u 0 \
-            -v "$WORK_DIR:/home/stable/.stabled" \
+            -v "$WORK_DIR:/data" \
             "$SOURCE_IMAGE" \
-            init "provisioner" --chain-id "$CHAIN_ID"
+            init "provisioner" --chain-id "$CHAIN_ID" --home /data
 
           # Debug: check directory structure
           echo "Checking directory structure..."
@@ -204,10 +204,10 @@ jobs:
           CONTAINER_NAME="provision-sync-$$"
 
           docker run -d -u 0 --name "$CONTAINER_NAME" \
-            -v "$WORK_DIR:/home/stable/.stabled" \
+            -v "$WORK_DIR:/data" \
             --network host \
             "$SOURCE_IMAGE" \
-            start
+            start --home /data
 
           # Wait for sync (check every 30s, timeout 30min)
           TIMEOUT=1800
@@ -233,9 +233,9 @@ jobs:
           # Export genesis
           echo "Exporting genesis..."
           docker run --rm -u 0 \
-            -v "$WORK_DIR:/home/stable/.stabled" \
+            -v "$WORK_DIR:/data" \
             "$SOURCE_IMAGE" \
-            export > "$GENESIS_EXPORT"
+            export --home /data > "$GENESIS_EXPORT"
 
           # Verify export
           if [ ! -s "$GENESIS_EXPORT" ]; then
@@ -268,25 +268,25 @@ jobs:
           rm -rf "$OUTPUT_DIR"
           mkdir -p "$OUTPUT_DIR/accounts/keyring-test"
 
-          # Initialize nodes (stabled default home: /home/stable/.stabled)
+          # Initialize nodes
           for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
             NODE_DIR="$OUTPUT_DIR/node${i}"
             mkdir -p "$NODE_DIR"
 
             echo "Initializing node${i}..."
             docker run --rm -u 0 \
-              -v "$NODE_DIR:/home/stable/.stabled" \
+              -v "$NODE_DIR:/data" \
               "$TARGET_IMAGE" \
-              init "validator${i}" --chain-id "$DEVNET_CHAIN_ID" 2>/dev/null || true
+              init "validator${i}" --chain-id "$DEVNET_CHAIN_ID" --home /data 2>/dev/null || true
 
             # Copy fixed node_key.json
             cp "${GITHUB_WORKSPACE}/config/devnet-keys/node${i}/node_key.json" "$NODE_DIR/config/node_key.json"
 
             # Generate validator key
             docker run --rm -u 0 \
-              -v "$NODE_DIR:/home/stable/.stabled" \
+              -v "$NODE_DIR:/data" \
               "$TARGET_IMAGE" \
-              keys add "validator${i}" --keyring-backend test --algo eth_secp256k1 2>/dev/null || true
+              keys add "validator${i}" --keyring-backend test --algo eth_secp256k1 --home /data 2>/dev/null || true
 
             # Copy keys to accounts
             cp "$NODE_DIR/keyring-test/"* "$OUTPUT_DIR/accounts/keyring-test/" 2>/dev/null || true
@@ -295,9 +295,9 @@ jobs:
           # Generate account keys
           for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
             docker run --rm -u 0 \
-              -v "$OUTPUT_DIR/accounts:/home/stable/.stabled" \
+              -v "$OUTPUT_DIR/accounts:/data" \
               "$TARGET_IMAGE" \
-              keys add "account${i}" --keyring-backend test --algo eth_secp256k1 2>/dev/null || true
+              keys add "account${i}" --keyring-backend test --algo eth_secp256k1 --home /data 2>/dev/null || true
           done
 
           # Update genesis chain ID and copy to all nodes
@@ -398,10 +398,10 @@ jobs:
           User=$(whoami)
           ExecStartPre=-/usr/bin/docker rm -f ${SERVICE_NAME}
           ExecStart=/usr/bin/docker run --rm -u 0 --name ${SERVICE_NAME} \
-            -v ${NODE_HOME}:/home/stable/.stabled \
+            -v ${NODE_HOME}:/data \
             --network host \
             ${TARGET_IMAGE} \
-            start
+            start --home /data
           ExecStop=/usr/bin/docker stop ${SERVICE_NAME}
           Restart=always
           RestartSec=5
@@ -451,14 +451,14 @@ jobs:
           echo "=========================================="
 
           docker run --rm -u 0 \
-            -v "$ACCOUNTS_DIR:/home/stable/.stabled" \
+            -v "$ACCOUNTS_DIR:/data" \
             "$TARGET_IMAGE" \
-            keys list --keyring-backend test --output json 2>/dev/null | \
+            keys list --keyring-backend test --home /data --output json 2>/dev/null | \
           jq -r '.[].name' | while read -r KEY_NAME; do
             PRIVKEY=$(docker run --rm -u 0 \
-              -v "$ACCOUNTS_DIR:/home/stable/.stabled" \
+              -v "$ACCOUNTS_DIR:/data" \
               "$TARGET_IMAGE" \
-              keys unsafe-export-eth-key "$KEY_NAME" --keyring-backend test 2>/dev/null || echo "ERROR")
+              keys unsafe-export-eth-key "$KEY_NAME" --keyring-backend test --home /data 2>/dev/null || echo "ERROR")
             echo "\"$KEY_NAME\": \"$PRIVKEY\""
           done
 
