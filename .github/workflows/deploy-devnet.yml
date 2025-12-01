@@ -487,3 +487,8 @@ jobs:
           echo "  Logs: docker logs -f devnet-node0"
           echo "  Stop: sudo systemctl stop devnet-node0"
           echo "=========================================="
+
+      - name: Logout from GitHub Container Registry
+        if: always()
+        run: |
+          docker logout ghcr.io
