@@ -168,6 +168,9 @@ jobs:
           ls -la "$WORK_DIR/" || echo "ERROR: WORK_DIR empty"
           ls -la "$WORK_DIR/config/" || echo "ERROR: config dir not found"
 
+          # Fix permissions (docker creates files as root)
+          sudo chown -R $(whoami):$(whoami) "$WORK_DIR"
+
           # Copy fixed node_key.json
           cp "${GITHUB_WORKSPACE}/config/node_key.json" "$WORK_DIR/config/node_key.json"
 
@@ -279,6 +282,9 @@ jobs:
               "$TARGET_IMAGE" \
               init "validator${i}" --chain-id "$DEVNET_CHAIN_ID" --home /data 2>/dev/null || true
 
+            # Fix permissions
+            sudo chown -R $(whoami):$(whoami) "$NODE_DIR"
+
             # Copy fixed node_key.json
             cp "${GITHUB_WORKSPACE}/config/devnet-keys/node${i}/node_key.json" "$NODE_DIR/config/node_key.json"
 
@@ -287,6 +293,9 @@ jobs:
               -v "$NODE_DIR:/data" \
               "$TARGET_IMAGE" \
               keys add "validator${i}" --keyring-backend test --algo eth_secp256k1 --home /data 2>/dev/null || true
+
+            # Fix permissions again
+            sudo chown -R $(whoami):$(whoami) "$NODE_DIR"
 
             # Copy keys to accounts
             cp "$NODE_DIR/keyring-test/"* "$OUTPUT_DIR/accounts/keyring-test/" 2>/dev/null || true
@@ -299,6 +308,9 @@ jobs:
               "$TARGET_IMAGE" \
               keys add "account${i}" --keyring-backend test --algo eth_secp256k1 --home /data 2>/dev/null || true
           done
+
+          # Fix permissions for accounts
+          sudo chown -R $(whoami):$(whoami) "$OUTPUT_DIR"
 
           # Update genesis chain ID and copy to all nodes
           jq --arg chainId "$DEVNET_CHAIN_ID" '.chain_id = $chainId' "$GENESIS_FILE" > "$OUTPUT_DIR/node0/config/genesis.json"
