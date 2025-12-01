@@ -1,0 +1,35 @@
+# Build stage
+FROM golang:1.23-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git gcc musl-dev
+
+# Set Go environment for private repos
+ENV GOPRIVATE=github.com/stablelabs/*
+ENV GOSUMDB=off
+ENV CGO_ENABLED=1
+
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN --mount=type=secret,id=github_token \
+    git config --global url."https://$(cat /run/secrets/github_token)@github.com/".insteadOf "https://github.com/" && \
+    go mod download
+
+# Copy source code
+COPY cmd/ cmd/
+
+# Build devnet-builder
+RUN go build -o /devnet-builder ./cmd/devnet-builder
+
+# Runtime stage
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates
+
+COPY --from=builder /devnet-builder /usr/local/bin/devnet-builder
+
+ENTRYPOINT ["devnet-builder"]
