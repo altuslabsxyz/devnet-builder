@@ -258,8 +258,8 @@ require (
 
 replace (
 	github.com/cometbft/cometbft => github.com/stablelabs/stable-bft v0.38.19-stable-0
-	github.com/cosmos/cosmos-sdk => github.com/stablelabs/stable-sdk v0.53.4-stable-1
-	github.com/cosmos/evm => github.com/stablelabs/stable-evm v0.3.0-stable-7
+	github.com/cosmos/cosmos-sdk => github.com/stablelabs/stable-sdk v0.53.4-stable-2
+	github.com/cosmos/evm => github.com/stablelabs/stable-evm v0.3.2-stable-3
 	github.com/ethereum/go-ethereum => github.com/stablelabs/stable-geth v1.15.11-stable-0
 )
 
