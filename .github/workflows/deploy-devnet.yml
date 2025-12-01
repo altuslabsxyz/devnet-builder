@@ -111,6 +111,10 @@ jobs:
           echo "  Devnet Chain ID: $DEVNET_CHAIN_ID"
           echo "  RPC: $RPC_ENDPOINT"
 
+      - name: Login to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GH_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
       - name: Pull Docker images
         run: |
           SOURCE_IMAGE="${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
