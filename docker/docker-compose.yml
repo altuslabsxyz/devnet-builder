@@ -1,7 +1,7 @@
 # Devnet docker-compose configuration
 # Usage:
 #   Local development: docker compose up -d
-#   Server deployment: DEVNET_DIR=/data/.devnet docker compose up -d
+#   Server deployment: DEVNET_DIR=/data/.devnet CHAIN_ID=stabledevnet_262144-1 docker compose up -d
 
 services:
   node0:
@@ -9,7 +9,7 @@ services:
     container_name: devnet-node0
     hostname: node0
     user: "0"
-    command: ["start", "--home", "/data"]
+    command: ["start", "--home", "/data", "--chain-id", "${CHAIN_ID:-stabledevnet_262144-1}"]
     volumes:
       - ${DEVNET_DIR:-./devnet}/node0/config:/data/config:ro
       - ${DEVNET_DIR:-./devnet}/node0/keyring-test:/data/keyring-test:ro
@@ -33,7 +33,7 @@ services:
     container_name: devnet-node1
     hostname: node1
     user: "0"
-    command: ["start", "--home", "/data"]
+    command: ["start", "--home", "/data", "--chain-id", "${CHAIN_ID:-stabledevnet_262144-1}"]
     volumes:
       - ${DEVNET_DIR:-./devnet}/node1/config:/data/config:ro
       - ${DEVNET_DIR:-./devnet}/node1/keyring-test:/data/keyring-test:ro
@@ -60,7 +60,7 @@ services:
     container_name: devnet-node2
     hostname: node2
     user: "0"
-    command: ["start", "--home", "/data"]
+    command: ["start", "--home", "/data", "--chain-id", "${CHAIN_ID:-stabledevnet_262144-1}"]
     volumes:
       - ${DEVNET_DIR:-./devnet}/node2/config:/data/config:ro
       - ${DEVNET_DIR:-./devnet}/node2/keyring-test:/data/keyring-test:ro
@@ -87,7 +87,7 @@ services:
     container_name: devnet-node3
     hostname: node3
     user: "0"
-    command: ["start", "--home", "/data"]
+    command: ["start", "--home", "/data", "--chain-id", "${CHAIN_ID:-stabledevnet_262144-1}"]
     volumes:
       - ${DEVNET_DIR:-./devnet}/node3/config:/data/config:ro
       - ${DEVNET_DIR:-./devnet}/node3/keyring-test:/data/keyring-test:ro
