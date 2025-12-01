@@ -178,8 +178,8 @@ for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
 
     # Update config.toml
     if [ -f "$CONFIG_FILE" ]; then
-        # Set persistent peers
-        sed -i.bak "s|persistent_peers = \".*\"|persistent_peers = \"${PERSISTENT_PEERS}\"|g" "$CONFIG_FILE"
+        # Set persistent peers (use ^ to avoid matching experimental_max_gossip_connections_to_persistent_peers)
+        sed -i.bak "s|^persistent_peers = \".*\"|persistent_peers = \"${PERSISTENT_PEERS}\"|g" "$CONFIG_FILE"
 
         # Bind to all interfaces
         sed -i.bak 's|laddr = "tcp://127.0.0.1:|laddr = "tcp://0.0.0.0:|g' "$CONFIG_FILE"

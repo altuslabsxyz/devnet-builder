@@ -358,7 +358,8 @@ jobs:
             PROXY_PORT=$((26658 + i * 10))
 
             # Update config.toml
-            sed -i "s|persistent_peers = .*|persistent_peers = \"$PERSISTENT_PEERS\"|g" "$CONFIG_FILE"
+            # Use ^ anchor to only match lines starting with persistent_peers (not experimental_max_gossip_connections_to_persistent_peers)
+            sed -i "s|^persistent_peers = .*|persistent_peers = \"$PERSISTENT_PEERS\"|g" "$CONFIG_FILE"
             sed -i "s|allow_duplicate_ip = .*|allow_duplicate_ip = true|g" "$CONFIG_FILE"
             sed -i "s|addr_book_strict = .*|addr_book_strict = false|g" "$CONFIG_FILE"
             sed -i "s|laddr = \"tcp://0.0.0.0:26656\"|laddr = \"tcp://0.0.0.0:$P2P_PORT\"|g" "$CONFIG_FILE"
