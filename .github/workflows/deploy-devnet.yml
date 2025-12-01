@@ -156,12 +156,12 @@ jobs:
           sudo mkdir -p "$WORK_DIR"
           sudo chown -R $(whoami):$(whoami) "$WORK_DIR"
 
-          # Initialize chain
+          # Initialize chain (stabled default home: /home/stable/.stabled)
           echo "Initializing chain..."
           docker run --rm \
-            -v "$WORK_DIR:/root/.stabled" \
+            -v "$WORK_DIR:/home/stable/.stabled" \
             "$SOURCE_IMAGE" \
-            init "provisioner" --chain-id "$CHAIN_ID" --home /root/.stabled
+            init "provisioner" --chain-id "$CHAIN_ID"
 
           # Debug: check directory structure
           echo "Checking directory structure..."
@@ -204,10 +204,10 @@ jobs:
           CONTAINER_NAME="provision-sync-$$"
 
           docker run -d --name "$CONTAINER_NAME" \
-            -v "$WORK_DIR:/root/.stabled" \
+            -v "$WORK_DIR:/home/stable/.stabled" \
             --network host \
             "$SOURCE_IMAGE" \
-            start --home /root/.stabled
+            start
 
           # Wait for sync (check every 30s, timeout 30min)
           TIMEOUT=1800
@@ -233,9 +233,9 @@ jobs:
           # Export genesis
           echo "Exporting genesis..."
           docker run --rm \
-            -v "$WORK_DIR:/root/.stabled" \
+            -v "$WORK_DIR:/home/stable/.stabled" \
             "$SOURCE_IMAGE" \
-            export --home /root/.stabled > "$GENESIS_EXPORT"
+            export > "$GENESIS_EXPORT"
 
           # Verify export
           if [ ! -s "$GENESIS_EXPORT" ]; then
@@ -268,14 +268,14 @@ jobs:
           rm -rf "$OUTPUT_DIR"
           mkdir -p "$OUTPUT_DIR/accounts/keyring-test"
 
-          # Initialize nodes
+          # Initialize nodes (stabled default home: /home/stable/.stabled)
           for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
             NODE_DIR="$OUTPUT_DIR/node${i}"
             mkdir -p "$NODE_DIR"
 
             echo "Initializing node${i}..."
             docker run --rm \
-              -v "$NODE_DIR:/root/.stabled" \
+              -v "$NODE_DIR:/home/stable/.stabled" \
               "$TARGET_IMAGE" \
               init "validator${i}" --chain-id "$DEVNET_CHAIN_ID" 2>/dev/null || true
 
@@ -284,7 +284,7 @@ jobs:
 
             # Generate validator key
             docker run --rm \
-              -v "$NODE_DIR:/root/.stabled" \
+              -v "$NODE_DIR:/home/stable/.stabled" \
               "$TARGET_IMAGE" \
               keys add "validator${i}" --keyring-backend test --algo eth_secp256k1 2>/dev/null || true
 
@@ -295,7 +295,7 @@ jobs:
           # Generate account keys
           for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
             docker run --rm \
-              -v "$OUTPUT_DIR/accounts:/root/.stabled" \
+              -v "$OUTPUT_DIR/accounts:/home/stable/.stabled" \
               "$TARGET_IMAGE" \
               keys add "account${i}" --keyring-backend test --algo eth_secp256k1 2>/dev/null || true
           done
@@ -398,10 +398,10 @@ jobs:
           User=$(whoami)
           ExecStartPre=-/usr/bin/docker rm -f ${SERVICE_NAME}
           ExecStart=/usr/bin/docker run --rm --name ${SERVICE_NAME} \
-            -v ${NODE_HOME}:/root/.stabled \
+            -v ${NODE_HOME}:/home/stable/.stabled \
             --network host \
             ${TARGET_IMAGE} \
-            start --home /root/.stabled
+            start
           ExecStop=/usr/bin/docker stop ${SERVICE_NAME}
           Restart=always
           RestartSec=5
@@ -451,12 +451,12 @@ jobs:
           echo "=========================================="
 
           docker run --rm \
-            -v "$ACCOUNTS_DIR:/root/.stabled" \
+            -v "$ACCOUNTS_DIR:/home/stable/.stabled" \
             "$TARGET_IMAGE" \
             keys list --keyring-backend test --output json 2>/dev/null | \
           jq -r '.[].name' | while read -r KEY_NAME; do
             PRIVKEY=$(docker run --rm \
-              -v "$ACCOUNTS_DIR:/root/.stabled" \
+              -v "$ACCOUNTS_DIR:/home/stable/.stabled" \
               "$TARGET_IMAGE" \
               keys unsafe-export-eth-key "$KEY_NAME" --keyring-backend test 2>/dev/null || echo "ERROR")
             echo "\"$KEY_NAME\": \"$PRIVKEY\""

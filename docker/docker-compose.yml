@@ -3,11 +3,11 @@ services:
     image: ${STABLED_IMAGE:-ghcr.io/stablelabs/stable}:${STABLED_TAG:-latest-testnet}
     container_name: stabled-node0
     hostname: node0
-    command: ["start", "--home", "/root/.stabled"]
+    command: ["start"]
     volumes:
-      - ./devnet/node0/config:/root/.stabled/config:ro
-      - ./devnet/node0/keyring-test:/root/.stabled/keyring-test:ro
-      - ./devnet/node0/data:/root/.stabled/data
+      - ./devnet/node0/config:/home/stable/.stabled/config:ro
+      - ./devnet/node0/keyring-test:/home/stable/.stabled/keyring-test:ro
+      - ./devnet/node0/data:/home/stable/.stabled/data
     ports:
       - "${NODE0_RPC_PORT:-26657}:6657"        # CometBFT RPC
       - "${NODE0_P2P_PORT:-26656}:6656"        # P2P
@@ -30,11 +30,11 @@ services:
     image: ${STABLED_IMAGE:-ghcr.io/stablelabs/stable}:${STABLED_TAG:-latest-testnet}
     container_name: stabled-node1
     hostname: node1
-    command: ["start", "--home", "/root/.stabled"]
+    command: ["start"]
     volumes:
-      - ./devnet/node1/config:/root/.stabled/config:ro
-      - ./devnet/node1/keyring-test:/root/.stabled/keyring-test:ro
-      - ./devnet/node1/data:/root/.stabled/data
+      - ./devnet/node1/config:/home/stable/.stabled/config:ro
+      - ./devnet/node1/keyring-test:/home/stable/.stabled/keyring-test:ro
+      - ./devnet/node1/data:/home/stable/.stabled/data
     ports:
       - "${NODE1_RPC_PORT:-36657}:6657"        # CometBFT RPC
       - "${NODE1_P2P_PORT:-36656}:6656"        # P2P
@@ -60,11 +60,11 @@ services:
     image: ${STABLED_IMAGE:-ghcr.io/stablelabs/stable}:${STABLED_TAG:-latest-testnet}
     container_name: stabled-node2
     hostname: node2
-    command: ["start", "--home", "/root/.stabled"]
+    command: ["start"]
     volumes:
-      - ./devnet/node2/config:/root/.stabled/config:ro
-      - ./devnet/node2/keyring-test:/root/.stabled/keyring-test:ro
-      - ./devnet/node2/data:/root/.stabled/data
+      - ./devnet/node2/config:/home/stable/.stabled/config:ro
+      - ./devnet/node2/keyring-test:/home/stable/.stabled/keyring-test:ro
+      - ./devnet/node2/data:/home/stable/.stabled/data
     ports:
       - "${NODE2_RPC_PORT:-46657}:6657"        # CometBFT RPC
       - "${NODE2_P2P_PORT:-46656}:6656"        # P2P
@@ -90,11 +90,11 @@ services:
     image: ${STABLED_IMAGE:-ghcr.io/stablelabs/stable}:${STABLED_TAG:-latest-testnet}
     container_name: stabled-node3
     hostname: node3
-    command: ["start", "--home", "/root/.stabled"]
+    command: ["start"]
     volumes:
-      - ./devnet/node3/config:/root/.stabled/config:ro
-      - ./devnet/node3/keyring-test:/root/.stabled/keyring-test:ro
-      - ./devnet/node3/data:/root/.stabled/data
+      - ./devnet/node3/config:/home/stable/.stabled/config:ro
+      - ./devnet/node3/keyring-test:/home/stable/.stabled/keyring-test:ro
+      - ./devnet/node3/data:/home/stable/.stabled/data
     ports:
       - "${NODE3_RPC_PORT:-56657}:6657"        # CometBFT RPC
       - "${NODE3_P2P_PORT:-56656}:6656"        # P2P
