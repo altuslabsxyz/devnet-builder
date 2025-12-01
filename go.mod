@@ -1,8 +1,8 @@
 module github.com/stablelabs/stable-devnet
 
-go 1.23.8
+go 1.24
 
-toolchain go1.23.11
+toolchain go1.24.3
 
 require (
 	cosmossdk.io/log v1.6.0
