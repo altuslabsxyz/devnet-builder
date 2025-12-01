@@ -1631,6 +1631,7 @@ github.com/spf13/viper v1.20.1 h1:ZMi+z/lvLyPSCoNtFCpqjy0S4kPbirhpTMwl8BkW9X4=
 github.com/spf13/viper v1.20.1/go.mod h1:P9Mdzt1zoHIG8m2eZQinpiBjo6kCmZSKBClNNqjJvu4=
 github.com/spiffe/go-spiffe/v2 v2.5.0 h1:N2I01KCUkv1FAjZXJMwh95KK1ZIQLYbPfhaxw8WS0hE=
 github.com/spiffe/go-spiffe/v2 v2.5.0/go.mod h1:P+NxobPc6wXhVtINNtFjNWGBTreew1GBUCwT2wPmb7g=
+github.com/stablelabs/stable v1.1.0 h1:CpF2b1MsMNmvImD/u4vEZIN7AKQaq//lcD44NuKqJ+4=
 github.com/stablelabs/stable v1.1.0/go.mod h1:50N1keaP5DwHs/GXoPOy96xIhf15lWsn16040OwC5CU=
 github.com/stablelabs/stable-bft v0.38.19-stable-0 h1:0xzd+8zzlGcvl2JC4Hoa7UPXwpc6C53X+i7wowfT8YI=
 github.com/stablelabs/stable-bft v0.38.19-stable-0/go.mod h1:UCu8dlHqvkAsmAFmWDRWNZJPlu6ya2fTWZlDrWsivwo=

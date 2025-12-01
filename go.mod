@@ -10,6 +10,7 @@ require (
 	github.com/cosmos/cosmos-db v1.1.1
 	github.com/cosmos/cosmos-sdk v0.53.4
 	github.com/cosmos/evm v0.0.0-20250320012422-2395e5845ee9
+	github.com/ethereum/go-ethereum v1.15.11
 	github.com/fatih/color v1.17.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stablelabs/stable v1.1.0
@@ -98,7 +99,6 @@ require (
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.0 // indirect
-	github.com/ethereum/go-ethereum v1.15.11 // indirect
 	github.com/ethereum/go-verkle v0.2.2 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
