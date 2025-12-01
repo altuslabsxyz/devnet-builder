@@ -386,24 +386,6 @@ jobs:
           echo "output_dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
           echo "chain_id=$DEVNET_CHAIN_ID" >> $GITHUB_OUTPUT
 
-      - name: Deploy devnet
-        run: |
-          OUTPUT_DIR="${{ steps.build.outputs.output_dir }}"
-
-          echo "Deploying to $DEVNET_BASE_DIR..."
-
-          # Backup existing
-          if [ -d "$DEVNET_BASE_DIR" ]; then
-            BACKUP="${DEVNET_BASE_DIR}_backup_$(date +%Y%m%d_%H%M%S)"
-            sudo mv "$DEVNET_BASE_DIR" "$BACKUP"
-          fi
-
-          sudo mkdir -p "$DEVNET_BASE_DIR"
-          sudo cp -r "$OUTPUT_DIR"/* "$DEVNET_BASE_DIR/"
-          sudo chown -R $(whoami):$(whoami) "$DEVNET_BASE_DIR"
-
-          echo "Deployed successfully"
-
       - name: Stop existing services
         run: |
           echo "Stopping existing devnet services..."
@@ -422,6 +404,27 @@ jobs:
 
           # Remove any orphaned containers
           docker rm -f devnet-node0 devnet-node1 devnet-node2 devnet-node3 2>/dev/null || true
+
+      - name: Deploy devnet
+        run: |
+          OUTPUT_DIR="${{ steps.build.outputs.output_dir }}"
+
+          echo "Deploying to $DEVNET_BASE_DIR..."
+
+          # Backup existing (only after services are stopped)
+          if [ -d "$DEVNET_BASE_DIR" ]; then
+            BACKUP="${DEVNET_BASE_DIR}_backup_$(date +%Y%m%d_%H%M%S)"
+            echo "Backing up existing devnet to $BACKUP..."
+            sudo mv "$DEVNET_BASE_DIR" "$BACKUP"
+          fi
+
+          # Deploy new devnet
+          sudo mkdir -p "$DEVNET_BASE_DIR"
+          sudo cp -a "$OUTPUT_DIR"/* "$DEVNET_BASE_DIR/"
+          sudo chown -R $(whoami):$(whoami) "$DEVNET_BASE_DIR"
+
+          echo "Deployed successfully"
+          ls -la "$DEVNET_BASE_DIR/"
 
       - name: Start devnet with docker compose
         run: |
