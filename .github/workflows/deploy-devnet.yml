@@ -275,6 +275,13 @@ jobs:
           echo "Genesis exported: $(wc -c < "$GENESIS_EXPORT") bytes"
           echo "genesis_file=$GENESIS_EXPORT" >> $GITHUB_OUTPUT
 
+      - name: Build devnet-builder
+        run: |
+          echo "Building devnet-builder..."
+          cd "${GITHUB_WORKSPACE}"
+          make build
+          ls -la build/
+
       - name: Build devnet
         id: build
         run: |
@@ -282,87 +289,90 @@ jobs:
           GENESIS_FILE="${{ steps.provision.outputs.genesis_file }}"
           DEVNET_CHAIN_ID="${{ steps.config.outputs.devnet_chain_id }}"
           OUTPUT_DIR="${GITHUB_WORKSPACE}/devnet"
-
-          # Node IDs from fixed keys
-          NODE0_ID="a18d66435236d91ba28e1bf7a82d400b9a188f5f"
-          NODE1_ID="2edec3e0270cba790f849b44f46b9120ed3f153f"
-          NODE2_ID="916431c30a36aff0b72a798ed86965903576d38c"
-          NODE3_ID="48496c38733af68c8ce1cfcb6e1ff476cfac260a"
+          DEVNET_BUILDER_OUTPUT="${GITHUB_WORKSPACE}/devnet-builder-output"
 
           echo "Building devnet..."
-          echo "  Image: $TARGET_IMAGE"
+          echo "  Genesis: $GENESIS_FILE"
           echo "  Chain ID: $DEVNET_CHAIN_ID"
           echo "  Validators: $NUM_VALIDATORS"
 
-          rm -rf "$OUTPUT_DIR"
-          mkdir -p "$OUTPUT_DIR/accounts/keyring-test"
+          rm -rf "$OUTPUT_DIR" "$DEVNET_BUILDER_OUTPUT"
 
-          # Initialize nodes
+          # Step 1: Run devnet-builder to generate validator keys and updated genesis
+          echo ""
+          echo "Step 1: Running devnet-builder..."
+          "${GITHUB_WORKSPACE}/build/devnet-builder" build "$GENESIS_FILE" \
+            --validators "$NUM_VALIDATORS" \
+            --accounts "$NUM_VALIDATORS" \
+            --chain-id "$DEVNET_CHAIN_ID" \
+            --output "$DEVNET_BUILDER_OUTPUT"
+
+          echo "devnet-builder output:"
+          ls -la "$DEVNET_BUILDER_OUTPUT"
+
+          # Step 2: Initialize node configs with stabled init
+          echo ""
+          echo "Step 2: Initializing node configs..."
           for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
             NODE_DIR="$OUTPUT_DIR/node${i}"
             mkdir -p "$NODE_DIR"
 
-            echo "Initializing node${i}..."
+            echo "  Initializing node${i}..."
             docker run --rm -u 0 \
               -v "$NODE_DIR:/data" \
               "$TARGET_IMAGE" \
               init "validator${i}" --chain-id "$DEVNET_CHAIN_ID" --home /data 2>/dev/null || true
 
-            # Fix permissions
             sudo chown -R $(whoami):$(whoami) "$NODE_DIR"
-
-            # Copy fixed node_key.json
-            cp "${GITHUB_WORKSPACE}/config/devnet-keys/node${i}/node_key.json" "$NODE_DIR/config/node_key.json"
-
-            # Generate validator key
-            docker run --rm -u 0 \
-              -v "$NODE_DIR:/data" \
-              "$TARGET_IMAGE" \
-              keys add "validator${i}" --keyring-backend test --algo eth_secp256k1 --home /data 2>/dev/null || true
-
-            # Fix permissions again
-            sudo chown -R $(whoami):$(whoami) "$NODE_DIR"
-
-            # Copy keys to accounts
-            cp "$NODE_DIR/keyring-test/"* "$OUTPUT_DIR/accounts/keyring-test/" 2>/dev/null || true
           done
 
-          # Generate account keys
+          # Step 3: Overlay devnet-builder output (priv_validator_key.json, genesis.json, priv_validator_state.json)
+          echo ""
+          echo "Step 3: Copying validator keys from devnet-builder..."
           for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
-            docker run --rm -u 0 \
-              -v "$OUTPUT_DIR/accounts:/data" \
-              "$TARGET_IMAGE" \
-              keys add "account${i}" --keyring-backend test --algo eth_secp256k1 --home /data 2>/dev/null || true
+            # Copy priv_validator_key.json (THIS IS THE KEY FIX!)
+            cp "$DEVNET_BUILDER_OUTPUT/node${i}/config/priv_validator_key.json" "$OUTPUT_DIR/node${i}/config/"
+
+            # Copy priv_validator_state.json
+            cp "$DEVNET_BUILDER_OUTPUT/node${i}/data/priv_validator_state.json" "$OUTPUT_DIR/node${i}/data/"
+
+            # Copy updated genesis with new validators
+            cp "$DEVNET_BUILDER_OUTPUT/node${i}/config/genesis.json" "$OUTPUT_DIR/node${i}/config/"
+
+            echo "  node${i}: priv_validator_key.json, genesis.json copied"
           done
 
-          # Fix permissions for accounts
-          sudo chown -R $(whoami):$(whoami) "$OUTPUT_DIR"
+          # Copy accounts
+          mkdir -p "$OUTPUT_DIR/accounts"
+          cp -r "$DEVNET_BUILDER_OUTPUT/accounts/"* "$OUTPUT_DIR/accounts/" 2>/dev/null || true
 
-          # Update genesis chain ID and copy to all nodes
-          jq --arg chainId "$DEVNET_CHAIN_ID" '.chain_id = $chainId' "$GENESIS_FILE" > "$OUTPUT_DIR/node0/config/genesis.json"
-
-          for i in $(seq 1 $((NUM_VALIDATORS - 1))); do
-            cp "$OUTPUT_DIR/node0/config/genesis.json" "$OUTPUT_DIR/node${i}/config/genesis.json"
+          # Step 4: Get node IDs and configure networking
+          echo ""
+          echo "Step 4: Configuring networking..."
+          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
+            NODE_ID=$(jq -r '.id' "$OUTPUT_DIR/node${i}/config/node_key.json" 2>/dev/null || echo "unknown")
+            echo "  node${i} ID: $NODE_ID"
+            eval "NODE${i}_ID=$NODE_ID"
           done
 
-          # Configure networking (Docker hostnames for compose, localhost for systemd)
           PERSISTENT_PEERS="${NODE0_ID}@127.0.0.1:26656,${NODE1_ID}@127.0.0.1:26666,${NODE2_ID}@127.0.0.1:26676,${NODE3_ID}@127.0.0.1:26686"
 
           for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
             CONFIG_FILE="$OUTPUT_DIR/node${i}/config/config.toml"
             APP_FILE="$OUTPUT_DIR/node${i}/config/app.toml"
 
-            # Calculate ports
             P2P_PORT=$((26656 + i * 10))
             RPC_PORT=$((26657 + i * 10))
             PROXY_PORT=$((26658 + i * 10))
 
+            echo "  Configuring node${i} (P2P:$P2P_PORT, RPC:$RPC_PORT)..."
+
             # Update config.toml
-            # Use ^ anchor to only match lines starting with persistent_peers (not experimental_max_gossip_connections_to_persistent_peers)
             sed -i "s|^persistent_peers = .*|persistent_peers = \"$PERSISTENT_PEERS\"|g" "$CONFIG_FILE"
             sed -i "s|allow_duplicate_ip = .*|allow_duplicate_ip = true|g" "$CONFIG_FILE"
             sed -i "s|addr_book_strict = .*|addr_book_strict = false|g" "$CONFIG_FILE"
             sed -i "s|laddr = \"tcp://0.0.0.0:26656\"|laddr = \"tcp://0.0.0.0:$P2P_PORT\"|g" "$CONFIG_FILE"
+            sed -i "s|laddr = \"tcp://127.0.0.1:26656\"|laddr = \"tcp://0.0.0.0:$P2P_PORT\"|g" "$CONFIG_FILE"
             sed -i "s|laddr = \"tcp://0.0.0.0:26657\"|laddr = \"tcp://0.0.0.0:$RPC_PORT\"|g" "$CONFIG_FILE"
             sed -i "s|laddr = \"tcp://127.0.0.1:26657\"|laddr = \"tcp://0.0.0.0:$RPC_PORT\"|g" "$CONFIG_FILE"
             sed -i "s|proxy_app = \"tcp://127.0.0.1:26658\"|proxy_app = \"tcp://127.0.0.1:$PROXY_PORT\"|g" "$CONFIG_FILE"
@@ -374,13 +384,14 @@ jobs:
               sed -i 's|address = "127.0.0.1:8545"|address = "0.0.0.0:8545"|g' "$APP_FILE"
               sed -i 's|ws-address = "127.0.0.1:8546"|ws-address = "0.0.0.0:8546"|g' "$APP_FILE"
             fi
-
-            # Init data dir
-            mkdir -p "$OUTPUT_DIR/node${i}/data"
-            echo '{"height":"0","round":0,"step":0}' > "$OUTPUT_DIR/node${i}/data/priv_validator_state.json"
           done
 
-          echo "Devnet built successfully"
+          # Cleanup
+          rm -rf "$DEVNET_BUILDER_OUTPUT"
+
+          echo ""
+          echo "Devnet built successfully!"
+          echo "  Each node has matching priv_validator_key.json from devnet-builder"
           ls -la "$OUTPUT_DIR"
 
           echo "output_dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
