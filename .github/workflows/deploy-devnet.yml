@@ -360,7 +360,10 @@ jobs:
           echo ""
           echo "Step 4: Configuring networking..."
           for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
-            NODE_ID=$(jq -r '.id' "$OUTPUT_DIR/node${i}/config/node_key.json" 2>/dev/null || echo "unknown")
+            NODE_ID=$(docker run --rm -u 0 \
+              -v "$OUTPUT_DIR/node${i}:/data" \
+              "$TARGET_IMAGE" \
+              comet show-node-id --home /data 2>/dev/null)
             echo "  node${i} ID: $NODE_ID"
             eval "NODE${i}_ID=$NODE_ID"
           done
