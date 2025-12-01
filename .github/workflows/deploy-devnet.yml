@@ -197,6 +197,32 @@ jobs:
           tar -xf "$SNAPSHOT_FILE" -C "$WORK_DIR/data"
           rm -f "$SNAPSHOT_FILE"
 
+          # Handle nested data directory from snapshot
+          # Some snapshots extract as data/data/*, need to flatten
+          if [ -d "$WORK_DIR/data/data" ] && [ ! -f "$WORK_DIR/data/priv_validator_state.json" ]; then
+            echo "Detected nested data directory, checking structure..."
+            ls -la "$WORK_DIR/data/"
+
+            # If priv_validator_state.json is in nested data, move contents up
+            if [ -f "$WORK_DIR/data/data/priv_validator_state.json" ]; then
+              echo "Moving nested data contents up..."
+              mv "$WORK_DIR/data/data"/* "$WORK_DIR/data/" 2>/dev/null || true
+              rm -rf "$WORK_DIR/data/data"
+            fi
+          fi
+
+          # Ensure priv_validator_state.json exists
+          if [ ! -f "$WORK_DIR/data/priv_validator_state.json" ]; then
+            echo "Creating priv_validator_state.json..."
+            echo '{"height":"0","round":0,"step":0}' > "$WORK_DIR/data/priv_validator_state.json"
+          fi
+
+          # Fix permissions after extraction
+          sudo chown -R $(whoami):$(whoami) "$WORK_DIR"
+
+          echo "Data directory after extraction:"
+          ls -la "$WORK_DIR/data/"
+
           # Configure node
           CONFIG_FILE="$WORK_DIR/config/config.toml"
           sed -i 's/enable = true/enable = false/g' "$CONFIG_FILE"
