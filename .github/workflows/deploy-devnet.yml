@@ -158,7 +158,7 @@ jobs:
 
           # Initialize chain (stabled default home: /home/stable/.stabled)
           echo "Initializing chain..."
-          docker run --rm \
+          docker run --rm -u 0 \
             -v "$WORK_DIR:/home/stable/.stabled" \
             "$SOURCE_IMAGE" \
             init "provisioner" --chain-id "$CHAIN_ID"
@@ -203,7 +203,7 @@ jobs:
           echo "Starting node to sync..."
           CONTAINER_NAME="provision-sync-$$"
 
-          docker run -d --name "$CONTAINER_NAME" \
+          docker run -d -u 0 --name "$CONTAINER_NAME" \
             -v "$WORK_DIR:/home/stable/.stabled" \
             --network host \
             "$SOURCE_IMAGE" \
@@ -232,7 +232,7 @@ jobs:
 
           # Export genesis
           echo "Exporting genesis..."
-          docker run --rm \
+          docker run --rm -u 0 \
             -v "$WORK_DIR:/home/stable/.stabled" \
             "$SOURCE_IMAGE" \
             export > "$GENESIS_EXPORT"
@@ -274,7 +274,7 @@ jobs:
             mkdir -p "$NODE_DIR"
 
             echo "Initializing node${i}..."
-            docker run --rm \
+            docker run --rm -u 0 \
               -v "$NODE_DIR:/home/stable/.stabled" \
               "$TARGET_IMAGE" \
               init "validator${i}" --chain-id "$DEVNET_CHAIN_ID" 2>/dev/null || true
@@ -283,7 +283,7 @@ jobs:
             cp "${GITHUB_WORKSPACE}/config/devnet-keys/node${i}/node_key.json" "$NODE_DIR/config/node_key.json"
 
             # Generate validator key
-            docker run --rm \
+            docker run --rm -u 0 \
               -v "$NODE_DIR:/home/stable/.stabled" \
               "$TARGET_IMAGE" \
               keys add "validator${i}" --keyring-backend test --algo eth_secp256k1 2>/dev/null || true
@@ -294,7 +294,7 @@ jobs:
 
           # Generate account keys
           for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
-            docker run --rm \
+            docker run --rm -u 0 \
               -v "$OUTPUT_DIR/accounts:/home/stable/.stabled" \
               "$TARGET_IMAGE" \
               keys add "account${i}" --keyring-backend test --algo eth_secp256k1 2>/dev/null || true
@@ -397,7 +397,7 @@ jobs:
           Type=simple
           User=$(whoami)
           ExecStartPre=-/usr/bin/docker rm -f ${SERVICE_NAME}
-          ExecStart=/usr/bin/docker run --rm --name ${SERVICE_NAME} \
+          ExecStart=/usr/bin/docker run --rm -u 0 --name ${SERVICE_NAME} \
             -v ${NODE_HOME}:/home/stable/.stabled \
             --network host \
             ${TARGET_IMAGE} \
@@ -450,12 +450,12 @@ jobs:
           echo "Account Private Keys"
           echo "=========================================="
 
-          docker run --rm \
+          docker run --rm -u 0 \
             -v "$ACCOUNTS_DIR:/home/stable/.stabled" \
             "$TARGET_IMAGE" \
             keys list --keyring-backend test --output json 2>/dev/null | \
           jq -r '.[].name' | while read -r KEY_NAME; do
-            PRIVKEY=$(docker run --rm \
+            PRIVKEY=$(docker run --rm -u 0 \
               -v "$ACCOUNTS_DIR:/home/stable/.stabled" \
               "$TARGET_IMAGE" \
               keys unsafe-export-eth-key "$KEY_NAME" --keyring-backend test 2>/dev/null || echo "ERROR")

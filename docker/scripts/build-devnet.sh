@@ -87,11 +87,11 @@ mkdir -p "$OUTPUT_DIR"
 # Create accounts directory
 mkdir -p "$OUTPUT_DIR/accounts/keyring-test"
 
-# Function to run stabled in Docker (default home: /home/stable/.stabled)
+# Function to run stabled in Docker (default home: /home/stable/.stabled, run as root)
 run_stabled() {
     local node_home="$1"
     shift
-    docker run --rm \
+    docker run --rm -u 0 \
         -v "${node_home}:/home/stable/.stabled" \
         "$IMAGE" \
         "$@"
@@ -104,7 +104,7 @@ for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
     mkdir -p "$NODE_DIR"
 
     echo "  Initializing node${i}..."
-    docker run --rm \
+    docker run --rm -u 0 \
         -v "${NODE_DIR}:/home/stable/.stabled" \
         "$IMAGE" \
         init "validator${i}" --chain-id "$CHAIN_ID" 2>/dev/null
@@ -121,7 +121,7 @@ for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
     NODE_DIR="$OUTPUT_DIR/node${i}"
 
     echo "  Creating validator${i} key..."
-    docker run --rm \
+    docker run --rm -u 0 \
         -v "${NODE_DIR}:/home/stable/.stabled" \
         "$IMAGE" \
         keys add "validator${i}" --keyring-backend test --algo eth_secp256k1 2>/dev/null || true
@@ -135,7 +135,7 @@ echo "[3/5] Generating account keys..."
 ACCOUNTS_DIR="$OUTPUT_DIR/accounts"
 for i in $(seq 0 $((NUM_ACCOUNTS - 1))); do
     echo "  Creating account${i} key..."
-    docker run --rm \
+    docker run --rm -u 0 \
         -v "${ACCOUNTS_DIR}:/home/stable/.stabled" \
         "$IMAGE" \
         keys add "account${i}" --keyring-backend test --algo eth_secp256k1 2>/dev/null || true
