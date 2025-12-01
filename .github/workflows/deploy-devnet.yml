@@ -161,7 +161,12 @@ jobs:
           docker run --rm \
             -v "$WORK_DIR:/root/.stabled" \
             "$SOURCE_IMAGE" \
-            init "provisioner" --chain-id "$CHAIN_ID"
+            init "provisioner" --chain-id "$CHAIN_ID" --home /root/.stabled
+
+          # Debug: check directory structure
+          echo "Checking directory structure..."
+          ls -la "$WORK_DIR/" || echo "ERROR: WORK_DIR empty"
+          ls -la "$WORK_DIR/config/" || echo "ERROR: config dir not found"
 
           # Copy fixed node_key.json
           cp "${GITHUB_WORKSPACE}/config/node_key.json" "$WORK_DIR/config/node_key.json"
