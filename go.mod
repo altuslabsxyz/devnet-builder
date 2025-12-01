@@ -2,8 +2,6 @@ module github.com/stablelabs/stable-devnet
 
 go 1.24
 
-toolchain go1.24.3
-
 require (
 	cosmossdk.io/log v1.6.0
 	cosmossdk.io/math v1.5.3
