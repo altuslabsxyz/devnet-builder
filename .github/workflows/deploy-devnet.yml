@@ -429,14 +429,17 @@ jobs:
       - name: Start devnet with docker compose
         run: |
           TARGET_IMAGE="${STABLED_IMAGE}:${{ inputs.target_image_tag }}"
+          CHAIN_ID="${{ steps.build.outputs.chain_id }}"
 
           echo "Starting devnet with docker compose..."
+          echo "  Chain ID: $CHAIN_ID"
           cd "${GITHUB_WORKSPACE}/docker"
 
           # Start with environment variables
           DEVNET_DIR="$DEVNET_BASE_DIR" \
           STABLED_IMAGE="${STABLED_IMAGE}" \
           STABLED_TAG="${{ inputs.target_image_tag }}" \
+          CHAIN_ID="$CHAIN_ID" \
           docker compose up -d
 
           echo "Docker compose started"
