@@ -259,8 +259,6 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace github.com/stablelabs/stable => ./stable
-
 replace (
 	github.com/cometbft/cometbft => github.com/stablelabs/stable-bft v0.38.19-stable-0
 	github.com/cosmos/cosmos-sdk => github.com/stablelabs/stable-sdk v0.53.4-stable-1
