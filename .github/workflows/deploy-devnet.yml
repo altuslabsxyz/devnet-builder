@@ -1,6 +1,6 @@
 name: Deploy Devnet
 
-run-name: Devnet-${{ inputs.snapshot_network }}-${{ inputs.source_binary_version }}-to-${{ inputs.target_binary_version }}-${{ github.run_number }}
+run-name: Devnet-${{ inputs.snapshot_network }}-${{ inputs.source_image_tag }}-to-${{ inputs.target_image_tag }}-${{ github.run_number }}
 
 on:
   workflow_dispatch:
@@ -15,1204 +15,465 @@ on:
           - custom
         default: 'testnet'
       custom_snapshot_url:
-        description: 'Custom snapshot URL (only used when snapshot_network is "custom")'
+        description: 'Custom snapshot URL (only for custom network)'
         required: false
         type: string
         default: ''
       custom_chain_id:
-        description: 'Custom chain ID (only used when snapshot_network is "custom")'
+        description: 'Custom chain ID (only for custom network)'
         required: false
         type: string
         default: ''
-      source_binary_version:
-        description: 'Source binary version - git ref (tag/branch/commit) compatible with snapshot'
+      source_image_tag:
+        description: 'Source Docker image tag (for snapshot processing)'
         required: true
         type: string
-        default: 'v1.1.0'
-      target_binary_version:
-        description: 'Target binary version - git ref (tag/branch/commit) to run devnet with'
+        default: 'latest-testnet'
+      target_image_tag:
+        description: 'Target Docker image tag (for running devnet)'
         required: true
         type: string
-        default: 'v1.1.0'
+        default: 'latest-testnet'
       rpc_endpoint:
-        description: 'RPC endpoint for genesis download (optional, auto-detected for mainnet/testnet)'
+        description: 'RPC endpoint for genesis download (optional)'
         required: false
         type: string
         default: ''
       persistent_peers:
-        description: 'Persistent peers (optional, auto-detected for mainnet/testnet)'
+        description: 'Persistent peers (optional)'
         required: false
         type: string
         default: ''
-      validators:
-        description: 'Number of validators to create'
-        required: true
-        type: number
-        default: 4
-      accounts:
-        description: 'Number of dummy accounts to create'
-        required: true
-        type: number
-        default: 10
-      account_balance:
-        description: 'Balance for each account (optional, e.g., "1000000000000000000000astable,500000000000000000000agusdt")'
+      devnet_chain_id:
+        description: 'Devnet chain ID (optional, defaults to source chain ID)'
         required: false
         type: string
         default: ''
 
+env:
+  STABLED_IMAGE: ghcr.io/stablelabs/stable
+  NUM_VALIDATORS: 4
+  DEVNET_BASE_DIR: /data/.devnet
+
 jobs:
-  
   deploy-devnet:
     runs-on: [self-hosted, ubuntu]
 
-    env:
-      SNAPSHOT_NETWORK: ${{ inputs.snapshot_network }}
-      SOURCE_BINARY_VERSION: ${{ inputs.source_binary_version }}
-      TARGET_BINARY_VERSION: ${{ inputs.target_binary_version }}
-      VALIDATORS: ${{ inputs.validators }}
-      ACCOUNTS: ${{ inputs.accounts }}
-      ACCOUNT_BALANCE: ${{ inputs.account_balance }}
-      DEVNET_OUTPUT_DIR: './devnet'
-      DEVNET_BASE_DIR: '/data/.devnet'
-
     steps:
-      - name: Checkout stable-devnet repository
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
 
       - name: Determine snapshot configuration
-        id: snapshot_config
+        id: config
         run: |
-          # Determine snapshot URL, chain ID, RPC endpoint, and persistent peers based on snapshot_network
+          SNAPSHOT_NETWORK="${{ inputs.snapshot_network }}"
+
           if [ "$SNAPSHOT_NETWORK" = "mainnet" ]; then
             SNAPSHOT_URL="https://stable-mainnet-data.s3.amazonaws.com/snapshots/stable_pruned.tar.zst"
             CHAIN_ID="stable_988-1"
             RPC_ENDPOINT="https://cosmos-rpc-internal.stable.xyz/"
-            PERSISTENT_PEERS="39fef24240d80e2cd5bdcbe101298c36f0d83fa1@57.129.53.87:26656"
+            PEERS="39fef24240d80e2cd5bdcbe101298c36f0d83fa1@57.129.53.87:26656"
           elif [ "$SNAPSHOT_NETWORK" = "testnet" ]; then
             SNAPSHOT_URL="https://stable-snapshot.s3.eu-central-1.amazonaws.com/snapshot.tar.lz4"
             CHAIN_ID="stabletestnet_2201-1"
             RPC_ENDPOINT="https://cosmos-rpc.testnet.stable.xyz/"
-            PERSISTENT_PEERS="128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656"
+            PEERS="128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656"
           else
-            # Custom snapshot network
             SNAPSHOT_URL="${{ inputs.custom_snapshot_url }}"
             CHAIN_ID="${{ inputs.custom_chain_id }}"
             RPC_ENDPOINT="${{ inputs.rpc_endpoint }}"
-            PERSISTENT_PEERS="${{ inputs.persistent_peers }}"
+            PEERS="${{ inputs.persistent_peers }}"
 
             if [ -z "$SNAPSHOT_URL" ] || [ -z "$CHAIN_ID" ]; then
-              echo "Error: custom_snapshot_url and custom_chain_id are required when snapshot_network is 'custom'"
+              echo "Error: custom_snapshot_url and custom_chain_id required for custom network"
               exit 1
             fi
           fi
 
-          # Allow manual override of RPC endpoint and persistent peers if provided
-          if [ -n "${{ inputs.rpc_endpoint }}" ]; then
-            RPC_ENDPOINT="${{ inputs.rpc_endpoint }}"
-          fi
+          # Override if provided
+          [ -n "${{ inputs.rpc_endpoint }}" ] && RPC_ENDPOINT="${{ inputs.rpc_endpoint }}"
+          [ -n "${{ inputs.persistent_peers }}" ] && PEERS="${{ inputs.persistent_peers }}"
 
-          if [ -n "${{ inputs.persistent_peers }}" ]; then
-            PERSISTENT_PEERS="${{ inputs.persistent_peers }}"
-          fi
-
-          echo "=========================================="
-          echo "Snapshot Configuration"
-          echo "=========================================="
-          echo "Snapshot Network: $SNAPSHOT_NETWORK"
-          echo "Snapshot URL: $SNAPSHOT_URL"
-          echo "Chain ID: $CHAIN_ID"
-          echo "RPC Endpoint: $RPC_ENDPOINT"
-          echo "Persistent Peers: $PERSISTENT_PEERS"
-          echo "Source Binary Version: $SOURCE_BINARY_VERSION"
-          echo "Target Binary Version: $TARGET_BINARY_VERSION"
-          echo "=========================================="
-
-          # Extract EVM chain ID from chain_id (e.g., stable_988-1 -> 988, stabletestnet_2201-1 -> 2201)
-          EVM_CHAIN_ID=$(echo "$CHAIN_ID" | sed -E 's/.*_([0-9]+)-[0-9]+$/\1/')
-          echo "EVM Chain ID: $EVM_CHAIN_ID"
+          # Devnet chain ID
+          DEVNET_CHAIN_ID="${{ inputs.devnet_chain_id }}"
+          [ -z "$DEVNET_CHAIN_ID" ] && DEVNET_CHAIN_ID="$CHAIN_ID"
 
           echo "snapshot_url=$SNAPSHOT_URL" >> $GITHUB_OUTPUT
           echo "chain_id=$CHAIN_ID" >> $GITHUB_OUTPUT
-          echo "evm_chain_id=$EVM_CHAIN_ID" >> $GITHUB_OUTPUT
+          echo "devnet_chain_id=$DEVNET_CHAIN_ID" >> $GITHUB_OUTPUT
           echo "rpc_endpoint=$RPC_ENDPOINT" >> $GITHUB_OUTPUT
-          echo "persistent_peers=$PERSISTENT_PEERS" >> $GITHUB_OUTPUT
+          echo "persistent_peers=$PEERS" >> $GITHUB_OUTPUT
 
-      - name: Configure Git to use PAT
+          echo "Configuration:"
+          echo "  Network: $SNAPSHOT_NETWORK"
+          echo "  Snapshot URL: $SNAPSHOT_URL"
+          echo "  Chain ID: $CHAIN_ID"
+          echo "  Devnet Chain ID: $DEVNET_CHAIN_ID"
+          echo "  RPC: $RPC_ENDPOINT"
+
+      - name: Pull Docker images
         run: |
-          git config --global url."https://${{ secrets.GH_PAT }}:@github.com/".insteadOf "https://github.com/"
-          echo "GOPRIVATE=github.com/stablelabs/*" >> $GITHUB_ENV
+          SOURCE_IMAGE="${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
+          TARGET_IMAGE="${STABLED_IMAGE}:${{ inputs.target_image_tag }}"
 
-      - name: Setup source stable repository
-        id: setup_source_stable
-        run: |
-          SOURCE_STABLE_PATH="${GITHUB_WORKSPACE}/stable-source"
-          SOURCE_VERSION="$SOURCE_BINARY_VERSION"
-          STABLE_REPO_URL="https://github.com/stablelabs/stable.git"
+          echo "Pulling source image: $SOURCE_IMAGE"
+          docker pull "$SOURCE_IMAGE"
 
-          echo "Setting up source stable repository for snapshot processing..."
-          echo "Source version: $SOURCE_VERSION"
-          echo "Stable repository URL: $STABLE_REPO_URL"
-
-          # Remove existing directory if exists
-          if [ -d "$SOURCE_STABLE_PATH" ]; then
-            echo "Removing existing source stable directory..."
-            rm -rf "$SOURCE_STABLE_PATH"
+          if [ "$SOURCE_IMAGE" != "$TARGET_IMAGE" ]; then
+            echo "Pulling target image: $TARGET_IMAGE"
+            docker pull "$TARGET_IMAGE"
           fi
-
-          # Clone and checkout source version
-          echo "Cloning stable repository for source binary..."
-          git clone "$STABLE_REPO_URL" "$SOURCE_STABLE_PATH"
-
-          cd "$SOURCE_STABLE_PATH"
-          echo "Fetching all refs..."
-          git fetch --all --tags
-
-          echo "Checking out source version: $SOURCE_VERSION"
-          if ! git checkout "$SOURCE_VERSION" 2>/dev/null; then
-            echo "Error: Failed to checkout $SOURCE_VERSION"
-            echo "Available tags:"
-            git tag | tail -20
-            echo "Available branches:"
-            git branch -r | head -20
-            exit 1
-          fi
-
-          # Verify checkout
-          CURRENT_REF=$(git rev-parse HEAD)
-          echo "Successfully checked out: $SOURCE_VERSION (commit: $CURRENT_REF)"
-
-          echo "source_stable_path=$SOURCE_STABLE_PATH" >> $GITHUB_OUTPUT
-
-      - name: Build source stabled binary
-        id: build_source_binary
-        run: |
-          SOURCE_STABLE_PATH="${{ steps.setup_source_stable.outputs.source_stable_path }}"
-          CHAIN_ID="${{ steps.snapshot_config.outputs.chain_id }}"
-          EVM_CHAIN_ID="${{ steps.snapshot_config.outputs.evm_chain_id }}"
-
-          echo "Building source stabled binary..."
-          echo "Source stable path: $SOURCE_STABLE_PATH"
-          echo "Chain ID: $CHAIN_ID"
-          echo "EVM Chain ID: $EVM_CHAIN_ID"
-
-          cd "$SOURCE_STABLE_PATH"
-
-          # Build stabled binary with correct EVM chain ID
-          echo "Running make install with EVM_CHAIN_ID=$EVM_CHAIN_ID..."
-          EVM_CHAIN_ID="$EVM_CHAIN_ID" make install
-
-          # Find the binary
-          STABLED_BINARY=$(which stabled)
-
-          if [ -z "$STABLED_BINARY" ]; then
-            echo "Error: stabled binary not found after build"
-            exit 1
-          fi
-
-          echo "Built stabled binary at: $STABLED_BINARY"
-
-          # Copy to build directory
-          mkdir -p "$SOURCE_STABLE_PATH/build"
-          cp "$STABLED_BINARY" "$SOURCE_STABLE_PATH/build/stabled"
-
-          # Make binary executable
-          chmod +x "$SOURCE_STABLE_PATH/build/stabled"
-
-          # Verify binary
-          echo "Verifying source binary..."
-          "$SOURCE_STABLE_PATH/build/stabled" version
-
-          echo "source_stabled_binary=$SOURCE_STABLE_PATH/build/stabled" >> $GITHUB_OUTPUT
-
-      - name: Setup target stable repository
-        id: setup_target_stable
-        run: |
-          TARGET_STABLE_PATH="${GITHUB_WORKSPACE}/stable-target"
-          TARGET_VERSION="$TARGET_BINARY_VERSION"
-          STABLE_REPO_URL="https://github.com/stablelabs/stable.git"
-
-          echo "Setting up target stable repository for devnet execution..."
-          echo "Target version: $TARGET_VERSION"
-          echo "Stable repository URL: $STABLE_REPO_URL"
-
-          # Remove existing directory if exists
-          if [ -d "$TARGET_STABLE_PATH" ]; then
-            echo "Removing existing target stable directory..."
-            rm -rf "$TARGET_STABLE_PATH"
-          fi
-
-          # Clone and checkout target version
-          echo "Cloning stable repository for target binary..."
-          git clone "$STABLE_REPO_URL" "$TARGET_STABLE_PATH"
-
-          cd "$TARGET_STABLE_PATH"
-          echo "Fetching all refs..."
-          git fetch --all --tags
-
-          echo "Checking out target version: $TARGET_VERSION"
-          if ! git checkout "$TARGET_VERSION" 2>/dev/null; then
-            echo "Error: Failed to checkout $TARGET_VERSION"
-            echo "Available tags:"
-            git tag | tail -20
-            echo "Available branches:"
-            git branch -r | head -20
-            exit 1
-          fi
-
-          # Verify checkout
-          CURRENT_REF=$(git rev-parse HEAD)
-          echo "Successfully checked out: $TARGET_VERSION (commit: $CURRENT_REF)"
-
-          echo "target_stable_path=$TARGET_STABLE_PATH" >> $GITHUB_OUTPUT
-
-      - name: Build target stabled binary
-        id: build_target_binary
-        run: |
-          TARGET_STABLE_PATH="${{ steps.setup_target_stable.outputs.target_stable_path }}"
-          EVM_CHAIN_ID="${{ steps.snapshot_config.outputs.evm_chain_id }}"
-
-          echo "Building target stabled binary..."
-          echo "Target stable path: $TARGET_STABLE_PATH"
-          echo "EVM Chain ID: $EVM_CHAIN_ID"
-
-          cd "$TARGET_STABLE_PATH"
-
-          # Build stabled binary with correct EVM chain ID
-          echo "Running make install with EVM_CHAIN_ID=$EVM_CHAIN_ID..."
-          EVM_CHAIN_ID="$EVM_CHAIN_ID" make install
-
-          # Find the binary
-          STABLED_BINARY=$(which stabled)
-
-          if [ -z "$STABLED_BINARY" ]; then
-            echo "Error: stabled binary not found after build"
-            exit 1
-          fi
-
-          echo "Built stabled binary at: $STABLED_BINARY"
-
-          # Copy to build directory
-          mkdir -p "$TARGET_STABLE_PATH/build"
-          cp "$STABLED_BINARY" "$TARGET_STABLE_PATH/build/stabled"
-
-          # Make binary executable
-          chmod +x "$TARGET_STABLE_PATH/build/stabled"
-
-          # Verify binary
-          echo "Verifying target binary..."
-          "$TARGET_STABLE_PATH/build/stabled" version
-
-          echo "target_stabled_binary=$TARGET_STABLE_PATH/build/stabled" >> $GITHUB_OUTPUT
 
       - name: Install decompression tools
         run: |
-          echo "Installing snapshot decompression tools..."
-
-          # Update package list
           sudo apt-get update -qq
+          sudo apt-get install -y -qq lz4 zstd jq
 
-          # Install lz4 and zstd for snapshot decompression
-          sudo apt-get install -y -qq lz4 zstd
-
-          # Verify installations
-          echo "Installed versions:"
-          lz4 --version || echo "lz4 installation failed"
-          zstd --version || echo "zstd installation failed"
-
-          echo "Decompression tools installed successfully"
-
-      - name: Provision and sync target chain
-        id: export_genesis
+      - name: Provision chain with snapshot
+        id: provision
         run: |
-          SOURCE_STABLED_BINARY="${{ steps.build_source_binary.outputs.source_stabled_binary }}"
-          GENESIS_EXPORT_PATH="${GITHUB_WORKSPACE}/genesis-export.json"
+          SOURCE_IMAGE="${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
+          CHAIN_ID="${{ steps.config.outputs.chain_id }}"
+          SNAPSHOT_URL="${{ steps.config.outputs.snapshot_url }}"
+          RPC_ENDPOINT="${{ steps.config.outputs.rpc_endpoint }}"
+          PEERS="${{ steps.config.outputs.persistent_peers }}"
 
-          # Get configuration from snapshot_config step
-          SNAPSHOT_URL="${{ steps.snapshot_config.outputs.snapshot_url }}"
-          TARGET_CHAIN_ID="${{ steps.snapshot_config.outputs.chain_id }}"
-          TARGET_RPC_ENDPOINT="${{ steps.snapshot_config.outputs.rpc_endpoint }}"
-          PERSISTENT_PEERS="${{ steps.snapshot_config.outputs.persistent_peers }}"
+          WORK_DIR="/data/.provision-${CHAIN_ID}"
+          GENESIS_EXPORT="${GITHUB_WORKSPACE}/genesis-export.json"
 
-          echo "=========================================="
-          echo "Provisioning Chain State"
-          echo "=========================================="
-          echo "Snapshot Network: $SNAPSHOT_NETWORK"
-          echo "Snapshot URL: $SNAPSHOT_URL"
-          echo "Target Chain ID: $TARGET_CHAIN_ID"
-          echo "Target RPC Endpoint: $TARGET_RPC_ENDPOINT"
-          echo "Persistent Peers: $PERSISTENT_PEERS"
-          echo "Using source stabled binary: $SOURCE_STABLED_BINARY"
-          echo "=========================================="
+          echo "Provisioning chain..."
+          echo "  Image: $SOURCE_IMAGE"
+          echo "  Chain ID: $CHAIN_ID"
+          echo "  Work Dir: $WORK_DIR"
 
-          # Determine which script to use based on SNAPSHOT_URL
-          if [ -n "$SNAPSHOT_URL" ]; then
-            echo "=========================================="
-            echo "Using SNAPSHOT-BASED provisioning"
-            echo "State-sync: DISABLED"
-            echo "=========================================="
-            SCRIPT_PATH="${GITHUB_WORKSPACE}/scripts/provision-with-snapshot.sh"
+          # Clean and create work directory
+          sudo rm -rf "$WORK_DIR"
+          sudo mkdir -p "$WORK_DIR"
+          sudo chown -R $(whoami):$(whoami) "$WORK_DIR"
 
-            # Make provision script executable
-            chmod +x "$SCRIPT_PATH"
+          # Initialize chain
+          echo "Initializing chain..."
+          docker run --rm \
+            -v "$WORK_DIR:/root/.stabled" \
+            "$SOURCE_IMAGE" \
+            init "provisioner" --chain-id "$CHAIN_ID"
 
-            # Build provision command for snapshot
-            PROVISION_CMD="$SCRIPT_PATH \
-              --chain-id \"$TARGET_CHAIN_ID\" \
-              --snapshot-url \"$SNAPSHOT_URL\" \
-              --stabled-binary \"$SOURCE_STABLED_BINARY\" \
-              --base-dir \"/data\" \
-              --output-file \"$GENESIS_EXPORT_PATH\""
+          # Copy fixed node_key.json
+          cp "${GITHUB_WORKSPACE}/config/node_key.json" "$WORK_DIR/config/node_key.json"
 
-            # Add RPC endpoint if provided (for genesis download)
-            if [ -n "$TARGET_RPC_ENDPOINT" ]; then
-              PROVISION_CMD="$PROVISION_CMD --rpc-endpoint \"$TARGET_RPC_ENDPOINT\""
-            fi
-
-            # Add persistent peers
-            if [ -n "$PERSISTENT_PEERS" ]; then
-              PROVISION_CMD="$PROVISION_CMD --persistent-peers \"$PERSISTENT_PEERS\""
-            fi
-          else
-            echo "=========================================="
-            echo "Using STATE-SYNC provisioning (legacy)"
-            echo "State-sync: ENABLED"
-            echo "=========================================="
-            SCRIPT_PATH="${GITHUB_WORKSPACE}/scripts/provision-and-sync.sh"
-
-            # Make provision script executable
-            chmod +x "$SCRIPT_PATH"
-
-            # Build provision command for state-sync
-            PROVISION_CMD="$SCRIPT_PATH \
-              --chain-id \"$TARGET_CHAIN_ID\" \
-              --rpc-endpoint \"$TARGET_RPC_ENDPOINT\" \
-              --stabled-binary \"$SOURCE_STABLED_BINARY\" \
-              --base-dir \"/data\" \
-              --output-file \"$GENESIS_EXPORT_PATH\""
-
-            # Add persistent peers
-            if [ -n "$PERSISTENT_PEERS" ]; then
-              PROVISION_CMD="$PROVISION_CMD --persistent-peers \"$PERSISTENT_PEERS\""
-            fi
+          # Download genesis from RPC
+          if [ -n "$RPC_ENDPOINT" ]; then
+            echo "Downloading genesis from RPC..."
+            curl -s "${RPC_ENDPOINT}/genesis" | jq '.result.genesis' > "$WORK_DIR/config/genesis.json"
           fi
 
-          echo ""
-          echo "Executing: $PROVISION_CMD"
-          echo ""
+          # Download and extract snapshot
+          echo "Downloading snapshot..."
+          SNAPSHOT_FILE="/tmp/snapshot.tar"
 
-          # Run provision script
-          eval $PROVISION_CMD
+          case "$SNAPSHOT_URL" in
+            *.tar.lz4) curl -L "$SNAPSHOT_URL" | lz4 -dc > "$SNAPSHOT_FILE" ;;
+            *.tar.zst) curl -L "$SNAPSHOT_URL" | zstd -dc > "$SNAPSHOT_FILE" ;;
+            *.tar.gz)  curl -L "$SNAPSHOT_URL" | gunzip > "$SNAPSHOT_FILE" ;;
+            *.tar)     curl -L -o "$SNAPSHOT_FILE" "$SNAPSHOT_URL" ;;
+          esac
+
+          echo "Extracting snapshot..."
+          rm -rf "$WORK_DIR/data"
+          mkdir -p "$WORK_DIR/data"
+          tar -xf "$SNAPSHOT_FILE" -C "$WORK_DIR/data"
+          rm -f "$SNAPSHOT_FILE"
+
+          # Configure node
+          CONFIG_FILE="$WORK_DIR/config/config.toml"
+          sed -i 's/enable = true/enable = false/g' "$CONFIG_FILE"
+          [ -n "$PEERS" ] && sed -i "s/persistent_peers = \"\"/persistent_peers = \"$PEERS\"/g" "$CONFIG_FILE"
+
+          # Sync to latest block
+          echo "Starting node to sync..."
+          CONTAINER_NAME="provision-sync-$$"
+
+          docker run -d --name "$CONTAINER_NAME" \
+            -v "$WORK_DIR:/root/.stabled" \
+            --network host \
+            "$SOURCE_IMAGE" \
+            start --home /root/.stabled
+
+          # Wait for sync (check every 30s, timeout 30min)
+          TIMEOUT=1800
+          ELAPSED=0
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            sleep 30
+            ELAPSED=$((ELAPSED + 30))
+
+            CATCHING_UP=$(curl -s http://localhost:26657/status 2>/dev/null | jq -r '.result.sync_info.catching_up' || echo "true")
+
+            if [ "$CATCHING_UP" = "false" ]; then
+              echo "Node synced after ${ELAPSED}s"
+              break
+            fi
+
+            echo "[${ELAPSED}s] Still syncing..."
+          done
+
+          # Stop node
+          docker stop "$CONTAINER_NAME" || true
+          docker rm "$CONTAINER_NAME" || true
+
+          # Export genesis
+          echo "Exporting genesis..."
+          docker run --rm \
+            -v "$WORK_DIR:/root/.stabled" \
+            "$SOURCE_IMAGE" \
+            export --home /root/.stabled > "$GENESIS_EXPORT"
 
           # Verify export
-          if [ ! -f "$GENESIS_EXPORT_PATH" ]; then
+          if [ ! -s "$GENESIS_EXPORT" ]; then
             echo "Error: Genesis export failed"
             exit 1
           fi
 
-          GENESIS_SIZE=$(stat -f%z "$GENESIS_EXPORT_PATH" 2>/dev/null || stat -c%s "$GENESIS_EXPORT_PATH" 2>/dev/null)
-          echo "Genesis exported successfully (size: $GENESIS_SIZE bytes)"
+          echo "Genesis exported: $(wc -c < "$GENESIS_EXPORT") bytes"
+          echo "genesis_file=$GENESIS_EXPORT" >> $GITHUB_OUTPUT
 
-          # Validate JSON
-          if ! jq empty "$GENESIS_EXPORT_PATH" 2>/dev/null; then
-            echo "Error: Exported genesis is not valid JSON"
-            exit 1
-          fi
-
-          echo "genesis_file=$GENESIS_EXPORT_PATH" >> $GITHUB_OUTPUT
-
-      - name: Build devnet with devnet-builder
-        id: build_devnet
+      - name: Build devnet
+        id: build
         run: |
-          GENESIS_FILE="${{ steps.export_genesis.outputs.genesis_file }}"
+          TARGET_IMAGE="${STABLED_IMAGE}:${{ inputs.target_image_tag }}"
+          GENESIS_FILE="${{ steps.provision.outputs.genesis_file }}"
+          DEVNET_CHAIN_ID="${{ steps.config.outputs.devnet_chain_id }}"
+          OUTPUT_DIR="${GITHUB_WORKSPACE}/devnet"
 
-          echo "Building devnet using devnet-builder..."
-          echo "Genesis file: $GENESIS_FILE"
-          echo "Validators: $VALIDATORS"
-          echo "Accounts: $ACCOUNTS"
-          if [ -n "$ACCOUNT_BALANCE" ]; then
-            echo "Account balance: $ACCOUNT_BALANCE"
-          else
-            echo "Account balance: (using default)"
-          fi
-          echo "Devnet Chain ID: $DEVNET_CHAIN_ID"
-          echo "Output directory: $DEVNET_OUTPUT_DIR"
+          # Node IDs from fixed keys
+          NODE0_ID="a18d66435236d91ba28e1bf7a82d400b9a188f5f"
+          NODE1_ID="2edec3e0270cba790f849b44f46b9120ed3f153f"
+          NODE2_ID="916431c30a36aff0b72a798ed86965903576d38c"
+          NODE3_ID="48496c38733af68c8ce1cfcb6e1ff476cfac260a"
 
-          # Build devnet-builder if not exists
-          if [ ! -f "./build/devnet-builder" ]; then
-            echo "Building devnet-builder..."
-            echo "Using target stable version: $TARGET_BINARY_VERSION"
+          echo "Building devnet..."
+          echo "  Image: $TARGET_IMAGE"
+          echo "  Chain ID: $DEVNET_CHAIN_ID"
+          echo "  Validators: $NUM_VALIDATORS"
 
-            # Build devnet-builder with target stable version
-            cd "$GITHUB_WORKSPACE"
+          rm -rf "$OUTPUT_DIR"
+          mkdir -p "$OUTPUT_DIR/accounts/keyring-test"
 
-            # Verify target stable path
-            TARGET_STABLE_PATH="${{ steps.setup_target_stable.outputs.target_stable_path }}"
-            if [ ! -d "$TARGET_STABLE_PATH" ]; then
-              echo "Error: Target stable path not found: $TARGET_STABLE_PATH"
-              exit 1
+          # Initialize nodes
+          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
+            NODE_DIR="$OUTPUT_DIR/node${i}"
+            mkdir -p "$NODE_DIR"
+
+            echo "Initializing node${i}..."
+            docker run --rm \
+              -v "$NODE_DIR:/root/.stabled" \
+              "$TARGET_IMAGE" \
+              init "validator${i}" --chain-id "$DEVNET_CHAIN_ID" 2>/dev/null || true
+
+            # Copy fixed node_key.json
+            cp "${GITHUB_WORKSPACE}/config/devnet-keys/node${i}/node_key.json" "$NODE_DIR/config/node_key.json"
+
+            # Generate validator key
+            docker run --rm \
+              -v "$NODE_DIR:/root/.stabled" \
+              "$TARGET_IMAGE" \
+              keys add "validator${i}" --keyring-backend test --algo eth_secp256k1 2>/dev/null || true
+
+            # Copy keys to accounts
+            cp "$NODE_DIR/keyring-test/"* "$OUTPUT_DIR/accounts/keyring-test/" 2>/dev/null || true
+          done
+
+          # Generate account keys
+          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
+            docker run --rm \
+              -v "$OUTPUT_DIR/accounts:/root/.stabled" \
+              "$TARGET_IMAGE" \
+              keys add "account${i}" --keyring-backend test --algo eth_secp256k1 2>/dev/null || true
+          done
+
+          # Update genesis chain ID and copy to all nodes
+          jq --arg chainId "$DEVNET_CHAIN_ID" '.chain_id = $chainId' "$GENESIS_FILE" > "$OUTPUT_DIR/node0/config/genesis.json"
+
+          for i in $(seq 1 $((NUM_VALIDATORS - 1))); do
+            cp "$OUTPUT_DIR/node0/config/genesis.json" "$OUTPUT_DIR/node${i}/config/genesis.json"
+          done
+
+          # Configure networking (Docker hostnames for compose, localhost for systemd)
+          PERSISTENT_PEERS="${NODE0_ID}@127.0.0.1:26656,${NODE1_ID}@127.0.0.1:26666,${NODE2_ID}@127.0.0.1:26676,${NODE3_ID}@127.0.0.1:26686"
+
+          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
+            CONFIG_FILE="$OUTPUT_DIR/node${i}/config/config.toml"
+            APP_FILE="$OUTPUT_DIR/node${i}/config/app.toml"
+
+            # Calculate ports
+            P2P_PORT=$((26656 + i * 10))
+            RPC_PORT=$((26657 + i * 10))
+            PROXY_PORT=$((26658 + i * 10))
+
+            # Update config.toml
+            sed -i "s|persistent_peers = .*|persistent_peers = \"$PERSISTENT_PEERS\"|g" "$CONFIG_FILE"
+            sed -i "s|allow_duplicate_ip = .*|allow_duplicate_ip = true|g" "$CONFIG_FILE"
+            sed -i "s|addr_book_strict = .*|addr_book_strict = false|g" "$CONFIG_FILE"
+            sed -i "s|laddr = \"tcp://0.0.0.0:26656\"|laddr = \"tcp://0.0.0.0:$P2P_PORT\"|g" "$CONFIG_FILE"
+            sed -i "s|laddr = \"tcp://0.0.0.0:26657\"|laddr = \"tcp://0.0.0.0:$RPC_PORT\"|g" "$CONFIG_FILE"
+            sed -i "s|laddr = \"tcp://127.0.0.1:26657\"|laddr = \"tcp://0.0.0.0:$RPC_PORT\"|g" "$CONFIG_FILE"
+            sed -i "s|proxy_app = \"tcp://127.0.0.1:26658\"|proxy_app = \"tcp://127.0.0.1:$PROXY_PORT\"|g" "$CONFIG_FILE"
+
+            # Update app.toml - enable services on node0 only
+            if [ $i -eq 0 ]; then
+              sed -i 's|enable = false|enable = true|g' "$APP_FILE"
+              sed -i 's|address = "tcp://localhost:1317"|address = "tcp://0.0.0.0:1317"|g' "$APP_FILE"
+              sed -i 's|address = "127.0.0.1:8545"|address = "0.0.0.0:8545"|g' "$APP_FILE"
+              sed -i 's|ws-address = "127.0.0.1:8546"|ws-address = "0.0.0.0:8546"|g' "$APP_FILE"
             fi
 
-            echo "Target stable directory: $TARGET_STABLE_PATH"
-            cd "$TARGET_STABLE_PATH"
-            CURRENT_VERSION=$(git rev-parse --short HEAD)
-            echo "Current target stable version: $TARGET_BINARY_VERSION (commit: $CURRENT_VERSION)"
+            # Init data dir
+            mkdir -p "$OUTPUT_DIR/node${i}/data"
+            echo '{"height":"0","round":0,"step":0}' > "$OUTPUT_DIR/node${i}/data/priv_validator_state.json"
+          done
 
-            # Sync replace directives from target stable/go.mod to devnet-builder/go.mod
-            echo "Syncing replace directives from target stable to devnet-builder..."
-            cd "$GITHUB_WORKSPACE"
-  
-            echo "Preparing 'stable' symlink -> $TARGET_STABLE_PATH"
-              
-            if [ -e stable ] && [ ! -L stable ]; then
-              echo "Existing 'stable' is not a symlink (type: $(stat -c %F stable 2>/dev/null || echo unknown)), removing..."
-              rm -rf stable
-            fi
-              
-            if [ -L stable ]; then
-              CURRENT_TARGET=$(readlink stable || echo "")
-            if [ "$CURRENT_TARGET" != "$TARGET_STABLE_PATH" ]; then
-              echo "Updating 'stable' symlink: $CURRENT_TARGET -> $TARGET_STABLE_PATH"
-              rm stable
-              ln -s "$TARGET_STABLE_PATH" stable
-            else
-              echo "'stable' symlink already points to $TARGET_STABLE_PATH, keeping it"
-            fi
-            else
-              echo "Creating 'stable' symlink -> $TARGET_STABLE_PATH"
-              ln -s "$TARGET_STABLE_PATH" stable
-            fi
-              
-            ls -ld stable
-  
-            # Extract replace directives from target stable's go.mod
-            STABLE_EVM_REPLACE=$(grep "github.com/cosmos/evm =>" "$TARGET_STABLE_PATH/go.mod" || echo "")
-            STABLE_BFT_REPLACE=$(grep "github.com/cometbft/cometbft =>" "$TARGET_STABLE_PATH/go.mod" || echo "")
-            STABLE_SDK_REPLACE=$(grep "github.com/cosmos/cosmos-sdk =>" "$TARGET_STABLE_PATH/go.mod" || echo "")
-            STABLE_GETH_REPLACE=$(grep "github.com/ethereum/go-ethereum =>" "$TARGET_STABLE_PATH/go.mod" || echo "")
+          echo "Devnet built successfully"
+          ls -la "$OUTPUT_DIR"
 
-            echo "Target stable replace directives:"
-            echo "  EVM: $STABLE_EVM_REPLACE"
-            echo "  BFT: $STABLE_BFT_REPLACE"
-            echo "  SDK: $STABLE_SDK_REPLACE"
-            echo "  GETH: $STABLE_GETH_REPLACE"
+          echo "output_dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
+          echo "chain_id=$DEVNET_CHAIN_ID" >> $GITHUB_OUTPUT
 
-            # Update devnet-builder's go.mod with target stable's replace directives
-            if [ -n "$STABLE_EVM_REPLACE" ]; then
-              sed -i.bak "/github.com\/cosmos\/evm =>/c\\	$STABLE_EVM_REPLACE" go.mod
-            fi
-            if [ -n "$STABLE_BFT_REPLACE" ]; then
-              sed -i.bak "/github.com\/cometbft\/cometbft =>/c\\	$STABLE_BFT_REPLACE" go.mod
-            fi
-            if [ -n "$STABLE_SDK_REPLACE" ]; then
-              sed -i.bak "/github.com\/cosmos\/cosmos-sdk =>/c\\	$STABLE_SDK_REPLACE" go.mod
-            fi
-            if [ -n "$STABLE_GETH_REPLACE" ]; then
-              sed -i.bak "/github.com\/ethereum\/go-ethereum =>/c\\	$STABLE_GETH_REPLACE" go.mod
-            fi
-
-            rm -f go.mod.bak
-
-            echo "Updated go.mod replace directives"
-            grep -A 4 "^replace (" go.mod | head -10
-
-            # Clean go.sum and regenerate
-            rm -f go.sum
-            GOWORK=off go mod tidy
-
-            # Return to devnet-builder directory and build
-            cd "$GITHUB_WORKSPACE"
-            make build
-          else
-            echo "devnet-builder already exists, skipping build"
-          fi
-
-          # Build command
-          BUILD_CMD="./build/devnet-builder build \"$GENESIS_FILE\" \
-            --validators $VALIDATORS \
-            --accounts $ACCOUNTS"
-
-          # Add optional balance parameter if provided
-          if [ -n "$ACCOUNT_BALANCE" ]; then
-            BUILD_CMD="$BUILD_CMD --account-balance \"$ACCOUNT_BALANCE\""
-          fi
-
-          # Add output directory
-          BUILD_CMD="$BUILD_CMD --output \"$DEVNET_OUTPUT_DIR\""
-
-          echo "Executing: $BUILD_CMD"
-          eval $BUILD_CMD
-
-          # Verify devnet creation
-          if [ ! -d "$DEVNET_OUTPUT_DIR" ]; then
-            echo "Error: Devnet directory not created"
-            exit 1
-          fi
-
-          echo "Devnet created successfully"
-          ls -la "$DEVNET_OUTPUT_DIR"
-
-          # Count created nodes
-          NODE_COUNT=$(find "$DEVNET_OUTPUT_DIR" -maxdepth 1 -type d -name "node*" | wc -l)
-          echo "Created $NODE_COUNT validator nodes"
-
-          if [ "$NODE_COUNT" -ne "$VALIDATORS" ]; then
-            echo "Warning: Expected $VALIDATORS nodes but found $NODE_COUNT"
-          fi
-
-          # Extract actual chain-id from genesis
-          ACTUAL_CHAIN_ID=$(jq -r '.chain_id' "$DEVNET_OUTPUT_DIR/node0/config/genesis.json")
-          echo "Extracted chain-id from genesis: $ACTUAL_CHAIN_ID"
-          echo "actual_chain_id=$ACTUAL_CHAIN_ID" >> $GITHUB_OUTPUT
-
-      - name: Upload devnet artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: devnet-${{ inputs.snapshot_network }}-${{ inputs.source_binary_version }}-to-${{ inputs.target_binary_version }}-${{ github.run_number }}
-          path: ${{ env.DEVNET_OUTPUT_DIR }}
-          retention-days: 30
-          compression-level: 9
-
-      - name: Deploy devnet to system
-        id: deploy_devnet
+      - name: Deploy devnet
         run: |
-          echo "Deploying devnet to $DEVNET_BASE_DIR..."
+          OUTPUT_DIR="${{ steps.build.outputs.output_dir }}"
 
-          # Remove old backup directories (older than 7 days)
-          echo "Removing old backup directories (older than 7 days)..."
-          DEVNET_PARENT_DIR=$(dirname "$DEVNET_BASE_DIR")
-          DEVNET_BASE_NAME=$(basename "$DEVNET_BASE_DIR")
-          OLD_BACKUPS=$(sudo find "$DEVNET_PARENT_DIR" -maxdepth 1 -type d -name "${DEVNET_BASE_NAME}_backup_*" -mtime +7 2>/dev/null || true)
+          echo "Deploying to $DEVNET_BASE_DIR..."
 
-          if [ -n "$OLD_BACKUPS" ]; then
-            echo "Found old backups to remove:"
-            echo "$OLD_BACKUPS"
-            echo "$OLD_BACKUPS" | xargs -I {} sudo rm -rf {}
-          else
-            echo "No old backups found"
+          # Backup existing
+          if [ -d "$DEVNET_BASE_DIR" ]; then
+            BACKUP="${DEVNET_BASE_DIR}_backup_$(date +%Y%m%d_%H%M%S)"
+            sudo mv "$DEVNET_BASE_DIR" "$BACKUP"
           fi
 
-          # Backup existing devnet if exists
-          if [ -d "$DEVNET_BASE_DIR" ] && [ "$(ls -A $DEVNET_BASE_DIR 2>/dev/null)" ]; then
-            BACKUP_DIR="${DEVNET_BASE_DIR}_backup_$(date +%Y%m%d_%H%M%S)"
-            echo "Backing up existing devnet to: $BACKUP_DIR"
-            sudo mv "$DEVNET_BASE_DIR" "$BACKUP_DIR"
-          fi
-
-          # Create fresh base directory
-          echo "Creating fresh devnet directory..."
           sudo mkdir -p "$DEVNET_BASE_DIR"
+          sudo cp -r "$OUTPUT_DIR"/* "$DEVNET_BASE_DIR/"
           sudo chown -R $(whoami):$(whoami) "$DEVNET_BASE_DIR"
 
-          # Copy devnet files to system directory
-          echo "Copying devnet files to $DEVNET_BASE_DIR..."
-          cp -r "$DEVNET_OUTPUT_DIR"/* "$DEVNET_BASE_DIR/"
+          echo "Deployed successfully"
 
-          # Verify deployment
-          echo "Verifying deployment..."
-          ls -la "$DEVNET_BASE_DIR"
-
-          # Count deployed nodes
-          NODE_COUNT=$(find "$DEVNET_BASE_DIR" -maxdepth 1 -type d -name "node*" | wc -l)
-          echo "Deployed $NODE_COUNT validator nodes to $DEVNET_BASE_DIR"
-
-      - name: Start devnet nodes with systemd
-        id: start_nodes
+      - name: Stop existing services
         run: |
-          TARGET_STABLE_PATH="${{ steps.setup_target_stable.outputs.target_stable_path }}"
-          TARGET_STABLED_BINARY="${{ steps.build_target_binary.outputs.target_stabled_binary }}"
-          ACTUAL_CHAIN_ID="${{ steps.build_devnet.outputs.actual_chain_id }}"
-          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-
-          echo "Starting devnet nodes with systemd..."
-          echo "Using target stabled binary: $TARGET_STABLED_BINARY"
-          echo "Target binary version: $TARGET_BINARY_VERSION"
-          echo "Chain ID: $ACTUAL_CHAIN_ID"
-          echo "Timestamp: $TIMESTAMP"
-
-          # Verify target stabled binary exists
-          if [ ! -f "$TARGET_STABLED_BINARY" ]; then
-            echo "Error: Target stabled binary not found at $TARGET_STABLED_BINARY"
-            exit 1
-          fi
-
-          # Make sure target stabled is executable
-          chmod +x "$TARGET_STABLED_BINARY"
-          
-          # Create log directory
-          LOG_DIR="$DEVNET_BASE_DIR/logs"
-          mkdir -p "$LOG_DIR"
-          echo "Log directory: $LOG_DIR"
-          
-          # Stop all existing devnet services before starting
-          echo ""
-          echo "Step 0: Stopping all existing devnet services..."
-
-          # Find all devnet-node* services (regardless of current VALIDATORS count)
-          EXISTING_SERVICES=$(sudo systemctl list-units --all --type=service --no-legend | grep -E "devnet-node[0-9]+" | awk '{print $1}' || echo "")
-
-          if [ -n "$EXISTING_SERVICES" ]; then
-            echo "Found existing devnet services:"
-            echo "$EXISTING_SERVICES"
-            echo ""
-
-            # Stop and disable each service
-            echo "$EXISTING_SERVICES" | while read -r SERVICE_NAME; do
-              if [ -n "$SERVICE_NAME" ]; then
-                echo "  Stopping and disabling: $SERVICE_NAME"
-                sudo systemctl stop "$SERVICE_NAME" --force || true
-                sudo systemctl disable "$SERVICE_NAME" || true
-              fi
-            done
-
-            # Also check for service files in /etc/systemd/system/ and remove them
-            echo ""
-            echo "Removing service files from /etc/systemd/system/..."
-            sudo find /etc/systemd/system/ -name "devnet-node*.service" -type f -exec rm -f {} \; 2>/dev/null || true
-            sudo find /etc/systemd/system/ -name "devnet-node*.service.d" -type d -exec rm -rf {} \; 2>/dev/null || true
-
-            # Reload systemd daemon after removing service files
-            sudo systemctl daemon-reload
-          else
-            echo "No existing devnet services found"
-          fi
-
-          # Wait for services to fully stop
-          sleep 2
-          echo "All existing services stopped and cleaned up"
-
-
-          # Function to find available port
-          find_available_port() {
-            local start_port=$1
-            shift
-            local excluded_ports=("$@")
-            local port=$start_port
-          
-            while [ $port -lt $((start_port + 1000)) ]; do
-              local is_excluded=false
-              for excluded in "${excluded_ports[@]}"; do
-                if [ "$port" = "$excluded" ]; then
-                  is_excluded=true
-                  break
-                fi
-              done
-          
-              if [ "$is_excluded" = false ] && ! lsof -i:$port > /dev/null 2>&1; then
-                echo $port
-                return 0
-              fi
-              port=$((port + 1))
-            done
-          
-            echo "Error: Could not find available port starting from $start_port" >&2
-            exit 1
-          }
-          
-          # Step 1: Configure all validator nodes (but don't start yet)
-          echo "Step 1: Configuring all nodes..."
-
-          # Determine which node uses default 266 prefix ports
-          # Rule: node2 (index 2) if validators >= 3, otherwise last node
-          if [ $VALIDATORS -ge 3 ]; then
-            DEFAULT_PORT_NODE=2
-          else
-            DEFAULT_PORT_NODE=$((VALIDATORS - 1))
-          fi
-
-          # Determine the main RPC node (also uses default ports)
-          MAIN_RPC_NODE=$DEFAULT_PORT_NODE
-
-          echo "Node with default ports (266 prefix): node${DEFAULT_PORT_NODE}"
-          echo "Main RPC node: node${MAIN_RPC_NODE}"
-          echo ""
-
-          # Track allocated ports to avoid conflicts
-          ALLOCATED_PORTS=(26657 26656 26658)  # Reserve default ports for the designated node
-
-          for i in $(seq 0 $((VALIDATORS - 1))); do
-            NODE_NAME="node$i"
-            NODE_HOME="$DEVNET_BASE_DIR/$NODE_NAME"
-            CONFIG_FILE="$NODE_HOME/config/config.toml"
-            APP_CONFIG_FILE="$NODE_HOME/config/app.toml"
-          
-            echo "Configuring $NODE_NAME..."
-          
-            # Verify node directory exists
-            if [ ! -d "$NODE_HOME" ]; then
-              echo "Error: Node directory not found: $NODE_HOME"
-              exit 1
-            fi
-
-            # Initialize node with target stabled (continue even if it fails)
-            echo "  Initializing $NODE_NAME with target stabled..."
-            "$TARGET_STABLED_BINARY" init "$NODE_NAME" \
-              --home "$NODE_HOME" \
-              --chain-id "$ACTUAL_CHAIN_ID" || true
-          
-            echo "  Node initialization completed (or skipped if already initialized)"
-
-            # Configure ports dynamically
-            if [ $i -eq $DEFAULT_PORT_NODE ]; then
-              # This node keeps default 266 prefix ports (26657, 26656, 26658)
-              echo "  Keeping default ports for $NODE_NAME (26657, 26656, 26658)"
-              NODE_RPC_PORT=26657
-              NODE_P2P_PORT=26656
-              NODE_PROXY_PORT=26658
-            else
-              # Find available ports dynamically for other nodes
-              echo "  Finding available ports for $NODE_NAME..."
-
-              # Find RPC port (starting from 26657)
-              NODE_RPC_PORT=$(find_available_port 26657 "${ALLOCATED_PORTS[@]}")
-              ALLOCATED_PORTS+=($NODE_RPC_PORT)
-
-              # Find P2P port (starting from 26656)
-              NODE_P2P_PORT=$(find_available_port 26656 "${ALLOCATED_PORTS[@]}")
-              ALLOCATED_PORTS+=($NODE_P2P_PORT)
-
-              # Find Proxy App port (starting from 26658)
-              NODE_PROXY_PORT=$(find_available_port 26658 "${ALLOCATED_PORTS[@]}")
-              ALLOCATED_PORTS+=($NODE_PROXY_PORT)
-
-              echo "  Assigned ports: RPC=$NODE_RPC_PORT, P2P=$NODE_P2P_PORT, ProxyApp=$NODE_PROXY_PORT"
-
-              # Update config.toml with awk
-              cp "$CONFIG_FILE" "${CONFIG_FILE}.bak"
-              awk -v rpc_port="$NODE_RPC_PORT" -v p2p_port="$NODE_P2P_PORT" -v proxy_port="$NODE_PROXY_PORT" '
-              {
-                # Update proxy_app at the beginning of file
-                if ($0 ~ /^proxy_app = "tcp:\/\/.*:[0-9]+"/) {
-                  print "proxy_app = \"tcp://0.0.0.0:" proxy_port "\""
-                  next
-                }
-
-                # Track which section we are in
-                if ($0 ~ /^\[rpc\]/) {
-                  in_rpc = 1
-                  in_p2p = 0
-                }
-                else if ($0 ~ /^\[p2p\]/) {
-                  in_rpc = 0
-                  in_p2p = 1
-                }
-                else if ($0 ~ /^\[.*\]/) {
-                  in_rpc = 0
-                  in_p2p = 0
-                }
-
-                # Update RPC laddr
-                if (in_rpc && $0 ~ /^laddr = "tcp:\/\//) {
-                  print "laddr = \"tcp://0.0.0.0:" rpc_port "\""
-                  next
-                }
-
-                # Update P2P laddr
-                if (in_p2p && $0 ~ /^laddr = "tcp:\/\//) {
-                  print "laddr = \"tcp://0.0.0.0:" p2p_port "\""
-                  next
-                }
-
-                # Print all other lines as-is
-                print
-              }
-              ' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp"
-              mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
-            fi
-          
-            # Configure app.toml - disable all services except for main RPC node
-            cp "$APP_CONFIG_FILE" "${APP_CONFIG_FILE}.bak"
-
-            if [ $i -eq $MAIN_RPC_NODE ]; then
-              # Main RPC node: enable all services (API, gRPC, JSON-RPC)
-              sed -i.tmp \
-              -e 's/enable = false/enable = true/g' \
-              -e 's/tcp:\/\/localhost:1317/tcp:\/\/0.0.0.0:1317/g' \
-              -e 's/address = "127.0.0.1:8545"/address = "0.0.0.0:8545"/g' \
-              -e 's/ws-address = "127.0.0.1:8546"/ws-address = "0.0.0.0:8546"/g' \
-              -e 's/api = "eth,net,web3"/api = "eth,txpool,personal,net,debug,web3"/g' \
-              -e 's/enabled-unsafe-cors = false/enabled-unsafe-cors = true/g' \
-              "$APP_CONFIG_FILE"
-              
-              sed -i.tmp \
-              -e 's/laddr = "tcp:\/\/127.0.0.1:26657"/laddr = "tcp:\/\/0.0.0.0:26657"/g' \
-              "$CONFIG_FILE"
-              
-              rm -f "${APP_CONFIG_FILE}.tmp" "${CONFIG_FILE}.tmp"
-          
-              echo "  Keeping all services enabled for $NODE_NAME"
-            else
-              # All other nodes: disable all services
-              echo "  Disabling all services for $NODE_NAME"
-              sed -i.tmp 's/enable = true/enable = false/g' "$APP_CONFIG_FILE"
-              rm -f "${APP_CONFIG_FILE}.tmp"
-            fi
-            # Configure prometheus to be disabled
-            sed -i.tmp \
-                -e 's/prometheus = true/prometheus = false/g' \
-                "$CONFIG_FILE"
-
-            # Configure consensus parameters
-            echo "  Configuring consensus parameters for $NODE_NAME..."
-            sed -i.tmp \
-                -e '/^\[consensus\]/,/^\[/ {
-                  s/^timeout_propose = .*/timeout_propose = "5s"/
-                  s/^timeout_propose_delta = .*/timeout_propose_delta = "10ms"/
-                  s/^timeout_prevote = .*/timeout_prevote = "50ms"/
-                  s/^timeout_prevote_delta = .*/timeout_prevote_delta = "10ms"/
-                  s/^timeout_precommit = .*/timeout_precommit = "50ms"/
-                  s/^timeout_precommit_delta = .*/timeout_precommit_delta = "10ms"/
-                  s/^timeout_commit = .*/timeout_commit = "650ms"/
-                }' \
-                "$CONFIG_FILE"
-
-            rm -f "${CONFIG_FILE}.tmp"
-
-            echo "  $NODE_NAME configuration completed"
+          echo "Stopping existing devnet services..."
+          for i in $(seq 0 9); do
+            sudo systemctl stop "devnet-node${i}" 2>/dev/null || true
+            sudo systemctl disable "devnet-node${i}" 2>/dev/null || true
           done
-          
-          # Step 2: Collect peer information from all nodes
-          echo ""
-          echo "Step 2: Collecting peer information..."
-          PERSISTENT_PEERS_LIST=()
-          
-          for i in $(seq 0 $((VALIDATORS - 1))); do
-            NODE_NAME="node$i"
-            NODE_HOME="$DEVNET_BASE_DIR/$NODE_NAME"
-            CONFIG_FILE="$NODE_HOME/config/config.toml"
-          
-            # Get node ID
-            NODE_ID=$("$TARGET_STABLED_BINARY" comet show-node-id --home "$NODE_HOME")
-          
-            # Extract P2P port from config.toml
-            P2P_PORT=$(grep -A 20 "^\[p2p\]" "$CONFIG_FILE" | grep "^laddr" | head -1 | sed 's/.*://; s/".*//')
-          
-            # Build peer address
-            PEER_ADDR="${NODE_ID}@127.0.0.1:${P2P_PORT}"
-            PERSISTENT_PEERS_LIST+=("$PEER_ADDR")
-          
-            echo "  $NODE_NAME: $PEER_ADDR"
-          done
-          
-          # Join all peers with comma
-          PERSISTENT_PEERS=$(IFS=,; echo "${PERSISTENT_PEERS_LIST[*]}")
-          echo ""
-          echo "Collected persistent_peers: $PERSISTENT_PEERS"
-          
-          # Step 3: Update all nodes with persistent_peers and P2P settings
-          echo ""
-          echo "Step 3: Updating P2P configuration..."
-          for i in $(seq 0 $((VALIDATORS - 1))); do
-            NODE_NAME="node$i"
-            CONFIG_FILE="$DEVNET_BASE_DIR/$NODE_NAME/config/config.toml"
-          
-            echo "  Updating $NODE_NAME P2P settings..."
-          
-            # Update persistent_peers, allow_duplicate_ip, and addr_book_strict
-            sed -i.tmp \
-              -e "s|^persistent_peers = .*|persistent_peers = \"$PERSISTENT_PEERS\"|" \
-              -e "s|^allow_duplicate_ip = .*|allow_duplicate_ip = true|" \
-              -e "s|^addr_book_strict = .*|addr_book_strict = false|" \
-              "$CONFIG_FILE"
-          
-            rm -f "${CONFIG_FILE}.tmp"
-          done
-          
-          echo "P2P configuration updated for all nodes"
-          
-          # Step 4: Create log path helper script
-          echo ""
-          echo "Step 4: Creating log path helper script..."
-          LOG_PATH_SCRIPT="/usr/local/bin/devnet-log-path.sh"
-          
-          if [ ! -f "$LOG_PATH_SCRIPT" ]; then
-            cat <<'LOGSCRIPT' | sudo tee "$LOG_PATH_SCRIPT" >/dev/null
-          #!/usr/bin/env bash
-          NODE="${1:-unknown}"
-          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-          echo "/data/.devnet/logs/devnet_${NODE}_${TIMESTAMP}.log"
-          LOGSCRIPT
-          
-            sudo chmod +x "$LOG_PATH_SCRIPT"
-            echo "  Log path script created: $LOG_PATH_SCRIPT"
-          else
-            echo "  Log path script already exists: $LOG_PATH_SCRIPT"
-          fi
-          
-          # Step 5: Create and start systemd services for all nodes
-          echo ""
-          echo "Step 5: Creating systemd services..."
-          for i in $(seq 0 $((VALIDATORS - 1))); do
-            NODE_NAME="node$i"
-            NODE_HOME="$DEVNET_BASE_DIR/$NODE_NAME"
-            SERVICE_NAME="devnet-${NODE_NAME}"
-            SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-            DROPIN_DIR="/etc/systemd/system/${SERVICE_NAME}.service.d"
-            DROPIN_LOG="${DROPIN_DIR}/logging.conf"
-          
-            echo "  Creating service for $NODE_NAME..."
-          
-            # Create base service file
-            cat <<SERVICEEOF | sudo tee "$SERVICE_FILE" >/dev/null
+          sudo rm -f /etc/systemd/system/devnet-node*.service
+          sudo systemctl daemon-reload
+
+      - name: Start devnet with systemd
+        run: |
+          TARGET_IMAGE="${STABLED_IMAGE}:${{ inputs.target_image_tag }}"
+          CHAIN_ID="${{ steps.build.outputs.chain_id }}"
+
+          echo "Starting devnet nodes..."
+          mkdir -p "$DEVNET_BASE_DIR/logs"
+
+          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
+            NODE_HOME="$DEVNET_BASE_DIR/node${i}"
+            SERVICE_NAME="devnet-node${i}"
+
+            cat <<EOF | sudo tee "/etc/systemd/system/${SERVICE_NAME}.service"
           [Unit]
-          Description=Devnet $NODE_NAME daemon
-          After=network-online.target
-          Wants=network-online.target
+          Description=Devnet Node ${i}
+          After=docker.service
+          Requires=docker.service
 
           [Service]
+          Type=simple
           User=$(whoami)
-          WorkingDirectory=$TARGET_STABLE_PATH
-          # ExecStart is overridden in drop-in
+          ExecStartPre=-/usr/bin/docker rm -f ${SERVICE_NAME}
+          ExecStart=/usr/bin/docker run --rm --name ${SERVICE_NAME} \
+            -v ${NODE_HOME}:/root/.stabled \
+            --network host \
+            ${TARGET_IMAGE} \
+            start --home /root/.stabled
+          ExecStop=/usr/bin/docker stop ${SERVICE_NAME}
           Restart=always
-          RestartSec=3
-          LimitNOFILE=65535
+          RestartSec=5
 
           [Install]
           WantedBy=multi-user.target
-          SERVICEEOF
-          
-            # Create drop-in directory for logging configuration
-            sudo mkdir -p "$DROPIN_DIR"
-          
-            # Create drop-in file with logging configuration
-            cat <<DROPINEOF | sudo tee "$DROPIN_LOG" >/dev/null
-          [Service]
-          Environment=NO_COLOR=1
-          ExecStart=
-          ExecStart=/bin/bash -c '\
-            LOG=\$(/usr/local/bin/devnet-log-path.sh "${NODE_NAME}"); \
-            echo "Using log \$LOG"; \
-            exec ${TARGET_STABLED_BINARY} start --home ${NODE_HOME} --chain-id ${ACTUAL_CHAIN_ID} 2>&1 \
-              | sed -u -E "s/\x1B\\[[0-9;]*[A-Za-z]//g" \
-              | tee -a "\$LOG"'
-          DROPINEOF
-          
-            echo "    Service file: $SERVICE_FILE"
-            echo "    Drop-in file: $DROPIN_LOG"
-          done
-          
-          # Reload systemd daemon
-          echo ""
-          echo "Reloading systemd daemon..."
-          sudo systemctl daemon-reload
-          
-          # Step 6: Start all services
-          echo ""
-          echo "Step 6: Starting all services..."
-          for i in $(seq 0 $((VALIDATORS - 1))); do
-            NODE_NAME="node$i"
-            SERVICE_NAME="devnet-${NODE_NAME}"
-          
-            echo "  Starting $SERVICE_NAME..."
-            sudo systemctl start "$SERVICE_NAME"
-            sudo systemctl enable "$SERVICE_NAME"
-          
-            # Wait a moment for the service to start
-            sleep 2
-          
-            # Verify service is running
-            if systemctl is-active --quiet "$SERVICE_NAME"; then
-              echo "  $SERVICE_NAME started successfully"
-            else
-              echo "  Warning: Failed to start $SERVICE_NAME"
-              sudo systemctl status "$SERVICE_NAME" --no-pager || true
-            fi
-          done
-          
-          echo ""
-          echo "All nodes configured and started as systemd services"
+          EOF
 
-      - name: Export account private keys
-        id: export_private_keys
+            sudo systemctl daemon-reload
+            sudo systemctl enable "$SERVICE_NAME"
+            sudo systemctl start "$SERVICE_NAME"
+
+            echo "Started $SERVICE_NAME"
+            sleep 2
+          done
+
+      - name: Verify deployment
         run: |
-          TARGET_STABLED_BINARY="${{ steps.build_target_binary.outputs.target_stabled_binary }}"
+          echo "Waiting for nodes to start..."
+          sleep 30
+
+          echo "Checking services..."
+          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
+            STATUS=$(systemctl is-active "devnet-node${i}" 2>/dev/null || echo "inactive")
+            echo "  devnet-node${i}: $STATUS"
+          done
+
+          echo ""
+          echo "Checking RPC endpoint..."
+          for attempt in $(seq 1 20); do
+            if curl -s http://localhost:26657/status | jq -e '.result.sync_info' > /dev/null 2>&1; then
+              echo "Node is ready!"
+              curl -s http://localhost:26657/status | jq '.result.sync_info'
+              break
+            fi
+            echo "Attempt $attempt: waiting..."
+            sleep 10
+          done
+
+      - name: Export account keys
+        run: |
+          TARGET_IMAGE="${STABLED_IMAGE}:${{ inputs.target_image_tag }}"
           ACCOUNTS_DIR="$DEVNET_BASE_DIR/accounts"
 
-          echo "Exporting account private keys..."
-          echo "Accounts directory: $ACCOUNTS_DIR"
-          echo "Using target stabled binary: $TARGET_STABLED_BINARY"
-
-          # Check if accounts directory exists
-          if [ ! -d "$ACCOUNTS_DIR" ]; then
-            echo "Warning: Accounts directory not found at $ACCOUNTS_DIR"
-            echo "Skipping private key export"
-            exit 0
-          fi
-
-          echo ""
           echo "=========================================="
           echo "Account Private Keys"
           echo "=========================================="
 
-          # List all keys and export their private keys
-          KEYS_JSON=$("$TARGET_STABLED_BINARY" keys list --home "$ACCOUNTS_DIR" --keyring-backend test --output json 2>/dev/null)
-
-          if [ -z "$KEYS_JSON" ] || [ "$KEYS_JSON" = "[]" ]; then
-            echo "No keys found in accounts directory"
-            exit 0
-          fi
-
-          # Extract key names and export private keys
-          echo "$KEYS_JSON" | jq -r '.[].name' | while read -r KEY_NAME; do
-            if [ -n "$KEY_NAME" ]; then
-              PRIVATE_KEY=$("$TARGET_STABLED_BINARY" keys unsafe-export-eth-key "$KEY_NAME" \
-                --home "$ACCOUNTS_DIR" \
-                --keyring-backend test 2>/dev/null)
-
-              if [ -n "$PRIVATE_KEY" ]; then
-                echo "\"$KEY_NAME\": \"$PRIVATE_KEY\""
-              else
-                echo "\"$KEY_NAME\": \"ERROR: Failed to export private key\""
-              fi
-            fi
+          docker run --rm \
+            -v "$ACCOUNTS_DIR:/root/.stabled" \
+            "$TARGET_IMAGE" \
+            keys list --keyring-backend test --output json 2>/dev/null | \
+          jq -r '.[].name' | while read -r KEY_NAME; do
+            PRIVKEY=$(docker run --rm \
+              -v "$ACCOUNTS_DIR:/root/.stabled" \
+              "$TARGET_IMAGE" \
+              keys unsafe-export-eth-key "$KEY_NAME" --keyring-backend test 2>/dev/null || echo "ERROR")
+            echo "\"$KEY_NAME\": \"$PRIVKEY\""
           done
 
           echo "=========================================="
-          echo ""
 
-      - name: Verify nodes are running
-        id: verify_nodes
+      - name: Display summary
         run: |
-          echo "Waiting for nodes to start..."
-          sleep 10
-          
-          echo "Verifying systemd services..."
-          
-          # Check if all services are running
-          RUNNING_COUNT=0
-          for i in $(seq 0 $((VALIDATORS - 1))); do
-            NODE_NAME="node$i"
-            SERVICE_NAME="devnet-${NODE_NAME}"
-          
-            if systemctl is-active --quiet "$SERVICE_NAME"; then
-              RUNNING_COUNT=$((RUNNING_COUNT + 1))
-              echo "$SERVICE_NAME is running"
-            else
-              echo "Warning: $SERVICE_NAME is not running"
-              sudo systemctl status "$SERVICE_NAME" --no-pager || true
-            fi
-          done
-          
-          echo ""
-          echo "Summary: $RUNNING_COUNT/$VALIDATORS nodes are running"
-          
-          if [ "$RUNNING_COUNT" -ne "$VALIDATORS" ]; then
-            echo "Warning: Not all nodes are running"
-          fi
-          
-          # Display log file locations
-          echo ""
-          echo "Log files location: $DEVNET_BASE_DIR/logs/"
-          if [ -d "$DEVNET_BASE_DIR/logs" ]; then
-            ls -lht "$DEVNET_BASE_DIR/logs/" | head -20
-          fi
-
-          # Health check: Wait for main RPC node to be ready
-          MAIN_RPC_NODE=$((VALIDATORS - 1))
-          echo ""
-          echo "=========================================="
-          echo "Waiting for main RPC node (node${MAIN_RPC_NODE}) to be ready..."
-          echo "=========================================="
-
-          RPC_ENDPOINT="http://localhost:26657/status"
-          TIMEOUT_SECONDS=600  # 10 minutes
-          POLL_INTERVAL=10     # 10 seconds
-          START_TIME=$(date +%s)
-
-          echo "Polling $RPC_ENDPOINT every ${POLL_INTERVAL}s (timeout: ${TIMEOUT_SECONDS}s)"
-          echo ""
-
-          while true; do
-            CURRENT_TIME=$(date +%s)
-            ELAPSED=$((CURRENT_TIME - START_TIME))
-
-            # Check timeout
-            if [ $ELAPSED -ge $TIMEOUT_SECONDS ]; then
-              echo ""
-              echo "ERROR: Timeout reached (${TIMEOUT_SECONDS}s). Node did not become ready in time."
-              echo "Last curl attempt failed. Please check the logs:"
-              echo "  sudo journalctl -u devnet-node${MAIN_RPC_NODE} -n 100"
-              echo "  tail -100 $DEVNET_BASE_DIR/logs/devnet_node${MAIN_RPC_NODE}_*.log"
-              exit 1
-            fi
-
-            # Try to curl the status endpoint
-            echo "[${ELAPSED}s] Checking node status..."
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$RPC_ENDPOINT" 2>/dev/null || echo "000")
-
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo ""
-              echo "SUCCESS: Node is ready! (HTTP $HTTP_CODE)"
-              echo "Elapsed time: ${ELAPSED}s"
-
-              # Display node status
-              echo ""
-              echo "Node status:"
-              curl -s "$RPC_ENDPOINT" | jq '.' 2>/dev/null || curl -s "$RPC_ENDPOINT"
-              echo ""
-              break
-            else
-              echo "  HTTP $HTTP_CODE - Node not ready yet, waiting ${POLL_INTERVAL}s..."
-              sleep $POLL_INTERVAL
-            fi
-          done
-
-          echo "=========================================="
-          echo "Node verification completed successfully"
-          echo "=========================================="
-
-      - name: Display deployment summary
-        id: summary
-        run: |
-          ACTUAL_CHAIN_ID="${{ steps.build_devnet.outputs.actual_chain_id }}"
-
-          # Get configuration from snapshot_config step
-          SNAPSHOT_URL="${{ steps.snapshot_config.outputs.snapshot_url }}"
-          TARGET_CHAIN_ID="${{ steps.snapshot_config.outputs.chain_id }}"
-          TARGET_RPC_ENDPOINT="${{ steps.snapshot_config.outputs.rpc_endpoint }}"
-          PERSISTENT_PEERS="${{ steps.snapshot_config.outputs.persistent_peers }}"
-
           echo ""
           echo "=========================================="
           echo "Devnet Deployment Summary"
           echo "=========================================="
-          echo "Snapshot Network: $SNAPSHOT_NETWORK"
-          echo "Snapshot URL: $SNAPSHOT_URL"
-          echo "Source Chain ID: $TARGET_CHAIN_ID"
-          echo "Source RPC Endpoint: $TARGET_RPC_ENDPOINT"
-          echo "Persistent Peers: $PERSISTENT_PEERS"
-          echo "Source Binary Version: $SOURCE_BINARY_VERSION"
-          echo "Target Binary Version: $TARGET_BINARY_VERSION"
-          echo "Devnet Chain ID: $ACTUAL_CHAIN_ID"
-          echo "Validators: $VALIDATORS"
-          echo "Accounts: $ACCOUNTS"
-          echo "Devnet Directory: $DEVNET_BASE_DIR"
-          echo "=========================================="
+          echo "Network: ${{ inputs.snapshot_network }}"
+          echo "Source Image: ${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
+          echo "Target Image: ${STABLED_IMAGE}:${{ inputs.target_image_tag }}"
+          echo "Chain ID: ${{ steps.build.outputs.chain_id }}"
+          echo "Validators: $NUM_VALIDATORS"
+          echo "Directory: $DEVNET_BASE_DIR"
           echo ""
-          echo "Systemd Services:"
-          for i in $(seq 0 $((VALIDATORS - 1))); do
-            NODE_NAME="node$i"
-            SERVICE_NAME="devnet-${NODE_NAME}"
-            STATUS=$(systemctl is-active "$SERVICE_NAME" 2>/dev/null || echo "inactive")
-            echo "  $SERVICE_NAME: $STATUS"
-          done
+          echo "Endpoints:"
+          echo "  RPC: http://localhost:26657"
+          echo "  EVM JSON-RPC: http://localhost:8545"
+          echo "  gRPC: localhost:9090"
           echo ""
-          echo "Devnet Structure:"
-          ls -la "$DEVNET_BASE_DIR"
-          echo ""
-          echo "Recent Log Files:"
-          if [ -d "$DEVNET_BASE_DIR/logs" ]; then
-            ls -lht "$DEVNET_BASE_DIR/logs/" | head -10
-          fi
-          echo ""
-          echo "Service Management Commands:"
-          echo "  View service status: sudo systemctl status devnet-node0"
-          echo "  View logs: sudo journalctl -u devnet-node0 -f"
-          echo "  View log files: tail -f $DEVNET_BASE_DIR/logs/devnet_node0_*.log"
-          echo "  Stop service: sudo systemctl stop devnet-node0"
-          echo "  Start service: sudo systemctl start devnet-node0"
-          echo "  Restart service: sudo systemctl restart devnet-node0"
-          echo ""
+          echo "Commands:"
+          echo "  Status: sudo systemctl status devnet-node0"
+          echo "  Logs: docker logs -f devnet-node0"
+          echo "  Stop: sudo systemctl stop devnet-node0"
           echo "=========================================="
