@@ -408,6 +408,7 @@ jobs:
           TIMEOUT=300
           ELAPSED=0
 
+          # First, wait for chain to sync
           while [ $ELAPSED -lt $TIMEOUT ]; do
             sleep 10
             ELAPSED=$((ELAPSED + 10))
@@ -424,6 +425,28 @@ jobs:
             fi
           done
 
+          # Wait for sufficient block history (EVM RPC needs ~50 blocks for gas estimation)
+          echo "Waiting for sufficient block history for EVM RPC..."
+          MIN_BLOCKS_NEEDED=50
+
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+
+            # Get current height and earliest available block
+            STATUS=$(curl -s http://localhost:26657/status 2>/dev/null || echo '{}')
+            CURRENT_HEIGHT=$(echo "$STATUS" | jq -r '.result.sync_info.latest_block_height // "0"')
+            EARLIEST=$(echo "$STATUS" | jq -r '.result.sync_info.earliest_block_height // "0"')
+
+            AVAILABLE_HISTORY=$((CURRENT_HEIGHT - EARLIEST))
+            echo "[${ELAPSED}s] Height: $CURRENT_HEIGHT, Earliest: $EARLIEST, Available history: $AVAILABLE_HISTORY blocks"
+
+            if [ "$AVAILABLE_HISTORY" -ge "$MIN_BLOCKS_NEEDED" ]; then
+              echo "Sufficient block history available!"
+              break
+            fi
+          done
+
       - name: Calculate upgrade height
         id: upgrade
         run: |
@@ -433,29 +456,44 @@ jobs:
           STATUS=$(curl -s http://localhost:26657/status)
           CURRENT_HEIGHT=$(echo "$STATUS" | jq -r '.result.sync_info.latest_block_height')
           CURRENT_TIME=$(echo "$STATUS" | jq -r '.result.sync_info.latest_block_time')
+          EARLIEST_HEIGHT=$(echo "$STATUS" | jq -r '.result.sync_info.earliest_block_height // "1"')
 
           echo "Current height: $CURRENT_HEIGHT"
+          echo "Earliest height: $EARLIEST_HEIGHT"
           echo "Current time: $CURRENT_TIME"
 
-          # Calculate block time from last 100 blocks
-          EARLIER_HEIGHT=$((CURRENT_HEIGHT - 100))
-          if [ "$EARLIER_HEIGHT" -lt 1 ]; then
-            EARLIER_HEIGHT=1
+          # Calculate block time using available history only
+          # Use earliest available block or go back 50 blocks, whichever is higher
+          EARLIER_HEIGHT=$((CURRENT_HEIGHT - 50))
+          if [ "$EARLIER_HEIGHT" -lt "$EARLIEST_HEIGHT" ]; then
+            EARLIER_HEIGHT=$EARLIEST_HEIGHT
+            echo "Using earliest available height: $EARLIER_HEIGHT (pruned snapshot)"
           fi
 
           EARLIER_BLOCK=$(curl -s "http://localhost:26657/block?height=$EARLIER_HEIGHT")
-          EARLIER_TIME=$(echo "$EARLIER_BLOCK" | jq -r '.result.block.header.time')
+          EARLIER_TIME=$(echo "$EARLIER_BLOCK" | jq -r '.result.block.header.time // empty')
 
-          # Calculate block time in seconds
-          CURRENT_TS=$(date -d "$CURRENT_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${CURRENT_TIME%.*}" +%s 2>/dev/null || echo "0")
-          EARLIER_TS=$(date -d "$EARLIER_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${EARLIER_TIME%.*}" +%s 2>/dev/null || echo "0")
+          BLOCK_TIME_SECS=2  # Default fallback
 
-          BLOCKS_DIFF=$((CURRENT_HEIGHT - EARLIER_HEIGHT))
-          if [ "$BLOCKS_DIFF" -gt 0 ] && [ "$CURRENT_TS" -gt "$EARLIER_TS" ]; then
-            TIME_DIFF=$((CURRENT_TS - EARLIER_TS))
-            BLOCK_TIME_SECS=$((TIME_DIFF / BLOCKS_DIFF))
+          if [ -n "$EARLIER_TIME" ]; then
+            # Calculate block time in seconds
+            CURRENT_TS=$(date -d "$CURRENT_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${CURRENT_TIME%.*}" +%s 2>/dev/null || echo "0")
+            EARLIER_TS=$(date -d "$EARLIER_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${EARLIER_TIME%.*}" +%s 2>/dev/null || echo "0")
+
+            BLOCKS_DIFF=$((CURRENT_HEIGHT - EARLIER_HEIGHT))
+            if [ "$BLOCKS_DIFF" -gt 0 ] && [ "$CURRENT_TS" -gt "$EARLIER_TS" ]; then
+              TIME_DIFF=$((CURRENT_TS - EARLIER_TS))
+              BLOCK_TIME_SECS=$((TIME_DIFF / BLOCKS_DIFF))
+              # Sanity check: block time should be between 1 and 10 seconds
+              if [ "$BLOCK_TIME_SECS" -lt 1 ]; then
+                BLOCK_TIME_SECS=1
+              elif [ "$BLOCK_TIME_SECS" -gt 10 ]; then
+                BLOCK_TIME_SECS=2
+                echo "Warning: Calculated block time too high, using fallback"
+              fi
+            fi
           else
-            BLOCK_TIME_SECS=2  # Fallback
+            echo "Warning: Could not fetch historical block, using default block time"
           fi
 
           echo "Block time: ${BLOCK_TIME_SECS}s"
@@ -463,7 +501,7 @@ jobs:
           # Calculate upgrade height
           # upgrade_height = current + (voting_period / block_time) + buffer
           BLOCKS_FOR_VOTING=$((EXPEDITED_VOTING_PERIOD_SECS / BLOCK_TIME_SECS))
-          BUFFER_BLOCKS=20
+          BUFFER_BLOCKS=50  # Increased buffer for safety
           UPGRADE_HEIGHT=$((CURRENT_HEIGHT + BLOCKS_FOR_VOTING + BUFFER_BLOCKS))
 
           echo "Voting period: ${EXPEDITED_VOTING_PERIOD_SECS}s = ~${BLOCKS_FOR_VOTING} blocks"
@@ -535,19 +573,45 @@ jobs:
           # Convert JSON to hex bytes
           PROPOSAL_HEX=$(echo -n "$PROPOSAL_JSON" | xxd -p | tr -d '\n')
 
-          # Submit proposal using cast
+          # Submit proposal using cast with retry logic
           echo "Submitting proposal via governance precompile..."
 
-          # Use cast to send transaction (quotes around denom for safety)
-          TX_RESULT=$(~/.foundry/bin/cast send "$GOV_PRECOMPILE" \
-            "submitProposal(address,bytes,(string,uint256)[])" \
-            "0x$VALIDATOR0_HEX" \
-            "0x$PROPOSAL_HEX" \
-            '[("astable",10000000000000000000000)]' \
-            --private-key "$VALIDATOR0_PRIVKEY" \
-            --rpc-url "http://localhost:8545" \
-            --gas-limit 3000000 \
-            --json 2>&1 || echo '{"error": "cast failed"}')
+          MAX_RETRIES=5
+          RETRY_DELAY=15
+          TX_RESULT=""
+
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $attempt of $MAX_RETRIES..."
+
+            # Use cast to send transaction (quotes around denom for safety)
+            TX_RESULT=$(~/.foundry/bin/cast send "$GOV_PRECOMPILE" \
+              "submitProposal(address,bytes,(string,uint256)[])" \
+              "0x$VALIDATOR0_HEX" \
+              "0x$PROPOSAL_HEX" \
+              '[("astable",10000000000000000000000)]' \
+              --private-key "$VALIDATOR0_PRIVKEY" \
+              --rpc-url "http://localhost:8545" \
+              --gas-limit 3000000 \
+              --json 2>&1 || echo '{"error": "cast failed"}')
+
+            # Check if it's an RPC error about height availability
+            if echo "$TX_RESULT" | grep -q "height.*is not available"; then
+              echo "RPC height availability error, waiting ${RETRY_DELAY}s for more blocks..."
+              sleep $RETRY_DELAY
+              continue
+            fi
+
+            # Check if TX was successful
+            TX_HASH=$(echo "$TX_RESULT" | jq -r '.transactionHash // empty' 2>/dev/null)
+            if [ -n "$TX_HASH" ]; then
+              echo "Transaction submitted successfully!"
+              break
+            fi
+
+            # Other error, wait and retry
+            echo "Transaction failed, retrying in ${RETRY_DELAY}s..."
+            sleep $RETRY_DELAY
+          done
 
           echo "Transaction result:"
           echo "$TX_RESULT"
