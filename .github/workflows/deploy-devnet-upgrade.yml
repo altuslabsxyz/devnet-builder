@@ -730,14 +730,16 @@ jobs:
                 keys show "$acct" --keyring-backend test --home /data --output json 2>/dev/null | jq -r '.address // empty')
 
               if [ -n "$ACCT_ADDR" ]; then
-                ACCT_BAL=$(curl -s "http://localhost:1317/cosmos/bank/v1beta1/balances/$ACCT_ADDR" | jq -r '.balances[] | select(.denom == "astable") | .amount // "0"')
-                echo "$acct ($ACCT_ADDR): $ACCT_BAL astable"
+                ACCT_BALANCES=$(curl -s "http://localhost:1317/cosmos/bank/v1beta1/balances/$ACCT_ADDR")
+                ACCT_ASTABLE=$(echo "$ACCT_BALANCES" | jq -r '.balances[] | select(.denom == "astable") | .amount // "0"')
+                ACCT_AGUSDT=$(echo "$ACCT_BALANCES" | jq -r '.balances[] | select(.denom == "agusdt") | .amount // "0"')
+                echo "$acct ($ACCT_ADDR): $ACCT_ASTABLE astable, $ACCT_AGUSDT agusdt"
 
-                if [ -n "$ACCT_BAL" ] && [ "$ACCT_BAL" != "0" ] && [ "$ACCT_BAL" != "null" ]; then
-                  echo "Found funded account: $acct with $ACCT_BAL astable"
+                FUNDED=false
+
+                # Send astable if account has it
+                if [ -n "$ACCT_ASTABLE" ] && [ "$ACCT_ASTABLE" != "0" ] && [ "$ACCT_ASTABLE" != "null" ]; then
                   echo "Sending 100K STABLE to validator0..."
-
-                  # Send funds using cosmos tx
                   docker run --rm -u 0 \
                     -v "$DEVNET_BASE_DIR/accounts:/data" \
                     --network host \
@@ -752,15 +754,42 @@ jobs:
                     --gas-prices "10000000000astable" \
                     --yes \
                     --broadcast-mode sync
+                  FUNDED=true
+                  sleep 5
+                fi
 
-                  echo "Waiting for tx to be processed..."
-                  sleep 10
+                # Send agusdt if account has it
+                if [ -n "$ACCT_AGUSDT" ] && [ "$ACCT_AGUSDT" != "0" ] && [ "$ACCT_AGUSDT" != "null" ]; then
+                  echo "Sending 100K USDT to validator0..."
+                  docker run --rm -u 0 \
+                    -v "$DEVNET_BASE_DIR/accounts:/data" \
+                    --network host \
+                    "$SOURCE_IMAGE" \
+                    tx bank send "$acct" "$VALIDATOR0_BECH32" "100000000000000000000000agusdt" \
+                    --keyring-backend test \
+                    --home /data \
+                    --chain-id "$CHAIN_ID" \
+                    --node "http://localhost:26657" \
+                    --gas auto \
+                    --gas-adjustment 1.5 \
+                    --gas-prices "10000000000astable" \
+                    --yes \
+                    --broadcast-mode sync
+                  FUNDED=true
+                  sleep 5
+                fi
 
-                  # Verify balance
-                  NEW_BALANCE=$(curl -s "http://localhost:1317/cosmos/bank/v1beta1/balances/$VALIDATOR0_BECH32" | jq -r '.balances[] | select(.denom == "astable") | .amount // "0"')
-                  echo "Validator0 new balance: $NEW_BALANCE astable"
+                if [ "$FUNDED" = "true" ]; then
+                  echo "Waiting for txs to be processed..."
+                  sleep 5
 
-                  if [ -n "$NEW_BALANCE" ] && [ "$NEW_BALANCE" != "0" ]; then
+                  # Verify balances
+                  NEW_BALANCES=$(curl -s "http://localhost:1317/cosmos/bank/v1beta1/balances/$VALIDATOR0_BECH32")
+                  NEW_ASTABLE=$(echo "$NEW_BALANCES" | jq -r '.balances[] | select(.denom == "astable") | .amount // "0"')
+                  NEW_AGUSDT=$(echo "$NEW_BALANCES" | jq -r '.balances[] | select(.denom == "agusdt") | .amount // "0"')
+                  echo "Validator0 new balance: $NEW_ASTABLE astable, $NEW_AGUSDT agusdt"
+
+                  if [ -n "$NEW_ASTABLE" ] && [ "$NEW_ASTABLE" != "0" ]; then
                     echo "Funding successful!"
                     break
                   fi
