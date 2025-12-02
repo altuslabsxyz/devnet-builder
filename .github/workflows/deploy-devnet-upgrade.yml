@@ -377,7 +377,7 @@ jobs:
 
             STATUS=$(curl -s http://localhost:26657/status 2>/dev/null || echo '{}')
             HEIGHT=$(echo "$STATUS" | jq -r '.result.sync_info.latest_block_height // "0"')
-            CATCHING_UP=$(echo "$STATUS" | jq -r '.result.sync_info.catching_up // "true"')
+            CATCHING_UP=$(echo "$STATUS" | jq -r 'if .result.sync_info.catching_up == null then true else .result.sync_info.catching_up end')
 
             echo "[${ELAPSED}s] Height: $HEIGHT, Catching up: $CATCHING_UP"
 
@@ -681,7 +681,7 @@ jobs:
           while [ $ELAPSED -lt $TIMEOUT ]; do
             STATUS=$(curl -s http://localhost:26657/status 2>/dev/null || echo '{}')
             HEIGHT=$(echo "$STATUS" | jq -r '.result.sync_info.latest_block_height // "0"')
-            CATCHING_UP=$(echo "$STATUS" | jq -r '.result.sync_info.catching_up // "true"')
+            CATCHING_UP=$(echo "$STATUS" | jq -r 'if .result.sync_info.catching_up == null then true else .result.sync_info.catching_up end')
 
             echo "[${ELAPSED}s] Height: $HEIGHT (upgrade was at $UPGRADE_HEIGHT)"
 
