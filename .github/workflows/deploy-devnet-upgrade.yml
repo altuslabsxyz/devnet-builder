@@ -107,6 +107,12 @@ jobs:
             echo "Foundry already installed"
           fi
 
+      - name: Stop existing services
+        run: |
+          cd "${GITHUB_WORKSPACE}/docker"
+          DEVNET_DIR="$DEVNET_BASE_DIR" docker compose down 2>/dev/null || true
+          docker rm -f devnet-node0 devnet-node1 devnet-node2 devnet-node3 2>/dev/null || true
+
       - name: Provision chain with snapshot
         id: provision
         run: |
@@ -368,12 +374,6 @@ jobs:
           rm -rf "$DEVNET_BUILDER_OUTPUT"
           echo "output_dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
           echo "chain_id=$DEVNET_CHAIN_ID" >> $GITHUB_OUTPUT
-
-      - name: Stop existing services
-        run: |
-          cd "${GITHUB_WORKSPACE}/docker"
-          DEVNET_DIR="$DEVNET_BASE_DIR" docker compose down 2>/dev/null || true
-          docker rm -f devnet-node0 devnet-node1 devnet-node2 devnet-node3 2>/dev/null || true
 
       - name: Deploy devnet
         run: |
