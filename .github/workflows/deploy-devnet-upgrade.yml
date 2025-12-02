@@ -689,24 +689,44 @@ jobs:
 
             echo "  Address: $VALIDATOR_BECH32 (0x$VALIDATOR_HEX)"
 
-            # Vote YES (option 1)
-            VOTE_RESULT=$(~/.foundry/bin/cast send "$GOV_PRECOMPILE" \
-              "vote(address,uint64,uint8,string)" \
-              "0x$VALIDATOR_HEX" \
-              "$PROPOSAL_ID" \
-              1 \
-              "" \
-              --private-key "$VALIDATOR_PRIVKEY" \
-              --rpc-url "http://localhost:8545" \
-              --gas-limit 500000 \
-              --json 2>&1 || echo '{"error": "vote failed"}')
+            # Vote YES (option 1) with retry logic
+            VOTE_MAX_RETRIES=3
+            VOTE_RETRY_DELAY=10
+            TX_HASH=""
 
-            TX_HASH=$(echo "$VOTE_RESULT" | jq -r '.transactionHash // empty')
+            for vote_attempt in $(seq 1 $VOTE_MAX_RETRIES); do
+              VOTE_RESULT=$(~/.foundry/bin/cast send "$GOV_PRECOMPILE" \
+                "vote(address,uint64,uint8,string)" \
+                "0x$VALIDATOR_HEX" \
+                "$PROPOSAL_ID" \
+                1 \
+                "" \
+                --private-key "$VALIDATOR_PRIVKEY" \
+                --rpc-url "http://localhost:8545" \
+                --gas-limit 500000 \
+                --json 2>&1 || echo '{"error": "vote failed"}')
+
+              # Check for height availability error
+              if echo "$VOTE_RESULT" | grep -q "height.*is not available"; then
+                echo "  RPC height error, retrying in ${VOTE_RETRY_DELAY}s..."
+                sleep $VOTE_RETRY_DELAY
+                continue
+              fi
+
+              TX_HASH=$(echo "$VOTE_RESULT" | jq -r '.transactionHash // empty' 2>/dev/null)
+              if [ -n "$TX_HASH" ]; then
+                break
+              fi
+
+              echo "  Vote attempt $vote_attempt failed, retrying..."
+              sleep $VOTE_RETRY_DELAY
+            done
+
             if [ -n "$TX_HASH" ]; then
               echo "  Voted! TX: $TX_HASH"
               VOTE_SUCCESS=$((VOTE_SUCCESS + 1))
             else
-              echo "  Warning: Vote failed for validator${i}"
+              echo "  Warning: Vote failed for validator${i} after $VOTE_MAX_RETRIES attempts"
               echo "  Result: $VOTE_RESULT"
             fi
 
