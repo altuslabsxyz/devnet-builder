@@ -843,7 +843,7 @@ jobs:
               "submitProposal(address,bytes,(string,uint256)[])" \
               "0x$VALIDATOR0_HEX" \
               "0x$PROPOSAL_HEX" \
-              '[("astable",50000000000000000000000)]' \
+              '[("astable",50000000000000000000001)]' \
               --private-key "$VALIDATOR0_PRIVKEY" \
               --rpc-url "http://localhost:8545" \
               --gas-limit 3000000 \
