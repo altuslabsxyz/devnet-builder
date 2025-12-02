@@ -346,14 +346,21 @@ jobs:
 
           PERSISTENT_PEERS="${NODE0_ID}@127.0.0.1:26656,${NODE1_ID}@127.0.0.1:26666,${NODE2_ID}@127.0.0.1:26676,${NODE3_ID}@127.0.0.1:26686"
 
+          # Main RPC node (node0)
+          MAIN_RPC_NODE=0
+
           for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
+            NODE_NAME="node${i}"
             CONFIG_FILE="$OUTPUT_DIR/node${i}/config/config.toml"
             APP_FILE="$OUTPUT_DIR/node${i}/config/app.toml"
+
+            echo "Configuring $NODE_NAME..."
 
             P2P_PORT=$((26656 + i * 10))
             RPC_PORT=$((26657 + i * 10))
             PROXY_PORT=$((26658 + i * 10))
 
+            # Basic network configuration
             sed -i "s|^persistent_peers = .*|persistent_peers = \"$PERSISTENT_PEERS\"|g" "$CONFIG_FILE"
             sed -i "s|allow_duplicate_ip = .*|allow_duplicate_ip = true|g" "$CONFIG_FILE"
             sed -i "s|addr_book_strict = .*|addr_book_strict = false|g" "$CONFIG_FILE"
@@ -363,12 +370,41 @@ jobs:
             sed -i "s|laddr = \"tcp://127.0.0.1:26657\"|laddr = \"tcp://0.0.0.0:$RPC_PORT\"|g" "$CONFIG_FILE"
             sed -i "s|proxy_app = \"tcp://127.0.0.1:26658\"|proxy_app = \"tcp://127.0.0.1:$PROXY_PORT\"|g" "$CONFIG_FILE"
 
-            if [ $i -eq 0 ]; then
+            # Configure app.toml
+            if [ $i -eq $MAIN_RPC_NODE ]; then
+              # Main RPC node: enable all services (API, gRPC, JSON-RPC)
               sed -i 's|enable = false|enable = true|g' "$APP_FILE"
               sed -i 's|address = "tcp://localhost:1317"|address = "tcp://0.0.0.0:1317"|g' "$APP_FILE"
               sed -i 's|address = "127.0.0.1:8545"|address = "0.0.0.0:8545"|g' "$APP_FILE"
               sed -i 's|ws-address = "127.0.0.1:8546"|ws-address = "0.0.0.0:8546"|g' "$APP_FILE"
+              sed -i 's|api = "eth,net,web3"|api = "eth,txpool,personal,net,debug,web3"|g' "$APP_FILE"
+              sed -i 's|enabled-unsafe-cors = false|enabled-unsafe-cors = true|g' "$APP_FILE"
+              sed -i 's|laddr = "tcp://127.0.0.1:26657"|laddr = "tcp://0.0.0.0:26657"|g' "$CONFIG_FILE"
+              echo "  Enabled all services for $NODE_NAME (main RPC node)"
+            else
+              # Other nodes: disable all services
+              sed -i 's|enable = true|enable = false|g' "$APP_FILE"
+              echo "  Disabled services for $NODE_NAME"
             fi
+
+            # Disable prometheus
+            sed -i 's|prometheus = true|prometheus = false|g' "$CONFIG_FILE"
+
+            # Configure consensus parameters for faster block times
+            echo "  Configuring consensus parameters for $NODE_NAME..."
+            sed -i \
+                -e '/^\[consensus\]/,/^\[/ {
+                  s/^timeout_propose = .*/timeout_propose = "5s"/
+                  s/^timeout_propose_delta = .*/timeout_propose_delta = "10ms"/
+                  s/^timeout_prevote = .*/timeout_prevote = "50ms"/
+                  s/^timeout_prevote_delta = .*/timeout_prevote_delta = "10ms"/
+                  s/^timeout_precommit = .*/timeout_precommit = "50ms"/
+                  s/^timeout_precommit_delta = .*/timeout_precommit_delta = "10ms"/
+                  s/^timeout_commit = .*/timeout_commit = "650ms"/
+                }' \
+                "$CONFIG_FILE"
+
+            echo "  $NODE_NAME configuration completed"
           done
 
           rm -rf "$DEVNET_BUILDER_OUTPUT"
