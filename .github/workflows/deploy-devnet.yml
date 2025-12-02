@@ -71,12 +71,12 @@ jobs:
           if [ "$SNAPSHOT_NETWORK" = "mainnet" ]; then
             SNAPSHOT_URL="https://stable-mainnet-data.s3.amazonaws.com/snapshots/stable_pruned.tar.zst"
             CHAIN_ID="stable_988-1"
-            RPC_ENDPOINT="https://cosmos-rpc-internal.stable.xyz/"
+            RPC_ENDPOINT="https://cosmos-rpc-internal.stable.xyz"
             PEERS="39fef24240d80e2cd5bdcbe101298c36f0d83fa1@57.129.53.87:26656"
           elif [ "$SNAPSHOT_NETWORK" = "testnet" ]; then
             SNAPSHOT_URL="https://stable-snapshot.s3.eu-central-1.amazonaws.com/snapshot.tar.lz4"
             CHAIN_ID="stabletestnet_2201-1"
-            RPC_ENDPOINT="https://cosmos-rpc.testnet.stable.xyz/"
+            RPC_ENDPOINT="https://cosmos-rpc.testnet.stable.xyz"
             PEERS="128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656"
           else
             SNAPSHOT_URL="${{ inputs.custom_snapshot_url }}"
