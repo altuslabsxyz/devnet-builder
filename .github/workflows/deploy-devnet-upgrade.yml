@@ -483,6 +483,48 @@ jobs:
             fi
           done
 
+          # Wait for EVM JSON-RPC to be ready
+          echo "Waiting for EVM JSON-RPC to be ready..."
+          EVM_READY=false
+          EVM_TIMEOUT=120
+          EVM_ELAPSED=0
+
+          while [ $EVM_ELAPSED -lt $EVM_TIMEOUT ]; do
+            sleep 5
+            EVM_ELAPSED=$((EVM_ELAPSED + 5))
+
+            # Test eth_chainId
+            CHAIN_ID_RESULT=$(curl -s -X POST http://localhost:8545 \
+              -H "Content-Type: application/json" \
+              -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' 2>/dev/null || echo '{}')
+
+            if echo "$CHAIN_ID_RESULT" | jq -e '.result' > /dev/null 2>&1; then
+              CHAIN_ID_HEX=$(echo "$CHAIN_ID_RESULT" | jq -r '.result')
+              echo "[${EVM_ELAPSED}s] EVM chain ID: $CHAIN_ID_HEX"
+
+              # Test eth_blockNumber
+              BLOCK_RESULT=$(curl -s -X POST http://localhost:8545 \
+                -H "Content-Type: application/json" \
+                -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null || echo '{}')
+
+              if echo "$BLOCK_RESULT" | jq -e '.result' > /dev/null 2>&1; then
+                EVM_BLOCK=$(echo "$BLOCK_RESULT" | jq -r '.result')
+                echo "[${EVM_ELAPSED}s] EVM block: $EVM_BLOCK"
+                EVM_READY=true
+                break
+              fi
+            fi
+
+            echo "[${EVM_ELAPSED}s] EVM RPC not ready yet..."
+          done
+
+          if [ "$EVM_READY" != "true" ]; then
+            echo "Error: EVM JSON-RPC failed to become ready"
+            exit 1
+          fi
+
+          echo "EVM JSON-RPC is ready!"
+
       - name: Calculate upgrade height
         id: upgrade
         run: |
