@@ -512,27 +512,15 @@ jobs:
           echo "Validator0 address: $VALIDATOR0_BECH32"
           echo "Validator0 hex: $VALIDATOR0_HEX"
 
-          # Build proposal JSON
-          PROPOSAL_JSON=$(cat <<EOF
-{
-  "messages": [
-    {
-      "@type": "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
-      "authority": "$GOV_AUTHORITY",
-      "plan": {
-        "name": "$UPGRADE_NAME",
-        "height": "$UPGRADE_HEIGHT",
-        "info": "Automated devnet upgrade to $UPGRADE_NAME"
-      }
-    }
-  ],
-  "metadata": "",
-  "title": "Software Upgrade: $UPGRADE_NAME",
-  "summary": "Automated devnet upgrade from ${{ inputs.source_image_tag }} to ${{ inputs.upgrade_image_tag }}",
-  "expedited": true
-}
-EOF
-)
+          # Build proposal JSON using printf to avoid heredoc YAML issues
+          PROPOSAL_JSON=$(printf '{"messages":[{"@type":"/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade","authority":"%s","plan":{"name":"%s","height":"%s","info":"Automated devnet upgrade to %s"}}],"metadata":"","title":"Software Upgrade: %s","summary":"Automated devnet upgrade from %s to %s","expedited":true}' \
+            "$GOV_AUTHORITY" \
+            "$UPGRADE_NAME" \
+            "$UPGRADE_HEIGHT" \
+            "$UPGRADE_NAME" \
+            "$UPGRADE_NAME" \
+            "${{ inputs.source_image_tag }}" \
+            "${{ inputs.upgrade_image_tag }}")
 
           echo "Proposal JSON:"
           echo "$PROPOSAL_JSON"
