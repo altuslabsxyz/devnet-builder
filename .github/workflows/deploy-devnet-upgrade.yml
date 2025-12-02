@@ -1048,22 +1048,48 @@ jobs:
 
       - name: Save pre-upgrade genesis
         run: |
+          SOURCE_IMAGE="${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
+          CHAIN_ID="${{ steps.build.outputs.chain_id }}"
           GENESIS_DIR="${GITHUB_WORKSPACE}/genesis-snapshots"
           mkdir -p "$GENESIS_DIR"
 
           echo "Saving pre-upgrade genesis..."
 
-          # Save genesis from RPC
-          curl -s http://localhost:26657/genesis > "$GENESIS_DIR/genesis-pre-upgrade.json"
+          # Get current height before export
+          HEIGHT=$(curl -s http://localhost:26657/status | jq -r '.result.sync_info.latest_block_height')
+          echo "$HEIGHT" > "$GENESIS_DIR/height-pre-upgrade.txt"
 
           # Save current status
           curl -s http://localhost:26657/status > "$GENESIS_DIR/status-pre-upgrade.json"
 
-          # Save current block height
-          HEIGHT=$(curl -s http://localhost:26657/status | jq -r '.result.sync_info.latest_block_height')
-          echo "$HEIGHT" > "$GENESIS_DIR/height-pre-upgrade.txt"
+          # Stop all nodes for clean export
+          echo "Stopping nodes for genesis export..."
+          cd "${GITHUB_WORKSPACE}/docker"
+          DEVNET_DIR="$DEVNET_BASE_DIR" docker compose down
+          sleep 5
 
-          echo "Pre-upgrade genesis saved at height: $HEIGHT"
+          # Export genesis using stabled export
+          echo "Exporting genesis at height $HEIGHT..."
+          docker run --rm -u 0 \
+            -v "$DEVNET_BASE_DIR/node0:/data" \
+            "$SOURCE_IMAGE" \
+            export --home /data > "$GENESIS_DIR/genesis-pre-upgrade.json"
+
+          echo "Pre-upgrade genesis exported at height: $HEIGHT"
+          echo "Genesis file size: $(wc -c < "$GENESIS_DIR/genesis-pre-upgrade.json") bytes"
+
+          # Restart nodes
+          echo "Restarting nodes..."
+          DEVNET_DIR="$DEVNET_BASE_DIR" \
+          STABLED_IMAGE="${STABLED_IMAGE}" \
+          STABLED_TAG="${{ inputs.source_image_tag }}" \
+          CHAIN_ID="$CHAIN_ID" \
+          docker compose up -d
+
+          # Wait for nodes to be ready
+          echo "Waiting for nodes to restart..."
+          sleep 20
+
           echo "Files:"
           ls -la "$GENESIS_DIR/"
 
@@ -1180,6 +1206,8 @@ jobs:
 
       - name: Save post-upgrade genesis
         run: |
+          UPGRADE_IMAGE="${STABLED_IMAGE}:${{ inputs.upgrade_image_tag }}"
+          CHAIN_ID="${{ steps.build.outputs.chain_id }}"
           GENESIS_DIR="${GITHUB_WORKSPACE}/genesis-snapshots"
           mkdir -p "$GENESIS_DIR"
 
@@ -1188,20 +1216,44 @@ jobs:
           # Wait a bit for chain to stabilize
           sleep 10
 
-          # Save genesis from RPC
-          curl -s http://localhost:26657/genesis > "$GENESIS_DIR/genesis-post-upgrade.json"
+          # Get current height
+          HEIGHT=$(curl -s http://localhost:26657/status | jq -r '.result.sync_info.latest_block_height')
+          echo "$HEIGHT" > "$GENESIS_DIR/height-post-upgrade.txt"
 
           # Save current status
           curl -s http://localhost:26657/status > "$GENESIS_DIR/status-post-upgrade.json"
 
-          # Save current block height
-          HEIGHT=$(curl -s http://localhost:26657/status | jq -r '.result.sync_info.latest_block_height')
-          echo "$HEIGHT" > "$GENESIS_DIR/height-post-upgrade.txt"
-
           # Save app version info
           curl -s http://localhost:26657/abci_info > "$GENESIS_DIR/abci-info-post-upgrade.json"
 
-          echo "Post-upgrade genesis saved at height: $HEIGHT"
+          # Stop all nodes for clean export
+          echo "Stopping nodes for genesis export..."
+          cd "${GITHUB_WORKSPACE}/docker"
+          DEVNET_DIR="$DEVNET_BASE_DIR" docker compose down
+          sleep 5
+
+          # Export genesis using stabled export (with upgrade image)
+          echo "Exporting genesis at height $HEIGHT..."
+          docker run --rm -u 0 \
+            -v "$DEVNET_BASE_DIR/node0:/data" \
+            "$UPGRADE_IMAGE" \
+            export --home /data > "$GENESIS_DIR/genesis-post-upgrade.json"
+
+          echo "Post-upgrade genesis exported at height: $HEIGHT"
+          echo "Genesis file size: $(wc -c < "$GENESIS_DIR/genesis-post-upgrade.json") bytes"
+
+          # Restart nodes
+          echo "Restarting nodes..."
+          DEVNET_DIR="$DEVNET_BASE_DIR" \
+          STABLED_IMAGE="${STABLED_IMAGE}" \
+          STABLED_TAG="${{ inputs.upgrade_image_tag }}" \
+          CHAIN_ID="$CHAIN_ID" \
+          docker compose up -d
+
+          # Wait for nodes to be ready
+          echo "Waiting for nodes to restart..."
+          sleep 20
+
           echo "Files:"
           ls -la "$GENESIS_DIR/"
 
