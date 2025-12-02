@@ -209,8 +209,19 @@ jobs:
 
           # Configure node
           CONFIG_FILE="$WORK_DIR/config/config.toml"
+          APP_FILE="$WORK_DIR/config/app.toml"
           sed -i 's/enable = true/enable = false/g' "$CONFIG_FILE"
           [ -n "$PEERS" ] && sed -i "s/persistent_peers = \"\"/persistent_peers = \"$PEERS\"/g" "$CONFIG_FILE"
+
+          # Set correct evm-chain-id based on network
+          SNAPSHOT_NETWORK="${{ inputs.snapshot_network }}"
+          if [ "$SNAPSHOT_NETWORK" = "mainnet" ]; then
+            EVM_CHAIN_ID=988
+          else
+            EVM_CHAIN_ID=2201
+          fi
+          echo "Setting evm-chain-id = $EVM_CHAIN_ID for $SNAPSHOT_NETWORK"
+          sed -i "s/^evm-chain-id = .*/evm-chain-id = $EVM_CHAIN_ID/g" "$APP_FILE"
 
           # Sync to latest block
           echo "Starting node to sync..."
