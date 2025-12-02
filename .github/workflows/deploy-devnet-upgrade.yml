@@ -690,8 +690,12 @@ jobs:
 
           for attempt in $(seq 1 $MAX_RETRIES); do
             echo "Attempt $attempt of $MAX_RETRIES..."
+            echo "  Target: $GOV_PRECOMPILE"
+            echo "  Proposer: 0x$VALIDATOR0_HEX"
+            echo "  Proposal hex length: ${#PROPOSAL_HEX}"
 
             # Use cast to send transaction (quotes around denom for safety)
+            set +e
             TX_RESULT=$(~/.foundry/bin/cast send "$GOV_PRECOMPILE" \
               "submitProposal(address,bytes,(string,uint256)[])" \
               "0x$VALIDATOR0_HEX" \
@@ -700,7 +704,21 @@ jobs:
               --private-key "$VALIDATOR0_PRIVKEY" \
               --rpc-url "http://localhost:8545" \
               --gas-limit 3000000 \
-              --json 2>&1 || echo '{"error": "cast failed"}')
+              --json 2>&1)
+            CAST_EXIT_CODE=$?
+            set -e
+
+            echo "Cast exit code: $CAST_EXIT_CODE"
+            echo "Cast output: $TX_RESULT"
+
+            # Check if cast command itself failed
+            if [ $CAST_EXIT_CODE -ne 0 ]; then
+              echo "Cast command failed with exit code $CAST_EXIT_CODE"
+              echo "Full output:"
+              echo "$TX_RESULT"
+              sleep $RETRY_DELAY
+              continue
+            fi
 
             # Check if it's an RPC error about height availability
             if echo "$TX_RESULT" | grep -q "height.*is not available"; then
