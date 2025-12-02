@@ -330,10 +330,15 @@ jobs:
           rm -rf "$OUTPUT_DIR" "$DEVNET_BUILDER_OUTPUT"
 
           # Run devnet-builder
+          # 990K STABLE / 8 accounts = ~123K each, use 120K per account
+          ACCOUNT_BALANCE="120000000000000000000000astable"
+
           "${GITHUB_WORKSPACE}/build/devnet-builder" build "$GENESIS_FILE" \
             --validators "$NUM_VALIDATORS" \
             --accounts "$NUM_VALIDATORS" \
             --chain-id "$DEVNET_CHAIN_ID" \
+            --validator-balance "$ACCOUNT_BALANCE" \
+            --account-balance "$ACCOUNT_BALANCE" \
             --output "$DEVNET_BUILDER_OUTPUT"
 
           # Initialize node configs
@@ -604,7 +609,7 @@ jobs:
           # Calculate upgrade height
           # upgrade_height = current + (voting_period / block_time) + buffer
           BLOCKS_FOR_VOTING=$((EXPEDITED_VOTING_PERIOD_SECS / BLOCK_TIME_SECS))
-          BUFFER_BLOCKS=50  # Increased buffer for safety
+          BUFFER_BLOCKS=10  # Minimal buffer after voting ends
           UPGRADE_HEIGHT=$((CURRENT_HEIGHT + BLOCKS_FOR_VOTING + BUFFER_BLOCKS))
 
           echo "Voting period: ${EXPEDITED_VOTING_PERIOD_SECS}s = ~${BLOCKS_FOR_VOTING} blocks"
@@ -691,7 +696,7 @@ jobs:
               "submitProposal(address,bytes,(string,uint256)[])" \
               "0x$VALIDATOR0_HEX" \
               "0x$PROPOSAL_HEX" \
-              '[("astable",10000000000000000000000)]' \
+              '[("astable",50000000000000000000000)]' \
               --private-key "$VALIDATOR0_PRIVKEY" \
               --rpc-url "http://localhost:8545" \
               --gas-limit 3000000 \
@@ -717,12 +722,12 @@ jobs:
           done
 
           echo "Transaction result:"
-          echo "$TX_RESULT"
+          echo "$TX_RESULT" | jq . 2>/dev/null || echo "$TX_RESULT"
 
           # Check if TX successful
           TX_HASH=$(echo "$TX_RESULT" | jq -r '.transactionHash // empty')
           if [ -z "$TX_HASH" ]; then
-            echo "Error: Proposal submission failed"
+            echo "Error: Proposal submission failed - no transaction hash"
             echo "TX Result: $TX_RESULT"
             exit 1
           fi
@@ -731,6 +736,42 @@ jobs:
 
           # Wait for TX to be processed
           sleep 5
+
+          # Check transaction receipt status
+          echo "Checking transaction receipt..."
+          TX_RECEIPT=$(curl -s -X POST http://localhost:8545 \
+            -H "Content-Type: application/json" \
+            -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionReceipt\",\"params\":[\"$TX_HASH\"],\"id\":1}")
+
+          TX_STATUS=$(echo "$TX_RECEIPT" | jq -r '.result.status // empty')
+          echo "Transaction status: $TX_STATUS"
+
+          if [ "$TX_STATUS" = "0x0" ]; then
+            echo "Error: Transaction reverted!"
+            echo ""
+            echo "=== Full Transaction Receipt ==="
+            echo "$TX_RECEIPT" | jq '.result' 2>/dev/null || echo "$TX_RECEIPT"
+            echo ""
+            echo "=== Revert Reason ==="
+            REVERT_REASON=$(echo "$TX_RECEIPT" | jq -r '.result.revertReason // "Not available"')
+            echo "$REVERT_REASON"
+            echo ""
+
+            # Try to get more details via debug_traceTransaction if available
+            echo "=== Attempting debug trace ==="
+            DEBUG_TRACE=$(curl -s -X POST http://localhost:8545 \
+              -H "Content-Type: application/json" \
+              -d "{\"jsonrpc\":\"2.0\",\"method\":\"debug_traceTransaction\",\"params\":[\"$TX_HASH\"],\"id\":1}" 2>/dev/null)
+            if echo "$DEBUG_TRACE" | jq -e '.result' > /dev/null 2>&1; then
+              echo "$DEBUG_TRACE" | jq '.result.returnValue // .result' 2>/dev/null | head -100
+            else
+              echo "Debug trace not available"
+            fi
+
+            exit 1
+          fi
+
+          echo "Transaction succeeded!"
 
           # Verify proposal was actually created
           PROPOSAL_STATUS=$(curl -s "http://localhost:1317/cosmos/gov/v1/proposals?pagination.limit=1&pagination.reverse=true")
