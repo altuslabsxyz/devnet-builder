@@ -176,8 +176,17 @@ jobs:
 
           # Download genesis from RPC
           if [ -n "$RPC_ENDPOINT" ]; then
-            echo "Downloading genesis from RPC..."
-            curl -s "${RPC_ENDPOINT}/genesis" | jq '.result.genesis' > "$WORK_DIR/config/genesis.json"
+            echo "Downloading genesis from RPC: ${RPC_ENDPOINT}/genesis"
+            GENESIS_RESPONSE=$(curl -s "${RPC_ENDPOINT}/genesis")
+
+            # Check if response is valid JSON
+            if echo "$GENESIS_RESPONSE" | jq -e '.result.genesis' > /dev/null 2>&1; then
+              echo "$GENESIS_RESPONSE" | jq '.result.genesis' > "$WORK_DIR/config/genesis.json"
+              echo "Genesis downloaded successfully"
+            else
+              echo "Warning: Failed to parse genesis from RPC, will use genesis from init"
+              echo "Response preview: $(echo "$GENESIS_RESPONSE" | head -c 200)"
+            fi
           fi
 
           # Download and extract snapshot
