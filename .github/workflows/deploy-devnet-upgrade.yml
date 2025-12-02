@@ -612,6 +612,27 @@ jobs:
           echo ""
           echo "All votes submitted!"
 
+      - name: Save pre-upgrade genesis
+        run: |
+          GENESIS_DIR="${GITHUB_WORKSPACE}/genesis-snapshots"
+          mkdir -p "$GENESIS_DIR"
+
+          echo "Saving pre-upgrade genesis..."
+
+          # Save genesis from RPC
+          curl -s http://localhost:26657/genesis > "$GENESIS_DIR/genesis-pre-upgrade.json"
+
+          # Save current status
+          curl -s http://localhost:26657/status > "$GENESIS_DIR/status-pre-upgrade.json"
+
+          # Save current block height
+          HEIGHT=$(curl -s http://localhost:26657/status | jq -r '.result.sync_info.latest_block_height')
+          echo "$HEIGHT" > "$GENESIS_DIR/height-pre-upgrade.txt"
+
+          echo "Pre-upgrade genesis saved at height: $HEIGHT"
+          echo "Files:"
+          ls -la "$GENESIS_DIR/"
+
       - name: Wait for upgrade height
         run: |
           UPGRADE_HEIGHT="${{ steps.upgrade.outputs.upgrade_height }}"
@@ -723,6 +744,39 @@ jobs:
             docker logs devnet-node0 2>&1 | tail -100
           fi
 
+      - name: Save post-upgrade genesis
+        run: |
+          GENESIS_DIR="${GITHUB_WORKSPACE}/genesis-snapshots"
+          mkdir -p "$GENESIS_DIR"
+
+          echo "Saving post-upgrade genesis..."
+
+          # Wait a bit for chain to stabilize
+          sleep 10
+
+          # Save genesis from RPC
+          curl -s http://localhost:26657/genesis > "$GENESIS_DIR/genesis-post-upgrade.json"
+
+          # Save current status
+          curl -s http://localhost:26657/status > "$GENESIS_DIR/status-post-upgrade.json"
+
+          # Save current block height
+          HEIGHT=$(curl -s http://localhost:26657/status | jq -r '.result.sync_info.latest_block_height')
+          echo "$HEIGHT" > "$GENESIS_DIR/height-post-upgrade.txt"
+
+          # Save app version info
+          curl -s http://localhost:26657/abci_info > "$GENESIS_DIR/abci-info-post-upgrade.json"
+
+          echo "Post-upgrade genesis saved at height: $HEIGHT"
+          echo "Files:"
+          ls -la "$GENESIS_DIR/"
+
+          # Show summary of genesis files
+          echo ""
+          echo "Genesis file sizes:"
+          echo "  Pre-upgrade:  $(wc -c < "$GENESIS_DIR/genesis-pre-upgrade.json") bytes"
+          echo "  Post-upgrade: $(wc -c < "$GENESIS_DIR/genesis-post-upgrade.json") bytes"
+
       - name: Display summary
         run: |
           echo ""
@@ -743,6 +797,15 @@ jobs:
           echo "  EVM JSON-RPC: http://localhost:8545"
           echo "  gRPC: localhost:9090"
           echo "=========================================="
+          echo ""
+          echo "Genesis snapshots saved to: genesis-snapshots/"
+
+      - name: Upload genesis snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: genesis-snapshots-${{ inputs.upgrade_name }}-${{ github.run_number }}
+          path: genesis-snapshots/
+          retention-days: 30
 
       - name: Logout from GitHub Container Registry
         if: always()
