@@ -12,41 +12,20 @@ on:
         options:
           - testnet
           - mainnet
-          - custom
         default: 'testnet'
-      custom_snapshot_url:
-        description: 'Custom snapshot URL (only for custom network)'
-        required: false
-        type: string
-        default: ''
-      custom_chain_id:
-        description: 'Custom chain ID (only for custom network)'
-        required: false
-        type: string
-        default: ''
       source_image_tag:
-        description: 'Source Docker image tag (for initial devnet)'
+        description: 'Source Docker image tag (for initial devnet, e.g., latest-testnet, v1.1.2)'
         required: true
         type: string
         default: 'latest-testnet'
       upgrade_image_tag:
-        description: 'Target Docker image tag (after upgrade)'
+        description: 'Target Docker image tag after upgrade (e.g., v1.1.3, sha-abc1234)'
         required: true
         type: string
       upgrade_name:
-        description: 'Upgrade handler name (must match handler in new binary)'
+        description: 'Upgrade handler name registered in new binary (e.g., v1.1.3-upgrade, mainnet-v2)'
         required: true
         type: string
-      rpc_endpoint:
-        description: 'RPC endpoint for genesis download (optional)'
-        required: false
-        type: string
-        default: ''
-      devnet_chain_id:
-        description: 'Devnet chain ID (optional, defaults to source chain ID)'
-        required: false
-        type: string
-        default: ''
 
 env:
   STABLED_IMAGE: ghcr.io/stablelabs/stable
@@ -74,33 +53,16 @@ jobs:
             CHAIN_ID="stable_988-1"
             RPC_ENDPOINT="https://cosmos-rpc-internal.stable.xyz"
             PEERS="39fef24240d80e2cd5bdcbe101298c36f0d83fa1@57.129.53.87:26656"
-          elif [ "$SNAPSHOT_NETWORK" = "testnet" ]; then
+          else
+            # testnet (default)
             SNAPSHOT_URL="https://stable-snapshot.s3.eu-central-1.amazonaws.com/snapshot.tar.lz4"
             CHAIN_ID="stabletestnet_2201-1"
             RPC_ENDPOINT="https://cosmos-rpc.testnet.stable.xyz"
             PEERS="128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656"
-          else
-            SNAPSHOT_URL="${{ inputs.custom_snapshot_url }}"
-            CHAIN_ID="${{ inputs.custom_chain_id }}"
-            RPC_ENDPOINT="${{ inputs.rpc_endpoint }}"
-            PEERS=""
-
-            if [ -z "$SNAPSHOT_URL" ] || [ -z "$CHAIN_ID" ]; then
-              echo "Error: custom_snapshot_url and custom_chain_id required for custom network"
-              exit 1
-            fi
           fi
-
-          # Override if provided
-          [ -n "${{ inputs.rpc_endpoint }}" ] && RPC_ENDPOINT="${{ inputs.rpc_endpoint }}"
-
-          # Devnet chain ID
-          DEVNET_CHAIN_ID="${{ inputs.devnet_chain_id }}"
-          [ -z "$DEVNET_CHAIN_ID" ] && DEVNET_CHAIN_ID="$CHAIN_ID"
 
           echo "snapshot_url=$SNAPSHOT_URL" >> $GITHUB_OUTPUT
           echo "chain_id=$CHAIN_ID" >> $GITHUB_OUTPUT
-          echo "devnet_chain_id=$DEVNET_CHAIN_ID" >> $GITHUB_OUTPUT
           echo "rpc_endpoint=$RPC_ENDPOINT" >> $GITHUB_OUTPUT
           echo "persistent_peers=$PEERS" >> $GITHUB_OUTPUT
 
@@ -108,10 +70,10 @@ jobs:
           echo "  Network: $SNAPSHOT_NETWORK"
           echo "  Snapshot URL: $SNAPSHOT_URL"
           echo "  Chain ID: $CHAIN_ID"
-          echo "  Devnet Chain ID: $DEVNET_CHAIN_ID"
           echo "  RPC: $RPC_ENDPOINT"
-          echo "  Upgrade to: ${{ inputs.upgrade_image_tag }}"
-          echo "  Upgrade name: ${{ inputs.upgrade_name }}"
+          echo "  Source image tag: ${{ inputs.source_image_tag }}"
+          echo "  Upgrade image tag: ${{ inputs.upgrade_image_tag }}"
+          echo "  Upgrade handler name: ${{ inputs.upgrade_name }}"
 
       - name: Login to GitHub Container Registry
         run: |
@@ -292,7 +254,7 @@ jobs:
         run: |
           SOURCE_IMAGE="${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
           GENESIS_FILE="${{ steps.provision.outputs.genesis_file }}"
-          DEVNET_CHAIN_ID="${{ steps.config.outputs.devnet_chain_id }}"
+          DEVNET_CHAIN_ID="${{ steps.config.outputs.chain_id }}"
           OUTPUT_DIR="${GITHUB_WORKSPACE}/devnet"
           DEVNET_BUILDER_OUTPUT="${GITHUB_WORKSPACE}/devnet-builder-output"
 
