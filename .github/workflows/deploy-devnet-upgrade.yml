@@ -665,6 +665,120 @@ jobs:
           echo "Validator0 address: $VALIDATOR0_BECH32"
           echo "Validator0 hex: 0x$VALIDATOR0_HEX"
 
+          # Check and fund validator if needed
+          echo ""
+          echo "=== Checking validator0 balance ==="
+
+          # Check via Cosmos REST API
+          COSMOS_BALANCE=$(curl -s "http://localhost:1317/cosmos/bank/v1beta1/balances/$VALIDATOR0_BECH32")
+          echo "Cosmos balance: $COSMOS_BALANCE"
+
+          ASTABLE_BALANCE=$(echo "$COSMOS_BALANCE" | jq -r '.balances[] | select(.denom == "astable") | .amount // "0"')
+          echo "astable balance: $ASTABLE_BALANCE"
+
+          # Minimum required: 60K STABLE (50K deposit + 10K for gas)
+          MIN_REQUIRED="60000000000000000000000"
+
+          if [ -z "$ASTABLE_BALANCE" ] || [ "$ASTABLE_BALANCE" = "0" ] || [ "$ASTABLE_BALANCE" = "null" ]; then
+            echo ""
+            echo "=== Validator0 has insufficient balance, funding from genesis accounts ==="
+
+            # Find accounts with balance from genesis
+            echo "Looking for funded accounts..."
+
+            # Get list of top balances from chain
+            TOP_BALANCES=$(curl -s "http://localhost:1317/cosmos/bank/v1beta1/balances" 2>/dev/null || echo "{}")
+
+            # Try to find a funded account by querying known rich accounts
+            # First, let's check some well-known addresses or use bank total supply
+            TOTAL_SUPPLY=$(curl -s "http://localhost:1317/cosmos/bank/v1beta1/supply/astable" | jq -r '.amount.amount // "0"')
+            echo "Total astable supply: $TOTAL_SUPPLY"
+
+            # Find funded account by checking genesis balances
+            echo "Checking genesis for funded accounts..."
+            GENESIS_BALANCES=$(docker run --rm -u 0 \
+              -v "$DEVNET_BASE_DIR/node0:/data" \
+              "$SOURCE_IMAGE" \
+              cat /data/config/genesis.json 2>/dev/null | jq -c '[.app_state.bank.balances[] | select(.coins[] | select(.denom == "astable" and (.amount | tonumber) > 100000000000000000000000))] | .[0:5]')
+
+            echo "Top funded accounts from genesis:"
+            echo "$GENESIS_BALANCES" | jq .
+
+            # Get first funded account address
+            FUNDER_ADDR=$(echo "$GENESIS_BALANCES" | jq -r '.[0].address // empty')
+
+            if [ -n "$FUNDER_ADDR" ]; then
+              echo "Using funder account: $FUNDER_ADDR"
+
+              # Check funder balance
+              FUNDER_BALANCE=$(curl -s "http://localhost:1317/cosmos/bank/v1beta1/balances/$FUNDER_ADDR" | jq -r '.balances[] | select(.denom == "astable") | .amount // "0"')
+              echo "Funder balance: $FUNDER_BALANCE astable"
+
+              # We need to import the funder's key or use a different approach
+              # Since we don't have the funder's private key, we need to use the module account or a different strategy
+
+              echo ""
+              echo "Cannot fund from external account (no private key)"
+              echo "Checking if devnet accounts have funds..."
+            fi
+
+            # Check devnet accounts created by devnet-builder
+            for acct in account0 account1 account2 account3; do
+              ACCT_ADDR=$(docker run --rm -u 0 \
+                -v "$DEVNET_BASE_DIR/accounts:/data" \
+                "$SOURCE_IMAGE" \
+                keys show "$acct" --keyring-backend test --home /data --output json 2>/dev/null | jq -r '.address // empty')
+
+              if [ -n "$ACCT_ADDR" ]; then
+                ACCT_BAL=$(curl -s "http://localhost:1317/cosmos/bank/v1beta1/balances/$ACCT_ADDR" | jq -r '.balances[] | select(.denom == "astable") | .amount // "0"')
+                echo "$acct ($ACCT_ADDR): $ACCT_BAL astable"
+
+                if [ -n "$ACCT_BAL" ] && [ "$ACCT_BAL" != "0" ] && [ "$ACCT_BAL" != "null" ]; then
+                  echo "Found funded account: $acct with $ACCT_BAL astable"
+                  echo "Sending 100K STABLE to validator0..."
+
+                  # Send funds using cosmos tx
+                  docker run --rm -u 0 \
+                    -v "$DEVNET_BASE_DIR/accounts:/data" \
+                    --network host \
+                    "$SOURCE_IMAGE" \
+                    tx bank send "$acct" "$VALIDATOR0_BECH32" "100000000000000000000000astable" \
+                    --keyring-backend test \
+                    --home /data \
+                    --chain-id "$CHAIN_ID" \
+                    --node "http://localhost:26657" \
+                    --gas auto \
+                    --gas-adjustment 1.5 \
+                    --gas-prices "10000000000astable" \
+                    --yes \
+                    --broadcast-mode sync
+
+                  echo "Waiting for tx to be processed..."
+                  sleep 10
+
+                  # Verify balance
+                  NEW_BALANCE=$(curl -s "http://localhost:1317/cosmos/bank/v1beta1/balances/$VALIDATOR0_BECH32" | jq -r '.balances[] | select(.denom == "astable") | .amount // "0"')
+                  echo "Validator0 new balance: $NEW_BALANCE astable"
+
+                  if [ -n "$NEW_BALANCE" ] && [ "$NEW_BALANCE" != "0" ]; then
+                    echo "Funding successful!"
+                    break
+                  fi
+                fi
+              fi
+            done
+
+            # Final balance check
+            FINAL_BALANCE=$(curl -s "http://localhost:1317/cosmos/bank/v1beta1/balances/$VALIDATOR0_BECH32" | jq -r '.balances[] | select(.denom == "astable") | .amount // "0"')
+            if [ -z "$FINAL_BALANCE" ] || [ "$FINAL_BALANCE" = "0" ] || [ "$FINAL_BALANCE" = "null" ]; then
+              echo "ERROR: Failed to fund validator0"
+              exit 1
+            fi
+          fi
+
+          echo "Validator0 is funded and ready!"
+          echo ""
+
           # Build proposal JSON using printf to avoid heredoc YAML issues
           PROPOSAL_JSON=$(printf '{"messages":[{"@type":"/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade","authority":"%s","plan":{"name":"%s","height":"%s","info":"Automated devnet upgrade to %s"}}],"metadata":"","title":"Software Upgrade: %s","summary":"Automated devnet upgrade from %s to %s","expedited":true}' \
             "$GOV_AUTHORITY" \
