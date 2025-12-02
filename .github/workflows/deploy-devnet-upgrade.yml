@@ -160,16 +160,30 @@ jobs:
           SNAPSHOT_FILE="/tmp/snapshot.tar"
 
           case "$SNAPSHOT_URL" in
-            *.tar.lz4) curl -L "$SNAPSHOT_URL" | lz4 -dc > "$SNAPSHOT_FILE" ;;
-            *.tar.zst) curl -L "$SNAPSHOT_URL" | zstd -dc > "$SNAPSHOT_FILE" ;;
-            *.tar.gz)  curl -L "$SNAPSHOT_URL" | gunzip > "$SNAPSHOT_FILE" ;;
-            *.tar)     curl -L -o "$SNAPSHOT_FILE" "$SNAPSHOT_URL" ;;
+            *.tar.lz4) curl -fL "$SNAPSHOT_URL" | lz4 -dc > "$SNAPSHOT_FILE" ;;
+            *.tar.zst) curl -fL "$SNAPSHOT_URL" | zstd -dc > "$SNAPSHOT_FILE" ;;
+            *.tar.gz)  curl -fL "$SNAPSHOT_URL" | gunzip > "$SNAPSHOT_FILE" ;;
+            *.tar)     curl -fL -o "$SNAPSHOT_FILE" "$SNAPSHOT_URL" ;;
           esac
+
+          # Validate snapshot download
+          if [ ! -f "$SNAPSHOT_FILE" ] || [ ! -s "$SNAPSHOT_FILE" ]; then
+            echo "Error: Snapshot download failed or file is empty"
+            exit 1
+          fi
+
+          echo "Snapshot file size: $(du -h "$SNAPSHOT_FILE" | cut -f1)"
 
           echo "Extracting snapshot..."
           rm -rf "$WORK_DIR/data"
           mkdir -p "$WORK_DIR/data"
-          tar -xf "$SNAPSHOT_FILE" -C "$WORK_DIR/data"
+
+          if ! tar -xf "$SNAPSHOT_FILE" -C "$WORK_DIR/data"; then
+            echo "Error: Snapshot extraction failed"
+            rm -f "$SNAPSHOT_FILE"
+            exit 1
+          fi
+
           rm -f "$SNAPSHOT_FILE"
 
           # Handle nested data directory
@@ -205,22 +219,33 @@ jobs:
           # Wait for sync
           TIMEOUT=1800
           ELAPSED=0
+          SYNC_COMPLETE=false
+
           while [ $ELAPSED -lt $TIMEOUT ]; do
             sleep 30
             ELAPSED=$((ELAPSED + 30))
 
-            CATCHING_UP=$(curl -s http://localhost:26657/status 2>/dev/null | jq -r '.result.sync_info.catching_up' || echo "true")
+            STATUS=$(curl -s http://localhost:26657/status 2>/dev/null || echo '{}')
+            CATCHING_UP=$(echo "$STATUS" | jq -r 'if .result.sync_info.catching_up == null then true else .result.sync_info.catching_up end')
+            HEIGHT=$(echo "$STATUS" | jq -r '.result.sync_info.latest_block_height // "0"')
+
+            echo "[${ELAPSED}s] Height: $HEIGHT, Catching up: $CATCHING_UP"
 
             if [ "$CATCHING_UP" = "false" ]; then
-              echo "Node synced after ${ELAPSED}s"
+              echo "Node synced after ${ELAPSED}s at height $HEIGHT"
+              SYNC_COMPLETE=true
               break
             fi
-
-            echo "[${ELAPSED}s] Still syncing..."
           done
 
           docker stop "$CONTAINER_NAME" || true
           docker rm "$CONTAINER_NAME" || true
+
+          # Check if sync completed or timed out
+          if [ "$SYNC_COMPLETE" != "true" ]; then
+            echo "Error: Sync timed out after ${TIMEOUT}s"
+            exit 1
+          fi
 
           # Export genesis
           echo "Exporting genesis..."
@@ -229,12 +254,24 @@ jobs:
             "$SOURCE_IMAGE" \
             export --home /data > "$GENESIS_EXPORT"
 
+          # Validate genesis export - check file exists and is valid JSON
           if [ ! -s "$GENESIS_EXPORT" ]; then
-            echo "Error: Genesis export failed"
+            echo "Error: Genesis export file is empty"
             exit 1
           fi
 
-          echo "Genesis exported: $(wc -c < "$GENESIS_EXPORT") bytes"
+          # Validate JSON structure
+          if ! jq -e '.chain_id' "$GENESIS_EXPORT" > /dev/null 2>&1; then
+            echo "Error: Genesis export is not valid JSON or missing chain_id"
+            echo "First 500 bytes:"
+            head -c 500 "$GENESIS_EXPORT"
+            exit 1
+          fi
+
+          EXPORTED_CHAIN_ID=$(jq -r '.chain_id' "$GENESIS_EXPORT")
+          echo "Genesis exported successfully"
+          echo "  Size: $(wc -c < "$GENESIS_EXPORT") bytes"
+          echo "  Chain ID: $EXPORTED_CHAIN_ID"
           echo "genesis_file=$GENESIS_EXPORT" >> $GITHUB_OUTPUT
 
       - name: Build devnet-builder
@@ -459,20 +496,28 @@ jobs:
             "$SOURCE_IMAGE" \
             keys show validator0 --keyring-backend test --home /data --output json 2>/dev/null | jq -r '.address')
 
-          # Convert bech32 to EVM address
-          # stable1... -> 0x...
-          VALIDATOR0_HEX=$(echo "$VALIDATOR0_BECH32" | docker run --rm -i "$SOURCE_IMAGE" debug addr "$VALIDATOR0_BECH32" 2>/dev/null | grep "Hex:" | awk '{print $2}' || true)
+          # Convert bech32 to EVM address using debug addr
+          # Output format: "Address (hex): A41BEA69E25BC2DD43A329AB5EF27D7012D79377"
+          VALIDATOR0_HEX=$(docker run --rm -u 0 \
+            -v "$DEVNET_BASE_DIR/accounts:/data" \
+            "$SOURCE_IMAGE" \
+            debug addr "$VALIDATOR0_BECH32" 2>&1 | grep "Address (hex):" | awk '{print $3}')
+
+          # Convert to lowercase (output is uppercase)
+          VALIDATOR0_HEX=$(echo "$VALIDATOR0_HEX" | tr '[:upper:]' '[:lower:]')
 
           if [ -z "$VALIDATOR0_HEX" ]; then
-            # Fallback: use keys show with --bech acc
-            VALIDATOR0_HEX=$(docker run --rm -u 0 \
+            echo "Error: Failed to extract hex address for $VALIDATOR0_BECH32"
+            echo "Debug addr output:"
+            docker run --rm -u 0 \
               -v "$DEVNET_BASE_DIR/accounts:/data" \
               "$SOURCE_IMAGE" \
-              keys show validator0 --keyring-backend test --home /data --output json 2>/dev/null | jq -r '.pubkey' | xxd -r -p | tail -c 20 | xxd -p || echo "")
+              debug addr "$VALIDATOR0_BECH32" 2>&1
+            exit 1
           fi
 
           echo "Validator0 address: $VALIDATOR0_BECH32"
-          echo "Validator0 hex: $VALIDATOR0_HEX"
+          echo "Validator0 hex: 0x$VALIDATOR0_HEX"
 
           # Build proposal JSON using printf to avoid heredoc YAML issues
           PROPOSAL_JSON=$(printf '{"messages":[{"@type":"/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade","authority":"%s","plan":{"name":"%s","height":"%s","info":"Automated devnet upgrade to %s"}}],"metadata":"","title":"Software Upgrade: %s","summary":"Automated devnet upgrade from %s to %s","expedited":true}' \
@@ -493,12 +538,12 @@ jobs:
           # Submit proposal using cast
           echo "Submitting proposal via governance precompile..."
 
-          # Use cast to send transaction
+          # Use cast to send transaction (quotes around denom for safety)
           TX_RESULT=$(~/.foundry/bin/cast send "$GOV_PRECOMPILE" \
             "submitProposal(address,bytes,(string,uint256)[])" \
             "0x$VALIDATOR0_HEX" \
             "0x$PROPOSAL_HEX" \
-            "[(astable,10000000000000000000000)]" \
+            '[("astable",10000000000000000000000)]' \
             --private-key "$VALIDATOR0_PRIVKEY" \
             --rpc-url "http://localhost:8545" \
             --gas-limit 3000000 \
@@ -507,18 +552,31 @@ jobs:
           echo "Transaction result:"
           echo "$TX_RESULT"
 
-          # Check if successful
+          # Check if TX successful
           TX_HASH=$(echo "$TX_RESULT" | jq -r '.transactionHash // empty')
-          if [ -n "$TX_HASH" ]; then
-            echo "Proposal submitted! TX: $TX_HASH"
-            echo "proposal_id=1" >> $GITHUB_OUTPUT
-          else
-            echo "Warning: Proposal may have failed, continuing anyway..."
-            echo "proposal_id=1" >> $GITHUB_OUTPUT
+          if [ -z "$TX_HASH" ]; then
+            echo "Error: Proposal submission failed"
+            echo "TX Result: $TX_RESULT"
+            exit 1
           fi
 
-          # Wait for proposal to be processed
-          sleep 10
+          echo "Proposal TX submitted: $TX_HASH"
+
+          # Wait for TX to be processed
+          sleep 5
+
+          # Verify proposal was actually created
+          PROPOSAL_STATUS=$(curl -s "http://localhost:1317/cosmos/gov/v1/proposals?pagination.limit=1&pagination.reverse=true")
+          ACTUAL_PROPOSAL_ID=$(echo "$PROPOSAL_STATUS" | jq -r '.proposals[0].id // empty')
+
+          if [ -z "$ACTUAL_PROPOSAL_ID" ]; then
+            echo "Error: Proposal not found after submission"
+            echo "Response: $PROPOSAL_STATUS"
+            exit 1
+          fi
+
+          echo "Proposal created with ID: $ACTUAL_PROPOSAL_ID"
+          echo "proposal_id=$ACTUAL_PROPOSAL_ID" >> $GITHUB_OUTPUT
 
       - name: Vote YES from all validators
         run: |
@@ -526,6 +584,8 @@ jobs:
           PROPOSAL_ID="${{ steps.proposal.outputs.proposal_id }}"
 
           echo "Voting YES from all validators on proposal $PROPOSAL_ID..."
+
+          VOTE_SUCCESS=0
 
           for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
             echo ""
@@ -543,8 +603,25 @@ jobs:
               "$SOURCE_IMAGE" \
               keys show "validator${i}" --keyring-backend test --home /data --output json 2>/dev/null | jq -r '.address')
 
-            # Convert to hex
-            VALIDATOR_HEX=$(echo "$VALIDATOR_BECH32" | docker run --rm -i "$SOURCE_IMAGE" debug addr "$VALIDATOR_BECH32" 2>/dev/null | grep "Hex:" | awk '{print $2}' || true)
+            # Convert to hex using debug addr
+            # Output format: "Address (hex): A41BEA69E25BC2DD43A329AB5EF27D7012D79377"
+            VALIDATOR_HEX=$(docker run --rm -u 0 \
+              -v "$DEVNET_BASE_DIR/accounts:/data" \
+              "$SOURCE_IMAGE" \
+              debug addr "$VALIDATOR_BECH32" 2>&1 | grep "Address (hex):" | awk '{print $3}')
+
+            # Convert to lowercase
+            VALIDATOR_HEX=$(echo "$VALIDATOR_HEX" | tr '[:upper:]' '[:lower:]')
+
+            if [ -z "$VALIDATOR_HEX" ]; then
+              echo "  Warning: Failed to get hex address for validator${i}"
+              echo "  Debug output:"
+              docker run --rm -u 0 \
+                -v "$DEVNET_BASE_DIR/accounts:/data" \
+                "$SOURCE_IMAGE" \
+                debug addr "$VALIDATOR_BECH32" 2>&1
+              continue
+            fi
 
             echo "  Address: $VALIDATOR_BECH32 (0x$VALIDATOR_HEX)"
 
@@ -563,8 +640,9 @@ jobs:
             TX_HASH=$(echo "$VOTE_RESULT" | jq -r '.transactionHash // empty')
             if [ -n "$TX_HASH" ]; then
               echo "  Voted! TX: $TX_HASH"
+              VOTE_SUCCESS=$((VOTE_SUCCESS + 1))
             else
-              echo "  Warning: Vote may have failed"
+              echo "  Warning: Vote failed for validator${i}"
               echo "  Result: $VOTE_RESULT"
             fi
 
@@ -572,7 +650,12 @@ jobs:
           done
 
           echo ""
-          echo "All votes submitted!"
+          echo "Votes succeeded: $VOTE_SUCCESS / $NUM_VALIDATORS"
+
+          if [ $VOTE_SUCCESS -eq 0 ]; then
+            echo "Error: All votes failed"
+            exit 1
+          fi
 
       - name: Save pre-upgrade genesis
         run: |
