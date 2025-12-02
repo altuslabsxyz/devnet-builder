@@ -401,7 +401,7 @@ func (g *DevnetGenerator) updateGovState(appState map[string]json.RawMessage) er
 		return fmt.Errorf("failed to unmarshal gov state: %w", err)
 	}
 
-	expeditedVotingPeriod := 6 * time.Minute
+	expeditedVotingPeriod := 1 * time.Minute
 	votingPeriod := expeditedVotingPeriod + 1*time.Second
 	govState.Params.VotingPeriod = &votingPeriod
 	govState.Params.ExpeditedVotingPeriod = &expeditedVotingPeriod
