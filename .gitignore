@@ -1,8 +1,15 @@
 build/
 devnet/
 .idea/
-stabled_export.json
 
-# Go workspace files (conflicts with module replace directives)
+# Genesis export files
+*.json.export
+*_export.json
+genesis-export*.json
+
+# Provisioning data
+data/
+
+# Go workspace files
 go.work
 go.work.sum

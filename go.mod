@@ -1,8 +1,6 @@
 module github.com/stablelabs/stable-devnet
 
-go 1.23.8
-
-toolchain go1.23.11
+go 1.24
 
 require (
 	cosmossdk.io/log v1.6.0
@@ -10,9 +8,10 @@ require (
 	github.com/cosmos/cosmos-db v1.1.1
 	github.com/cosmos/cosmos-sdk v0.53.4
 	github.com/cosmos/evm v0.0.0-20250320012422-2395e5845ee9
+	github.com/ethereum/go-ethereum v1.15.11
 	github.com/fatih/color v1.17.0
 	github.com/spf13/cobra v1.9.1
-	github.com/stablelabs/stable v1.1.0
+	github.com/stablelabs/stable v1.1.3
 )
 
 require (
@@ -33,7 +32,6 @@ require (
 	cosmossdk.io/schema v1.1.0 // indirect
 	cosmossdk.io/store v1.1.2 // indirect
 	cosmossdk.io/x/evidence v0.2.0 // indirect
-	cosmossdk.io/x/feegrant v0.2.0 // indirect
 	cosmossdk.io/x/tx v0.14.0 // indirect
 	cosmossdk.io/x/upgrade v0.2.0 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
@@ -78,7 +76,7 @@ require (
 	github.com/cosmos/cosmos-proto v1.0.0-beta.5 // indirect
 	github.com/cosmos/go-bip39 v1.0.0 // indirect
 	github.com/cosmos/gogogateway v1.2.0 // indirect
-	github.com/cosmos/gogoproto v1.7.0 // indirect
+	github.com/cosmos/gogoproto v1.7.2 // indirect
 	github.com/cosmos/iavl v1.2.2 // indirect
 	github.com/cosmos/ibc-go/v10 v10.3.0 // indirect
 	github.com/cosmos/ics23/go v0.11.0 // indirect
@@ -98,7 +96,6 @@ require (
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.0 // indirect
-	github.com/ethereum/go-ethereum v1.15.11 // indirect
 	github.com/ethereum/go-verkle v0.2.2 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
@@ -248,9 +245,9 @@ require (
 	google.golang.org/api v0.222.0 // indirect
 	google.golang.org/genproto v0.0.0-20241118233622-e639e219e697 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250528174236-200df99c418a // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250528174236-200df99c418a // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250804133106-a7a43d27e69b // indirect
 	google.golang.org/grpc v1.74.2 // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
+	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 	nhooyr.io/websocket v1.8.11 // indirect
@@ -259,12 +256,10 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace github.com/stablelabs/stable => ./stable
-
 replace (
 	github.com/cometbft/cometbft => github.com/stablelabs/stable-bft v0.38.19-stable-0
-	github.com/cosmos/cosmos-sdk => github.com/stablelabs/stable-sdk v0.53.4-stable-1
-	github.com/cosmos/evm => github.com/stablelabs/stable-evm v0.3.0-stable-7
+	github.com/cosmos/cosmos-sdk => github.com/stablelabs/stable-sdk v0.53.4-stable-2
+	github.com/cosmos/evm => github.com/stablelabs/stable-evm v0.3.2-stable-3
 	github.com/ethereum/go-ethereum => github.com/stablelabs/stable-geth v1.15.11-stable-0
 )
 

@@ -1,0 +1,110 @@
+# Devnet docker-compose configuration
+# Usage:
+#   Local development: docker compose up -d
+#   Server deployment: DEVNET_DIR=/data/.devnet CHAIN_ID=stabledevnet_262144-1 docker compose up -d
+
+services:
+  node0:
+    image: ${STABLED_IMAGE:-ghcr.io/stablelabs/stable}:${STABLED_TAG:-latest-testnet}
+    container_name: devnet-node0
+    hostname: node0
+    user: "0"
+    command: ["start", "--home", "/data", "--chain-id", "${CHAIN_ID:-stabledevnet_262144-1}"]
+    volumes:
+      - ${DEVNET_DIR:-./devnet}/node0/config:/data/config:ro
+      - ${DEVNET_DIR:-./devnet}/node0/keyring-test:/data/keyring-test:ro
+      - ${DEVNET_DIR:-./devnet}/node0/data:/data/data
+    network_mode: host
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:26657/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  node1:
+    image: ${STABLED_IMAGE:-ghcr.io/stablelabs/stable}:${STABLED_TAG:-latest-testnet}
+    container_name: devnet-node1
+    hostname: node1
+    user: "0"
+    command: ["start", "--home", "/data", "--chain-id", "${CHAIN_ID:-stabledevnet_262144-1}"]
+    volumes:
+      - ${DEVNET_DIR:-./devnet}/node1/config:/data/config:ro
+      - ${DEVNET_DIR:-./devnet}/node1/keyring-test:/data/keyring-test:ro
+      - ${DEVNET_DIR:-./devnet}/node1/data:/data/data
+    network_mode: host
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    depends_on:
+      node0:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:36657/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  node2:
+    image: ${STABLED_IMAGE:-ghcr.io/stablelabs/stable}:${STABLED_TAG:-latest-testnet}
+    container_name: devnet-node2
+    hostname: node2
+    user: "0"
+    command: ["start", "--home", "/data", "--chain-id", "${CHAIN_ID:-stabledevnet_262144-1}"]
+    volumes:
+      - ${DEVNET_DIR:-./devnet}/node2/config:/data/config:ro
+      - ${DEVNET_DIR:-./devnet}/node2/keyring-test:/data/keyring-test:ro
+      - ${DEVNET_DIR:-./devnet}/node2/data:/data/data
+    network_mode: host
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    depends_on:
+      node0:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:46657/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  node3:
+    image: ${STABLED_IMAGE:-ghcr.io/stablelabs/stable}:${STABLED_TAG:-latest-testnet}
+    container_name: devnet-node3
+    hostname: node3
+    user: "0"
+    command: ["start", "--home", "/data", "--chain-id", "${CHAIN_ID:-stabledevnet_262144-1}"]
+    volumes:
+      - ${DEVNET_DIR:-./devnet}/node3/config:/data/config:ro
+      - ${DEVNET_DIR:-./devnet}/node3/keyring-test:/data/keyring-test:ro
+      - ${DEVNET_DIR:-./devnet}/node3/data:/data/data
+    network_mode: host
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    depends_on:
+      node0:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:56657/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s

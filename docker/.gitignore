@@ -1,0 +1,5 @@
+# Generated devnet configuration (created by setup.sh)
+devnet/
+
+# Environment file (contains local configuration)
+.env
