@@ -109,9 +109,23 @@ jobs:
 
       - name: Stop existing services
         run: |
+          echo "Stopping existing services..."
+
+          # Stop devnet docker compose
           cd "${GITHUB_WORKSPACE}/docker"
           DEVNET_DIR="$DEVNET_BASE_DIR" docker compose down 2>/dev/null || true
+
+          # Remove any existing devnet containers
           docker rm -f devnet-node0 devnet-node1 devnet-node2 devnet-node3 2>/dev/null || true
+
+          # Kill any existing provision-sync containers (from previous runs)
+          echo "Cleaning up provision-sync containers..."
+          docker ps -a --filter "name=provision-sync" --format "{{.ID}}" | xargs -r docker rm -f 2>/dev/null || true
+
+          # Wait for ports to be released
+          sleep 5
+
+          echo "Existing services stopped"
 
       - name: Provision chain with snapshot
         id: provision
