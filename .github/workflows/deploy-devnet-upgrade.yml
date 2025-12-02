@@ -331,7 +331,7 @@ jobs:
 
           # Run devnet-builder
           # 990K STABLE / 8 accounts = ~123K each, use 120K per account
-          ACCOUNT_BALANCE="120000000000000000000000astable"
+          ACCOUNT_BALANCE="120000000000000000000000astable,1000000000000000000000agusdt"
 
           "${GITHUB_WORKSPACE}/build/devnet-builder" build "$GENESIS_FILE" \
             --validators "$NUM_VALIDATORS" \
