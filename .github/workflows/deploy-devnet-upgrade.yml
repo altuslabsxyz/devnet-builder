@@ -12,41 +12,20 @@ on:
         options:
           - testnet
           - mainnet
-          - custom
         default: 'testnet'
-      custom_snapshot_url:
-        description: 'Custom snapshot URL (only for custom network)'
-        required: false
-        type: string
-        default: ''
-      custom_chain_id:
-        description: 'Custom chain ID (only for custom network)'
-        required: false
-        type: string
-        default: ''
       source_image_tag:
-        description: 'Source Docker image tag (for initial devnet)'
+        description: 'Source Docker image tag (for initial devnet, e.g., latest-testnet, v1.1.2)'
         required: true
         type: string
         default: 'latest-testnet'
       upgrade_image_tag:
-        description: 'Target Docker image tag (after upgrade)'
+        description: 'Target Docker image tag after upgrade (e.g., v1.1.3, sha-abc1234)'
         required: true
         type: string
       upgrade_name:
-        description: 'Upgrade handler name (must match handler in new binary)'
+        description: 'Upgrade handler name registered in new binary (e.g., v1.1.3-upgrade, mainnet-v2)'
         required: true
         type: string
-      rpc_endpoint:
-        description: 'RPC endpoint for genesis download (optional)'
-        required: false
-        type: string
-        default: ''
-      devnet_chain_id:
-        description: 'Devnet chain ID (optional, defaults to source chain ID)'
-        required: false
-        type: string
-        default: ''
 
 env:
   STABLED_IMAGE: ghcr.io/stablelabs/stable
