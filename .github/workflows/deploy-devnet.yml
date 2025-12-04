@@ -314,7 +314,8 @@ jobs:
           echo "  Genesis: $GENESIS_FILE"
           echo "  Chain ID: $DEVNET_CHAIN_ID"
           echo "  Validators: $NUM_VALIDATORS"
-
+          
+          ACCOUNT_BALANCE="120000000000000000000000astable,1000000000000000000000agusdt"
           rm -rf "$OUTPUT_DIR" "$DEVNET_BUILDER_OUTPUT"
 
           # Step 1: Run devnet-builder to generate validator keys and updated genesis
@@ -324,6 +325,8 @@ jobs:
             --validators "$NUM_VALIDATORS" \
             --accounts "$NUM_VALIDATORS" \
             --chain-id "$DEVNET_CHAIN_ID" \
+            --validator-balance "$ACCOUNT_BALANCE" \
+            --account-balance "$ACCOUNT_BALANCE" \
             --output "$DEVNET_BUILDER_OUTPUT"
 
           echo "devnet-builder output:"
