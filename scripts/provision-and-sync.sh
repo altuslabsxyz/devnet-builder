@@ -223,23 +223,50 @@ export_state() {
         echo '{"height":"0","round":0,"step":0}' > "$temp_home/data/priv_validator_state.json"
     fi
 
-    # Get docker image from environment or use default
-    local stabled_image="${STABLED_IMAGE:-ghcr.io/stablelabs/stable}"
-    local stabled_tag="${STABLED_TAG:-latest}"
-
-    # Run export using Docker
-    if docker run --rm \
-        -v "$temp_home:/data" \
-        "${stabled_image}:${stabled_tag}" \
-        export --home /data > "$output_file" 2>/dev/null; then
-
-        # Validate export
-        if [[ -s "$output_file" ]] && jq -e '.chain_id' "$output_file" &>/dev/null; then
-            local export_height
-            export_height=$(jq -r '.initial_height // "0"' "$output_file")
-            success "State exported successfully (height: $export_height)"
-            return 0
+    # Initialize config.toml if not present (required for export)
+    if [[ ! -f "$temp_home/config/config.toml" ]]; then
+        # Use local binary or docker to init config
+        if [[ -n "$LOCAL_BINARY" && -x "$LOCAL_BINARY" ]]; then
+            "$LOCAL_BINARY" init export-node --home "$temp_home" --chain-id "$source_chain_id" 2>/dev/null || true
+            # Restore the original genesis after init
+            cp "$genesis_file" "$temp_home/config/genesis.json"
         fi
+    fi
+
+    local export_success=false
+
+    # Try local binary first if available
+    if [[ -n "$LOCAL_BINARY" && -x "$LOCAL_BINARY" ]]; then
+        progress "Running stabled export with local binary..."
+        if "$LOCAL_BINARY" export --home "$temp_home" > "$output_file" 2>/dev/null; then
+            if [[ -s "$output_file" ]] && jq -e '.chain_id' "$output_file" &>/dev/null; then
+                export_success=true
+            fi
+        fi
+    fi
+
+    # Fallback to Docker if local binary failed or not available
+    if [[ "$export_success" != "true" ]]; then
+        local stabled_image="${STABLED_IMAGE:-ghcr.io/stablelabs/stable}"
+        local stabled_tag="${STABLED_TAG:-latest}"
+
+        progress "Running stabled export with Docker..."
+        if docker run --rm \
+            -v "$temp_home:/data" \
+            "${stabled_image}:${stabled_tag}" \
+            export --home /data > "$output_file" 2>/dev/null; then
+
+            if [[ -s "$output_file" ]] && jq -e '.chain_id' "$output_file" &>/dev/null; then
+                export_success=true
+            fi
+        fi
+    fi
+
+    if [[ "$export_success" == "true" ]]; then
+        local export_height
+        export_height=$(jq -r '.initial_height // "0"' "$output_file")
+        success "State exported successfully (height: $export_height)"
+        return 0
     fi
 
     # Fallback: use genesis directly

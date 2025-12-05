@@ -244,10 +244,76 @@ manage_start_local() {
         return 1
     fi
 
+    # First, ensure all nodes have config files initialized and collect node IDs
+    local node_ids=()
+    for i in $(seq 0 $((num_validators - 1))); do
+        local node_home="$devnet_dir/node$i"
+        local config_file="$node_home/config/config.toml"
+        local genesis_file="$node_home/config/genesis.json"
+
+        if [[ ! -f "$config_file" ]]; then
+            progress "Initializing config for node$i..."
+
+            # Backup devnet-builder genesis before init
+            local genesis_backup=""
+            if [[ -f "$genesis_file" ]]; then
+                genesis_backup=$(mktemp)
+                cp "$genesis_file" "$genesis_backup"
+            fi
+
+            # Initialize config
+            "$local_binary" init "node$i" --home "$node_home" --chain-id "$(jq -r '.chain_id' "$genesis_backup" 2>/dev/null || echo 'stable_988-1')" 2>/dev/null || true
+
+            # Restore devnet-builder genesis (overwrite the one created by init)
+            if [[ -n "$genesis_backup" && -f "$genesis_backup" ]]; then
+                cp "$genesis_backup" "$genesis_file"
+                rm -f "$genesis_backup"
+            fi
+        fi
+
+        # Get node ID from node_key.json
+        local node_key="$node_home/config/node_key.json"
+        if [[ -f "$node_key" ]]; then
+            # Extract node ID using the binary
+            local node_id
+            node_id=$("$local_binary" comet show-node-id --home "$node_home" 2>/dev/null || echo "")
+            node_ids+=("$node_id")
+        fi
+
+        # Update config.toml to allow duplicate IPs and relaxed address book
+        if [[ -f "$config_file" ]]; then
+            sed -i \
+                -e "s|allow_duplicate_ip = false|allow_duplicate_ip = true|g" \
+                -e "s|addr_book_strict = true|addr_book_strict = false|g" \
+                "$config_file"
+        fi
+    done
+
+    # Now start all nodes with unique ports via command line flags
     for i in $(seq 0 $((num_validators - 1))); do
         local node_home="$devnet_dir/node$i"
         local pid_file="$node_home/stabled.pid"
         local log_file="$node_home/stabled.log"
+
+        # Calculate ports for this node
+        local rpc_port=$((26657 + i * 10000))
+        local p2p_port=$((26656 + i * 10000))
+        local pprof_port=$((6060 + i * 10000))
+        local grpc_port=$((9090 + i * 10000))
+        local evm_rpc_port=$((8545 + i * 10000))
+        local evm_ws_port=$((8546 + i * 10000))
+
+        # Build persistent_peers string (all other nodes)
+        local persistent_peers=""
+        for j in $(seq 0 $((num_validators - 1))); do
+            if [[ $i -ne $j ]]; then
+                local peer_p2p_port=$((26656 + j * 10000))
+                if [[ -n "$persistent_peers" ]]; then
+                    persistent_peers+=","
+                fi
+                persistent_peers+="${node_ids[$j]}@127.0.0.1:$peer_p2p_port"
+            fi
+        done
 
         # Skip if already running
         if [[ -f "$pid_file" ]] && kill -0 "$(cat "$pid_file")" 2>/dev/null; then
@@ -255,10 +321,22 @@ manage_start_local() {
             continue
         fi
 
-        progress "Starting node$i..."
+        progress "Starting node$i on ports: RPC=$rpc_port, P2P=$p2p_port, gRPC=$grpc_port, EVM=$evm_rpc_port..."
 
-        # Start the node
-        nohup "$local_binary" start --home "$node_home" > "$log_file" 2>&1 &
+        # Start the node with port flags
+        nohup "$local_binary" start \
+            --home "$node_home" \
+            --rpc.laddr "tcp://0.0.0.0:$rpc_port" \
+            --p2p.laddr "tcp://0.0.0.0:$p2p_port" \
+            --p2p.persistent_peers "$persistent_peers" \
+            --grpc.address "0.0.0.0:$grpc_port" \
+            --grpc.enable \
+            --json-rpc.address "0.0.0.0:$evm_rpc_port" \
+            --json-rpc.ws-address "0.0.0.0:$evm_ws_port" \
+            --json-rpc.enable \
+            --rpc.pprof_laddr "localhost:$pprof_port" \
+            --api.enable \
+            > "$log_file" 2>&1 &
         local pid=$!
         echo "$pid" > "$pid_file"
 

@@ -94,13 +94,13 @@ progress() {
 
 # Testnet configuration
 readonly TESTNET_SNAPSHOT_URL="https://stable-snapshot.s3.eu-central-1.amazonaws.com/snapshot.tar.lz4"
-readonly TESTNET_RPC_ENDPOINT="https://rpc.testnet.stable.xyz/"
+readonly TESTNET_RPC_ENDPOINT="https://cosmos-rpc.testnet.stable.xyz"
 readonly TESTNET_CHAIN_ID="stabletestnet_2201-1"
 readonly TESTNET_DECOMPRESSOR="lz4"
 
 # Mainnet configuration
 readonly MAINNET_SNAPSHOT_URL="https://stable-mainnet-data.s3.amazonaws.com/snapshots/stable_pruned.tar.zst"
-readonly MAINNET_RPC_ENDPOINT="https://rpc.stable.xyz"
+readonly MAINNET_RPC_ENDPOINT="https://p40zma3acd216e70s-cosmos-rpc.stable.xyz"
 readonly MAINNET_CHAIN_ID="stable_988-1"
 readonly MAINNET_DECOMPRESSOR="zstd"
 
@@ -716,12 +716,12 @@ cmd_start() {
     check_prerequisites || exit 1
     check_disk_space || exit 1
 
-    # Determine chain ID
+    # Determine chain ID - use original chain ID to match snapshot data
     if [[ -z "$CHAIN_ID" ]]; then
         if [[ "$NETWORK" == "mainnet" ]]; then
-            CHAIN_ID="stabledevnet_988-1"
+            CHAIN_ID="$MAINNET_CHAIN_ID"
         else
-            CHAIN_ID="stabledevnet_2201-1"
+            CHAIN_ID="$TESTNET_CHAIN_ID"
         fi
     fi
 
@@ -785,7 +785,7 @@ cmd_start() {
     fi
 
     if command -v check_snapshot_cache &> /dev/null; then
-        check_snapshot_cache "$NETWORK" "$snapshot_file" "$NO_CACHE"
+        check_snapshot_cache "$NETWORK" "$snapshot_file" "$NO_CACHE" || true
     fi
 
     if [[ ! -f "$snapshot_file" ]] || $NO_CACHE; then

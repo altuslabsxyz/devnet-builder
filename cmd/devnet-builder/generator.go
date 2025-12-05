@@ -34,20 +34,14 @@ import (
 	evmhd "github.com/cosmos/evm/crypto/hd"
 	evmostypes "github.com/cosmos/evm/types"
 	evmtypes "github.com/cosmos/evm/x/vm/types"
-	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/stablelabs/stable/app"
 	appcfg "github.com/stablelabs/stable/app/config"
 	"github.com/stablelabs/stable/crypto/keyring"
-	inflationtypes "github.com/stablelabs/stable/x/inflation/types"
 	precompiletypes "github.com/stablelabs/stable/x/precompile/types"
 	restrictiontypes "github.com/stablelabs/stable/x/restriction/types"
 )
 
-const (
-	// TargetAddr receives MaxCirculatingSupply - existing supply
-	TargetAddr = "0x55e0703cbBCabd15a78D14a741528a3e1250aBd5"
-)
 
 type DevnetGenerator struct {
 	config     *DevnetConfig
@@ -353,6 +347,11 @@ func (g *DevnetGenerator) updateGenesisAccounts(appState map[string]json.RawMess
 		return fmt.Errorf("failed to update slashing state: %w", err)
 	}
 
+	// Clear genutil gen_txs (validator transactions from exported genesis)
+	if err := g.clearGenutilGenTxs(appState); err != nil {
+		return fmt.Errorf("failed to clear genutil gen_txs: %w", err)
+	}
+
 	// Clear EVM state (accounts from exported genesis)
 	//if err := g.clearEVMState(appState); err != nil {
 	//	return fmt.Errorf("failed to clear EVM state: %w", err)
@@ -431,96 +430,191 @@ func (g *DevnetGenerator) updateBankBalances(appState map[string]json.RawMessage
 		balanceMap[balance.Address] = balance
 	}
 
-	// Add bonded pool module account balance (only astable, not agusdt)
-	// This will overwrite if it already exists
+	// Get original bonded pool balance (we'll be replacing it)
 	bondedPoolAddr := authtypes.NewModuleAddress(stakingtypes.BondedPoolName)
+	originalBondedPoolAstable := math.ZeroInt()
+	if originalBondedPool, exists := balanceMap[bondedPoolAddr.String()]; exists {
+		originalBondedPoolAstable = originalBondedPool.Coins.AmountOf(appcfg.GovAttoDenom)
+	}
+
+	// Get original not-bonded pool balance (we'll be deleting it)
+	notBondedPoolAddr := authtypes.NewModuleAddress(stakingtypes.NotBondedPoolName)
+	originalNotBondedPoolAstable := math.ZeroInt()
+	if originalNotBondedPool, exists := balanceMap[notBondedPoolAddr.String()]; exists {
+		originalNotBondedPoolAstable = originalNotBondedPool.Coins.AmountOf(appcfg.GovAttoDenom)
+	}
+
+	g.logger.Info("Original staking pool balances",
+		"bondedPool", originalBondedPoolAstable.String(),
+		"notBondedPool", originalNotBondedPoolAstable.String())
+
+	// Find the largest astable holder (excluding module accounts) to use as funding source
+	fundingAddr, fundingAstable, fundingAgusdt := g.findLargestHolder(balanceMap)
+	if fundingAddr == "" {
+		return fmt.Errorf("no suitable funding address found in genesis")
+	}
+
+	g.logger.Info("Found funding address",
+		"fundingAddr", fundingAddr,
+		"fundingAstable", fundingAstable.String(),
+		"fundingAgusdt", fundingAgusdt.String())
+
+	// Calculate total needed for new validators and accounts
+	totalNeededAstable := math.ZeroInt()
+	totalNeededAgusdt := math.ZeroInt()
+
+	// Validators need: ValidatorBalance + stake (for bonded pool)
+	for range g.validators {
+		totalNeededAstable = totalNeededAstable.Add(g.config.ValidatorBalance.AmountOf(appcfg.GovAttoDenom))
+		totalNeededAgusdt = totalNeededAgusdt.Add(g.config.ValidatorBalance.AmountOf(appcfg.GasAttoDenom))
+	}
+	// Add bonded pool requirement
+	totalNeededAstable = totalNeededAstable.Add(totalBondedAmount)
+
+	// Accounts need: AccountBalance
+	for range g.accounts {
+		totalNeededAstable = totalNeededAstable.Add(g.config.AccountBalance.AmountOf(appcfg.GovAttoDenom))
+		totalNeededAgusdt = totalNeededAgusdt.Add(g.config.AccountBalance.AmountOf(appcfg.GasAttoDenom))
+	}
+
+	// We can use original staking pools as additional funding (since we're replacing them)
+	// Adjust total available funding
+	totalAvailableAstable := fundingAstable.Add(originalBondedPoolAstable).Add(originalNotBondedPoolAstable)
+
+	g.logger.Info("Funding requirements",
+		"neededAstable", totalNeededAstable.String(),
+		"neededAgusdt", totalNeededAgusdt.String(),
+		"totalAvailableAstable", totalAvailableAstable.String())
+
+	// Adjust balances if funding source doesn't have enough
+	// We'll scale down the distribution proportionally
+	astableRatio := math.LegacyOneDec()
+	agusdtRatio := math.LegacyOneDec()
+
+	if totalNeededAstable.IsPositive() && totalAvailableAstable.LT(totalNeededAstable) {
+		// Use 90% of available balance to leave some for the funding address
+		availableAstable := totalAvailableAstable.MulRaw(90).QuoRaw(100)
+		astableRatio = math.LegacyNewDecFromInt(availableAstable).Quo(math.LegacyNewDecFromInt(totalNeededAstable))
+		g.logger.Warn("Insufficient astable, scaling down distribution",
+			"available", availableAstable.String(),
+			"needed", totalNeededAstable.String(),
+			"ratio", astableRatio.String())
+	}
+
+	if totalNeededAgusdt.IsPositive() && fundingAgusdt.LT(totalNeededAgusdt) {
+		availableAgusdt := fundingAgusdt.MulRaw(90).QuoRaw(100)
+		agusdtRatio = math.LegacyNewDecFromInt(availableAgusdt).Quo(math.LegacyNewDecFromInt(totalNeededAgusdt))
+		g.logger.Warn("Insufficient agusdt, scaling down distribution",
+			"available", availableAgusdt.String(),
+			"needed", totalNeededAgusdt.String(),
+			"ratio", agusdtRatio.String())
+	}
+
+	// Calculate scaled balances
+	scaledValidatorAstable := math.LegacyNewDecFromInt(g.config.ValidatorBalance.AmountOf(appcfg.GovAttoDenom)).Mul(astableRatio).TruncateInt()
+	scaledValidatorAgusdt := math.LegacyNewDecFromInt(g.config.ValidatorBalance.AmountOf(appcfg.GasAttoDenom)).Mul(agusdtRatio).TruncateInt()
+	scaledAccountAstable := math.LegacyNewDecFromInt(g.config.AccountBalance.AmountOf(appcfg.GovAttoDenom)).Mul(astableRatio).TruncateInt()
+	scaledAccountAgusdt := math.LegacyNewDecFromInt(g.config.AccountBalance.AmountOf(appcfg.GasAttoDenom)).Mul(agusdtRatio).TruncateInt()
+	scaledStake := math.LegacyNewDecFromInt(g.config.ValidatorStake).Mul(astableRatio).TruncateInt()
+
+	// Recalculate actual deduction from funding address
+	actualDeductAstable := math.ZeroInt()
+	actualDeductAgusdt := math.ZeroInt()
+
+	for range g.validators {
+		actualDeductAstable = actualDeductAstable.Add(scaledValidatorAstable)
+		actualDeductAgusdt = actualDeductAgusdt.Add(scaledValidatorAgusdt)
+	}
+	// Add scaled bonded pool
+	scaledBondedAmount := scaledStake.MulRaw(int64(len(g.validators)))
+	actualDeductAstable = actualDeductAstable.Add(scaledBondedAmount)
+
+	for range g.accounts {
+		actualDeductAstable = actualDeductAstable.Add(scaledAccountAstable)
+		actualDeductAgusdt = actualDeductAgusdt.Add(scaledAccountAgusdt)
+	}
+
+	// Deduct from FundingAddr
+	// We add back the original pool balances since we're replacing them
+	// This ensures total supply remains unchanged:
+	// newFunding = originalFunding - deducted + originalBondedPool + originalNotBondedPool
+	newFundingAstable := fundingAstable.Sub(actualDeductAstable).Add(originalBondedPoolAstable).Add(originalNotBondedPoolAstable)
+	newFundingAgusdt := fundingAgusdt.Sub(actualDeductAgusdt)
+
+	// Update FundingAddr balance
+	newFundingCoins := sdk.NewCoins()
+	if newFundingAstable.IsPositive() {
+		newFundingCoins = newFundingCoins.Add(sdk.NewCoin(appcfg.GovAttoDenom, newFundingAstable))
+	}
+	if newFundingAgusdt.IsPositive() {
+		newFundingCoins = newFundingCoins.Add(sdk.NewCoin(appcfg.GasAttoDenom, newFundingAgusdt))
+	}
+	if len(newFundingCoins) > 0 {
+		balanceMap[fundingAddr] = banktypes.Balance{
+			Address: fundingAddr,
+			Coins:   newFundingCoins,
+		}
+	} else {
+		delete(balanceMap, fundingAddr)
+	}
+
+	// Add bonded pool module account balance (reuse bondedPoolAddr from earlier)
 	balanceMap[bondedPoolAddr.String()] = banktypes.Balance{
 		Address: bondedPoolAddr.String(),
-		Coins:   sdk.NewCoins(sdk.NewCoin(appcfg.GovAttoDenom, totalBondedAmount)),
+		Coins:   sdk.NewCoins(sdk.NewCoin(appcfg.GovAttoDenom, scaledBondedAmount)),
 	}
 
-	notBondedPoolAddr := authtypes.NewModuleAddress(stakingtypes.NotBondedPoolName).String()
+	// Remove not bonded pool if exists (reuse notBondedPoolAddr from earlier)
+	delete(balanceMap, notBondedPoolAddr.String())
 
-	var blockedAddrs = []string{notBondedPoolAddr}
-
-	for _, blockedAddr := range blockedAddrs {
-		delete(balanceMap, blockedAddr)
+	// Build validator balance coins
+	validatorCoins := sdk.NewCoins()
+	if scaledValidatorAstable.IsPositive() {
+		validatorCoins = validatorCoins.Add(sdk.NewCoin(appcfg.GovAttoDenom, scaledValidatorAstable))
+	}
+	if scaledValidatorAgusdt.IsPositive() {
+		validatorCoins = validatorCoins.Add(sdk.NewCoin(appcfg.GasAttoDenom, scaledValidatorAgusdt))
 	}
 
-	// Add balances for validators (will overwrite if addresses already exist)
-	for _, val := range g.validators {
+	// Add balances for validators
+	for i, val := range g.validators {
 		balanceMap[val.AccountAddress.String()] = banktypes.Balance{
 			Address: val.AccountAddress.String(),
-			Coins:   g.config.ValidatorBalance, // Already sdk.Coins
+			Coins:   validatorCoins,
 		}
+		// Update validator tokens with scaled stake
+		g.validators[i].Tokens = scaledStake
 	}
 
-	// Add balances for dummy accounts (will overwrite if addresses already exist)
+	// Build account balance coins
+	accountCoins := sdk.NewCoins()
+	if scaledAccountAstable.IsPositive() {
+		accountCoins = accountCoins.Add(sdk.NewCoin(appcfg.GovAttoDenom, scaledAccountAstable))
+	}
+	if scaledAccountAgusdt.IsPositive() {
+		accountCoins = accountCoins.Add(sdk.NewCoin(appcfg.GasAttoDenom, scaledAccountAgusdt))
+	}
+
+	// Add balances for dummy accounts
 	for _, acc := range g.accounts {
 		balanceMap[acc.Address.String()] = banktypes.Balance{
 			Address: acc.Address.String(),
-			Coins:   g.config.AccountBalance, // Already sdk.Coins
+			Coins:   accountCoins,
 		}
 	}
 
-	// Calculate MaxCirculatingSupply
-	maxCirculatingSupply := sdk.NewCoin(appcfg.GovAttoDenom, sdk.TokensFromConsensusPower(inflationtypes.MaxCirculatingSupply, evmostypes.AttoPowerReduction))
+	g.logger.Info("Distribution complete",
+		"validatorBalance", validatorCoins.String(),
+		"validatorStake", scaledStake.String(),
+		"accountBalance", accountCoins.String())
 
-	// TargetAddr receives MaxCirculatingSupply - (sum of all other addresses)
-	targetAddr := sdk.AccAddress(common.HexToAddress(TargetAddr).Bytes())
-
-	// Remove TargetAddr from balanceMap if it exists (we'll recalculate it)
-	delete(balanceMap, targetAddr.String())
-
-	// Calculate current supply from all balances EXCEPT TargetAddr
-	supplyCoinsExcludingTarget := sdk.NewCoins()
-	for _, balance := range balanceMap {
-		for _, coin := range balance.Coins {
-			supplyCoinsExcludingTarget = supplyCoinsExcludingTarget.Add(coin)
-		}
-	}
-
-	// Get current supply for astable (excluding TargetAddr)
-	currentSupplyExcludingTarget := supplyCoinsExcludingTarget.AmountOf(appcfg.GovAttoDenom)
-
-	// Calculate what TargetAddr should have = MaxCirculatingSupply - (supply of all others)
-	targetAmount := maxCirculatingSupply.Amount.Sub(currentSupplyExcludingTarget)
-
-	// If targetAmount is negative or zero, set it to zero
-	// This means other addresses already have >= MaxCirculatingSupply
-	if targetAmount.IsNegative() {
-		g.logger.Warn("TargetAddr amount would be negative, setting to zero",
-			"maxCirculatingSupply", maxCirculatingSupply.Amount.String(),
-			"currentSupplyExcludingTarget", currentSupplyExcludingTarget.String(),
-			"difference", targetAmount.String())
-		targetAmount = math.ZeroInt()
-	}
-
-	// Create coins for TargetAddr
-	targetCoins := sdk.NewCoins(sdk.NewCoin(appcfg.GovAttoDenom, targetAmount))
-
-	// Set TargetAddr balance
-	balanceMap[targetAddr.String()] = banktypes.Balance{
-		Address: targetAddr.String(),
-		Coins:   targetCoins,
-	}
-
-	// Convert map back to slice (after adding TargetAddr)
+	// Convert map back to slice
 	bankState.Balances = make([]banktypes.Balance, 0, len(balanceMap))
 	for _, balance := range balanceMap {
 		bankState.Balances = append(bankState.Balances, balance)
 	}
 
-	// Recalculate supply with the new TargetAddr balance
-	finalSupplyCoins := sdk.NewCoins()
-	for _, balance := range balanceMap {
-		for _, coin := range balance.Coins {
-			finalSupplyCoins = finalSupplyCoins.Add(coin)
-		}
-	}
-
-	// Replace supply with new totals
-	bankState.Supply = finalSupplyCoins
+	// Supply remains unchanged since we're just redistributing
 
 	// Marshal bank state back
 	bankStateBz, err := g.cdc.MarshalJSON(&bankState)
@@ -530,6 +624,43 @@ func (g *DevnetGenerator) updateBankBalances(appState map[string]json.RawMessage
 	appState[banktypes.ModuleName] = bankStateBz
 
 	return nil
+}
+
+// findLargestHolder finds the address with the largest astable balance (excluding module accounts)
+func (g *DevnetGenerator) findLargestHolder(balanceMap map[string]banktypes.Balance) (string, math.Int, math.Int) {
+	var largestAddr string
+	largestAstable := math.ZeroInt()
+	largestAgusdt := math.ZeroInt()
+
+	// Module account prefixes to exclude
+	moduleAddrs := []sdk.AccAddress{
+		authtypes.NewModuleAddress(stakingtypes.BondedPoolName),
+		authtypes.NewModuleAddress(stakingtypes.NotBondedPoolName),
+		authtypes.NewModuleAddress("distribution"),
+		authtypes.NewModuleAddress("gov"),
+		authtypes.NewModuleAddress("fee_collector"),
+	}
+
+	moduleAddrMap := make(map[string]bool)
+	for _, addr := range moduleAddrs {
+		moduleAddrMap[addr.String()] = true
+	}
+
+	for addr, balance := range balanceMap {
+		// Skip module accounts
+		if moduleAddrMap[addr] {
+			continue
+		}
+
+		astableAmount := balance.Coins.AmountOf(appcfg.GovAttoDenom)
+		if astableAmount.GT(largestAstable) {
+			largestAddr = addr
+			largestAstable = astableAmount
+			largestAgusdt = balance.Coins.AmountOf(appcfg.GasAttoDenom)
+		}
+	}
+
+	return largestAddr, largestAstable, largestAgusdt
 }
 
 func (g *DevnetGenerator) updateStakingState(appState map[string]json.RawMessage) error {
@@ -655,6 +786,26 @@ func (g *DevnetGenerator) updateSlashingState(appState map[string]json.RawMessag
 		return fmt.Errorf("failed to marshal slashing state: %w", err)
 	}
 	appState[slashingtypes.ModuleName] = slashingStateBz
+
+	return nil
+}
+
+func (g *DevnetGenerator) clearGenutilGenTxs(appState map[string]json.RawMessage) error {
+	// Unmarshal genutil genesis state
+	var genutilState genutiltypes.GenesisState
+	if err := g.cdc.UnmarshalJSON(appState[genutiltypes.ModuleName], &genutilState); err != nil {
+		return fmt.Errorf("failed to unmarshal genutil state: %w", err)
+	}
+
+	// Clear gen_txs to prevent validator InitGenesis conflict
+	genutilState.GenTxs = make([]json.RawMessage, 0)
+
+	// Marshal genutil state back
+	genutilStateBz, err := g.cdc.MarshalJSON(&genutilState)
+	if err != nil {
+		return fmt.Errorf("failed to marshal genutil state: %w", err)
+	}
+	appState[genutiltypes.ModuleName] = genutilStateBz
 
 	return nil
 }
