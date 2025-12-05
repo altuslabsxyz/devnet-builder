@@ -1,0 +1,39 @@
+# Git
+.git/
+.gitignore
+
+# Build artifacts
+build/
+devnet/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# Documentation
+*.md
+docs/
+specs/
+
+# Go workspace
+go.work
+go.work.sum
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+*.log.*
+
+# Test/coverage
+coverage/
+*.test
+
+# OS files
+.DS_Store
+Thumbs.db

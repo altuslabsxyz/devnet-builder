@@ -5,11 +5,121 @@ Docker-based local development network for Stable blockchain.
 ## Prerequisites
 
 - Docker
-- Docker Compose
+- Docker Compose v2+
+- Go 1.21+ (for devnet-builder)
 - curl, jq (for provisioning)
-- lz4/zstd (for snapshot extraction)
+- lz4 (for testnet snapshots) or zstd (for mainnet snapshots)
 
-## Quick Start
+## Quick Start (Recommended)
+
+Use the local devnet script to spin up a 4-node devnet with a single command:
+
+```bash
+# Start devnet from mainnet snapshot (default)
+./scripts/local-devnet.sh start
+
+# Start from testnet snapshot
+./scripts/local-devnet.sh start --network testnet
+
+# Start with a local stabled binary (for testing code changes)
+./scripts/local-devnet.sh start --local-binary /path/to/stabled
+```
+
+The script will automatically:
+1. Download and cache the network snapshot
+2. Export state from snapshot (no syncing required)
+3. Build devnet with 4 validators
+4. Start nodes via Docker
+
+### Verify Devnet is Running
+
+```bash
+# Check status
+./scripts/local-devnet.sh status
+
+# Check node health via RPC
+curl http://localhost:26657/status
+
+# Check EVM JSON-RPC
+curl -X POST http://localhost:8545 \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+```
+
+### Lifecycle Commands
+
+```bash
+# Stop devnet
+./scripts/local-devnet.sh stop
+
+# Restart devnet
+./scripts/local-devnet.sh restart
+
+# Reset chain state (keep genesis and config)
+./scripts/local-devnet.sh reset
+
+# Full reset (regenerate genesis)
+./scripts/local-devnet.sh reset --hard
+
+# Remove all devnet data
+./scripts/local-devnet.sh clean
+
+# Remove devnet + cached snapshots
+./scripts/local-devnet.sh clean --cache
+```
+
+### Export Keys
+
+```bash
+# Export all keys (text format)
+./scripts/local-devnet.sh export-keys
+
+# Export in JSON format
+./scripts/local-devnet.sh export-keys --format json
+
+# Export in environment variable format
+./scripts/local-devnet.sh export-keys --format env
+```
+
+### View Logs
+
+```bash
+# View all logs
+./scripts/local-devnet.sh logs
+
+# Follow logs for a specific node
+./scripts/local-devnet.sh logs node0 -f
+
+# View last 50 lines
+./scripts/local-devnet.sh logs --tail 50
+```
+
+### Customization
+
+```bash
+# Custom chain ID
+./scripts/local-devnet.sh start --chain-id mydevnet_1234-1
+
+# Custom number of validators (1-4)
+./scripts/local-devnet.sh start --validators 2
+
+# Custom number of test accounts
+./scripts/local-devnet.sh start --accounts 20
+
+# Force rebuild even if devnet exists
+./scripts/local-devnet.sh start --rebuild
+
+# Skip snapshot cache
+./scripts/local-devnet.sh start --no-cache
+```
+
+For full help:
+```bash
+./scripts/local-devnet.sh help
+./scripts/local-devnet.sh help start
+```
+
+## Manual Setup (Alternative)
 
 ### 1. Build Devnet from Exported Genesis
 
@@ -110,7 +220,11 @@ rm -rf docker/devnet/*/data/*
 
 ```
 stable-devnet/
-├── cmd/devnet-builder/     # Go devnet builder (optional)
+├── cmd/devnet-builder/     # Go devnet builder
+├── scripts/                # Local devnet management scripts
+│   ├── local-devnet.sh     # Main CLI script
+│   ├── provision-and-sync.sh  # Snapshot/genesis helpers
+│   └── manage-devnet.sh    # Lifecycle management helpers
 ├── config/
 │   ├── node_key.json       # Node key for provisioning
 │   └── devnet-keys/        # Fixed validator node keys
@@ -120,13 +234,15 @@ stable-devnet/
 │       └── node3/
 ├── docker/
 │   ├── docker-compose.yml  # Docker Compose configuration
+│   ├── docker-compose.local.yml  # Local binary mode override
 │   ├── .env.example        # Environment variables template
 │   ├── Dockerfile.devnet-builder  # Builder image (optional)
 │   ├── devnet/             # Generated devnet data (gitignored)
 │   └── scripts/
 │       ├── provision.sh    # Provision from network
 │       └── build-devnet.sh # Build devnet from genesis
-└── devnet/                 # Legacy devnet data (gitignored)
+├── devnet/                 # Generated devnet data (gitignored)
+└── ~/.stable-devnet/       # Cached snapshots and genesis (user home)
 ```
 
 ## License

@@ -1,6 +1,7 @@
 build/
 devnet/
 .idea/
+.vscode/
 
 # Genesis export files
 *.json.export
@@ -13,3 +14,23 @@ data/
 # Go workspace files
 go.work
 go.work.sum
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker generated
+docker/devnet/
+
+# Temporary files
+*.tmp
+*.swp
+*~

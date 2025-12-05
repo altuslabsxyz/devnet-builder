@@ -1,0 +1,85 @@
+# docker-compose.local.yml
+#
+# Docker Compose override file for local binary mode.
+# This file is used when running devnet with --local-binary flag.
+# It mounts the local binary and devnet data into containers.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+#
+# Environment variables:
+#   LOCAL_BINARY: Path to local stabled binary
+#   DEVNET_DIR: Path to devnet data directory
+
+version: "3.8"
+
+x-common-config: &common-config
+  # Override image with local binary mount
+  volumes:
+    - ${LOCAL_BINARY:-./stabled}:/usr/local/bin/stabled:ro
+    - ${DEVNET_DIR:-../devnet}/node0/config:/data/config:ro
+    - ${DEVNET_DIR:-../devnet}/node0/keyring-test:/data/keyring-test:ro
+    - ${DEVNET_DIR:-../devnet}/node0/data:/data/data
+  entrypoint: ["/usr/local/bin/stabled"]
+  command: ["start", "--home", "/data"]
+
+services:
+  node0:
+    <<: *common-config
+    volumes:
+      - ${LOCAL_BINARY:-./stabled}:/usr/local/bin/stabled:ro
+      - ${DEVNET_DIR:-../devnet}/node0/config:/data/config:ro
+      - ${DEVNET_DIR:-../devnet}/node0/keyring-test:/data/keyring-test:ro
+      - ${DEVNET_DIR:-../devnet}/node0/data:/data/data
+    ports:
+      - "${RPC_PORT_0:-26657}:26657"
+      - "${P2P_PORT_0:-26656}:26656"
+      - "${EVM_RPC_PORT_0:-8545}:8545"
+      - "${EVM_WS_PORT_0:-8546}:8546"
+      - "${GRPC_PORT_0:-9090}:9090"
+      - "${API_PORT_0:-1317}:1317"
+
+  node1:
+    <<: *common-config
+    volumes:
+      - ${LOCAL_BINARY:-./stabled}:/usr/local/bin/stabled:ro
+      - ${DEVNET_DIR:-../devnet}/node1/config:/data/config:ro
+      - ${DEVNET_DIR:-../devnet}/node1/keyring-test:/data/keyring-test:ro
+      - ${DEVNET_DIR:-../devnet}/node1/data:/data/data
+    ports:
+      - "${RPC_PORT_1:-36657}:26657"
+      - "${P2P_PORT_1:-36656}:26656"
+      - "${EVM_RPC_PORT_1:-18545}:8545"
+      - "${EVM_WS_PORT_1:-18546}:8546"
+      - "${GRPC_PORT_1:-19090}:9090"
+      - "${API_PORT_1:-11317}:1317"
+
+  node2:
+    <<: *common-config
+    volumes:
+      - ${LOCAL_BINARY:-./stabled}:/usr/local/bin/stabled:ro
+      - ${DEVNET_DIR:-../devnet}/node2/config:/data/config:ro
+      - ${DEVNET_DIR:-../devnet}/node2/keyring-test:/data/keyring-test:ro
+      - ${DEVNET_DIR:-../devnet}/node2/data:/data/data
+    ports:
+      - "${RPC_PORT_2:-46657}:26657"
+      - "${P2P_PORT_2:-46656}:26656"
+      - "${EVM_RPC_PORT_2:-28545}:8545"
+      - "${EVM_WS_PORT_2:-28546}:8546"
+      - "${GRPC_PORT_2:-29090}:9090"
+      - "${API_PORT_2:-21317}:1317"
+
+  node3:
+    <<: *common-config
+    volumes:
+      - ${LOCAL_BINARY:-./stabled}:/usr/local/bin/stabled:ro
+      - ${DEVNET_DIR:-../devnet}/node3/config:/data/config:ro
+      - ${DEVNET_DIR:-../devnet}/node3/keyring-test:/data/keyring-test:ro
+      - ${DEVNET_DIR:-../devnet}/node3/data:/data/data
+    ports:
+      - "${RPC_PORT_3:-56657}:26657"
+      - "${P2P_PORT_3:-56656}:26656"
+      - "${EVM_RPC_PORT_3:-38545}:8545"
+      - "${EVM_WS_PORT_3:-38546}:8546"
+      - "${GRPC_PORT_3:-39090}:9090"
+      - "${API_PORT_3:-31317}:1317"
