@@ -402,7 +402,7 @@ func (g *DevnetGenerator) updateGovState(appState map[string]json.RawMessage) er
 	}
 
 	expeditedVotingPeriod := 1 * time.Minute
-	votingPeriod := expeditedVotingPeriod + 1*time.Second
+	votingPeriod := 6 * time.Minute
 	govState.Params.VotingPeriod = &votingPeriod
 	govState.Params.ExpeditedVotingPeriod = &expeditedVotingPeriod
 
