@@ -280,6 +280,36 @@ check_disk_space() {
 ensure_devnet_builder() {
     local builder_path="$PROJECT_ROOT/build/devnet-builder"
 
+    # If STABLE_VERSION is set, use build-for-version.sh for dynamic version
+    if [[ -n "${STABLE_VERSION:-}" ]]; then
+        info "STABLE_VERSION is set to '$STABLE_VERSION'"
+        info "Using build-for-version.sh for dynamic version support"
+
+        local version_script="$SCRIPT_DIR/build-for-version.sh"
+        if [[ ! -x "$version_script" ]]; then
+            error "build-for-version.sh not found at $version_script"
+            return 1
+        fi
+
+        # Set up alias for the versioned binary
+        # The script will cache the binary and we can get its path
+        local versioned_binary
+        versioned_binary=$("$version_script" -v "$STABLE_VERSION" 2>&1 | grep -o '/[^[:space:]]*devnet-builder' | tail -1)
+
+        if [[ -n "$versioned_binary" ]] && [[ -x "$versioned_binary" ]]; then
+            # Create symlink to versioned binary in build directory
+            mkdir -p "$PROJECT_ROOT/build"
+            ln -sf "$versioned_binary" "$builder_path"
+            success "Using devnet-builder for stable version: $STABLE_VERSION"
+            return 0
+        else
+            error "Failed to get versioned devnet-builder binary"
+            error "Try running: $version_script -v $STABLE_VERSION --verbose"
+            return 1
+        fi
+    fi
+
+    # Standard path: use existing or build default
     if [[ -x "$builder_path" ]]; then
         success "devnet-builder is available"
         return 0
@@ -370,6 +400,9 @@ EXAMPLES:
     # Start with local binary
     ./scripts/local-devnet.sh start --local-binary /path/to/stabled
 
+    # Start with specific stable version/branch
+    STABLE_VERSION=feat/usdt0-gas ./scripts/local-devnet.sh start
+
     # Stop the devnet
     ./scripts/local-devnet.sh stop
 
@@ -378,6 +411,13 @@ EXAMPLES:
 
     # Export keys in JSON format
     ./scripts/local-devnet.sh export-keys --format json
+
+ENVIRONMENT VARIABLES:
+    STABLE_VERSION          Build devnet-builder with a specific stable version/branch
+                            (e.g., v1.1.3, feat/usdt0-gas, commit-hash)
+    STABLE_DEVNET_NETWORK   Source network (mainnet or testnet)
+    STABLE_DEVNET_DIR       Custom devnet data directory
+    STABLE_DEVNET_CACHE     Custom cache directory
 
 Run './scripts/local-devnet.sh help <command>' for more info on a command.
 EOF
