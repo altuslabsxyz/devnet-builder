@@ -8,15 +8,17 @@ import (
 	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/spf13/cobra"
+
+	"github.com/stablelabs/stable-devnet/internal/generator"
 )
 
 var (
-	cfg    *DevnetConfig
+	cfg    *generator.Config
 	logger log.Logger
 )
 
 func NewBuildCmd() *cobra.Command {
-	cfg = DefaultDevnetConfig()
+	cfg = generator.DefaultConfig()
 	logger = log.NewLogger(os.Stdout)
 
 	cmd := &cobra.Command{
@@ -109,8 +111,8 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	// Build the devnet
-	generator := NewDevnetGenerator(cfg, logger)
-	if err := generator.Build(genesisFile); err != nil {
+	gen := generator.NewDevnetGenerator(cfg, logger)
+	if err := gen.Build(genesisFile); err != nil {
 		return fmt.Errorf("failed to build devnet: %w", err)
 	}
 

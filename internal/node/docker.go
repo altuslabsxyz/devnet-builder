@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -199,4 +200,80 @@ func (m *DockerManager) PullImage(ctx context.Context) error {
 func IsDockerAvailable(ctx context.Context) bool {
 	cmd := exec.CommandContext(ctx, "docker", "info")
 	return cmd.Run() == nil
+}
+
+// Init runs `stabled init` for a node in Docker.
+func (m *DockerManager) Init(ctx context.Context, nodeDir, moniker, chainID string) error {
+	args := []string{
+		"run", "--rm",
+		"-v", fmt.Sprintf("%s:/root/.stabled", nodeDir),
+		m.Image,
+		"stabled", "init", moniker,
+		"--chain-id", chainID,
+		"--home", "/root/.stabled",
+	}
+
+	m.Logger.Debug("Docker init: docker %s", strings.Join(args, " "))
+
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker init failed: %s: %w", string(output), err)
+	}
+	return nil
+}
+
+// GetNodeID retrieves the node ID using `stabled comet show-node-id`.
+func (m *DockerManager) GetNodeID(ctx context.Context, nodeDir string) (string, error) {
+	args := []string{
+		"run", "--rm",
+		"-v", fmt.Sprintf("%s:/root/.stabled", nodeDir),
+		m.Image,
+		"stabled", "comet", "show-node-id",
+		"--home", "/root/.stabled",
+	}
+
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("docker show-node-id failed: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+// Export runs `stabled export` to export the current state as genesis.
+func (m *DockerManager) Export(ctx context.Context, nodeDir, destPath string) error {
+	args := []string{
+		"run", "--rm",
+		"-v", fmt.Sprintf("%s:/root/.stabled", nodeDir),
+		m.Image,
+		"stabled", "export",
+		"--home", "/root/.stabled",
+	}
+
+	cmd := exec.CommandContext(ctx, "docker", args...)
+
+	// Create output file
+	outFile, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer outFile.Close()
+
+	cmd.Stdout = outFile
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		os.Remove(destPath)
+		return fmt.Errorf("docker export failed: %w", err)
+	}
+
+	// Verify output file
+	info, err := os.Stat(destPath)
+	if err != nil || info.Size() == 0 {
+		os.Remove(destPath)
+		return fmt.Errorf("exported genesis is empty or missing")
+	}
+
+	return nil
 }

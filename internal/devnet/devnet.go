@@ -7,10 +7,14 @@ import (
 	"path/filepath"
 	"time"
 
+	"cosmossdk.io/log"
+
+	"github.com/stablelabs/stable-devnet/internal/generator"
 	"github.com/stablelabs/stable-devnet/internal/node"
+	"github.com/stablelabs/stable-devnet/internal/nodeconfig"
 	"github.com/stablelabs/stable-devnet/internal/output"
 	"github.com/stablelabs/stable-devnet/internal/prereq"
-	"github.com/stablelabs/stable-devnet/internal/snapshot"
+	"github.com/stablelabs/stable-devnet/internal/provision"
 )
 
 const (
@@ -19,6 +23,9 @@ const (
 
 	// HealthCheckTimeout is the timeout for health checks after starting.
 	HealthCheckTimeout = 5 * time.Minute
+
+	// BaseP2PPort is the base P2P port for node0.
+	BaseP2PPort = 26656
 )
 
 // Devnet represents a running devnet instance.
@@ -54,19 +61,33 @@ func NewDevnet(metadata *DevnetMetadata, logger *output.Logger) *Devnet {
 }
 
 // Start provisions and starts a devnet.
+// This follows the workflow from deploy-devnet-upgrade.yml:
+// 1. Check prerequisites
+// 2. Initialize provisioner node
+// 3. Download genesis from RPC
+// 4. Download and extract snapshot
+// 5. Sync to latest block (or skip)
+// 6. Export genesis after sync
+// 7. Run devnet-builder build (create validators)
+// 8. Initialize each node with stabled init
+// 9. Copy validator keys from build
+// 10. Configure config.toml/app.toml
+// 11. Start nodes
 func Start(ctx context.Context, opts StartOptions) (*Devnet, error) {
 	logger := opts.Logger
 	if logger == nil {
 		logger = output.DefaultLogger
 	}
 
-	progress := output.NewProgress(5)
+	progress := output.NewProgress(7)
 
 	// Step 1: Check prerequisites
 	progress.Stage("Checking prerequisites")
 	checker := prereq.NewChecker()
 	if opts.Mode == ModeDocker {
 		checker.RequireDocker()
+	} else {
+		checker.RequireLocal()
 	}
 
 	results, err := checker.Check()
@@ -79,75 +100,67 @@ func Start(ctx context.Context, opts StartOptions) (*Devnet, error) {
 		}
 	}
 
-	// Step 2: Download snapshot (or use cache)
-	progress.Stage(fmt.Sprintf("Downloading %s snapshot", opts.Network))
-	snapshotURL := GetSnapshotURL(opts.Network)
-	if snapshotURL == "" {
-		return nil, fmt.Errorf("unknown network: %s", opts.Network)
+	// Create devnet directory
+	devnetDir := filepath.Join(opts.HomeDir, "devnet")
+	if err := os.MkdirAll(devnetDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create devnet directory: %w", err)
 	}
 
-	cache, err := snapshot.Download(ctx, snapshot.DownloadOptions{
-		URL:     snapshotURL,
-		Network: opts.Network,
-		HomeDir: opts.HomeDir,
-		NoCache: opts.NoCache,
-		Logger:  logger,
+	// Step 2: Provision (sync to latest and export genesis)
+	progress.Stage("Provisioning chain state")
+	dockerImage := provision.GetDockerImage(opts.StableVersion)
+
+	// Convert ExecutionMode to provision.ExecutionMode
+	var provisionMode provision.ExecutionMode
+	if opts.Mode == ModeDocker {
+		provisionMode = provision.ModeDocker
+	} else {
+		provisionMode = provision.ModeLocal
+	}
+
+	provisioner := provision.NewProvisioner(&provision.ProvisionerOptions{
+		Network:     opts.Network,
+		HomeDir:     opts.HomeDir,
+		DockerImage: dockerImage,
+		Mode:        provisionMode,
+		NoCache:     opts.NoCache,
+		Logger:      logger,
 	})
+
+	provisionResult, err := provisioner.Provision(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to download snapshot: %w", err)
+		provisioner.Cleanup(ctx)
+		return nil, fmt.Errorf("provisioning failed: %w", err)
 	}
 
-	// Step 3: Export genesis from snapshot or fetch from RPC
-	progress.Stage("Exporting genesis state")
-	genesisPath := filepath.Join(opts.HomeDir, "devnet", "genesis.json")
+	// Cleanup provisioner after getting genesis
+	provisioner.Cleanup(ctx)
 
-	// Find bundled genesis file (required for snapshot export)
-	bundledGenesis := GetBundledGenesisPath(opts.Network)
-	if bundledGenesis == "" {
-		return nil, fmt.Errorf("bundled genesis file not found for network %s", opts.Network)
-	}
-	logger.Debug("Using bundled genesis: %s", bundledGenesis)
+	logger.Debug("Provisioning complete. Genesis at: %s", provisionResult.GenesisPath)
 
-	// Try to fetch from RPC first (faster)
-	rpcEndpoint := GetRPCEndpoint(opts.Network)
-	genesisMeta, err := snapshot.FetchGenesisFromRPC(ctx, rpcEndpoint, genesisPath, logger)
-	if err != nil {
-		logger.Debug("Failed to fetch genesis from RPC, trying snapshot export: %v", err)
-		// Fall back to snapshot export
-		genesisMeta, err = snapshot.ExportGenesisFromSnapshot(ctx, snapshot.ExportOptions{
-			SnapshotPath: cache.FilePath,
-			DestPath:     genesisPath,
-			Network:      opts.Network,
-			Decompressor: cache.Decompressor,
-			GenesisPath:  bundledGenesis,
-			Logger:       logger,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to export genesis: %w", err)
-		}
+	// Step 3: Generate validators and modify genesis
+	progress.Stage("Generating validators")
+
+	// Configure generator
+	genConfig := generator.DefaultConfig()
+	genConfig.NumValidators = opts.NumValidators
+	genConfig.NumAccounts = opts.NumAccounts
+	genConfig.OutputDir = devnetDir
+	genConfig.ChainID = provisionResult.ChainID
+
+	// Create generator with a proper logger
+	genLogger := log.NewNopLogger() // Use NopLogger to avoid duplicate output
+	gen := generator.NewDevnetGenerator(genConfig, genLogger)
+
+	// Build devnet from exported genesis - this creates validators, modifies genesis, and saves to node dirs
+	if err := gen.Build(provisionResult.GenesisPath); err != nil {
+		return nil, fmt.Errorf("failed to generate validators: %w", err)
 	}
 
-	//// Modify genesis for devnet
-	//chainID := "stable-devnet-1"
-	//if err := snapshot.ModifyGenesis(genesisPath, chainID, opts.NumValidators); err != nil {
-	//	return nil, fmt.Errorf("failed to modify genesis: %w", err)
-	//}
-	chainID := "stable_988-1"
-	if opts.Network == "testnet" {
-		chainID = "stabletestnet_2201-1"
-	}
-
-	// Save genesis metadata
-	genesisMeta.NewChainID = chainID
-	genesisMeta.Network = opts.Network
-	if err := genesisMeta.Save(opts.HomeDir); err != nil {
-		logger.Warn("Failed to save genesis metadata: %v", err)
-	}
-
-	// Step 4: Generate devnet configuration
-	progress.Stage("Generating devnet configuration")
+	logger.Debug("Generator created %d validators", opts.NumValidators)
 
 	// Create devnet metadata
+	chainID := genConfig.ChainID
 	metadata := NewDevnetMetadata(opts.HomeDir)
 	metadata.ChainID = chainID
 	metadata.NetworkSource = opts.Network
@@ -155,27 +168,63 @@ func Start(ctx context.Context, opts StartOptions) (*Devnet, error) {
 	metadata.NumAccounts = opts.NumAccounts
 	metadata.ExecutionMode = opts.Mode
 	metadata.StableVersion = opts.StableVersion
-	metadata.GenesisPath = genesisPath
+	metadata.GenesisPath = filepath.Join(devnetDir, "node0", "config", "genesis.json")
 
-	// Create nodes
+	// Step 4: Get node IDs and create node objects
+	progress.Stage("Initializing nodes")
+
+	// Convert ExecutionMode to nodeconfig.ExecutionMode
+	var initMode nodeconfig.ExecutionMode
+	if opts.Mode == ModeDocker {
+		initMode = nodeconfig.ModeDocker
+	} else {
+		initMode = nodeconfig.ModeLocal
+	}
+	initializer := nodeconfig.NewNodeInitializer(initMode, dockerImage, logger)
+	nodeIDs := make([]string, opts.NumValidators)
 	nodes := make([]*node.Node, opts.NumValidators)
+
 	for i := 0; i < opts.NumValidators; i++ {
-		nodeDir := filepath.Join(opts.HomeDir, "devnet", fmt.Sprintf("node%d", i))
+		nodeDir := filepath.Join(devnetDir, fmt.Sprintf("node%d", i))
+
+		// Get node ID from the generated priv_validator_key.json
+		nodeID, err := initializer.GetNodeID(ctx, nodeDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get node ID for node%d: %w", i, err)
+		}
+		nodeIDs[i] = nodeID
+		logger.Debug("Node %d ID: %s", i, nodeID)
+
+		// Create node object
 		n := node.NewNode(i, nodeDir)
-
-		// Initialize node directory structure
-		if err := initializeNodeDirectory(n, genesisPath); err != nil {
-			return nil, fmt.Errorf("failed to initialize node%d: %w", i, err)
-		}
-
-		if err := n.Save(); err != nil {
-			return nil, fmt.Errorf("failed to save node%d config: %w", i, err)
-		}
-
 		nodes[i] = n
 	}
 
-	// Save metadata
+	// Step 5: Configure nodes (ports, persistent peers, etc.)
+	progress.Stage("Configuring nodes")
+
+	// Build persistent peers string
+	peers := nodeconfig.BuildPersistentPeers(nodeIDs, BaseP2PPort)
+	logger.Debug("Persistent peers: %s", peers)
+
+	for i := 0; i < opts.NumValidators; i++ {
+		nodeDir := filepath.Join(devnetDir, fmt.Sprintf("node%d", i))
+
+		// Build peers excluding this node
+		nodePeers := nodeconfig.BuildPersistentPeersWithExclusion(nodeIDs, BaseP2PPort, i)
+
+		// Configure node
+		if err := nodeconfig.ConfigureNode(nodeDir, i, nodePeers, i == 0, logger); err != nil {
+			return nil, fmt.Errorf("failed to configure node%d: %w", i, err)
+		}
+
+		// Save node config
+		if err := nodes[i].Save(); err != nil {
+			return nil, fmt.Errorf("failed to save node%d config: %w", i, err)
+		}
+	}
+
+	// Save metadata before starting nodes
 	if err := metadata.Save(); err != nil {
 		return nil, fmt.Errorf("failed to save metadata: %w", err)
 	}
@@ -183,9 +232,9 @@ func Start(ctx context.Context, opts StartOptions) (*Devnet, error) {
 	devnet := NewDevnet(metadata, logger)
 	devnet.Nodes = nodes
 
-	// Step 5: Start nodes
+	// Step 7: Start nodes
 	progress.Stage("Starting nodes")
-	if err := devnet.StartNodes(ctx, genesisPath); err != nil {
+	if err := devnet.StartNodes(ctx, provisionResult.GenesisPath); err != nil {
 		return nil, fmt.Errorf("failed to start nodes: %w", err)
 	}
 
@@ -213,6 +262,9 @@ func (d *Devnet) StartNodes(ctx context.Context, genesisPath string) error {
 			return fmt.Errorf("failed to start %s: %w", n.Name, err)
 		}
 		d.Logger.Debug("Started %s", n.Name)
+
+		// Small delay between node starts
+		time.Sleep(500 * time.Millisecond)
 	}
 	return nil
 }
@@ -221,7 +273,7 @@ func (d *Devnet) StartNodes(ctx context.Context, genesisPath string) error {
 func (d *Devnet) startNode(ctx context.Context, n *node.Node, genesisPath string) error {
 	switch d.Metadata.ExecutionMode {
 	case ModeDocker:
-		manager := node.NewDockerManager("", d.Logger)
+		manager := node.NewDockerManager(provision.GetDockerImage(d.Metadata.StableVersion), d.Logger)
 		return manager.Start(ctx, n, genesisPath)
 	case ModeLocal:
 		manager := node.NewLocalManager("", d.Logger)
@@ -261,31 +313,6 @@ func (d *Devnet) stopNode(ctx context.Context, n *node.Node, timeout time.Durati
 	default:
 		return fmt.Errorf("unknown execution mode: %s", d.Metadata.ExecutionMode)
 	}
-}
-
-// initializeNodeDirectory creates the required directory structure for a node.
-func initializeNodeDirectory(n *node.Node, genesisPath string) error {
-	// Create directories
-	dirs := []string{
-		n.HomeDir,
-		n.ConfigPath(),
-		n.DataPath(),
-		n.KeyringPath(),
-	}
-
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("failed to create %s: %w", dir, err)
-		}
-	}
-
-	// Copy genesis to node config directory
-	destGenesis := filepath.Join(n.ConfigPath(), "genesis.json")
-	if err := copyFile(genesisPath, destGenesis); err != nil {
-		return fmt.Errorf("failed to copy genesis: %w", err)
-	}
-
-	return nil
 }
 
 // copyFile copies a file from src to dst.

@@ -1,4 +1,4 @@
-package main
+package generator
 
 import (
 	"bufio"
@@ -42,9 +42,8 @@ import (
 	restrictiontypes "github.com/stablelabs/stable/x/restriction/types"
 )
 
-
 type DevnetGenerator struct {
-	config     *DevnetConfig
+	config     *Config
 	cdc        codec.Codec
 	txConfig   client.TxConfig
 	tempApp    *app.App
@@ -71,7 +70,7 @@ type AccountInfo struct {
 	Address sdk.AccAddress
 }
 
-func NewDevnetGenerator(config *DevnetConfig, logger log.Logger) *DevnetGenerator {
+func NewDevnetGenerator(config *Config, logger log.Logger) *DevnetGenerator {
 	// Create a temporary minimal app to access BasicModuleManager and properly registered codec
 	db := dbm.NewMemDB()
 	appLogger := log.NewNopLogger() // Use NopLogger for internal app to reduce noise
@@ -915,6 +914,11 @@ func (g *DevnetGenerator) initNodeDirectories() error {
 			return err
 		}
 
+		// Generate and save node_key.json (required for P2P node ID)
+		if err := g.saveNodeKey(configDir); err != nil {
+			return err
+		}
+
 		// Note: genesis.json is NOT saved here - it will be saved by collectGenFiles
 	}
 
@@ -984,6 +988,26 @@ func (g *DevnetGenerator) savePrivValidatorState(dataDir string) error {
 	return os.WriteFile(filename, data, 0644)
 }
 
+func (g *DevnetGenerator) saveNodeKey(configDir string) error {
+	// Generate a new ed25519 key for P2P node identity
+	nodePrivKey := ed25519.GenPrivKey()
+
+	nodeKey := map[string]interface{}{
+		"priv_key": map[string]string{
+			"type":  "tendermint/PrivKeyEd25519",
+			"value": base64.StdEncoding.EncodeToString(nodePrivKey.Bytes()),
+		},
+	}
+
+	data, err := json.MarshalIndent(nodeKey, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	filename := filepath.Join(configDir, "node_key.json")
+	return os.WriteFile(filename, data, 0600)
+}
+
 func (g *DevnetGenerator) saveGenesis(configDir string, genDoc *genutiltypes.AppGenesis) error {
 	// Marshal consensus directly
 	consensusBytes, err := json.Marshal(genDoc.Consensus)
@@ -992,6 +1016,7 @@ func (g *DevnetGenerator) saveGenesis(configDir string, genDoc *genutiltypes.App
 	}
 
 	// Build final genesis structure
+	// Keep the exported initial_height to continue from where mainnet was
 	finalGenesis := map[string]interface{}{
 		"genesis_time":   genDoc.GenesisTime.Format("2006-01-02T15:04:05.999999999Z07:00"),
 		"chain_id":       genDoc.ChainID,
@@ -1060,4 +1085,14 @@ func (g *DevnetGenerator) addValidatorKeysToAccountsKeyring() error {
 	}
 
 	return nil
+}
+
+// GetValidators returns the generated validators info
+func (g *DevnetGenerator) GetValidators() []ValidatorInfo {
+	return g.validators
+}
+
+// GetAccounts returns the generated accounts info
+func (g *DevnetGenerator) GetAccounts() []AccountInfo {
+	return g.accounts
 }

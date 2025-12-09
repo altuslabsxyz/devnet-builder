@@ -1,4 +1,4 @@
-package main
+package generator
 
 import (
 	"cosmossdk.io/math"
@@ -8,8 +8,8 @@ import (
 	appcfg "github.com/stablelabs/stable/app/config"
 )
 
-// DevnetConfig holds the configuration for building a devnet
-type DevnetConfig struct {
+// Config holds the configuration for building a devnet
+type Config struct {
 	// Number of validators to create
 	NumValidators int
 
@@ -34,10 +34,10 @@ type DevnetConfig struct {
 	ChainID string
 }
 
-// DefaultDevnetConfig returns default configuration
-func DefaultDevnetConfig() *DevnetConfig {
+// DefaultConfig returns default configuration
+func DefaultConfig() *Config {
 	defaultAmount := sdk.TokensFromConsensusPower(1000, evmostypes.AttoPowerReduction) // 1000 consensus power
-	return &DevnetConfig{
+	return &Config{
 		NumValidators:    4,
 		NumAccounts:      10,
 		AccountBalance:   sdk.NewCoins(sdk.NewCoin(appcfg.GovAttoDenom, defaultAmount)),    // Default: only astable

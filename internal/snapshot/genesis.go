@@ -141,16 +141,15 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 		return nil, fmt.Errorf("failed to extract snapshot: %w", err)
 	}
 
-	// Setup export node home directory
-	exportHome := filepath.Join(tmpDir, "export-node")
+	// Snapshot extracts to tmpDir/data/, so use tmpDir as the export home
+	// and just create the config directory
+	exportHome := tmpDir
 	configDir := filepath.Join(exportHome, "config")
 	dataDir := filepath.Join(exportHome, "data")
 
+	// Create config directory
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create config directory: %w", err)
-	}
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
 	// Copy source genesis to config directory
@@ -160,12 +159,9 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 	}
 	logger.Debug("Copied genesis from %s to %s", opts.GenesisPath, configGenesis)
 
-	// Copy snapshot data to export node
-	snapshotDataDir := filepath.Join(tmpDir, "data")
-	if _, err := os.Stat(snapshotDataDir); err == nil {
-		if err := copyDir(snapshotDataDir, dataDir); err != nil {
-			logger.Debug("Failed to copy snapshot data: %v", err)
-		}
+	// Verify data directory exists from snapshot extraction
+	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("snapshot data directory not found at %s", dataDir)
 	}
 
 	// Initialize priv_validator_state.json if not present

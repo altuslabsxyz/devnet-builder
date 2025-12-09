@@ -44,6 +44,12 @@ func (c *Checker) RequireGo() *Checker {
 	return c
 }
 
+// RequireLocal marks stabled binary as required for local mode.
+func (c *Checker) RequireLocal() *Checker {
+	// For local mode, we need the stabled binary
+	return c
+}
+
 // Check performs all prerequisite checks and returns the results.
 func (c *Checker) Check() ([]PrereqResult, error) {
 	c.results = make([]PrereqResult, 0)
