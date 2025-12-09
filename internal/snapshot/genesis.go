@@ -316,6 +316,7 @@ type ExportOptions struct {
 	Network      string
 	Decompressor string
 	StableBinary string
+	DockerImage  string // Docker image for stabled (e.g., ghcr.io/stablelabs/stable:latest)
 	GenesisPath  string // Path to source genesis.json (required for stabled export)
 	Logger       *output.Logger
 }
