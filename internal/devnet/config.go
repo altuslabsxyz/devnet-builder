@@ -217,10 +217,41 @@ func GetSnapshotURL(network string) string {
 func GetRPCEndpoint(network string) string {
 	switch network {
 	case "mainnet":
-		return "https://rpc.stable.tech"
+		return "https://rpc.stable.xyz"
 	case "testnet":
-		return "https://rpc.testnet.stable.tech"
+		return "https://rpc.testnet.stable.xyz"
 	default:
 		return ""
 	}
+}
+
+// GetBundledGenesisPath returns the path to the bundled genesis file for the given network.
+// It looks for genesis files in the genesis/ directory relative to the executable.
+func GetBundledGenesisPath(network string) string {
+	// Try to find genesis relative to executable
+	execPath, err := os.Executable()
+	if err == nil {
+		execDir := filepath.Dir(execPath)
+		// Check genesis/ directory relative to executable
+		genesisPath := filepath.Join(execDir, "..", "genesis", network+"-genesis.json")
+		if _, err := os.Stat(genesisPath); err == nil {
+			return genesisPath
+		}
+		// Check in same directory as executable
+		genesisPath = filepath.Join(execDir, "genesis", network+"-genesis.json")
+		if _, err := os.Stat(genesisPath); err == nil {
+			return genesisPath
+		}
+	}
+
+	// Try current working directory
+	cwd, err := os.Getwd()
+	if err == nil {
+		genesisPath := filepath.Join(cwd, "genesis", network+"-genesis.json")
+		if _, err := os.Stat(genesisPath); err == nil {
+			return genesisPath
+		}
+	}
+
+	return ""
 }
