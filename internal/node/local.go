@@ -72,7 +72,8 @@ func (m *LocalManager) Start(ctx context.Context, node *Node, genesisPath string
 		fmt.Sprintf("--rpc.laddr=tcp://0.0.0.0:%d", node.Ports.RPC),
 		fmt.Sprintf("--p2p.laddr=tcp://0.0.0.0:%d", node.Ports.P2P),
 		fmt.Sprintf("--grpc.address=0.0.0.0:%d", node.Ports.GRPC),
-		fmt.Sprintf("--api.address=tcp://0.0.0.0:%d", node.Ports.API),
+		fmt.Sprintf("--api.enabled-unsafe-cors=true"),
+		fmt.Sprintf("--api.enable=true"),
 		fmt.Sprintf("--json-rpc.address=0.0.0.0:%d", node.Ports.EVMRPC),
 		fmt.Sprintf("--json-rpc.ws-address=0.0.0.0:%d", node.Ports.EVMWS),
 	}

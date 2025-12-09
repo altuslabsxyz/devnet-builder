@@ -25,7 +25,6 @@ type NodePorts struct {
 	GRPC   int `json:"grpc"`    // gRPC server (default: 9090)
 	EVMRPC int `json:"evm_rpc"` // EVM JSON-RPC (default: 8545)
 	EVMWS  int `json:"evm_ws"`  // EVM WebSocket (default: 8546)
-	API    int `json:"api"`     // REST API (default: 1317)
 	PProf  int `json:"pprof"`   // pprof debugging (default: 6060)
 }
 
@@ -39,7 +38,6 @@ func DefaultPortsForNode(index int) NodePorts {
 		GRPC:   9090 + offset,
 		EVMRPC: 8545 + offset,
 		EVMWS:  8546 + offset,
-		API:    1317 + offset,
 		PProf:  6060 + offset,
 	}
 }
@@ -126,11 +124,6 @@ func (n *Node) EVMRPCURL() string {
 // GRPCURL returns the gRPC endpoint URL.
 func (n *Node) GRPCURL() string {
 	return fmt.Sprintf("localhost:%d", n.Ports.GRPC)
-}
-
-// APIURL returns the REST API endpoint URL.
-func (n *Node) APIURL() string {
-	return fmt.Sprintf("http://localhost:%d", n.Ports.API)
 }
 
 // Save persists the node configuration to disk.
