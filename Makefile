@@ -38,13 +38,19 @@ test:
 	@echo "Running tests..."
 	@GOWORK=off go test -v ./...
 
+# Build with specific stable version
+# Usage: make build-versioned VERSION=feat/usdt0-gas ARGS="build genesis-export.json"
+build-versioned:
+	@./scripts/build-for-version.sh -v $(VERSION) -- $(ARGS)
+
 # Display help
 help:
 	@echo "Available targets:"
-	@echo "  build    - Build devnet-builder binary (default)"
-	@echo "  clean    - Remove build artifacts"
-	@echo "  install  - Install devnet-builder to GOPATH/bin"
-	@echo "  test     - Run tests"
-	@echo "  help     - Display this help message"
+	@echo "  build           - Build devnet-builder binary (default)"
+	@echo "  build-versioned - Build with specific stable version (VERSION=x ARGS=y)"
+	@echo "  clean           - Remove build artifacts"
+	@echo "  install         - Install devnet-builder to GOPATH/bin"
+	@echo "  test            - Run tests"
+	@echo "  help            - Display this help message"
 
-.PHONY: build clean install test help
+.PHONY: build build-versioned clean install test help
