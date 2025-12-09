@@ -127,10 +127,14 @@ func Start(ctx context.Context, opts StartOptions) (*Devnet, error) {
 		}
 	}
 
-	// Modify genesis for devnet
-	chainID := "stable-devnet-1"
-	if err := snapshot.ModifyGenesis(genesisPath, chainID, opts.NumValidators); err != nil {
-		return nil, fmt.Errorf("failed to modify genesis: %w", err)
+	//// Modify genesis for devnet
+	//chainID := "stable-devnet-1"
+	//if err := snapshot.ModifyGenesis(genesisPath, chainID, opts.NumValidators); err != nil {
+	//	return nil, fmt.Errorf("failed to modify genesis: %w", err)
+	//}
+	chainID := "stable_988-1"
+	if opts.Network == "testnet" {
+		chainID = "stabletestnet_2201-1"
 	}
 
 	// Save genesis metadata
