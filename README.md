@@ -1,113 +1,426 @@
 # Stable Devnet
 
-Local development network for Stable blockchain using mainnet state export.
+Local development network for Stable blockchain using mainnet/testnet state export.
 
 ## Prerequisites
 
-- Go 1.21+ (for devnet-builder)
-- `stabled` binary (local build or from release)
-- curl, jq (for provisioning)
-- zstd (for mainnet snapshot decompression)
+- Go 1.21+ (for building devnet-builder)
+- Docker (for docker mode) OR `stabled` binary (for local mode)
+- curl, jq (for network operations)
+- zstd or lz4 (for snapshot decompression)
+
+## Installation
+
+### Build from source
+
+```bash
+git clone https://github.com/stablelabs/stable-devnet.git
+cd stable-devnet
+make build
+
+# Binary will be at ./build/devnet-builder
+# Optionally move to PATH
+sudo mv ./build/devnet-builder /usr/local/bin/
+```
+
+### Verify installation
+
+```bash
+devnet-builder version
+devnet-builder --help
+```
+
+---
 
 ## Quick Start
 
-Use the local devnet script to spin up a 4-node devnet with a single command:
+### 1. Docker Mode (Recommended)
+
+Start a 4-validator devnet using Docker containers:
 
 ```bash
-# Start devnet with local stabled binary
-./scripts/local-devnet.sh start --local-binary /path/to/stabled
-```
+# Start with default settings
+devnet-builder start
 
-The script will automatically:
-1. Download and cache the mainnet snapshot
-2. Download genesis from mainnet RPC
-3. Export state from snapshot (no syncing required)
-4. Build devnet with 4 validators and 10 test accounts
-5. Start 4 validator nodes locally
-
-### Verify Devnet is Running
-
-```bash
 # Check status
-./scripts/local-devnet.sh status
+devnet-builder status
 
-# Check node health via RPC
-curl http://localhost:26657/status | jq '.result.sync_info.latest_block_height'
-
-# Check all nodes
-curl -s http://localhost:26657/status | jq -r '.result.sync_info.latest_block_height'
-curl -s http://localhost:36657/status | jq -r '.result.sync_info.latest_block_height'
-curl -s http://localhost:46657/status | jq -r '.result.sync_info.latest_block_height'
-curl -s http://localhost:56657/status | jq -r '.result.sync_info.latest_block_height'
-
-# Check EVM JSON-RPC
-curl -X POST http://localhost:8545 \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+# Stop when done
+devnet-builder stop
 ```
 
-### Lifecycle Commands
+### 2. Local Binary Mode
+
+Start using a local `stabled` binary:
 
 ```bash
-# Stop devnet
-./scripts/local-devnet.sh stop
+# Ensure stabled is in PATH or specify location
+devnet-builder start --mode local
 
-# Restart devnet
-./scripts/local-devnet.sh restart
-
-# Remove all devnet data
-./scripts/local-devnet.sh clean
-
-# Remove devnet + cached snapshots
-./scripts/local-devnet.sh clean --cache
+# If stabled is not in PATH, build it first:
+# git clone https://github.com/stablelabs/stable && cd stable && make install
 ```
 
-### Export Keys
+---
+
+## Usage Guide
+
+### Starting a Devnet
 
 ```bash
-# Export all keys (text format)
-./scripts/local-devnet.sh export-keys
+# Default: 4 validators, mainnet data, docker mode
+devnet-builder start
 
-# Export in JSON format
-./scripts/local-devnet.sh export-keys --format json
+# Specify number of validators (1-4)
+devnet-builder start --validators 2
 
-# Export in environment variable format
-./scripts/local-devnet.sh export-keys --format env
+# Use testnet data instead of mainnet
+devnet-builder start --network testnet
+
+# Use local binary mode instead of Docker
+devnet-builder start --mode local
+
+# Skip snapshot cache (force re-download)
+devnet-builder start --no-cache
+
+# Specify stable version for building
+devnet-builder start --stable-version v1.2.3
+
+# Full example with all options
+devnet-builder start \
+  --network mainnet \
+  --validators 4 \
+  --mode docker \
+  --accounts 10
 ```
 
-### View Logs
+### Network Selection
+
+| Network | Description | Snapshot Source |
+|---------|-------------|-----------------|
+| `mainnet` | Production mainnet state | stable-mainnet-data.s3.amazonaws.com |
+| `testnet` | Testnet state | stable-testnet-data.s3.amazonaws.com |
 
 ```bash
-# View all logs
-./scripts/local-devnet.sh logs
+# Use mainnet data (default)
+devnet-builder start --network mainnet
 
-# Follow logs for a specific node
-./scripts/local-devnet.sh logs node0 -f
-
-# View last 50 lines
-./scripts/local-devnet.sh logs --tail 50
+# Use testnet data
+devnet-builder start --network testnet
 ```
 
-### Customization
+### Validator Count
+
+Choose 1-4 validators based on your testing needs:
 
 ```bash
-# Custom number of validators (1-4)
-./scripts/local-devnet.sh start --local-binary /path/to/stabled --validators 2
+# Single validator (fastest, minimal resources)
+devnet-builder start --validators 1
 
-# Custom number of test accounts
-./scripts/local-devnet.sh start --local-binary /path/to/stabled --accounts 20
+# Two validators (basic consensus testing)
+devnet-builder start --validators 2
 
-# Force rebuild even if devnet exists
-./scripts/local-devnet.sh start --local-binary /path/to/stabled --rebuild
-
-# Skip snapshot cache (re-download)
-./scripts/local-devnet.sh start --local-binary /path/to/stabled --no-cache
+# Four validators (full devnet, default)
+devnet-builder start --validators 4
 ```
 
-For full help:
+### Execution Modes
+
+#### Docker Mode (Default)
+
+- Requires Docker to be installed and running
+- Each node runs in an isolated container
+- Easier cleanup and isolation
+
 ```bash
-./scripts/local-devnet.sh help
-./scripts/local-devnet.sh help start
+devnet-builder start --mode docker
+```
+
+#### Local Binary Mode
+
+- Requires `stabled` binary in PATH
+- Nodes run as background processes
+- Useful when Docker is unavailable
+
+```bash
+# Ensure stabled is installed
+which stabled
+
+# Start in local mode
+devnet-builder start --mode local
+```
+
+---
+
+## Lifecycle Management
+
+### Check Status
+
+```bash
+# Show devnet status and node health
+devnet-builder status
+
+# JSON output for scripting
+devnet-builder status --json
+```
+
+Output shows:
+- Chain ID, network, mode
+- Node status (running/stopped/syncing)
+- Block height, peer count, catching_up status
+
+### Stop Devnet
+
+```bash
+# Graceful stop (default 30s timeout)
+devnet-builder stop
+
+# Custom timeout
+devnet-builder stop --timeout 60s
+```
+
+### Restart Devnet
+
+```bash
+# Stop and start again
+devnet-builder restart
+
+# With custom timeout
+devnet-builder restart --timeout 60s
+```
+
+### Reset Chain Data
+
+```bash
+# Soft reset: Clear chain data, keep genesis and config
+devnet-builder reset
+
+# Hard reset: Clear everything (requires re-provisioning)
+devnet-builder reset --hard
+
+# Skip confirmation prompt
+devnet-builder reset --force
+```
+
+### Clean Up
+
+```bash
+# Remove devnet data (keeps snapshot cache)
+devnet-builder clean
+
+# Remove devnet data AND snapshot cache
+devnet-builder clean --cache
+
+# Skip confirmation prompt
+devnet-builder clean --force
+```
+
+---
+
+## Viewing Logs
+
+```bash
+# View logs from all nodes
+devnet-builder logs
+
+# View logs from specific node
+devnet-builder logs node0
+devnet-builder logs node1
+
+# Follow logs in real-time (like tail -f)
+devnet-builder logs -f
+devnet-builder logs node0 -f
+
+# Show last N lines
+devnet-builder logs --tail 50
+
+# Logs since specific duration
+devnet-builder logs --since 5m
+```
+
+---
+
+## Exporting Keys
+
+Export validator and account keys for testing:
+
+```bash
+# Human-readable format
+devnet-builder export-keys
+
+# JSON format
+devnet-builder export-keys --format json
+
+# Environment variables (eval-able)
+eval $(devnet-builder export-keys --format env)
+
+# Export only validators
+devnet-builder export-keys --type validators
+
+# Export only accounts
+devnet-builder export-keys --type accounts
+```
+
+---
+
+## Backup and Restore
+
+### Backup Devnet Data
+
+```bash
+# Backup the entire devnet directory
+tar -czvf devnet-backup-$(date +%Y%m%d).tar.gz ~/.stable-devnet/devnet/
+
+# Backup only chain data (smaller)
+tar -czvf chaindata-backup-$(date +%Y%m%d).tar.gz \
+  ~/.stable-devnet/devnet/node*/data/
+```
+
+### Restore from Backup
+
+```bash
+# Stop devnet first
+devnet-builder stop
+
+# Restore backup
+tar -xzvf devnet-backup-20241209.tar.gz -C ~/
+
+# Start devnet
+devnet-builder start
+```
+
+### Backup Snapshot Cache
+
+```bash
+# Snapshot cache location
+ls -la ~/.stable-devnet/snapshots/
+
+# Backup snapshot cache (saves re-download time)
+tar -czvf snapshot-cache.tar.gz ~/.stable-devnet/snapshots/
+```
+
+---
+
+## Environment Variables
+
+Configure defaults via environment variables:
+
+```bash
+# Set default home directory
+export STABLE_DEVNET_HOME=~/.my-devnet
+
+# Set default network
+export STABLE_DEVNET_NETWORK=testnet
+
+# Set default execution mode
+export STABLE_DEVNET_MODE=local
+
+# Set default stable version
+export STABLE_VERSION=v1.2.3
+
+# Disable colored output
+export NO_COLOR=1
+```
+
+---
+
+## Common Workflows
+
+### Development Cycle
+
+```bash
+# 1. Start fresh devnet
+devnet-builder start
+
+# 2. Develop and test your changes
+# ... make code changes ...
+
+# 3. Reset chain data to test again
+devnet-builder reset
+devnet-builder start
+
+# 4. Clean up when done
+devnet-builder clean
+```
+
+### Testing Feature Branch
+
+```bash
+# Build with your feature branch
+devnet-builder build --stable-version feat/my-feature
+
+# Start devnet with that version
+devnet-builder start --stable-version feat/my-feature
+
+# Test your changes
+# ...
+
+# Compare with main
+devnet-builder clean
+devnet-builder start --stable-version main
+```
+
+### Integration Testing
+
+```bash
+# Start devnet
+devnet-builder start
+
+# Export keys for test scripts
+eval $(devnet-builder export-keys --format env)
+
+# Run integration tests
+go test ./tests/integration/...
+
+# Clean up
+devnet-builder clean
+```
+
+### CI/CD Pipeline
+
+```bash
+# Start devnet in JSON mode for parsing
+devnet-builder start --json > devnet-output.json
+
+# Wait for health check
+sleep 30
+devnet-builder status --json | jq -e '.status == "running"'
+
+# Run tests
+./run-tests.sh
+
+# Cleanup
+devnet-builder clean --force
+```
+
+---
+
+## Shell Completion
+
+Enable tab completion for your shell:
+
+### Bash
+
+```bash
+# Add to ~/.bashrc
+source <(devnet-builder completion bash)
+
+# Or install system-wide
+devnet-builder completion bash > /etc/bash_completion.d/devnet-builder
+```
+
+### Zsh
+
+```bash
+# Add to ~/.zshrc
+source <(devnet-builder completion zsh)
+```
+
+### Fish
+
+```bash
+# Add to ~/.config/fish/config.fish
+devnet-builder completion fish | source
 ```
 
 ## Network Configuration
