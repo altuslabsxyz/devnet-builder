@@ -117,20 +117,15 @@ func FetchGenesisFromRPC(ctx context.Context, rpcEndpoint, destPath string, logg
 }
 
 // ExportGenesisFromSnapshot exports genesis state from a snapshot using stabled.
+// It tries Docker first, then local binary, and falls back to using genesis directly.
 func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*GenesisMetadata, error) {
 	logger := opts.Logger
 	if logger == nil {
 		logger = output.DefaultLogger
 	}
 
-	// Check if stabled binary exists
-	stableBinary := opts.StableBinary
-	if stableBinary == "" {
-		stableBinary = "stabled"
-	}
-
-	if _, err := exec.LookPath(stableBinary); err != nil {
-		return nil, fmt.Errorf("stabled binary not found: %w", err)
+	if opts.GenesisPath == "" {
+		return nil, fmt.Errorf("GenesisPath is required for snapshot export")
 	}
 
 	// Create temporary directory for extraction
@@ -146,25 +141,39 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 		return nil, fmt.Errorf("failed to extract snapshot: %w", err)
 	}
 
-	// Find the data directory
-	dataDir := filepath.Join(tmpDir, "data")
-	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
-		// Try without data subdirectory
-		dataDir = tmpDir
+	// Setup export node home directory
+	exportHome := filepath.Join(tmpDir, "export-node")
+	configDir := filepath.Join(exportHome, "config")
+	dataDir := filepath.Join(exportHome, "data")
+
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create config directory: %w", err)
+	}
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
-	// Export genesis using stabled export command
-	exportPath := filepath.Join(tmpDir, "exported_genesis.json")
-	cmd := exec.CommandContext(ctx, stableBinary, "export",
-		"--home", tmpDir,
-		"--output-document", exportPath,
-	)
-	cmd.Env = append(os.Environ(), "HOME="+tmpDir)
+	// Copy source genesis to config directory
+	configGenesis := filepath.Join(configDir, "genesis.json")
+	if err := copyFile(opts.GenesisPath, configGenesis); err != nil {
+		return nil, fmt.Errorf("failed to copy genesis to config: %w", err)
+	}
+	logger.Debug("Copied genesis from %s to %s", opts.GenesisPath, configGenesis)
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		logger.Debug("Export output: %s", string(output))
-		return nil, fmt.Errorf("failed to export genesis: %w", err)
+	// Copy snapshot data to export node
+	snapshotDataDir := filepath.Join(tmpDir, "data")
+	if _, err := os.Stat(snapshotDataDir); err == nil {
+		if err := copyDir(snapshotDataDir, dataDir); err != nil {
+			logger.Debug("Failed to copy snapshot data: %v", err)
+		}
+	}
+
+	// Initialize priv_validator_state.json if not present
+	privValState := filepath.Join(dataDir, "priv_validator_state.json")
+	if _, err := os.Stat(privValState); os.IsNotExist(err) {
+		if err := os.WriteFile(privValState, []byte(`{"height":"0","round":0,"step":0}`), 0644); err != nil {
+			logger.Debug("Failed to create priv_validator_state.json: %v", err)
+		}
 	}
 
 	// Ensure destination directory exists
@@ -172,14 +181,84 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 		return nil, fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
-	// Copy exported genesis to destination
-	if err := copyFile(exportPath, opts.DestPath); err != nil {
-		return nil, fmt.Errorf("failed to copy genesis: %w", err)
+	exportPath := filepath.Join(tmpDir, "exported_genesis.json")
+	exportSuccess := false
+
+	// Try Docker first (uses correct stabled version)
+	if _, err := exec.LookPath("docker"); err == nil {
+		logger.Debug("Trying Docker export...")
+		dockerImage := opts.DockerImage
+		if dockerImage == "" {
+			dockerImage = "ghcr.io/stablelabs/stable:latest"
+		}
+
+		cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
+			"-v", exportHome+":/data",
+			dockerImage,
+			"export", "--home", "/data",
+		)
+
+		cmdOutput, err := cmd.Output()
+		if err == nil && len(cmdOutput) > 0 {
+			// Docker export outputs to stdout
+			if err := os.WriteFile(exportPath, cmdOutput, 0644); err == nil {
+				// Verify it's valid JSON with chain_id
+				var testGenesis struct {
+					ChainID string `json:"chain_id"`
+				}
+				if json.Unmarshal(cmdOutput, &testGenesis) == nil && testGenesis.ChainID != "" {
+					exportSuccess = true
+					logger.Debug("Docker export successful")
+				}
+			}
+		} else {
+			logger.Debug("Docker export failed: %v", err)
+		}
+	}
+
+	// Try local binary if Docker failed
+	if !exportSuccess {
+		stableBinary := opts.StableBinary
+		if stableBinary == "" {
+			stableBinary = "stabled"
+		}
+
+		if _, err := exec.LookPath(stableBinary); err == nil {
+			logger.Debug("Trying local binary export...")
+			cmd := exec.CommandContext(ctx, stableBinary, "export", "--home", exportHome)
+			cmdOutput, err := cmd.Output()
+			if err == nil && len(cmdOutput) > 0 {
+				if err := os.WriteFile(exportPath, cmdOutput, 0644); err == nil {
+					var testGenesis struct {
+						ChainID string `json:"chain_id"`
+					}
+					if json.Unmarshal(cmdOutput, &testGenesis) == nil && testGenesis.ChainID != "" {
+						exportSuccess = true
+						logger.Debug("Local binary export successful")
+					}
+				}
+			} else {
+				logger.Debug("Local binary export failed: %v", err)
+			}
+		}
+	}
+
+	// Fallback: use genesis directly
+	if !exportSuccess {
+		logger.Warn("Export failed, using genesis directly")
+		if err := copyFile(opts.GenesisPath, opts.DestPath); err != nil {
+			return nil, fmt.Errorf("failed to copy genesis: %w", err)
+		}
+	} else {
+		// Copy exported genesis to destination
+		if err := copyFile(exportPath, opts.DestPath); err != nil {
+			return nil, fmt.Errorf("failed to copy exported genesis: %w", err)
+		}
 	}
 
 	// Extract metadata
 	var genesis struct {
-		ChainID      string `json:"chain_id"`
+		ChainID       string `json:"chain_id"`
 		InitialHeight string `json:"initial_height"`
 	}
 	genesisData, err := os.ReadFile(opts.DestPath)
@@ -203,6 +282,33 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 	return metadata, nil
 }
 
+// copyDir copies all files from src directory to dst directory.
+func copyDir(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			if err := os.MkdirAll(dstPath, 0755); err != nil {
+				return err
+			}
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // ExportOptions configures genesis export.
 type ExportOptions struct {
 	SnapshotPath string
@@ -210,6 +316,8 @@ type ExportOptions struct {
 	Network      string
 	Decompressor string
 	StableBinary string
+	DockerImage  string // Docker image for stabled (e.g., ghcr.io/stablelabs/stable:latest)
+	GenesisPath  string // Path to source genesis.json (required for stabled export)
 	Logger       *output.Logger
 }
 

@@ -101,6 +101,13 @@ func Start(ctx context.Context, opts StartOptions) (*Devnet, error) {
 	progress.Stage("Exporting genesis state")
 	genesisPath := filepath.Join(opts.HomeDir, "devnet", "genesis.json")
 
+	// Find bundled genesis file (required for snapshot export)
+	bundledGenesis := GetBundledGenesisPath(opts.Network)
+	if bundledGenesis == "" {
+		return nil, fmt.Errorf("bundled genesis file not found for network %s", opts.Network)
+	}
+	logger.Debug("Using bundled genesis: %s", bundledGenesis)
+
 	// Try to fetch from RPC first (faster)
 	rpcEndpoint := GetRPCEndpoint(opts.Network)
 	genesisMeta, err := snapshot.FetchGenesisFromRPC(ctx, rpcEndpoint, genesisPath, logger)
@@ -112,6 +119,7 @@ func Start(ctx context.Context, opts StartOptions) (*Devnet, error) {
 			DestPath:     genesisPath,
 			Network:      opts.Network,
 			Decompressor: cache.Decompressor,
+			GenesisPath:  bundledGenesis,
 			Logger:       logger,
 		})
 		if err != nil {
