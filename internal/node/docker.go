@@ -21,8 +21,9 @@ const (
 
 // DockerManager manages nodes running in Docker containers.
 type DockerManager struct {
-	Image  string
-	Logger *output.Logger
+	Image      string
+	EVMChainID string
+	Logger     *output.Logger
 }
 
 // NewDockerManager creates a new DockerManager.
@@ -37,6 +38,13 @@ func NewDockerManager(image string, logger *output.Logger) *DockerManager {
 		Image:  image,
 		Logger: logger,
 	}
+}
+
+// NewDockerManagerWithEVMChainID creates a new DockerManager with EVM chain ID.
+func NewDockerManagerWithEVMChainID(image string, evmChainID string, logger *output.Logger) *DockerManager {
+	m := NewDockerManager(image, logger)
+	m.EVMChainID = evmChainID
+	return m
 }
 
 // Start starts a node in a Docker container.
@@ -68,6 +76,11 @@ func (m *DockerManager) Start(ctx context.Context, node *Node, genesisPath strin
 		fmt.Sprintf("--api.enable=true"),
 		fmt.Sprintf("--json-rpc.address=0.0.0.0:%d", node.Ports.EVMRPC),
 		fmt.Sprintf("--json-rpc.ws-address=0.0.0.0:%d", node.Ports.EVMWS),
+	}
+
+	// Add EVM chain ID if set
+	if m.EVMChainID != "" {
+		args = append(args, fmt.Sprintf("--evm.evm-chain-id=%s", m.EVMChainID))
 	}
 
 	m.Logger.Debug("Starting container: docker %s", strings.Join(args, " "))

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -23,8 +24,9 @@ const (
 
 // LocalManager manages nodes running as local processes.
 type LocalManager struct {
-	Binary string
-	Logger *output.Logger
+	Binary     string
+	EVMChainID string
+	Logger     *output.Logger
 }
 
 // NewLocalManager creates a new LocalManager.
@@ -39,6 +41,30 @@ func NewLocalManager(binary string, logger *output.Logger) *LocalManager {
 		Binary: binary,
 		Logger: logger,
 	}
+}
+
+// NewLocalManagerWithEVMChainID creates a new LocalManager with EVM chain ID.
+func NewLocalManagerWithEVMChainID(binary string, evmChainID string, logger *output.Logger) *LocalManager {
+	m := NewLocalManager(binary, logger)
+	m.EVMChainID = evmChainID
+	return m
+}
+
+// ExtractEVMChainID extracts the EVM chain ID from a Cosmos chain ID.
+// For example, "stable_988-1" returns "988".
+func ExtractEVMChainID(chainID string) string {
+	// Format: {name}_{evmChainID}-{version}
+	// Example: stable_988-1 -> 988
+	parts := strings.Split(chainID, "_")
+	if len(parts) < 2 {
+		return ""
+	}
+	evmPart := parts[len(parts)-1] // Get last part after underscore
+	// Remove version suffix (e.g., "-1")
+	if idx := strings.Index(evmPart, "-"); idx > 0 {
+		return evmPart[:idx]
+	}
+	return evmPart
 }
 
 // Start starts a node as a local process.
@@ -72,10 +98,15 @@ func (m *LocalManager) Start(ctx context.Context, node *Node, genesisPath string
 		fmt.Sprintf("--rpc.laddr=tcp://0.0.0.0:%d", node.Ports.RPC),
 		fmt.Sprintf("--p2p.laddr=tcp://0.0.0.0:%d", node.Ports.P2P),
 		fmt.Sprintf("--grpc.address=0.0.0.0:%d", node.Ports.GRPC),
-		fmt.Sprintf("--api.enabled-unsafe-cors=true"),
-		fmt.Sprintf("--api.enable=true"),
+		"--api.enabled-unsafe-cors=true",
+		"--api.enable=true",
 		fmt.Sprintf("--json-rpc.address=0.0.0.0:%d", node.Ports.EVMRPC),
 		fmt.Sprintf("--json-rpc.ws-address=0.0.0.0:%d", node.Ports.EVMWS),
+	}
+
+	// Add EVM chain ID if set
+	if m.EVMChainID != "" {
+		args = append(args, fmt.Sprintf("--evm.evm-chain-id=%s", m.EVMChainID))
 	}
 
 	m.Logger.Debug("Starting local process: %s %v", binaryPath, args)

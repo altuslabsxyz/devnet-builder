@@ -16,13 +16,15 @@ const (
 	MinVotingPeriod = 30 * time.Second
 
 	// DefaultHeightBuffer is the default number of blocks to add after voting.
-	DefaultHeightBuffer = 10
+	// This needs to account for: proposal submission time, voting time, and safety margin
+	DefaultHeightBuffer = 30
 
 	// MinHeightBuffer is the minimum allowed height buffer.
-	MinHeightBuffer = 5
+	MinHeightBuffer = 10
 
-	// DefaultDepositAmount is the deposit amount in astable (50001 STABLE).
-	DefaultDepositAmount = "50000000000000000000001"
+	// DefaultDepositAmount is the deposit amount in astable (50002 STABLE).
+	// Must be >= expedited_min_deposit (50001 STABLE = 50001000000000000000000 astable)
+	DefaultDepositAmount = "50002000000000000000000"
 
 	// DefaultDepositDenom is the denomination for deposit.
 	DefaultDepositDenom = "astable"

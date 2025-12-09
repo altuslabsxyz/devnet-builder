@@ -271,12 +271,14 @@ func (d *Devnet) StartNodes(ctx context.Context, genesisPath string) error {
 
 // startNode starts a single node.
 func (d *Devnet) startNode(ctx context.Context, n *node.Node, genesisPath string) error {
+	evmChainID := node.ExtractEVMChainID(d.Metadata.ChainID)
+
 	switch d.Metadata.ExecutionMode {
 	case ModeDocker:
-		manager := node.NewDockerManager(provision.GetDockerImage(d.Metadata.StableVersion), d.Logger)
+		manager := node.NewDockerManagerWithEVMChainID(provision.GetDockerImage(d.Metadata.StableVersion), evmChainID, d.Logger)
 		return manager.Start(ctx, n, genesisPath)
 	case ModeLocal:
-		manager := node.NewLocalManager("", d.Logger)
+		manager := node.NewLocalManagerWithEVMChainID("", evmChainID, d.Logger)
 		return manager.Start(ctx, n, genesisPath)
 	default:
 		return fmt.Errorf("unknown execution mode: %s", d.Metadata.ExecutionMode)

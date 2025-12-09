@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"net/http"
 	"strings"
 	"time"
 
@@ -156,9 +157,16 @@ func SubmitProposal(ctx context.Context, opts *ProposalOptions) (*UpgradeProposa
 	// Parse proposal ID from logs
 	proposalID, err := parseProposalIDFromLogs(receipt.Logs)
 	if err != nil {
-		logger.Warn("Could not parse proposal ID from logs: %v", err)
-		// Use a placeholder - the proposal was submitted
-		proposalID = 1
+		logger.Debug("Could not parse proposal ID from logs: %v, querying REST API", err)
+		// Fallback: query REST API for latest proposal ID
+		// Derive REST URL from EVM RPC URL (assuming port 1317 for REST)
+		restURL := "http://localhost:1317"
+		proposalID, err = GetLatestProposalID(restURL)
+		if err != nil {
+			logger.Warn("Could not get proposal ID from REST API: %v", err)
+			// Use a placeholder - the proposal was submitted
+			proposalID = 1
+		}
 	}
 
 	return &UpgradeProposal{
@@ -267,15 +275,61 @@ func waitForReceipt(ctx context.Context, client *ethclient.Client, txHash common
 }
 
 func parseProposalIDFromLogs(logs []*types.Log) (uint64, error) {
-	// The governance precompile emits a ProposalSubmitted event
-	// For now, we'll return a placeholder and rely on chain state
-	if len(logs) > 0 {
-		// Try to parse from first log topic
-		if len(logs[0].Topics) > 1 {
-			return logs[0].Topics[1].Big().Uint64(), nil
+	// The governance precompile emits a SubmitProposal event with proposal ID
+	// Event signature: SubmitProposal(address indexed proposer, uint64 proposalId)
+	submitProposalEventSig := crypto.Keccak256Hash([]byte("SubmitProposal(address,uint64)"))
+
+	for _, log := range logs {
+		if len(log.Topics) > 0 && log.Topics[0] == submitProposalEventSig {
+			// The proposal ID is in the event data (not indexed)
+			if len(log.Data) >= 32 {
+				proposalID := new(big.Int).SetBytes(log.Data[:32]).Uint64()
+				return proposalID, nil
+			}
 		}
 	}
+
+	// Fallback: check if proposal ID is in any topic
+	for _, log := range logs {
+		if len(log.Topics) > 1 {
+			// Second topic might be proposal ID
+			proposalID := log.Topics[1].Big().Uint64()
+			// Sanity check - proposal IDs should be small numbers
+			if proposalID > 0 && proposalID < 1000000 {
+				return proposalID, nil
+			}
+		}
+	}
+
 	return 0, fmt.Errorf("no proposal ID in logs")
+}
+
+// GetLatestProposalID queries the REST API to get the latest proposal ID
+func GetLatestProposalID(restURL string) (uint64, error) {
+	// Query /cosmos/gov/v1/proposals endpoint
+	resp, err := http.Get(restURL + "/cosmos/gov/v1/proposals?pagination.reverse=true&pagination.limit=1")
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Proposals []struct {
+			ID string `json:"id"`
+		} `json:"proposals"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, err
+	}
+
+	if len(result.Proposals) == 0 {
+		return 0, fmt.Errorf("no proposals found")
+	}
+
+	id := new(big.Int)
+	id.SetString(result.Proposals[0].ID, 10)
+	return id.Uint64(), nil
 }
 
 // CheckBalance checks if the account has sufficient balance for the deposit.

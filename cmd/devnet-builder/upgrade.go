@@ -64,7 +64,7 @@ Examples:
 
 	// Optional flags
 	cmd.Flags().StringVar(&votingPeriod, "voting-period", "60s", "Expedited voting period duration")
-	cmd.Flags().IntVar(&heightBuffer, "height-buffer", 10, "Blocks to add after voting period ends")
+	cmd.Flags().IntVar(&heightBuffer, "height-buffer", upgrade.DefaultHeightBuffer, "Blocks to add after voting period ends")
 	cmd.Flags().Int64Var(&upgradeHeight, "upgrade-height", 0, "Explicit upgrade height (0 = auto-calculate)")
 	cmd.Flags().BoolVar(&exportGenesis, "export-genesis", false, "Export genesis before and after upgrade")
 	cmd.Flags().StringVar(&genesisDir, "genesis-dir", "", "Directory for genesis exports (default: <home>/devnet/genesis-snapshots)")

@@ -448,15 +448,19 @@ func (g *DevnetGenerator) updateBankBalances(appState map[string]json.RawMessage
 		"notBondedPool", originalNotBondedPoolAstable.String())
 
 	// Find the largest astable holder (excluding module accounts) to use as funding source
-	fundingAddr, fundingAstable, fundingAgusdt := g.findLargestHolder(balanceMap)
+	fundingAddr, fundingAstable, _ := g.findLargestHolder(balanceMap)
 	if fundingAddr == "" {
 		return fmt.Errorf("no suitable funding address found in genesis")
 	}
 
-	g.logger.Info("Found funding address",
-		"fundingAddr", fundingAddr,
+	// Find the largest agusdt holder separately (may be different from astable holder)
+	gasFundingAddr, gasFundingAgusdt := g.findLargestGasHolder(balanceMap)
+
+	g.logger.Info("Found funding addresses",
+		"astableFundingAddr", fundingAddr,
 		"fundingAstable", fundingAstable.String(),
-		"fundingAgusdt", fundingAgusdt.String())
+		"agusdtFundingAddr", gasFundingAddr,
+		"fundingAgusdt", gasFundingAgusdt.String())
 
 	// Calculate total needed for new validators and accounts
 	totalNeededAstable := math.ZeroInt()
@@ -483,7 +487,8 @@ func (g *DevnetGenerator) updateBankBalances(appState map[string]json.RawMessage
 	g.logger.Info("Funding requirements",
 		"neededAstable", totalNeededAstable.String(),
 		"neededAgusdt", totalNeededAgusdt.String(),
-		"totalAvailableAstable", totalAvailableAstable.String())
+		"totalAvailableAstable", totalAvailableAstable.String(),
+		"totalAvailableAgusdt", gasFundingAgusdt.String())
 
 	// Adjust balances if funding source doesn't have enough
 	// We'll scale down the distribution proportionally
@@ -500,8 +505,9 @@ func (g *DevnetGenerator) updateBankBalances(appState map[string]json.RawMessage
 			"ratio", astableRatio.String())
 	}
 
-	if totalNeededAgusdt.IsPositive() && fundingAgusdt.LT(totalNeededAgusdt) {
-		availableAgusdt := fundingAgusdt.MulRaw(90).QuoRaw(100)
+	if totalNeededAgusdt.IsPositive() && gasFundingAgusdt.LT(totalNeededAgusdt) {
+		// Use 90% of available balance to leave some for the gas funding address
+		availableAgusdt := gasFundingAgusdt.MulRaw(90).QuoRaw(100)
 		agusdtRatio = math.LegacyNewDecFromInt(availableAgusdt).Quo(math.LegacyNewDecFromInt(totalNeededAgusdt))
 		g.logger.Warn("Insufficient agusdt, scaling down distribution",
 			"available", availableAgusdt.String(),
@@ -516,7 +522,7 @@ func (g *DevnetGenerator) updateBankBalances(appState map[string]json.RawMessage
 	scaledAccountAgusdt := math.LegacyNewDecFromInt(g.config.AccountBalance.AmountOf(appcfg.GasAttoDenom)).Mul(agusdtRatio).TruncateInt()
 	scaledStake := math.LegacyNewDecFromInt(g.config.ValidatorStake).Mul(astableRatio).TruncateInt()
 
-	// Recalculate actual deduction from funding address
+	// Recalculate actual deduction from funding addresses
 	actualDeductAstable := math.ZeroInt()
 	actualDeductAgusdt := math.ZeroInt()
 
@@ -533,20 +539,23 @@ func (g *DevnetGenerator) updateBankBalances(appState map[string]json.RawMessage
 		actualDeductAgusdt = actualDeductAgusdt.Add(scaledAccountAgusdt)
 	}
 
-	// Deduct from FundingAddr
+	// Deduct astable from astable funding address
 	// We add back the original pool balances since we're replacing them
 	// This ensures total supply remains unchanged:
 	// newFunding = originalFunding - deducted + originalBondedPool + originalNotBondedPool
 	newFundingAstable := fundingAstable.Sub(actualDeductAstable).Add(originalBondedPoolAstable).Add(originalNotBondedPoolAstable)
-	newFundingAgusdt := fundingAgusdt.Sub(actualDeductAgusdt)
 
-	// Update FundingAddr balance
+	// Update astable funding address balance (keep existing agusdt if any)
+	existingFundingAgusdt := math.ZeroInt()
+	if existing, ok := balanceMap[fundingAddr]; ok {
+		existingFundingAgusdt = existing.Coins.AmountOf(appcfg.GasAttoDenom)
+	}
 	newFundingCoins := sdk.NewCoins()
 	if newFundingAstable.IsPositive() {
 		newFundingCoins = newFundingCoins.Add(sdk.NewCoin(appcfg.GovAttoDenom, newFundingAstable))
 	}
-	if newFundingAgusdt.IsPositive() {
-		newFundingCoins = newFundingCoins.Add(sdk.NewCoin(appcfg.GasAttoDenom, newFundingAgusdt))
+	if existingFundingAgusdt.IsPositive() {
+		newFundingCoins = newFundingCoins.Add(sdk.NewCoin(appcfg.GasAttoDenom, existingFundingAgusdt))
 	}
 	if len(newFundingCoins) > 0 {
 		balanceMap[fundingAddr] = banktypes.Balance{
@@ -555,6 +564,34 @@ func (g *DevnetGenerator) updateBankBalances(appState map[string]json.RawMessage
 		}
 	} else {
 		delete(balanceMap, fundingAddr)
+	}
+
+	// Deduct agusdt from gas funding address (may be same as astable funding address)
+	if gasFundingAddr != "" && actualDeductAgusdt.IsPositive() {
+		newGasFundingAgusdt := gasFundingAgusdt.Sub(actualDeductAgusdt)
+
+		// Get existing balance for gas funding address
+		existingGasFundingBalance := balanceMap[gasFundingAddr]
+		newGasFundingCoins := sdk.NewCoins()
+
+		// Keep existing astable balance
+		existingGasFundingAstable := existingGasFundingBalance.Coins.AmountOf(appcfg.GovAttoDenom)
+		if existingGasFundingAstable.IsPositive() {
+			newGasFundingCoins = newGasFundingCoins.Add(sdk.NewCoin(appcfg.GovAttoDenom, existingGasFundingAstable))
+		}
+		// Update agusdt balance
+		if newGasFundingAgusdt.IsPositive() {
+			newGasFundingCoins = newGasFundingCoins.Add(sdk.NewCoin(appcfg.GasAttoDenom, newGasFundingAgusdt))
+		}
+
+		if len(newGasFundingCoins) > 0 {
+			balanceMap[gasFundingAddr] = banktypes.Balance{
+				Address: gasFundingAddr,
+				Coins:   newGasFundingCoins,
+			}
+		} else {
+			delete(balanceMap, gasFundingAddr)
+		}
 	}
 
 	// Add bonded pool module account balance (reuse bondedPoolAddr from earlier)
@@ -660,6 +697,41 @@ func (g *DevnetGenerator) findLargestHolder(balanceMap map[string]banktypes.Bala
 	}
 
 	return largestAddr, largestAstable, largestAgusdt
+}
+
+// findLargestGasHolder finds the address with the largest agusdt balance (excluding module accounts)
+func (g *DevnetGenerator) findLargestGasHolder(balanceMap map[string]banktypes.Balance) (string, math.Int) {
+	var largestAddr string
+	largestAgusdt := math.ZeroInt()
+
+	// Module account prefixes to exclude
+	moduleAddrs := []sdk.AccAddress{
+		authtypes.NewModuleAddress(stakingtypes.BondedPoolName),
+		authtypes.NewModuleAddress(stakingtypes.NotBondedPoolName),
+		authtypes.NewModuleAddress("distribution"),
+		authtypes.NewModuleAddress("gov"),
+		authtypes.NewModuleAddress("fee_collector"),
+	}
+
+	moduleAddrMap := make(map[string]bool)
+	for _, addr := range moduleAddrs {
+		moduleAddrMap[addr.String()] = true
+	}
+
+	for addr, balance := range balanceMap {
+		// Skip module accounts
+		if moduleAddrMap[addr] {
+			continue
+		}
+
+		agusdtAmount := balance.Coins.AmountOf(appcfg.GasAttoDenom)
+		if agusdtAmount.GT(largestAgusdt) {
+			largestAddr = addr
+			largestAgusdt = agusdtAmount
+		}
+	}
+
+	return largestAddr, largestAgusdt
 }
 
 func (g *DevnetGenerator) updateStakingState(appState map[string]json.RawMessage) error {

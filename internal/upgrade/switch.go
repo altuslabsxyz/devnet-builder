@@ -238,6 +238,20 @@ func startLocalNodes(ctx context.Context, opts *SwitchOptions) error {
 		logger = output.DefaultLogger
 	}
 
+	// Extract EVM chain ID from cosmos chain ID (e.g., "stable_988-1" -> "988")
+	evmChainID := ""
+	if opts.Metadata != nil && opts.Metadata.ChainID != "" {
+		parts := strings.Split(opts.Metadata.ChainID, "_")
+		if len(parts) >= 2 {
+			evmPart := parts[len(parts)-1]
+			if idx := strings.Index(evmPart, "-"); idx > 0 {
+				evmChainID = evmPart[:idx]
+			} else {
+				evmChainID = evmPart
+			}
+		}
+	}
+
 	// Start each node
 	for i := 0; i < opts.Metadata.NumValidators; i++ {
 		nodeDir := filepath.Join(devnetDir, fmt.Sprintf("node%d", i))
@@ -248,29 +262,69 @@ func startLocalNodes(ctx context.Context, opts *SwitchOptions) error {
 			binary = "stabled"
 		}
 
-		// Calculate ports
-		baseRPCPort := 26657 + (i * 10000)
-		baseP2PPort := 26656 + (i * 10000)
+		// Calculate ports (matching nodeconfig.GetPortConfigForNode)
+		offset := i * 10000
+		rpcPort := 26657 + offset
+		p2pPort := 26656 + offset
+		grpcPort := 9090 + offset
+		evmRPCPort := 8545 + offset
+		evmWSPort := 8546 + offset
 
 		// Wait for RPC port to be free before starting
-		logger.Debug("Waiting for node%d port %d to be free...", i, baseRPCPort)
-		if err := waitForPortFree(ctx, baseRPCPort, 15*time.Second); err != nil {
-			return fmt.Errorf("port %d still in use for node%d: %w", baseRPCPort, i, err)
+		logger.Debug("Waiting for node%d port %d to be free...", i, rpcPort)
+		if err := waitForPortFree(ctx, rpcPort, 15*time.Second); err != nil {
+			return fmt.Errorf("port %d still in use for node%d: %w", rpcPort, i, err)
 		}
 
-		// Start node
-		cmd := exec.Command(binary, "start",
+		// Open log file for this node
+		logPath := filepath.Join(nodeDir, "stabled.log")
+		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			return fmt.Errorf("failed to open log file for node%d: %w", i, err)
+		}
+
+		// Build start command with all necessary flags
+		args := []string{
+			"start",
 			"--home", nodeDir,
-			"--rpc.laddr", fmt.Sprintf("tcp://0.0.0.0:%d", baseRPCPort),
-			"--p2p.laddr", fmt.Sprintf("tcp://0.0.0.0:%d", baseP2PPort),
-		)
+			fmt.Sprintf("--rpc.laddr=tcp://0.0.0.0:%d", rpcPort),
+			fmt.Sprintf("--p2p.laddr=tcp://0.0.0.0:%d", p2pPort),
+			fmt.Sprintf("--grpc.address=0.0.0.0:%d", grpcPort),
+			"--api.enabled-unsafe-cors=true",
+			"--api.enable=true",
+			fmt.Sprintf("--json-rpc.address=0.0.0.0:%d", evmRPCPort),
+			fmt.Sprintf("--json-rpc.ws-address=0.0.0.0:%d", evmWSPort),
+		}
+
+		// Add EVM chain ID if available
+		if evmChainID != "" {
+			args = append(args, fmt.Sprintf("--evm.evm-chain-id=%s", evmChainID))
+		}
+
+		cmd := exec.Command(binary, args...)
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
+		cmd.Dir = nodeDir
 
 		// Run in background
 		if err := cmd.Start(); err != nil {
+			logFile.Close()
 			return fmt.Errorf("failed to start node%d: %w", i, err)
 		}
 
+		// Write PID file
+		pidPath := filepath.Join(nodeDir, "stabled.pid")
+		if err := os.WriteFile(pidPath, []byte(fmt.Sprintf("%d", cmd.Process.Pid)), 0644); err != nil {
+			logger.Debug("Warning: failed to write PID file for node%d: %v", i, err)
+		}
+
 		logger.Debug("Started node%d (pid=%d)", i, cmd.Process.Pid)
+
+		// Don't wait for the process - let it run in background
+		go func(lf *os.File) {
+			cmd.Wait()
+			lf.Close()
+		}(logFile)
 
 		// Small delay between node starts to avoid race conditions
 		time.Sleep(500 * time.Millisecond)

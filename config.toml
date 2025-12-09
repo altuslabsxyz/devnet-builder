@@ -1,0 +1,49 @@
+# devnet-builder configuration file
+# Priority: default < config.toml < environment < CLI flag
+#
+# Place this file at:
+#   - ./config.toml (current directory - highest priority)
+#   - ~/.stable-devnet/config.toml (home directory - fallback)
+# Or specify with: --config /path/to/config.toml
+
+# =============================================================================
+# Global Settings (apply to all commands)
+# =============================================================================
+
+# Base directory for devnet data
+# home = "~/.stable-devnet"
+
+# Enable verbose logging
+# verbose = false
+
+# Output in JSON format
+# json = false
+
+# Disable colored output
+# no_color = false
+
+# =============================================================================
+# Start Command Settings
+# =============================================================================
+
+# Network source for snapshot data
+# Valid values: "mainnet", "testnet"
+# network = "mainnet"
+
+# Number of validators to create
+# Valid values: 1-4
+# validators = 4
+
+# Execution mode
+# Valid values: "docker", "local"
+mode = "local"
+
+# Stable repository version for building
+stable_version = "feat/usdt0-gas"
+
+# Skip snapshot cache (force re-download)
+# no_cache = false
+
+# Additional funded accounts to create
+# Valid values: 0-100
+# accounts = 0
