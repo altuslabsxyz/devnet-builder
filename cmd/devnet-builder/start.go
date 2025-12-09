@@ -90,7 +90,31 @@ func runStart(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
-	// Apply environment variable defaults
+	// Apply config.toml values (priority: default < config.toml < env < flag)
+	fileCfg := GetLoadedFileConfig()
+	if fileCfg != nil {
+		// Apply config file values if flags not explicitly set
+		if !cmd.Flags().Changed("network") && fileCfg.Network != nil {
+			startNetwork = *fileCfg.Network
+		}
+		if !cmd.Flags().Changed("validators") && fileCfg.Validators != nil {
+			startValidators = *fileCfg.Validators
+		}
+		if !cmd.Flags().Changed("mode") && fileCfg.Mode != nil {
+			startMode = *fileCfg.Mode
+		}
+		if !cmd.Flags().Changed("stable-version") && fileCfg.StableVersion != nil {
+			startStableVersion = *fileCfg.StableVersion
+		}
+		if !cmd.Flags().Changed("no-cache") && fileCfg.NoCache != nil {
+			startNoCache = *fileCfg.NoCache
+		}
+		if !cmd.Flags().Changed("accounts") && fileCfg.Accounts != nil {
+			startAccounts = *fileCfg.Accounts
+		}
+	}
+
+	// Apply environment variable defaults (override config.toml, but not explicit flags)
 	if network := os.Getenv("STABLE_DEVNET_NETWORK"); network != "" && !cmd.Flags().Changed("network") {
 		startNetwork = network
 	}
