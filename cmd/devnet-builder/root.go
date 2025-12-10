@@ -127,6 +127,8 @@ Examples:
 	// Add subcommands
 	cmd.AddCommand(
 		NewBuildCmd(),
+		NewProvisionCmd(),
+		NewRunCmd(),
 		NewStartCmd(),
 		NewStopCmd(),
 		NewRestartCmd(),
@@ -134,6 +136,7 @@ Examples:
 		NewCleanCmd(),
 		NewStatusCmd(),
 		NewLogsCmd(),
+		NewNodeCmd(),
 		NewExportKeysCmd(),
 		NewVersionCmd(),
 		NewCompletionCmd(),
