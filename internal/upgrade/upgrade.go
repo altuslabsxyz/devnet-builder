@@ -185,6 +185,8 @@ func ExecuteUpgrade(ctx context.Context, cfg *UpgradeConfig, opts *ExecuteOption
 		Mode:         opts.Metadata.ExecutionMode,
 		TargetImage:  cfg.TargetImage,
 		TargetBinary: cfg.TargetBinary,
+		CachePath:    cfg.CachePath,
+		CommitHash:   cfg.CommitHash,
 		HomeDir:      opts.HomeDir,
 		Metadata:     opts.Metadata,
 		Logger:       logger,

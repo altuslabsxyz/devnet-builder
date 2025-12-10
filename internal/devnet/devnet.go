@@ -9,6 +9,7 @@ import (
 
 	"cosmossdk.io/log"
 
+	"github.com/stablelabs/stable-devnet/internal/cache"
 	"github.com/stablelabs/stable-devnet/internal/generator"
 	"github.com/stablelabs/stable-devnet/internal/node"
 	"github.com/stablelabs/stable-devnet/internal/nodeconfig"
@@ -284,16 +285,31 @@ func (d *Devnet) startNode(ctx context.Context, n *node.Node, genesisPath string
 		manager := node.NewDockerManagerWithEVMChainID(provision.GetDockerImage(d.Metadata.StableVersion), evmChainID, d.Logger)
 		return manager.Start(ctx, n, genesisPath)
 	case ModeLocal:
-		// Use custom binary path if available (built from custom ref)
-		binary := ""
-		if d.Metadata.CustomBinaryPath != "" {
-			binary = d.Metadata.CustomBinaryPath
-		}
+		// Determine binary path
+		binary := d.resolveBinaryPath()
 		manager := node.NewLocalManagerWithEVMChainID(binary, evmChainID, d.Logger)
 		return manager.Start(ctx, n, genesisPath)
 	default:
 		return fmt.Errorf("unknown execution mode: %s", d.Metadata.ExecutionMode)
 	}
+}
+
+// resolveBinaryPath determines the binary path to use for local mode.
+// Priority: symlink path (if exists) > custom binary path > default "stabled"
+func (d *Devnet) resolveBinaryPath() string {
+	// Check if symlink exists
+	symlinkMgr := cache.NewSymlinkManager(d.Metadata.HomeDir)
+	if symlinkMgr.IsSymlink() {
+		return symlinkMgr.SymlinkPath()
+	}
+
+	// Check if there's a custom binary path set
+	if d.Metadata.CustomBinaryPath != "" {
+		return d.Metadata.CustomBinaryPath
+	}
+
+	// Fall back to default
+	return ""
 }
 
 // Stop stops all nodes in the devnet.
