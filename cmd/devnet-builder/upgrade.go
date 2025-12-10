@@ -11,21 +11,26 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+	"github.com/stablelabs/stable-devnet/internal/builder"
 	"github.com/stablelabs/stable-devnet/internal/devnet"
+	"github.com/stablelabs/stable-devnet/internal/github"
+	"github.com/stablelabs/stable-devnet/internal/interactive"
 	"github.com/stablelabs/stable-devnet/internal/output"
 	"github.com/stablelabs/stable-devnet/internal/upgrade"
 )
 
 // Upgrade command flags
 var (
-	upgradeName   string
-	upgradeImage  string
-	upgradeBinary string
-	votingPeriod  string
-	heightBuffer  int
-	upgradeHeight int64
-	exportGenesis bool
-	genesisDir    string
+	upgradeName        string
+	upgradeImage       string
+	upgradeBinary      string
+	votingPeriod       string
+	heightBuffer       int
+	upgradeHeight      int64
+	exportGenesis      bool
+	genesisDir         string
+	upgradeNoInteractive bool
+	upgradeVersion     string
 )
 
 // NewUpgradeCmd creates the upgrade command.
@@ -53,14 +58,24 @@ Examples:
   devnet-builder upgrade --name v2.0.0-upgrade --image ghcr.io/stablelabs/stable:v2.0.0 --voting-period 120s
 
   # Upgrade and export genesis snapshots
-  devnet-builder upgrade --name v2.0.0-upgrade --image ghcr.io/stablelabs/stable:v2.0.0 --export-genesis`,
+  devnet-builder upgrade --name v2.0.0-upgrade --image ghcr.io/stablelabs/stable:v2.0.0 --export-genesis
+
+  # Interactive mode (default) - select version interactively
+  devnet-builder upgrade
+
+  # Non-interactive mode with explicit version
+  devnet-builder upgrade --no-interactive --name v2.0.0-upgrade --version v2.0.0`,
 		RunE: runUpgrade,
 	}
 
-	// Required flags
-	cmd.Flags().StringVarP(&upgradeName, "name", "n", "", "Upgrade handler name (required)")
+	// Version selection flags
+	cmd.Flags().StringVarP(&upgradeName, "name", "n", "", "Upgrade handler name")
 	cmd.Flags().StringVarP(&upgradeImage, "image", "i", "", "Target Docker image for upgrade")
 	cmd.Flags().StringVarP(&upgradeBinary, "binary", "b", "", "Target local binary path for upgrade")
+	cmd.Flags().StringVar(&upgradeVersion, "version", "", "Target version (tag or branch/commit for building)")
+
+	// Interactive mode flags
+	cmd.Flags().BoolVar(&upgradeNoInteractive, "no-interactive", false, "Disable interactive mode")
 
 	// Optional flags
 	cmd.Flags().StringVar(&votingPeriod, "voting-period", "60s", "Expedited voting period duration")
@@ -68,9 +83,6 @@ Examples:
 	cmd.Flags().Int64Var(&upgradeHeight, "upgrade-height", 0, "Explicit upgrade height (0 = auto-calculate)")
 	cmd.Flags().BoolVar(&exportGenesis, "export-genesis", false, "Export genesis before and after upgrade")
 	cmd.Flags().StringVar(&genesisDir, "genesis-dir", "", "Directory for genesis exports (default: <home>/devnet/genesis-snapshots)")
-
-	// Mark name as required
-	cmd.MarkFlagRequired("name")
 
 	return cmd
 }
@@ -110,15 +122,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 
 	logger := output.DefaultLogger
 
-	// Validate that either image or binary is provided
-	if upgradeImage == "" && upgradeBinary == "" {
-		return fmt.Errorf("either --image or --binary must be provided")
-	}
-	if upgradeImage != "" && upgradeBinary != "" {
-		return fmt.Errorf("cannot specify both --image and --binary")
-	}
-
-	// Check if devnet exists and is running
+	// Check if devnet exists and is running first
 	if !devnet.DevnetExists(homeDir) {
 		if jsonMode {
 			return outputUpgradeError(fmt.Errorf("no devnet found"))
@@ -142,17 +146,81 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("devnet is not running\nStart it with 'devnet-builder start'")
 	}
 
+	// Track if version is a custom ref (needs building)
+	var isCustomRef bool
+	var selectedVersion string
+	var selectedName string
+
+	// Interactive mode: run selection flow if not disabled
+	if !upgradeNoInteractive && !jsonMode && upgradeImage == "" && upgradeBinary == "" {
+		selection, err := runUpgradeInteractiveSelection(ctx, cmd)
+		if err != nil {
+			if interactive.IsCancellation(err) {
+				fmt.Println("Operation cancelled.")
+				return nil
+			}
+			return err
+		}
+		selectedName = selection.UpgradeName
+		selectedVersion = selection.UpgradeVersion
+		isCustomRef = selection.IsCustomRef
+	} else {
+		// Non-interactive mode
+		selectedName = upgradeName
+		selectedVersion = upgradeVersion
+		// Determine if it's a custom ref (not a standard version tag)
+		if selectedVersion != "" && upgradeImage == "" && upgradeBinary == "" {
+			isCustomRef = !isStandardVersionTag(selectedVersion)
+		}
+	}
+
+	// Validate that we have either image, binary, or version to build
+	if upgradeImage == "" && upgradeBinary == "" && selectedVersion == "" {
+		return fmt.Errorf("either --image, --binary, or --version must be provided (or use interactive mode)")
+	}
+	if upgradeImage != "" && upgradeBinary != "" {
+		return fmt.Errorf("cannot specify both --image and --binary")
+	}
+
+	// Validate that name is provided
+	if selectedName == "" {
+		return fmt.Errorf("upgrade name is required (--name or interactive mode)")
+	}
+
+	// Build from source if version is a custom ref
+	var customBinaryPath string
+	if isCustomRef && selectedVersion != "" && upgradeImage == "" && upgradeBinary == "" {
+		b := builder.NewBuilder(homeDir, logger)
+		logger.Info("Building upgrade binary from source (ref: %s)...", selectedVersion)
+		result, err := b.Build(ctx, builder.BuildOptions{
+			Ref:     selectedVersion,
+			Network: metadata.NetworkSource,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to build from source: %w", err)
+		}
+		customBinaryPath = result.BinaryPath
+		logger.Success("Binary built: %s (commit: %s)", result.BinaryPath, result.CommitHash)
+	}
+
 	// Parse voting period
 	vp, err := time.ParseDuration(votingPeriod)
 	if err != nil {
 		return fmt.Errorf("invalid voting period: %w", err)
 	}
 
+	// Determine target binary/image
+	targetBinary := upgradeBinary
+	targetImage := upgradeImage
+	if customBinaryPath != "" {
+		targetBinary = customBinaryPath
+	}
+
 	// Build upgrade config
 	cfg := &upgrade.UpgradeConfig{
-		Name:          upgradeName,
-		TargetImage:   upgradeImage,
-		TargetBinary:  upgradeBinary,
+		Name:          selectedName,
+		TargetImage:   targetImage,
+		TargetBinary:  targetBinary,
 		VotingPeriod:  vp,
 		HeightBuffer:  heightBuffer,
 		UpgradeHeight: upgradeHeight,
@@ -201,6 +269,46 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		return outputUpgradeJSON(result)
 	}
 	return outputUpgradeText(result)
+}
+
+// runUpgradeInteractiveSelection runs the interactive version selection flow for upgrade.
+func runUpgradeInteractiveSelection(ctx context.Context, cmd *cobra.Command) (*interactive.UpgradeSelectionConfig, error) {
+	// Get config for cache settings
+	fileCfg := GetLoadedFileConfig()
+
+	// Set up cache manager
+	cacheTTL := github.DefaultCacheTTL
+	if fileCfg != nil && fileCfg.CacheTTL != nil {
+		if ttl, err := time.ParseDuration(*fileCfg.CacheTTL); err == nil {
+			cacheTTL = ttl
+		}
+	}
+	cacheManager := github.NewCacheManager(homeDir, cacheTTL)
+
+	// Set up GitHub client with cache and optional token
+	clientOpts := []github.ClientOption{
+		github.WithCache(cacheManager),
+	}
+	if fileCfg != nil && fileCfg.GitHubToken != nil && *fileCfg.GitHubToken != "" {
+		clientOpts = append(clientOpts, github.WithToken(*fileCfg.GitHubToken))
+	}
+	client := github.NewClient(clientOpts...)
+
+	// Run selection flow
+	selector := interactive.NewSelector(client)
+	return selector.RunUpgradeSelectionFlow(ctx)
+}
+
+// isStandardVersionTag checks if a string looks like a standard version tag (e.g., v1.2.3).
+func isStandardVersionTag(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	// Standard version tags start with 'v' followed by a digit
+	if s[0] == 'v' && len(s) > 1 && s[1] >= '0' && s[1] <= '9' {
+		return true
+	}
+	return false
 }
 
 func printUpgradePlan(cfg *upgrade.UpgradeConfig, metadata *devnet.DevnetMetadata) {

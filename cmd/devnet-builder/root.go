@@ -139,6 +139,7 @@ Examples:
 		NewCompletionCmd(),
 		NewConfigCmd(),
 		NewUpgradeCmd(),
+		NewVersionsCmd(),
 	)
 
 	return cmd

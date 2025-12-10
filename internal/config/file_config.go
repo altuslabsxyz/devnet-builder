@@ -16,6 +16,10 @@ type FileConfig struct {
 	StableVersion *string `toml:"stable_version"`
 	NoCache       *bool   `toml:"no_cache"`
 	Accounts      *int    `toml:"accounts"`
+
+	// GitHub API settings
+	GitHubToken *string `toml:"github_token"` // GHP token for private repos
+	CacheTTL    *string `toml:"cache_ttl"`    // Cache TTL (default: "1h")
 }
 
 // IsEmpty returns true if no configuration values are set.
@@ -29,5 +33,7 @@ func (f *FileConfig) IsEmpty() bool {
 		f.Mode == nil &&
 		f.StableVersion == nil &&
 		f.NoCache == nil &&
-		f.Accounts == nil
+		f.Accounts == nil &&
+		f.GitHubToken == nil &&
+		f.CacheTTL == nil
 }

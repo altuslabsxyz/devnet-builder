@@ -52,6 +52,8 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(tw, "stable_version\t%s\t%s\n", cfg.StableVersion.Value, cfg.StableVersion.Source)
 	fmt.Fprintf(tw, "no_cache\t%t\t%s\n", cfg.NoCache.Value, cfg.NoCache.Source)
 	fmt.Fprintf(tw, "accounts\t%d\t%s\n", cfg.Accounts.Value, cfg.Accounts.Source)
+	fmt.Fprintf(tw, "github_token\t%s\t%s\n", maskConfigToken(cfg.GitHubToken.Value), cfg.GitHubToken.Source)
+	fmt.Fprintf(tw, "cache_ttl\t%s\t%s\n", cfg.CacheTTL.Value, cfg.CacheTTL.Source)
 	tw.Flush()
 
 	// Print config file path if loaded
@@ -162,5 +164,31 @@ func buildEffectiveConfig(cmd *cobra.Command) *config.EffectiveConfig {
 		cfg.Accounts = config.IntValue{Value: *fileCfg.Accounts, Source: config.SourceConfigFile}
 	}
 
+	// GitHubToken
+	cfg.GitHubToken = config.StringValue{Value: "", Source: config.SourceDefault}
+	if fileCfg != nil && fileCfg.GitHubToken != nil {
+		cfg.GitHubToken = config.StringValue{Value: *fileCfg.GitHubToken, Source: config.SourceConfigFile}
+	}
+	if envToken := os.Getenv("GITHUB_TOKEN"); envToken != "" {
+		cfg.GitHubToken = config.StringValue{Value: envToken, Source: config.SourceEnvironment}
+	}
+
+	// CacheTTL
+	cfg.CacheTTL = config.StringValue{Value: "1h", Source: config.SourceDefault}
+	if fileCfg != nil && fileCfg.CacheTTL != nil {
+		cfg.CacheTTL = config.StringValue{Value: *fileCfg.CacheTTL, Source: config.SourceConfigFile}
+	}
+
 	return cfg
+}
+
+// maskConfigToken masks a GitHub token for display.
+func maskConfigToken(token string) string {
+	if token == "" {
+		return "(not set)"
+	}
+	if len(token) <= 8 {
+		return "********"
+	}
+	return token[:4] + "****" + token[len(token)-4:]
 }

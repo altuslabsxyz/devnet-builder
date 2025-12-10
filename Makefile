@@ -16,7 +16,6 @@ LDFLAGS = -X main.Version=$(VERSION) \
 
 # Go environment
 export GOPRIVATE = github.com/stablelabs/*
-export GOSUMDB = off
 
 # Default target
 .DEFAULT_GOAL := build
@@ -31,7 +30,7 @@ build: $(BUILDDIR)/
 	@echo "  Version:    $(VERSION)"
 	@echo "  Git commit: $(GIT_COMMIT)"
 	@echo "  Build date: $(BUILD_DATE)"
-	@GOWORK=off go build -ldflags "$(LDFLAGS)" -o $(BUILDDIR)/$(BINARY_NAME) ./cmd/devnet-builder
+	@go build -ldflags "$(LDFLAGS)" -o $(BUILDDIR)/$(BINARY_NAME) ./cmd/devnet-builder
 	@echo "Build successful: $(BUILDDIR)/$(BINARY_NAME)"
 
 # Clean build artifacts
@@ -46,13 +45,13 @@ install:
 	@echo "  Version:    $(VERSION)"
 	@echo "  Git commit: $(GIT_COMMIT)"
 	@echo "  Build date: $(BUILD_DATE)"
-	@GOWORK=off go install -ldflags "$(LDFLAGS)" ./cmd/devnet-builder
+	@go install -ldflags "$(LDFLAGS)" ./cmd/devnet-builder
 	@echo "Install complete"
 
 # Run tests
 test:
 	@echo "Running tests..."
-	@GOWORK=off go test -v ./...
+	@go test -v ./...
 
 # Build with specific stable version
 # Usage: make build-versioned VERSION=feat/usdt0-gas ARGS="build genesis-export.json"

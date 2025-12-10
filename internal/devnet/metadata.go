@@ -40,8 +40,10 @@ type DevnetMetadata struct {
 	NetworkSource string `json:"network_source"` // "mainnet" or "testnet"
 
 	// Execution
-	ExecutionMode ExecutionMode `json:"execution_mode"` // "docker" or "local"
-	StableVersion string        `json:"stable_version"` // e.g., "v1.2.3" or "feat/branch"
+	ExecutionMode    ExecutionMode `json:"execution_mode"`              // "docker" or "local"
+	StableVersion    string        `json:"stable_version"`              // e.g., "v1.2.3" or "feat/branch"
+	IsCustomRef      bool          `json:"is_custom_ref,omitempty"`     // True if built from custom branch/commit
+	CustomBinaryPath string        `json:"custom_binary_path,omitempty"` // Path to custom-built binary
 
 	// Validators
 	NumValidators int `json:"num_validators"` // 1-4
