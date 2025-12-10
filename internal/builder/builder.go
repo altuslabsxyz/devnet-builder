@@ -362,12 +362,40 @@ func isCommitHash(ref string) bool {
 }
 
 // copyBinary copies a binary file and preserves executable permissions.
+// It handles "text file busy" errors by removing the destination file first,
+// which allows replacing a running binary (the running process keeps its file
+// handle while the new file gets a new inode).
 func copyBinary(src, dst string) error {
 	data, err := os.ReadFile(src)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, data, 0755)
+
+	// Try to write directly first
+	err = os.WriteFile(dst, data, 0755)
+	if err == nil {
+		return nil
+	}
+
+	// If we get "text file busy" error, remove the file first and retry
+	// This works because Linux allows deleting a file that's in use;
+	// the running process keeps its handle, and we create a new file
+	if os.IsExist(err) || isTextFileBusy(err) {
+		if removeErr := os.Remove(dst); removeErr != nil {
+			return fmt.Errorf("failed to remove existing binary: %w (original error: %v)", removeErr, err)
+		}
+		return os.WriteFile(dst, data, 0755)
+	}
+
+	return err
+}
+
+// isTextFileBusy checks if the error is a "text file busy" error.
+func isTextFileBusy(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "text file busy")
 }
 
 // IsBinaryBuilt checks if a binary exists for the given ref.
