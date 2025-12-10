@@ -21,7 +21,7 @@ type SnapshotCache struct {
 	// File Info
 	FilePath     string `json:"file_path"`
 	SizeBytes    int64  `json:"size_bytes"`
-	Decompressor string `json:"decompressor"` // "zstd" or "lz4"
+	Decompressor string `json:"decompressor"`       // "zstd" or "lz4"
 	Checksum     string `json:"checksum,omitempty"` // SHA256
 
 	// Source

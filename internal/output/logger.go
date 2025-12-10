@@ -10,11 +10,11 @@ import (
 
 // Logger provides colored output functions for CLI feedback.
 type Logger struct {
-	out       io.Writer
-	errOut    io.Writer
-	noColor   bool
-	verbose   bool
-	jsonMode  bool
+	out      io.Writer
+	errOut   io.Writer
+	noColor  bool
+	verbose  bool
+	jsonMode bool
 }
 
 // NewLogger creates a new Logger instance.

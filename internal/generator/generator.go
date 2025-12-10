@@ -6,12 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	epochstypes "github.com/cosmos/cosmos-sdk/x/epochs/types"
-	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
-	govtypesv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	"os"
 	"path/filepath"
 	"time"
+
+	epochstypes "github.com/cosmos/cosmos-sdk/x/epochs/types"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
+	govtypesv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 
 	"cosmossdk.io/log"
 	"cosmossdk.io/math"
