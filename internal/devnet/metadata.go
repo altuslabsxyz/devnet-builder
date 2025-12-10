@@ -36,8 +36,8 @@ type DevnetMetadata struct {
 	Name string `json:"name"` // Human-readable name (default: "devnet")
 
 	// Network Configuration
-	ChainID       string `json:"chain_id"`        // e.g., "stable-devnet-1"
-	NetworkSource string `json:"network_source"`  // "mainnet" or "testnet"
+	ChainID       string `json:"chain_id"`       // e.g., "stable-devnet-1"
+	NetworkSource string `json:"network_source"` // "mainnet" or "testnet"
 
 	// Execution
 	ExecutionMode    ExecutionMode `json:"execution_mode"`              // "docker" or "local"

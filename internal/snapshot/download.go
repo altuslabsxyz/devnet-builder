@@ -26,12 +26,12 @@ const (
 
 // DownloadOptions configures the download behavior.
 type DownloadOptions struct {
-	URL         string
-	DestPath    string
-	Network     string
-	HomeDir     string
-	NoCache     bool
-	Logger      *output.Logger
+	URL      string
+	DestPath string
+	Network  string
+	HomeDir  string
+	NoCache  bool
+	Logger   *output.Logger
 }
 
 // Download downloads a snapshot file with retry logic.
@@ -144,11 +144,11 @@ func downloadFile(ctx context.Context, url, destPath string, logger *output.Logg
 
 	// Create progress reporter
 	progressReader := &progressReader{
-		reader:        resp.Body,
-		total:         contentLength,
-		downloaded:    &downloaded,
-		logger:        logger,
-		lastReport:    time.Now(),
+		reader:         resp.Body,
+		total:          contentLength,
+		downloaded:     &downloaded,
+		logger:         logger,
+		lastReport:     time.Now(),
 		reportInterval: 5 * time.Second,
 	}
 

@@ -183,48 +183,48 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 	// Try Docker first (only if UseDocker is true)
 	if opts.UseDocker {
 		if _, err := exec.LookPath("docker"); err == nil {
-		logger.Debug("Trying Docker export...")
-		dockerImage := opts.DockerImage
-		if dockerImage == "" {
-			dockerImage = "ghcr.io/stablelabs/stable:latest"
-		}
+			logger.Debug("Trying Docker export...")
+			dockerImage := opts.DockerImage
+			if dockerImage == "" {
+				dockerImage = "ghcr.io/stablelabs/stable:latest"
+			}
 
-		dockerArgs := []string{
-			"run", "--rm",
-			"-v", exportHome + ":/data",
-			dockerImage,
-			"export", "--home", "/data",
-		}
+			dockerArgs := []string{
+				"run", "--rm",
+				"-v", exportHome + ":/data",
+				dockerImage,
+				"export", "--home", "/data",
+			}
 
-		cmd := exec.CommandContext(ctx, "docker", dockerArgs...)
+			cmd := exec.CommandContext(ctx, "docker", dockerArgs...)
 
-		cmdOutput, err := cmd.Output()
-		if err == nil && len(cmdOutput) > 0 {
-			// Docker export outputs to stdout
-			if err := os.WriteFile(exportPath, cmdOutput, 0644); err == nil {
-				// Verify it's valid JSON with chain_id
-				var testGenesis struct {
-					ChainID string `json:"chain_id"`
+			cmdOutput, err := cmd.Output()
+			if err == nil && len(cmdOutput) > 0 {
+				// Docker export outputs to stdout
+				if err := os.WriteFile(exportPath, cmdOutput, 0644); err == nil {
+					// Verify it's valid JSON with chain_id
+					var testGenesis struct {
+						ChainID string `json:"chain_id"`
+					}
+					if json.Unmarshal(cmdOutput, &testGenesis) == nil && testGenesis.ChainID != "" {
+						exportSuccess = true
+						logger.Debug("Docker export successful")
+					}
 				}
-				if json.Unmarshal(cmdOutput, &testGenesis) == nil && testGenesis.ChainID != "" {
-					exportSuccess = true
-					logger.Debug("Docker export successful")
+			} else {
+				logger.Debug("Docker export failed: %v", err)
+				// Print detailed error for diagnosis
+				if exitErr, ok := err.(*exec.ExitError); ok {
+					logger.PrintCommandError(&output.CommandErrorInfo{
+						Command:  "docker",
+						Args:     dockerArgs,
+						WorkDir:  exportHome,
+						Stderr:   string(exitErr.Stderr),
+						ExitCode: exitErr.ExitCode(),
+						Error:    err,
+					})
 				}
 			}
-		} else {
-			logger.Debug("Docker export failed: %v", err)
-			// Print detailed error for diagnosis
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				logger.PrintCommandError(&output.CommandErrorInfo{
-					Command:  "docker",
-					Args:     dockerArgs,
-					WorkDir:  exportHome,
-					Stderr:   string(exitErr.Stderr),
-					ExitCode: exitErr.ExitCode(),
-					Error:    err,
-				})
-			}
-		}
 		}
 	}
 
