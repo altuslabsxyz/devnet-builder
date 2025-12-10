@@ -188,11 +188,14 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 			dockerImage = "ghcr.io/stablelabs/stable:latest"
 		}
 
-		cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
-			"-v", exportHome+":/data",
+		dockerArgs := []string{
+			"run", "--rm",
+			"-v", exportHome + ":/data",
 			dockerImage,
 			"export", "--home", "/data",
-		)
+		}
+
+		cmd := exec.CommandContext(ctx, "docker", dockerArgs...)
 
 		cmdOutput, err := cmd.Output()
 		if err == nil && len(cmdOutput) > 0 {
@@ -209,6 +212,17 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 			}
 		} else {
 			logger.Debug("Docker export failed: %v", err)
+			// Print detailed error for diagnosis
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				logger.PrintCommandError(&output.CommandErrorInfo{
+					Command:  "docker",
+					Args:     dockerArgs,
+					WorkDir:  exportHome,
+					Stderr:   string(exitErr.Stderr),
+					ExitCode: exitErr.ExitCode(),
+					Error:    err,
+				})
+			}
 		}
 	}
 
@@ -221,7 +235,8 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 
 		if _, err := exec.LookPath(stableBinary); err == nil {
 			logger.Debug("Trying local binary export...")
-			cmd := exec.CommandContext(ctx, stableBinary, "export", "--home", exportHome)
+			localArgs := []string{"export", "--home", exportHome}
+			cmd := exec.CommandContext(ctx, stableBinary, localArgs...)
 			cmdOutput, err := cmd.Output()
 			if err == nil && len(cmdOutput) > 0 {
 				if err := os.WriteFile(exportPath, cmdOutput, 0644); err == nil {
@@ -235,6 +250,17 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 				}
 			} else {
 				logger.Debug("Local binary export failed: %v", err)
+				// Print detailed error for diagnosis
+				if exitErr, ok := err.(*exec.ExitError); ok {
+					logger.PrintCommandError(&output.CommandErrorInfo{
+						Command:  stableBinary,
+						Args:     localArgs,
+						WorkDir:  exportHome,
+						Stderr:   string(exitErr.Stderr),
+						ExitCode: exitErr.ExitCode(),
+						Error:    err,
+					})
+				}
 			}
 		}
 	}

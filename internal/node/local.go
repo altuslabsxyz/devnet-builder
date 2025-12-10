@@ -119,6 +119,14 @@ func (m *LocalManager) Start(ctx context.Context, node *Node, genesisPath string
 	// Start process in background
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
+		// Print command error info for debugging
+		m.Logger.PrintCommandError(&output.CommandErrorInfo{
+			Command:  binaryPath,
+			Args:     args,
+			WorkDir:  node.HomeDir,
+			ExitCode: -1,
+			Error:    err,
+		})
 		return fmt.Errorf("failed to start process: %w", err)
 	}
 

@@ -242,6 +242,8 @@ func Start(ctx context.Context, opts StartOptions) (*Devnet, error) {
 	logger.Debug("Waiting for nodes to become healthy...")
 	if err := node.WaitForAllNodesHealthy(ctx, nodes, HealthCheckTimeout); err != nil {
 		logger.Warn("Not all nodes are healthy yet: %v", err)
+		// Print failed node logs for diagnosis
+		printFailedNodeLogs(ctx, nodes, logger)
 	}
 
 	// Update metadata
@@ -396,4 +398,50 @@ func (d *Devnet) HardReset(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// printFailedNodeLogs checks all nodes and prints log files for any that failed health checks.
+func printFailedNodeLogs(ctx context.Context, nodes []*node.Node, logger *output.Logger) {
+	healthResults := node.CheckAllNodesHealth(ctx, nodes)
+
+	for i, health := range healthResults {
+		// Only print logs for unhealthy nodes
+		if health.Status == node.NodeStatusRunning || health.Status == node.NodeStatusSyncing {
+			continue
+		}
+
+		n := nodes[i]
+		logPath := n.LogFilePath()
+
+		// Read last N lines from log file
+		logLines, err := output.ReadLastLines(logPath, output.DefaultLogLines)
+
+		errorInfo := &output.NodeErrorInfo{
+			NodeName: n.Name,
+			NodeDir:  n.HomeDir,
+			LogPath:  logPath,
+			LogLines: logLines,
+		}
+
+		// Add PID if available (for verbose mode)
+		if n.PID != nil {
+			errorInfo.PID = *n.PID
+		}
+
+		// Handle read errors gracefully - still show what we can
+		if err != nil {
+			switch err.(type) {
+			case *output.FileNotFoundError:
+				errorInfo.LogLines = []string{"(Log file not found: " + logPath + ")"}
+			case *output.EmptyFileError:
+				errorInfo.LogLines = []string{"(Log file is empty)"}
+			case *output.PermissionDeniedError:
+				errorInfo.LogLines = []string{"(Cannot read log file: permission denied)"}
+			default:
+				errorInfo.LogLines = []string{"(Error reading log file: " + err.Error() + ")"}
+			}
+		}
+
+		logger.PrintNodeError(errorInfo)
+	}
 }

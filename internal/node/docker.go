@@ -86,13 +86,22 @@ func (m *DockerManager) Start(ctx context.Context, node *Node, genesisPath strin
 	m.Logger.Debug("Starting container: docker %s", strings.Join(args, " "))
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
-	output, err := cmd.CombinedOutput()
+	cmdOutput, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to start container: %w\nOutput: %s", err, string(output))
+		// Print command error info for debugging
+		m.Logger.PrintCommandError(&output.CommandErrorInfo{
+			Command:  "docker",
+			Args:     args,
+			WorkDir:  node.HomeDir,
+			Stderr:   string(cmdOutput),
+			ExitCode: -1,
+			Error:    err,
+		})
+		return fmt.Errorf("failed to start container: %w", err)
 	}
 
 	// Get container ID
-	containerID := strings.TrimSpace(string(output))
+	containerID := strings.TrimSpace(string(cmdOutput))
 	node.ContainerID = containerID
 	node.ContainerName = containerName
 	node.Status = NodeStatusStarting
