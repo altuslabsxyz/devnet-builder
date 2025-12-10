@@ -212,6 +212,13 @@ func GetBlockHeight(ctx context.Context, node *Node) (int64, error) {
 	return health.BlockHeight, nil
 }
 
+// CheckNodeHealth is an alias for CheckHealth that ignores errors.
+// Always returns a valid NodeHealth struct.
+func CheckNodeHealth(ctx context.Context, node *Node) *NodeHealth {
+	health, _ := CheckHealth(ctx, node)
+	return health
+}
+
 // GetPeerCount returns the number of peers connected to a node.
 func GetPeerCount(ctx context.Context, node *Node) (int, error) {
 	health, err := CheckHealth(ctx, node)

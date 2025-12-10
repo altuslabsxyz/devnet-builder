@@ -59,13 +59,25 @@ func NewProvisioner(opts *ProvisionerOptions) *Provisioner {
 }
 
 // Provision performs the complete provisioning workflow.
-// 1. Download snapshot
+// 1. Download snapshot (with retry)
 // 2. Export genesis from snapshot using ExportGenesisFromSnapshot
 func (p *Provisioner) Provision(ctx context.Context) (*ProvisionResult, error) {
 	p.logger.Debug("Starting provisioning for network: %s", p.opts.Network)
 
-	// Step 1: Download snapshot
-	cache, err := p.DownloadSnapshot(ctx)
+	// Step 1: Download snapshot with retry
+	var cache *snapshot.SnapshotCache
+	retryCfg := &RetryConfig{
+		MaxRetries:     DefaultMaxRetries,
+		InitialBackoff: DefaultInitialBackoff,
+		MaxBackoff:     DefaultMaxBackoff,
+		Logger:         p.logger,
+	}
+
+	err := WithRetry(ctx, retryCfg, func() error {
+		var downloadErr error
+		cache, downloadErr = p.DownloadSnapshot(ctx)
+		return downloadErr
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to download snapshot: %w", err)
 	}

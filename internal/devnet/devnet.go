@@ -39,16 +39,63 @@ type Devnet struct {
 
 // StartOptions configures devnet startup.
 type StartOptions struct {
-	HomeDir            string
-	Network            string
-	NumValidators      int
-	NumAccounts        int
-	Mode               ExecutionMode
-	StableVersion      string
-	NoCache            bool
-	Logger             *output.Logger
-	IsCustomRef        bool   // True if StableVersion is a custom branch/commit
-	CustomBinaryPath   string // Path to custom-built binary (set after build)
+	HomeDir          string
+	Network          string
+	NumValidators    int
+	NumAccounts      int
+	Mode             ExecutionMode
+	StableVersion    string
+	NoCache          bool
+	Logger           *output.Logger
+	IsCustomRef      bool   // True if StableVersion is a custom branch/commit
+	CustomBinaryPath string // Path to custom-built binary (set after build)
+}
+
+// ProvisionOptions configures devnet provisioning (without starting nodes).
+type ProvisionOptions struct {
+	HomeDir       string
+	Network       string
+	NumValidators int
+	NumAccounts   int
+	Mode          ExecutionMode
+	StableVersion string
+	NoCache       bool
+	Logger        *output.Logger
+}
+
+// ProvisionResult contains the result of provisioning.
+type ProvisionResult struct {
+	Metadata    *DevnetMetadata
+	GenesisPath string
+	Nodes       []*node.Node
+}
+
+// RunOptions configures devnet run (starting nodes from provisioned state).
+type RunOptions struct {
+	HomeDir          string
+	Mode             ExecutionMode
+	StableVersion    string
+	BinaryRef        string // Binary reference from cache
+	HealthTimeout    time.Duration
+	Logger           *output.Logger
+	IsCustomRef      bool   // True if StableVersion is a custom branch/commit
+	CustomBinaryPath string // Path to custom-built binary
+}
+
+// RunResult contains the result of running nodes.
+type RunResult struct {
+	Devnet          *Devnet
+	SuccessfulNodes []int
+	FailedNodes     []FailedNode
+	AllHealthy      bool
+}
+
+// FailedNode contains information about a failed node.
+type FailedNode struct {
+	Index   int
+	Error   string
+	LogPath string
+	LogTail []string
 }
 
 // NewDevnet creates a new Devnet instance.
@@ -61,6 +108,341 @@ func NewDevnet(metadata *DevnetMetadata, logger *output.Logger) *Devnet {
 		Nodes:    make([]*node.Node, 0),
 		Logger:   logger,
 	}
+}
+
+// Provision creates devnet configuration and generates validators without starting nodes.
+// This allows users to modify config files before running.
+func Provision(ctx context.Context, opts ProvisionOptions) (*ProvisionResult, error) {
+	logger := opts.Logger
+	if logger == nil {
+		logger = output.DefaultLogger
+	}
+
+	progress := output.NewProgress(5)
+
+	// Step 1: Check prerequisites
+	progress.Stage("Checking prerequisites")
+	checker := prereq.NewChecker()
+	if opts.Mode == ModeDocker {
+		checker.RequireDocker()
+	} else {
+		checker.RequireLocal()
+	}
+
+	results, err := checker.Check()
+	if err != nil {
+		return nil, fmt.Errorf("prerequisites not met: %w", err)
+	}
+	for _, r := range results {
+		if !r.Found && r.Required {
+			return nil, fmt.Errorf("%s: %s\nSuggestion: %s", r.Name, r.Message, r.Suggestion)
+		}
+	}
+
+	// Create devnet directory
+	devnetDir := filepath.Join(opts.HomeDir, "devnet")
+	if err := os.MkdirAll(devnetDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create devnet directory: %w", err)
+	}
+
+	// Create initial metadata and mark provision as started
+	metadata := NewDevnetMetadata(opts.HomeDir)
+	metadata.NetworkSource = opts.Network
+	metadata.NumValidators = opts.NumValidators
+	metadata.NumAccounts = opts.NumAccounts
+	metadata.ExecutionMode = opts.Mode
+	metadata.StableVersion = opts.StableVersion
+	metadata.SetProvisionStarted()
+
+	if err := metadata.Save(); err != nil {
+		return nil, fmt.Errorf("failed to save initial metadata: %w", err)
+	}
+
+	// Step 2: Provision (download snapshot and export genesis)
+	progress.Stage("Provisioning chain state")
+	dockerImage := provision.GetDockerImage(opts.StableVersion)
+
+	// Convert ExecutionMode to provision.ExecutionMode
+	var provisionMode provision.ExecutionMode
+	if opts.Mode == ModeDocker {
+		provisionMode = provision.ModeDocker
+	} else {
+		provisionMode = provision.ModeLocal
+	}
+
+	provisioner := provision.NewProvisioner(&provision.ProvisionerOptions{
+		Network:     opts.Network,
+		HomeDir:     opts.HomeDir,
+		DockerImage: dockerImage,
+		Mode:        provisionMode,
+		NoCache:     opts.NoCache,
+		Logger:      logger,
+	})
+
+	provisionResult, err := provisioner.Provision(ctx)
+	if err != nil {
+		provisioner.Cleanup(ctx)
+		metadata.SetProvisionFailed(err)
+		metadata.Save()
+		return nil, fmt.Errorf("provisioning failed: %w", err)
+	}
+
+	// Cleanup provisioner after getting genesis
+	provisioner.Cleanup(ctx)
+
+	logger.Debug("Provisioning complete. Genesis at: %s", provisionResult.GenesisPath)
+
+	// Step 3: Generate validators and modify genesis
+	progress.Stage("Generating validators")
+
+	// Configure generator
+	genConfig := generator.DefaultConfig()
+	genConfig.NumValidators = opts.NumValidators
+	genConfig.NumAccounts = opts.NumAccounts
+	genConfig.OutputDir = devnetDir
+	genConfig.ChainID = provisionResult.ChainID
+
+	// Create generator with a proper logger
+	genLogger := log.NewNopLogger() // Use NopLogger to avoid duplicate output
+	gen := generator.NewDevnetGenerator(genConfig, genLogger)
+
+	// Build devnet from exported genesis - this creates validators, modifies genesis, and saves to node dirs
+	if err := gen.Build(provisionResult.GenesisPath); err != nil {
+		metadata.SetProvisionFailed(err)
+		metadata.Save()
+		return nil, fmt.Errorf("failed to generate validators: %w", err)
+	}
+
+	logger.Debug("Generator created %d validators", opts.NumValidators)
+
+	// Update metadata with chain info
+	metadata.ChainID = genConfig.ChainID
+	metadata.GenesisPath = filepath.Join(devnetDir, "node0", "config", "genesis.json")
+
+	// Step 4: Get node IDs and create node objects
+	progress.Stage("Initializing nodes")
+
+	// Convert ExecutionMode to nodeconfig.ExecutionMode
+	var initMode nodeconfig.ExecutionMode
+	if opts.Mode == ModeDocker {
+		initMode = nodeconfig.ModeDocker
+	} else {
+		initMode = nodeconfig.ModeLocal
+	}
+	initializer := nodeconfig.NewNodeInitializer(initMode, dockerImage, logger)
+	nodeIDs := make([]string, opts.NumValidators)
+	nodes := make([]*node.Node, opts.NumValidators)
+
+	for i := 0; i < opts.NumValidators; i++ {
+		nodeDir := filepath.Join(devnetDir, fmt.Sprintf("node%d", i))
+
+		// Get node ID from the generated priv_validator_key.json
+		nodeID, err := initializer.GetNodeID(ctx, nodeDir)
+		if err != nil {
+			metadata.SetProvisionFailed(err)
+			metadata.Save()
+			return nil, fmt.Errorf("failed to get node ID for node%d: %w", i, err)
+		}
+		nodeIDs[i] = nodeID
+		logger.Debug("Node %d ID: %s", i, nodeID)
+
+		// Create node object
+		n := node.NewNode(i, nodeDir)
+		nodes[i] = n
+	}
+
+	// Step 5: Configure nodes (ports, persistent peers, etc.)
+	progress.Stage("Configuring nodes")
+
+	// Build persistent peers string
+	peers := nodeconfig.BuildPersistentPeers(nodeIDs, BaseP2PPort)
+	logger.Debug("Persistent peers: %s", peers)
+
+	for i := 0; i < opts.NumValidators; i++ {
+		nodeDir := filepath.Join(devnetDir, fmt.Sprintf("node%d", i))
+
+		// Build peers excluding this node
+		nodePeers := nodeconfig.BuildPersistentPeersWithExclusion(nodeIDs, BaseP2PPort, i)
+
+		// Configure node
+		if err := nodeconfig.ConfigureNode(nodeDir, i, nodePeers, i == 0, logger); err != nil {
+			metadata.SetProvisionFailed(err)
+			metadata.Save()
+			return nil, fmt.Errorf("failed to configure node%d: %w", i, err)
+		}
+
+		// Save node config
+		if err := nodes[i].Save(); err != nil {
+			metadata.SetProvisionFailed(err)
+			metadata.Save()
+			return nil, fmt.Errorf("failed to save node%d config: %w", i, err)
+		}
+	}
+
+	// Mark provision as complete
+	metadata.SetProvisionComplete()
+	if err := metadata.Save(); err != nil {
+		return nil, fmt.Errorf("failed to save metadata: %w", err)
+	}
+
+	progress.Done("Provision complete!")
+
+	return &ProvisionResult{
+		Metadata:    metadata,
+		GenesisPath: metadata.GenesisPath,
+		Nodes:       nodes,
+	}, nil
+}
+
+// Run starts nodes from a provisioned devnet.
+// Requires: ProvisionState == "provisioned"
+func Run(ctx context.Context, opts RunOptions) (*RunResult, error) {
+	logger := opts.Logger
+	if logger == nil {
+		logger = output.DefaultLogger
+	}
+
+	// Load existing metadata
+	metadata, err := LoadDevnetMetadata(opts.HomeDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load devnet metadata: %w\nHint: Run 'devnet-builder provision' first", err)
+	}
+
+	// Validate provision state
+	if !metadata.CanRun() {
+		switch metadata.ProvisionState {
+		case ProvisionStateNone:
+			return nil, fmt.Errorf("devnet not provisioned\nRun 'devnet-builder provision' first")
+		case ProvisionStateSyncing:
+			return nil, fmt.Errorf("provisioning in progress\nWait for provision to complete")
+		case ProvisionStateFailed:
+			return nil, fmt.Errorf("provisioning failed: %s\nRun 'devnet-builder clean' then 'devnet-builder provision' to retry", metadata.ProvisionError)
+		default:
+			return nil, fmt.Errorf("invalid provision state: %s", metadata.ProvisionState)
+		}
+	}
+
+	// Apply run options to metadata if provided
+	if opts.Mode != "" {
+		metadata.ExecutionMode = opts.Mode
+	}
+	if opts.StableVersion != "" {
+		metadata.StableVersion = opts.StableVersion
+	}
+	if opts.IsCustomRef {
+		metadata.IsCustomRef = opts.IsCustomRef
+	}
+	if opts.CustomBinaryPath != "" {
+		metadata.CustomBinaryPath = opts.CustomBinaryPath
+	}
+
+	// Load nodes
+	devnetDir := filepath.Join(opts.HomeDir, "devnet")
+	nodes := make([]*node.Node, metadata.NumValidators)
+	for i := 0; i < metadata.NumValidators; i++ {
+		nodeDir := filepath.Join(devnetDir, fmt.Sprintf("node%d", i))
+		n, err := node.LoadNode(nodeDir)
+		if err != nil {
+			n = node.NewNode(i, nodeDir)
+		}
+		nodes[i] = n
+	}
+
+	devnet := NewDevnet(metadata, logger)
+	devnet.Nodes = nodes
+
+	progress := output.NewProgress(2)
+
+	// Start nodes
+	progress.Stage("Starting nodes")
+
+	result := &RunResult{
+		Devnet:          devnet,
+		SuccessfulNodes: make([]int, 0),
+		FailedNodes:     make([]FailedNode, 0),
+		AllHealthy:      true,
+	}
+
+	// Start each node, tracking success/failure
+	for _, n := range nodes {
+		if err := devnet.startNode(ctx, n, metadata.GenesisPath); err != nil {
+			result.FailedNodes = append(result.FailedNodes, FailedNode{
+				Index:   n.Index,
+				Error:   err.Error(),
+				LogPath: n.LogFilePath(),
+			})
+			result.AllHealthy = false
+			logger.Warn("Failed to start node%d: %v", n.Index, err)
+		} else {
+			result.SuccessfulNodes = append(result.SuccessfulNodes, n.Index)
+			logger.Debug("Started node%d", n.Index)
+		}
+
+		// Small delay between node starts
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// If no nodes started, return error
+	if len(result.SuccessfulNodes) == 0 {
+		metadata.SetError()
+		metadata.Save()
+		return result, fmt.Errorf("failed to start any nodes")
+	}
+
+	// Wait for nodes to become healthy
+	healthTimeout := opts.HealthTimeout
+	if healthTimeout == 0 {
+		healthTimeout = HealthCheckTimeout
+	}
+
+	progress.Stage("Waiting for nodes to become healthy")
+	logger.Debug("Waiting for nodes to become healthy (timeout: %v)...", healthTimeout)
+
+	if err := node.WaitForAllNodesHealthy(ctx, nodes, healthTimeout); err != nil {
+		logger.Warn("Not all nodes are healthy yet: %v", err)
+		result.AllHealthy = false
+
+		// Update failed nodes with log tail
+		healthResults := node.CheckAllNodesHealth(ctx, nodes)
+		for i, health := range healthResults {
+			if health.Status != node.NodeStatusRunning && health.Status != node.NodeStatusSyncing {
+				// Check if already in failed list
+				found := false
+				for j := range result.FailedNodes {
+					if result.FailedNodes[j].Index == i {
+						found = true
+						break
+					}
+				}
+				if !found {
+					logTail, _ := output.ReadLastLines(nodes[i].LogFilePath(), output.DefaultLogLines)
+					result.FailedNodes = append(result.FailedNodes, FailedNode{
+						Index:   i,
+						Error:   fmt.Sprintf("unhealthy: %s", health.Status),
+						LogPath: nodes[i].LogFilePath(),
+						LogTail: logTail,
+					})
+				}
+			}
+		}
+
+		// Print failed node logs for diagnosis
+		printFailedNodeLogs(ctx, nodes, logger)
+	}
+
+	// Update metadata
+	metadata.SetRunning()
+	if err := metadata.Save(); err != nil {
+		logger.Warn("Failed to update metadata: %v", err)
+	}
+
+	if result.AllHealthy {
+		progress.Done("All nodes started successfully!")
+	} else if len(result.SuccessfulNodes) > 0 {
+		progress.Done(fmt.Sprintf("Started %d/%d nodes (some failures)", len(result.SuccessfulNodes), metadata.NumValidators))
+	}
+
+	return result, nil
 }
 
 // Start provisions and starts a devnet.
