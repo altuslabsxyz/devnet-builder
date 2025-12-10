@@ -258,7 +258,7 @@ func (g *DevnetGenerator) generateAccounts() error {
 		accName := fmt.Sprintf("account%d", i)
 
 		// Generate and save account key using testutil (similar to testnet.go:294)
-		addr, _, err := testutil.GenerateSaveCoinKey(kr, accName, "", true, algo)
+		addr, mnemonic, err := testutil.GenerateSaveCoinKey(kr, accName, "", true, algo)
 		if err != nil {
 			return fmt.Errorf("failed to generate key for %s: %w", accName, err)
 		}
@@ -269,6 +269,25 @@ func (g *DevnetGenerator) generateAccounts() error {
 		}
 
 		g.accounts = append(g.accounts, account)
+
+		// Save account info to JSON file for export-keys command
+		accountData := struct {
+			Address  string `json:"address"`
+			Mnemonic string `json:"mnemonic"`
+		}{
+			Address:  addr.String(),
+			Mnemonic: mnemonic,
+		}
+
+		jsonData, err := json.MarshalIndent(accountData, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal account %s: %w", accName, err)
+		}
+
+		accountFile := filepath.Join(accountsDir, fmt.Sprintf("%s.json", accName))
+		if err := os.WriteFile(accountFile, jsonData, 0600); err != nil {
+			return fmt.Errorf("failed to write account file %s: %w", accountFile, err)
+		}
 	}
 
 	return nil
