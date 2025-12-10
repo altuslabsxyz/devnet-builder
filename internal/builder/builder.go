@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
+	"github.com/stablelabs/stable-devnet/internal/cache"
 	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
@@ -410,4 +412,121 @@ func (b *Builder) IsBinaryBuilt(ref string) (string, bool) {
 // GetBinaryPath returns the path where the binary would be for a given ref.
 func (b *Builder) GetBinaryPath() string {
 	return filepath.Join(b.homeDir, "bin", BinaryName)
+}
+
+// BuildToCache builds a binary and stores it in the cache.
+// Returns the cached binary entry if successful.
+// This method should be called BEFORE chain halt to pre-build the upgrade binary.
+func (b *Builder) BuildToCache(ctx context.Context, opts BuildOptions, binaryCache *cache.BinaryCache) (*cache.CachedBinary, error) {
+	if opts.Ref == "" {
+		return nil, fmt.Errorf("ref is required")
+	}
+
+	// Try to resolve commit hash first to check cache without cloning
+	commitHash, resolveErr := b.ResolveCommitHash(ctx, opts.Ref)
+	if resolveErr == nil && commitHash != "" {
+		// Check if already cached (fast path - no clone needed)
+		if binaryCache.IsCached(commitHash) {
+			b.logger.Success("Using cached binary for commit %s", commitHash[:12])
+			return binaryCache.Lookup(commitHash), nil
+		}
+	}
+
+	// Create build directory
+	buildDir := filepath.Join(b.homeDir, "build", "source", opts.Ref)
+	if err := os.MkdirAll(buildDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create build directory: %w", err)
+	}
+
+	// Clone repository
+	b.logger.Info("Cloning stable repository...")
+	repoDir := filepath.Join(buildDir, "stable")
+	if err := b.cloneRepo(ctx, repoDir, opts.Ref); err != nil {
+		return nil, fmt.Errorf("failed to clone repository: %w", err)
+	}
+
+	// Get commit hash from cloned repo (more reliable than ls-remote)
+	commitHash, err := b.getCommitHash(ctx, repoDir)
+	if err != nil {
+		b.logger.Warn("Failed to get commit hash: %v", err)
+		commitHash = opts.Ref
+	}
+
+	// Check if already cached (double-check after clone in case ls-remote failed)
+	if binaryCache.IsCached(commitHash) {
+		b.logger.Success("Using cached binary for commit %s", commitHash[:12])
+		return binaryCache.Lookup(commitHash), nil
+	}
+
+	// Determine EVMChainID based on network
+	evmChainID := MainnetEVMChainID
+	if opts.Network == "testnet" {
+		evmChainID = TestnetEVMChainID
+	}
+
+	// Read toolchain version from go.mod and create devnet-specific goreleaser config
+	toolchain := b.readToolchainFromGoMod(repoDir)
+	configContent := fmt.Sprintf(DevnetGoreleaserConfigTemplate, toolchain, evmChainID)
+	configPath := filepath.Join(repoDir, ".goreleaser.devnet.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		return nil, fmt.Errorf("failed to create goreleaser config: %w", err)
+	}
+	b.logger.Info("Using EVMChainID: %s (network: %s)", evmChainID, opts.Network)
+
+	// Build using embedded goreleaser
+	b.logger.Info("Building binary with goreleaser (ref: %s)...", opts.Ref)
+	if err := b.buildWithGoreleaser(ctx, repoDir, configPath); err != nil {
+		return nil, fmt.Errorf("goreleaser build failed: %w", err)
+	}
+
+	// Find the built binary in goreleaser dist directory
+	binaryPath, err := b.findBuiltBinary(repoDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find built binary: %w", err)
+	}
+
+	// Store in cache
+	cached := &cache.CachedBinary{
+		CommitHash: commitHash,
+		Ref:        opts.Ref,
+		BuildTime:  time.Now(),
+		Network:    opts.Network,
+	}
+
+	if err := binaryCache.Store(binaryPath, cached); err != nil {
+		return nil, fmt.Errorf("failed to store binary in cache: %w", err)
+	}
+
+	b.logger.Success("Binary built and cached: %s (commit: %s)", binaryCache.GetBinaryPath(commitHash), commitHash[:12])
+
+	return cached, nil
+}
+
+// ResolveCommitHash resolves a ref to a commit hash by cloning the repo.
+// This is useful for checking the cache before building.
+func (b *Builder) ResolveCommitHash(ctx context.Context, ref string) (string, error) {
+	// If it's already a 40-char commit hash, return as-is
+	if len(ref) == 40 && isCommitHash(ref) {
+		return ref, nil
+	}
+
+	// Create temp directory for ls-remote
+	cmd := exec.CommandContext(ctx, "git", "ls-remote", DefaultRepo, ref)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve ref: %w", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) == 0 || lines[0] == "" {
+		return "", fmt.Errorf("ref not found: %s", ref)
+	}
+
+	// Output format: "hash\trefs/heads/branch" or "hash\trefs/tags/tag"
+	parts := strings.Fields(lines[0])
+	if len(parts) < 1 {
+		return "", fmt.Errorf("unexpected git ls-remote output")
+	}
+
+	return parts[0], nil
 }
