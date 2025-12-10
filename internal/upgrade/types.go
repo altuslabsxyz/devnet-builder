@@ -182,8 +182,8 @@ type GenesisSnapshot struct {
 
 // ExecuteOptions contains options for ExecuteUpgrade.
 type ExecuteOptions struct {
-	HomeDir          string           // Base directory for devnet
+	HomeDir          string                 // Base directory for devnet
 	Metadata         *devnet.DevnetMetadata // Loaded devnet metadata
-	Logger           *output.Logger   // Logger for output
-	ProgressCallback ProgressCallback // Progress callback
+	Logger           *output.Logger         // Logger for output
+	ProgressCallback ProgressCallback       // Progress callback
 }

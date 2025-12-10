@@ -10,11 +10,11 @@ import (
 
 // Progress provides progress indication for multi-step operations.
 type Progress struct {
-	out       io.Writer
-	total     int
-	current   int
-	noColor   bool
-	jsonMode  bool
+	out      io.Writer
+	total    int
+	current  int
+	noColor  bool
+	jsonMode bool
 }
 
 // NewProgress creates a new Progress instance with the given total steps.

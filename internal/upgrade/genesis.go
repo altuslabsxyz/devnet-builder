@@ -14,12 +14,12 @@ import (
 
 // GenesisExportOptions contains options for genesis export.
 type GenesisExportOptions struct {
-	HomeDir      string
-	ExportDir    string
-	Metadata     *devnet.DevnetMetadata
-	Logger       *output.Logger
-	UpgradeName  string
-	PreUpgrade   bool // true for pre-upgrade, false for post-upgrade
+	HomeDir     string
+	ExportDir   string
+	Metadata    *devnet.DevnetMetadata
+	Logger      *output.Logger
+	UpgradeName string
+	PreUpgrade  bool // true for pre-upgrade, false for post-upgrade
 }
 
 // genesisExportResult is the internal result of a genesis export operation.

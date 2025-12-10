@@ -18,14 +18,14 @@ import (
 
 // Upgrade command flags
 var (
-	upgradeName      string
-	upgradeImage     string
-	upgradeBinary    string
-	votingPeriod     string
-	heightBuffer     int
-	upgradeHeight    int64
-	exportGenesis    bool
-	genesisDir       string
+	upgradeName   string
+	upgradeImage  string
+	upgradeBinary string
+	votingPeriod  string
+	heightBuffer  int
+	upgradeHeight int64
+	exportGenesis bool
+	genesisDir    string
 )
 
 // NewUpgradeCmd creates the upgrade command.
