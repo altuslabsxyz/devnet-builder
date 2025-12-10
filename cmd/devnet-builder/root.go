@@ -140,6 +140,7 @@ Examples:
 		NewConfigCmd(),
 		NewUpgradeCmd(),
 		NewVersionsCmd(),
+		NewCacheCmd(),
 	)
 
 	return cmd

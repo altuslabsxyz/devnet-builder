@@ -90,6 +90,8 @@ type UpgradeConfig struct {
 	Name          string        // Upgrade handler name (required)
 	TargetImage   string        // Docker image for upgrade (mutually exclusive with TargetBinary)
 	TargetBinary  string        // Local binary path for upgrade
+	CachePath     string        // Path to pre-built cached binary (for symlink switch)
+	CommitHash    string        // Commit hash of the cached binary
 	VotingPeriod  time.Duration // Expedited voting period (default: 60s)
 	HeightBuffer  int           // Blocks to add after voting (default: 10)
 	UpgradeHeight int64         // Explicit upgrade height (0 = auto-calculate)
@@ -102,10 +104,12 @@ func (c *UpgradeConfig) Validate() error {
 	if c.Name == "" {
 		return ErrInvalidConfig
 	}
-	if c.TargetImage == "" && c.TargetBinary == "" {
+	// Need at least one of: TargetImage, TargetBinary, or CachePath
+	if c.TargetImage == "" && c.TargetBinary == "" && c.CachePath == "" {
 		return ErrNoTargetBinary
 	}
-	if c.TargetImage != "" && c.TargetBinary != "" {
+	// Can't have both Docker image and local binary
+	if c.TargetImage != "" && (c.TargetBinary != "" || c.CachePath != "") {
 		return ErrBothTargetsDefined
 	}
 	if c.VotingPeriod < MinVotingPeriod {
@@ -115,6 +119,11 @@ func (c *UpgradeConfig) Validate() error {
 		return ErrHeightBufferTooSmall
 	}
 	return nil
+}
+
+// IsCacheMode returns true if the upgrade uses a pre-cached binary.
+func (c *UpgradeConfig) IsCacheMode() bool {
+	return c.CachePath != "" && c.CommitHash != ""
 }
 
 // IsDockerMode returns true if the upgrade targets a Docker image.

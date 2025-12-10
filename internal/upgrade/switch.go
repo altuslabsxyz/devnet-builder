@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stablelabs/stable-devnet/internal/cache"
 	"github.com/stablelabs/stable-devnet/internal/devnet"
 	"github.com/stablelabs/stable-devnet/internal/output"
 )
@@ -18,6 +19,8 @@ type SwitchOptions struct {
 	Mode         devnet.ExecutionMode // "docker" or "local"
 	TargetImage  string               // Docker image for upgrade
 	TargetBinary string               // Local binary path
+	CachePath    string               // Path to cached binary (for symlink switch)
+	CommitHash   string               // Commit hash of the cached binary
 	HomeDir      string               // Base directory for devnet
 	Metadata     *devnet.DevnetMetadata
 	Logger       *output.Logger
@@ -185,6 +188,33 @@ func switchDockerImage(ctx context.Context, opts *SwitchOptions, logger *output.
 }
 
 func switchLocalBinary(ctx context.Context, opts *SwitchOptions, logger *output.Logger) error {
+	// If we have a cache path, use atomic symlink switch
+	if opts.CachePath != "" && opts.CommitHash != "" {
+		logger.Debug("Switching to cached binary via symlink: %s", opts.CachePath)
+
+		// Initialize symlink manager
+		symlinkMgr := cache.NewSymlinkManager(opts.HomeDir)
+		binaryCache := cache.NewBinaryCache(opts.HomeDir, logger)
+		if err := binaryCache.Initialize(); err != nil {
+			return WrapError(StageSwitching, "initialize cache", err, "Check cache directory permissions")
+		}
+
+		// Verify cached binary exists and is valid
+		if err := binaryCache.Validate(opts.CommitHash); err != nil {
+			return WrapError(StageSwitching, "validate cached binary", err,
+				fmt.Sprintf("Cached binary invalid: %s", opts.CommitHash))
+		}
+
+		// Atomic symlink switch
+		if err := symlinkMgr.SwitchToCache(binaryCache, opts.CommitHash); err != nil {
+			return WrapError(StageSwitching, "switch symlink", err, "Check filesystem permissions")
+		}
+
+		logger.Debug("Symlink switched to: %s", binaryCache.GetBinaryPath(opts.CommitHash))
+		return nil
+	}
+
+	// Fallback: direct binary path
 	logger.Debug("Switching to local binary: %s", opts.TargetBinary)
 
 	// Verify binary exists
@@ -202,10 +232,6 @@ func switchLocalBinary(ctx context.Context, opts *SwitchOptions, logger *output.
 		return WrapError(StageSwitching, "verify binary", ErrBinaryNotFound,
 			fmt.Sprintf("Binary at %s is not executable", opts.TargetBinary))
 	}
-
-	// For local mode, we need to update the startup scripts or symlinks
-	// This depends on how the devnet was originally started
-	// For now, we'll update an environment variable or config
 
 	return nil
 }
@@ -256,9 +282,12 @@ func startLocalNodes(ctx context.Context, opts *SwitchOptions) error {
 	for i := 0; i < opts.Metadata.NumValidators; i++ {
 		nodeDir := filepath.Join(devnetDir, fmt.Sprintf("node%d", i))
 
-		// Determine binary to use
+		// Determine binary to use (prefer symlink path if available)
 		binary := opts.TargetBinary
-		if binary == "" {
+		if opts.CachePath != "" {
+			// Use symlink path
+			binary = filepath.Join(opts.HomeDir, cache.BinSubdir, cache.SymlinkName)
+		} else if binary == "" {
 			binary = "stabled"
 		}
 

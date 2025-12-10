@@ -12,6 +12,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/stablelabs/stable-devnet/internal/builder"
+	"github.com/stablelabs/stable-devnet/internal/cache"
 	"github.com/stablelabs/stable-devnet/internal/devnet"
 	"github.com/stablelabs/stable-devnet/internal/github"
 	"github.com/stablelabs/stable-devnet/internal/interactive"
@@ -187,20 +188,31 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("upgrade name is required (--name or interactive mode)")
 	}
 
-	// Build from source if version is a custom ref
+	// Initialize binary cache
+	binaryCache := cache.NewBinaryCache(homeDir, logger)
+	if err := binaryCache.Initialize(); err != nil {
+		logger.Warn("Failed to initialize binary cache: %v", err)
+		// Continue without cache - will fall back to direct binary copy
+	}
+
+	// Pre-build to cache if version is a custom ref (BEFORE proposal submission)
+	// This eliminates "text file busy" errors by having binary ready before chain halt
+	var cachedBinary *cache.CachedBinary
 	var customBinaryPath string
 	if isCustomRef && selectedVersion != "" && upgradeImage == "" && upgradeBinary == "" {
 		b := builder.NewBuilder(homeDir, logger)
-		logger.Info("Building upgrade binary from source (ref: %s)...", selectedVersion)
-		result, err := b.Build(ctx, builder.BuildOptions{
+		logger.Info("Pre-building upgrade binary (ref: %s)...", selectedVersion)
+
+		// Build to cache
+		cached, err := b.BuildToCache(ctx, builder.BuildOptions{
 			Ref:     selectedVersion,
 			Network: metadata.NetworkSource,
-		})
+		}, binaryCache)
 		if err != nil {
-			return fmt.Errorf("failed to build from source: %w", err)
+			return fmt.Errorf("failed to pre-build binary: %w", err)
 		}
-		customBinaryPath = result.BinaryPath
-		logger.Success("Binary built: %s (commit: %s)", result.BinaryPath, result.CommitHash)
+		cachedBinary = cached
+		logger.Success("Binary pre-built and cached (commit: %s)", cached.CommitHash[:12])
 	}
 
 	// Parse voting period
@@ -226,6 +238,14 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		UpgradeHeight: upgradeHeight,
 		ExportGenesis: exportGenesis,
 		GenesisDir:    genesisDir,
+	}
+
+	// If we have a cached binary, use cache mode for atomic symlink switch
+	if cachedBinary != nil {
+		cfg.CachePath = cachedBinary.BinaryPath
+		cfg.CommitHash = cachedBinary.CommitHash
+		// Clear target binary since we're using cache
+		cfg.TargetBinary = ""
 	}
 
 	// Validate config
