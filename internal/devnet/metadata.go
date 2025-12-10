@@ -60,6 +60,13 @@ type DevnetMetadata struct {
 
 	// State
 	Status DevnetStatus `json:"status"` // "created", "running", "stopped", "error"
+
+	// Provision State (for staged provision → run workflow)
+	ProvisionState       ProvisionState `json:"provision_state,omitempty"`        // none, syncing, provisioned, failed
+	ProvisionStartedAt   *time.Time     `json:"provision_started_at,omitempty"`   // When provision started
+	ProvisionCompletedAt *time.Time     `json:"provision_completed_at,omitempty"` // When provision completed
+	ProvisionError       string         `json:"provision_error,omitempty"`        // Error message if failed
+	RetryCount           int            `json:"retry_count,omitempty"`            // Number of retries attempted
 }
 
 // NewDevnetMetadata creates a new DevnetMetadata with default values.
@@ -189,4 +196,49 @@ func (m *DevnetMetadata) SetError() {
 // IsRunning returns true if the devnet is in running state.
 func (m *DevnetMetadata) IsRunning() bool {
 	return m.Status == StatusRunning
+}
+
+// SetProvisionStarted marks the devnet as provisioning in progress.
+func (m *DevnetMetadata) SetProvisionStarted() {
+	now := time.Now()
+	m.ProvisionState = ProvisionStateSyncing
+	m.ProvisionStartedAt = &now
+	m.ProvisionCompletedAt = nil
+	m.ProvisionError = ""
+}
+
+// SetProvisionComplete marks the devnet as provisioned successfully.
+func (m *DevnetMetadata) SetProvisionComplete() {
+	now := time.Now()
+	m.ProvisionState = ProvisionStateProvisioned
+	m.ProvisionCompletedAt = &now
+	m.ProvisionError = ""
+}
+
+// SetProvisionFailed marks the devnet provisioning as failed.
+func (m *DevnetMetadata) SetProvisionFailed(err error) {
+	m.ProvisionState = ProvisionStateFailed
+	if err != nil {
+		m.ProvisionError = err.Error()
+	}
+}
+
+// IncrementRetryCount increments the retry counter.
+func (m *DevnetMetadata) IncrementRetryCount() {
+	m.RetryCount++
+}
+
+// ResetRetryCount resets the retry counter.
+func (m *DevnetMetadata) ResetRetryCount() {
+	m.RetryCount = 0
+}
+
+// IsProvisioned returns true if the devnet has been provisioned.
+func (m *DevnetMetadata) IsProvisioned() bool {
+	return m.ProvisionState == ProvisionStateProvisioned
+}
+
+// CanRun returns true if the devnet can be started.
+func (m *DevnetMetadata) CanRun() bool {
+	return m.ProvisionState.CanRun()
 }
