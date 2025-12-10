@@ -156,3 +156,134 @@ func Bold(format string, args ...interface{}) {
 func Cyan(format string, args ...interface{}) {
 	DefaultLogger.Cyan(format, args...)
 }
+
+// IsVerbose returns whether verbose mode is enabled.
+func (l *Logger) IsVerbose() bool {
+	return l.verbose
+}
+
+// PrintNodeError prints formatted error information for a failed node.
+// Includes log file contents and contextual information.
+// In default mode: prints node name, log path, and log contents.
+// In verbose mode: also prints command, work directory, and PID.
+func (l *Logger) PrintNodeError(info *NodeErrorInfo) {
+	if l.jsonMode {
+		return
+	}
+
+	red := color.New(color.FgRed)
+	cyan := color.New(color.FgCyan)
+	gray := color.New(color.FgHiBlack)
+
+	// Print separator and header
+	fmt.Fprintln(l.errOut)
+	red.Fprintln(l.errOut, Separator())
+	red.Fprintf(l.errOut, "Node: %s\n", info.NodeName)
+	cyan.Fprintf(l.errOut, "Log file: %s\n", info.LogPath)
+
+	// Verbose mode: print additional context
+	if l.verbose {
+		if info.Command != "" {
+			gray.Fprintf(l.errOut, "Command: %s\n", info.Command)
+		}
+		if info.WorkDir != "" {
+			gray.Fprintf(l.errOut, "Work dir: %s\n", info.WorkDir)
+		}
+		if info.PID > 0 {
+			gray.Fprintf(l.errOut, "PID: %d\n", info.PID)
+		}
+	}
+
+	red.Fprintln(l.errOut, Separator())
+
+	// Print log lines
+	if len(info.LogLines) == 0 {
+		gray.Fprintln(l.errOut, "(No log content available)")
+	} else {
+		for _, line := range info.LogLines {
+			fmt.Fprintln(l.errOut, line)
+		}
+	}
+
+	red.Fprintln(l.errOut, Separator())
+	fmt.Fprintln(l.errOut)
+}
+
+// PrintCommandError prints formatted error information for a failed command.
+// In default mode: prints command and stderr output.
+// In verbose mode: also prints work directory, stdout, and exit code.
+func (l *Logger) PrintCommandError(info *CommandErrorInfo) {
+	if l.jsonMode {
+		return
+	}
+
+	red := color.New(color.FgRed)
+	cyan := color.New(color.FgCyan)
+	gray := color.New(color.FgHiBlack)
+
+	// Print separator and header
+	fmt.Fprintln(l.errOut)
+	red.Fprintln(l.errOut, Separator())
+
+	// Build command display
+	cmdDisplay := info.Command
+	if len(info.Args) > 0 {
+		cmdDisplay = info.Command + " " + joinArgs(info.Args)
+	}
+	cyan.Fprintf(l.errOut, "Command: %s\n", cmdDisplay)
+
+	// Verbose mode: print additional context
+	if l.verbose {
+		if info.WorkDir != "" {
+			gray.Fprintf(l.errOut, "Work dir: %s\n", info.WorkDir)
+		}
+		gray.Fprintf(l.errOut, "Exit code: %d\n", info.ExitCode)
+	}
+
+	red.Fprintln(l.errOut, Separator())
+
+	// Print output (stderr first, then stdout if verbose)
+	hasOutput := false
+	if info.Stderr != "" {
+		fmt.Fprint(l.errOut, info.Stderr)
+		hasOutput = true
+	}
+
+	if l.verbose && info.Stdout != "" {
+		if hasOutput {
+			fmt.Fprintln(l.errOut)
+		}
+		gray.Fprintln(l.errOut, "[stdout]")
+		fmt.Fprint(l.errOut, info.Stdout)
+		hasOutput = true
+	}
+
+	if !hasOutput {
+		gray.Fprintln(l.errOut, "(No output available)")
+	}
+
+	red.Fprintln(l.errOut, Separator())
+	fmt.Fprintln(l.errOut)
+}
+
+// joinArgs joins command arguments with spaces.
+func joinArgs(args []string) string {
+	result := ""
+	for i, arg := range args {
+		if i > 0 {
+			result += " "
+		}
+		result += arg
+	}
+	return result
+}
+
+// PrintNodeErrorDefault prints node error using the default logger.
+func PrintNodeErrorDefault(info *NodeErrorInfo) {
+	DefaultLogger.PrintNodeError(info)
+}
+
+// PrintCommandErrorDefault prints command error using the default logger.
+func PrintCommandErrorDefault(info *CommandErrorInfo) {
+	DefaultLogger.PrintCommandError(info)
+}

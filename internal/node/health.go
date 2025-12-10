@@ -207,7 +207,7 @@ func GetBlockHeight(ctx context.Context, node *Node) (int64, error) {
 		return 0, err
 	}
 	if health.Error != "" {
-		return 0, fmt.Errorf(health.Error)
+		return 0, fmt.Errorf("%s", health.Error)
 	}
 	return health.BlockHeight, nil
 }
@@ -219,7 +219,7 @@ func GetPeerCount(ctx context.Context, node *Node) (int, error) {
 		return 0, err
 	}
 	if health.Error != "" {
-		return 0, fmt.Errorf(health.Error)
+		return 0, fmt.Errorf("%s", health.Error)
 	}
 	return health.PeerCount, nil
 }

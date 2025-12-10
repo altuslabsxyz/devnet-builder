@@ -57,21 +57,37 @@ func (i *NodeInitializer) initDocker(ctx context.Context, nodeDir, moniker, chai
 	}
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
-	output, err := cmd.CombinedOutput()
+	cmdOutput, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("docker init failed: %s: %w", string(output), err)
+		// Print detailed error for diagnosis
+		i.logger.PrintCommandError(&output.CommandErrorInfo{
+			Command:  "docker",
+			Args:     args,
+			WorkDir:  nodeDir,
+			Stderr:   string(cmdOutput),
+			ExitCode: getExitCode(err),
+			Error:    err,
+		})
+		return fmt.Errorf("docker init failed: %w", err)
 	}
 	return nil
 }
 
 func (i *NodeInitializer) initLocal(ctx context.Context, nodeDir, moniker, chainID string) error {
-	cmd := exec.CommandContext(ctx, "stabled", "init", moniker,
-		"--chain-id", chainID,
-		"--home", nodeDir,
-	)
-	output, err := cmd.CombinedOutput()
+	args := []string{"init", moniker, "--chain-id", chainID, "--home", nodeDir}
+	cmd := exec.CommandContext(ctx, "stabled", args...)
+	cmdOutput, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("stabled init failed: %s: %w", string(output), err)
+		// Print detailed error for diagnosis
+		i.logger.PrintCommandError(&output.CommandErrorInfo{
+			Command:  "stabled",
+			Args:     args,
+			WorkDir:  nodeDir,
+			Stderr:   string(cmdOutput),
+			ExitCode: getExitCode(err),
+			Error:    err,
+		})
+		return fmt.Errorf("stabled init failed: %w", err)
 	}
 	return nil
 }
@@ -96,22 +112,43 @@ func (i *NodeInitializer) getNodeIDDocker(ctx context.Context, nodeDir string) (
 	}
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
-	output, err := cmd.Output()
+	cmdOutput, err := cmd.Output()
 	if err != nil {
+		// Print detailed error for diagnosis
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			i.logger.PrintCommandError(&output.CommandErrorInfo{
+				Command:  "docker",
+				Args:     args,
+				WorkDir:  nodeDir,
+				Stderr:   string(exitErr.Stderr),
+				ExitCode: exitErr.ExitCode(),
+				Error:    err,
+			})
+		}
 		return "", fmt.Errorf("docker show-node-id failed: %w", err)
 	}
-	return strings.TrimSpace(string(output)), nil
+	return strings.TrimSpace(string(cmdOutput)), nil
 }
 
 func (i *NodeInitializer) getNodeIDLocal(ctx context.Context, nodeDir string) (string, error) {
-	cmd := exec.CommandContext(ctx, "stabled", "comet", "show-node-id",
-		"--home", nodeDir,
-	)
-	output, err := cmd.Output()
+	args := []string{"comet", "show-node-id", "--home", nodeDir}
+	cmd := exec.CommandContext(ctx, "stabled", args...)
+	cmdOutput, err := cmd.Output()
 	if err != nil {
+		// Print detailed error for diagnosis
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			i.logger.PrintCommandError(&output.CommandErrorInfo{
+				Command:  "stabled",
+				Args:     args,
+				WorkDir:  nodeDir,
+				Stderr:   string(exitErr.Stderr),
+				ExitCode: exitErr.ExitCode(),
+				Error:    err,
+			})
+		}
 		return "", fmt.Errorf("stabled show-node-id failed: %w", err)
 	}
-	return strings.TrimSpace(string(output)), nil
+	return strings.TrimSpace(string(cmdOutput)), nil
 }
 
 // Export runs `stabled export` to export the current state as genesis.
@@ -176,4 +213,12 @@ func BuildPersistentPeersWithExclusion(nodeIDs []string, baseP2PPort int, exclud
 		peers = append(peers, peer)
 	}
 	return strings.Join(peers, ",")
+}
+
+// getExitCode extracts the exit code from an error.
+func getExitCode(err error) int {
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return exitErr.ExitCode()
+	}
+	return -1
 }
