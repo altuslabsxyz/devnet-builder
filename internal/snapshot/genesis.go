@@ -180,8 +180,9 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 	exportPath := filepath.Join(tmpDir, "exported_genesis.json")
 	exportSuccess := false
 
-	// Try Docker first (uses correct stabled version)
-	if _, err := exec.LookPath("docker"); err == nil {
+	// Try Docker first (only if UseDocker is true)
+	if opts.UseDocker {
+		if _, err := exec.LookPath("docker"); err == nil {
 		logger.Debug("Trying Docker export...")
 		dockerImage := opts.DockerImage
 		if dockerImage == "" {
@@ -223,6 +224,7 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 					Error:    err,
 				})
 			}
+		}
 		}
 	}
 
@@ -340,6 +342,7 @@ type ExportOptions struct {
 	StableBinary string
 	DockerImage  string // Docker image for stabled (e.g., ghcr.io/stablelabs/stable:latest)
 	GenesisPath  string // Path to source genesis.json (required for stabled export)
+	UseDocker    bool   // If true, try Docker first; if false, use local binary only
 	Logger       *output.Logger
 }
 

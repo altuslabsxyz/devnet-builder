@@ -86,6 +86,7 @@ func (p *Provisioner) Provision(ctx context.Context) (*ProvisionResult, error) {
 		Decompressor: cache.Decompressor,
 		DockerImage:  p.opts.DockerImage,
 		GenesisPath:  sourceGenesisPath,
+		UseDocker:    p.opts.Mode == ModeDocker,
 		Logger:       p.logger,
 	}
 
@@ -152,11 +153,10 @@ func GetDockerImage(stableVersion string) string {
 	if stableVersion == "" || stableVersion == "latest" {
 		return "ghcr.io/stablelabs/stable:latest"
 	}
-	// Handle branch names or version tags
-	if strings.HasPrefix(stableVersion, "v") || strings.Contains(stableVersion, "/") {
-		return fmt.Sprintf("ghcr.io/stablelabs/stable:%s", stableVersion)
-	}
-	return fmt.Sprintf("ghcr.io/stablelabs/stable:%s", stableVersion)
+	// Docker tags cannot contain slashes - replace with dashes
+	// e.g., "feat/gas-waiver" becomes "feat-gas-waiver"
+	sanitizedVersion := strings.ReplaceAll(stableVersion, "/", "-")
+	return fmt.Sprintf("ghcr.io/stablelabs/stable:%s", sanitizedVersion)
 }
 
 // GetSnapshotURL returns the snapshot download URL for the given network.
