@@ -38,14 +38,16 @@ type Devnet struct {
 
 // StartOptions configures devnet startup.
 type StartOptions struct {
-	HomeDir       string
-	Network       string
-	NumValidators int
-	NumAccounts   int
-	Mode          ExecutionMode
-	StableVersion string
-	NoCache       bool
-	Logger        *output.Logger
+	HomeDir            string
+	Network            string
+	NumValidators      int
+	NumAccounts        int
+	Mode               ExecutionMode
+	StableVersion      string
+	NoCache            bool
+	Logger             *output.Logger
+	IsCustomRef        bool   // True if StableVersion is a custom branch/commit
+	CustomBinaryPath   string // Path to custom-built binary (set after build)
 }
 
 // NewDevnet creates a new Devnet instance.
@@ -169,6 +171,8 @@ func Start(ctx context.Context, opts StartOptions) (*Devnet, error) {
 	metadata.ExecutionMode = opts.Mode
 	metadata.StableVersion = opts.StableVersion
 	metadata.GenesisPath = filepath.Join(devnetDir, "node0", "config", "genesis.json")
+	metadata.IsCustomRef = opts.IsCustomRef
+	metadata.CustomBinaryPath = opts.CustomBinaryPath
 
 	// Step 4: Get node IDs and create node objects
 	progress.Stage("Initializing nodes")
@@ -280,7 +284,12 @@ func (d *Devnet) startNode(ctx context.Context, n *node.Node, genesisPath string
 		manager := node.NewDockerManagerWithEVMChainID(provision.GetDockerImage(d.Metadata.StableVersion), evmChainID, d.Logger)
 		return manager.Start(ctx, n, genesisPath)
 	case ModeLocal:
-		manager := node.NewLocalManagerWithEVMChainID("", evmChainID, d.Logger)
+		// Use custom binary path if available (built from custom ref)
+		binary := ""
+		if d.Metadata.CustomBinaryPath != "" {
+			binary = d.Metadata.CustomBinaryPath
+		}
+		manager := node.NewLocalManagerWithEVMChainID(binary, evmChainID, d.Logger)
 		return manager.Start(ctx, n, genesisPath)
 	default:
 		return fmt.Errorf("unknown execution mode: %s", d.Metadata.ExecutionMode)

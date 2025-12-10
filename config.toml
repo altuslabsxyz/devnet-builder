@@ -39,11 +39,11 @@
 mode = "local"
 
 # Stable repository version for building
-stable_version = "feat/usdt0-gas"
+stable_version = "feat/gas-waiver"
 
 # Skip snapshot cache (force re-download)
 # no_cache = false
 
 # Additional funded accounts to create
 # Valid values: 0-100
-# accounts = 0
+accounts = 2

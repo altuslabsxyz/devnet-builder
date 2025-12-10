@@ -26,6 +26,7 @@ Examples:
 	cmd.AddCommand(
 		NewConfigInitCmd(),
 		NewConfigShowCmd(),
+		NewConfigSetCmd(),
 	)
 
 	return cmd

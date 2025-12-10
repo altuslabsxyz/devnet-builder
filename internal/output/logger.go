@@ -162,6 +162,20 @@ func (l *Logger) IsVerbose() bool {
 	return l.verbose
 }
 
+// Writer returns the underlying writer for stdout.
+// This can be used to pass to external commands.
+func (l *Logger) Writer() io.Writer {
+	if l.jsonMode {
+		return io.Discard
+	}
+	return l.out
+}
+
+// ErrWriter returns the underlying writer for stderr.
+func (l *Logger) ErrWriter() io.Writer {
+	return l.errOut
+}
+
 // PrintNodeError prints formatted error information for a failed node.
 // Includes log file contents and contextual information.
 // In default mode: prints node name, log path, and log contents.

@@ -22,6 +22,10 @@ type EffectiveConfig struct {
 	NoCache       BoolValue
 	Accounts      IntValue
 
+	// GitHub/Cache settings
+	GitHubToken StringValue
+	CacheTTL    StringValue
+
 	// Metadata
 	ConfigFilePath string // Path to loaded config file (empty if none)
 }
@@ -39,6 +43,8 @@ func NewEffectiveConfig(defaultHomeDir string) *EffectiveConfig {
 		StableVersion: NewStringValue("latest"),
 		NoCache:       NewBoolValue(false),
 		Accounts:      NewIntValue(0),
+		GitHubToken:   NewStringValue(""),
+		CacheTTL:      NewStringValue("1h"),
 	}
 }
 
@@ -56,5 +62,18 @@ func (c *EffectiveConfig) ToTable(w io.Writer) {
 	fmt.Fprintf(tw, "stable_version\t%s\t%s\n", c.StableVersion.Value, c.StableVersion.Source)
 	fmt.Fprintf(tw, "no_cache\t%t\t%s\n", c.NoCache.Value, c.NoCache.Source)
 	fmt.Fprintf(tw, "accounts\t%d\t%s\n", c.Accounts.Value, c.Accounts.Source)
+	fmt.Fprintf(tw, "github_token\t%s\t%s\n", maskToken(c.GitHubToken.Value), c.GitHubToken.Source)
+	fmt.Fprintf(tw, "cache_ttl\t%s\t%s\n", c.CacheTTL.Value, c.CacheTTL.Source)
 	tw.Flush()
+}
+
+// maskToken masks a GitHub token for display, showing only first 4 and last 4 chars.
+func maskToken(token string) string {
+	if token == "" {
+		return "(not set)"
+	}
+	if len(token) <= 8 {
+		return "********"
+	}
+	return token[:4] + "****" + token[len(token)-4:]
 }

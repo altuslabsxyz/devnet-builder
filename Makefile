@@ -4,9 +4,18 @@
 BUILDDIR ?= $(CURDIR)/build
 BINARY_NAME = devnet-builder
 
+# Version information
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+# ldflags for version injection
+LDFLAGS = -X main.Version=$(VERSION) \
+          -X main.GitCommit=$(GIT_COMMIT) \
+          -X main.BuildDate=$(BUILD_DATE)
+
 # Go environment
 export GOPRIVATE = github.com/stablelabs/*
-export GOSUMDB = off
 
 # Default target
 .DEFAULT_GOAL := build
@@ -18,7 +27,10 @@ $(BUILDDIR)/:
 # Build devnet-builder
 build: $(BUILDDIR)/
 	@echo "Building devnet-builder..."
-	@GOWORK=off go build -o $(BUILDDIR)/$(BINARY_NAME) ./cmd/devnet-builder
+	@echo "  Version:    $(VERSION)"
+	@echo "  Git commit: $(GIT_COMMIT)"
+	@echo "  Build date: $(BUILD_DATE)"
+	@go build -ldflags "$(LDFLAGS)" -o $(BUILDDIR)/$(BINARY_NAME) ./cmd/devnet-builder
 	@echo "Build successful: $(BUILDDIR)/$(BINARY_NAME)"
 
 # Clean build artifacts
@@ -30,13 +42,16 @@ clean:
 # Install to GOPATH/bin
 install:
 	@echo "Installing devnet-builder..."
-	@GOWORK=off go install ./cmd/devnet-builder
+	@echo "  Version:    $(VERSION)"
+	@echo "  Git commit: $(GIT_COMMIT)"
+	@echo "  Build date: $(BUILD_DATE)"
+	@go install -ldflags "$(LDFLAGS)" ./cmd/devnet-builder
 	@echo "Install complete"
 
 # Run tests
 test:
 	@echo "Running tests..."
-	@GOWORK=off go test -v ./...
+	@go test -v ./...
 
 # Build with specific stable version
 # Usage: make build-versioned VERSION=feat/usdt0-gas ARGS="build genesis-export.json"

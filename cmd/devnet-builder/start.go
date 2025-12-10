@@ -5,9 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/stablelabs/stable-devnet/internal/builder"
 	"github.com/stablelabs/stable-devnet/internal/devnet"
+	"github.com/stablelabs/stable-devnet/internal/github"
+	"github.com/stablelabs/stable-devnet/internal/interactive"
 	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
@@ -18,6 +22,9 @@ var (
 	startStableVersion string
 	startNoCache       bool
 	startAccounts      int
+	startNoInteractive bool
+	startExportVersion string
+	startStartVersion  string
 )
 
 // StartResult represents the JSON output for the start command.
@@ -83,6 +90,14 @@ Examples:
 	cmd.Flags().IntVar(&startAccounts, "accounts", 0,
 		"Additional funded accounts")
 
+	// Interactive mode flags
+	cmd.Flags().BoolVar(&startNoInteractive, "no-interactive", false,
+		"Disable interactive mode (use flags instead)")
+	cmd.Flags().StringVar(&startExportVersion, "export-version", "",
+		"Version for genesis export (non-interactive mode)")
+	cmd.Flags().StringVar(&startStartVersion, "start-version", "",
+		"Version for node start (non-interactive mode)")
+
 	return cmd
 }
 
@@ -125,6 +140,36 @@ func runStart(cmd *cobra.Command, args []string) error {
 		startStableVersion = version
 	}
 
+	// Track if versions are custom refs
+	var exportIsCustomRef bool
+	var startIsCustomRef bool
+	var exportVersion string
+	var startVersion string
+
+	// Interactive mode: run selection flow if not disabled
+	if !startNoInteractive && !jsonMode {
+		selection, err := runInteractiveSelection(ctx, cmd)
+		if err != nil {
+			if interactive.IsCancellation(err) {
+				fmt.Println("Operation cancelled.")
+				return nil
+			}
+			return err
+		}
+		// Apply selections
+		startNetwork = selection.Network
+		exportVersion = selection.ExportVersion
+		exportIsCustomRef = selection.ExportIsCustomRef
+		startVersion = selection.StartVersion
+		startIsCustomRef = selection.StartIsCustomRef
+		// Use export version for provisioning (stableVersion flag)
+		startStableVersion = exportVersion
+	} else {
+		// Non-interactive mode: both versions are the same
+		exportVersion = startStableVersion
+		startVersion = startStableVersion
+	}
+
 	// Validate inputs
 	if startNetwork != "mainnet" && startNetwork != "testnet" {
 		return fmt.Errorf("invalid network: %s (must be 'mainnet' or 'testnet')", startNetwork)
@@ -141,17 +186,40 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("devnet already exists at %s\nUse 'devnet-builder clean' to remove it first", homeDir)
 	}
 
-	// Start devnet
-	opts := devnet.StartOptions{
-		HomeDir:       homeDir,
-		Network:       startNetwork,
-		NumValidators: startValidators,
-		NumAccounts:   startAccounts,
-		Mode:          devnet.ExecutionMode(startMode),
-		StableVersion: startStableVersion,
-		NoCache:       startNoCache,
-		Logger:        logger,
+	// Build from source if start version is a custom ref
+	var customBinaryPath string
+	if startIsCustomRef {
+		b := builder.NewBuilder(homeDir, logger)
+		logger.Info("Building binary from source (ref: %s)...", startVersion)
+		result, err := b.Build(ctx, builder.BuildOptions{
+			Ref:     startVersion,
+			Network: startNetwork,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to build from source: %w", err)
+		}
+		customBinaryPath = result.BinaryPath
+		logger.Success("Binary built: %s (commit: %s)", result.BinaryPath, result.CommitHash)
 	}
+
+	// Start devnet
+	// Note: StableVersion is used for provisioning (export), CustomBinaryPath for node start
+	opts := devnet.StartOptions{
+		HomeDir:          homeDir,
+		Network:          startNetwork,
+		NumValidators:    startValidators,
+		NumAccounts:      startAccounts,
+		Mode:             devnet.ExecutionMode(startMode),
+		StableVersion:    exportVersion,
+		NoCache:          startNoCache,
+		Logger:           logger,
+		IsCustomRef:      startIsCustomRef,
+		CustomBinaryPath: customBinaryPath,
+	}
+
+	// Store start version info in metadata for reference
+	_ = startVersion       // Used for building, stored via CustomBinaryPath
+	_ = exportIsCustomRef  // Export custom ref not yet supported (would need separate build)
 
 	d, err := devnet.Start(ctx, opts)
 	if err != nil {
@@ -254,4 +322,32 @@ func containsHelper(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// runInteractiveSelection runs the interactive version selection flow.
+func runInteractiveSelection(ctx context.Context, cmd *cobra.Command) (*interactive.SelectionConfig, error) {
+	// Get config for cache settings
+	fileCfg := GetLoadedFileConfig()
+
+	// Set up cache manager
+	cacheTTL := github.DefaultCacheTTL
+	if fileCfg != nil && fileCfg.CacheTTL != nil {
+		if ttl, err := time.ParseDuration(*fileCfg.CacheTTL); err == nil {
+			cacheTTL = ttl
+		}
+	}
+	cacheManager := github.NewCacheManager(homeDir, cacheTTL)
+
+	// Set up GitHub client with cache and optional token
+	clientOpts := []github.ClientOption{
+		github.WithCache(cacheManager),
+	}
+	if fileCfg != nil && fileCfg.GitHubToken != nil && *fileCfg.GitHubToken != "" {
+		clientOpts = append(clientOpts, github.WithToken(*fileCfg.GitHubToken))
+	}
+	client := github.NewClient(clientOpts...)
+
+	// Run selection flow
+	selector := interactive.NewSelector(client)
+	return selector.RunSelectionFlow(ctx)
 }
