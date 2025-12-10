@@ -9,36 +9,30 @@ import (
 )
 
 var (
-	exportFormat string
-	exportType   string
+	exportType string
 )
 
 func NewExportKeysCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "export-keys",
-		Short: "Export validator and account keys",
-		Long: `Export validator and account keys in various formats.
+		Short: "Export validator and account keys as JSON",
+		Long: `Export validator and account keys in JSON format.
 
 This command exports key information from the devnet nodes.
 Useful for scripting and integration testing.
 
 Examples:
-  # Human-readable format
+  # Export all keys (validators and accounts)
   devnet-builder export-keys
 
-  # JSON format
-  devnet-builder export-keys --format json
-
-  # Environment variables (eval-able)
-  eval $(devnet-builder export-keys --format env)
-
   # Export only validators
-  devnet-builder export-keys --type validators`,
+  devnet-builder export-keys --type validators
+
+  # Export only accounts
+  devnet-builder export-keys --type accounts`,
 		RunE: runExportKeys,
 	}
 
-	cmd.Flags().StringVar(&exportFormat, "format", "text",
-		"Output format (text, json, env)")
 	cmd.Flags().StringVar(&exportType, "type", "all",
 		"Key type to export (validators, accounts, all)")
 
@@ -48,40 +42,22 @@ Examples:
 func runExportKeys(cmd *cobra.Command, args []string) error {
 	// Check if devnet exists
 	if !devnet.DevnetExists(homeDir) {
-		if jsonMode {
-			return outputExportKeysError(fmt.Errorf("no devnet found"))
-		}
-		return fmt.Errorf("no devnet found at %s", homeDir)
+		return outputExportKeysError(fmt.Errorf("no devnet found at %s", homeDir))
 	}
 
 	// Validate inputs
-	if exportFormat != "text" && exportFormat != "json" && exportFormat != "env" {
-		return fmt.Errorf("invalid format: %s (must be 'text', 'json', or 'env')", exportFormat)
-	}
 	if exportType != "all" && exportType != "validators" && exportType != "accounts" {
-		return fmt.Errorf("invalid type: %s (must be 'validators', 'accounts', or 'all')", exportType)
+		return outputExportKeysError(fmt.Errorf("invalid type: %s (must be 'validators', 'accounts', or 'all')", exportType))
 	}
 
 	// Export keys
 	export, err := devnet.ExportKeys(homeDir, exportType)
 	if err != nil {
-		if jsonMode || exportFormat == "json" {
-			return outputExportKeysError(err)
-		}
-		return fmt.Errorf("failed to export keys: %w", err)
+		return outputExportKeysError(err)
 	}
 
-	// Format output
-	switch exportFormat {
-	case "json":
-		return outputExportKeysJSON(export)
-	case "env":
-		fmt.Print(devnet.FormatKeysEnv(export))
-	default:
-		fmt.Print(devnet.FormatKeysText(export))
-	}
-
-	return nil
+	// Output as JSON only
+	return outputExportKeysJSON(export)
 }
 
 func outputExportKeysJSON(export *devnet.KeyExport) error {

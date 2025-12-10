@@ -43,11 +43,12 @@ type ValidatorKey struct {
 
 // AccountKey represents an account's key information.
 type AccountKey struct {
-	Index      int    `json:"index"`
-	Address    string `json:"address"`              // stable1...
-	AddressHex string `json:"address_hex"`          // 0x... (EVM address)
-	PubKey     string `json:"pubkey,omitempty"`     // base64 encoded pubkey
-	Mnemonic   string `json:"mnemonic,omitempty"`
+	Index         int    `json:"index"`
+	Address       string `json:"address"`                   // stable1...
+	AddressHex    string `json:"address_hex"`               // 0x... (EVM address)
+	PubKey        string `json:"pubkey,omitempty"`          // base64 encoded pubkey
+	PrivKey       string `json:"privkey,omitempty"`         // base64 encoded private key (if available)
+	Mnemonic      string `json:"mnemonic,omitempty"`
 }
 
 // KeyExport contains all exported keys.
