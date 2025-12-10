@@ -243,6 +243,8 @@ func ExecuteUpgrade(ctx context.Context, cfg *UpgradeConfig, opts *ExecuteOption
 	result.Duration = time.Since(startTime)
 	if cfg.TargetImage != "" {
 		result.NewBinary = cfg.TargetImage
+	} else if cfg.CachePath != "" {
+		result.NewBinary = cfg.CachePath
 	} else {
 		result.NewBinary = cfg.TargetBinary
 	}
