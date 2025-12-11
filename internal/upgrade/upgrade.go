@@ -181,8 +181,14 @@ func ExecuteUpgrade(ctx context.Context, cfg *UpgradeConfig, opts *ExecuteOption
 	progress.Stage = StageSwitching
 	notifyProgress()
 
+	// Use cfg.Mode if explicitly set, otherwise fall back to metadata mode
+	switchMode := cfg.Mode
+	if switchMode == "" {
+		switchMode = opts.Metadata.ExecutionMode
+	}
+
 	err = SwitchBinary(ctx, &SwitchOptions{
-		Mode:         opts.Metadata.ExecutionMode,
+		Mode:         switchMode,
 		TargetImage:  cfg.TargetImage,
 		TargetBinary: cfg.TargetBinary,
 		CachePath:    cfg.CachePath,
@@ -228,6 +234,16 @@ func ExecuteUpgrade(ctx context.Context, cfg *UpgradeConfig, opts *ExecuteOption
 		} else {
 			result.PostGenesisPath = postSnapshot.FilePath
 			logger.Debug("Post-upgrade genesis saved: %s", postSnapshot.FilePath)
+		}
+	}
+
+	// Update metadata if mode was explicitly changed (T009)
+	if cfg.Mode != "" && cfg.Mode != opts.Metadata.ExecutionMode {
+		opts.Metadata.ExecutionMode = cfg.Mode
+		if err := devnet.SaveDevnet(opts.Metadata); err != nil {
+			logger.Warn("Failed to update metadata with new mode: %v", err)
+		} else {
+			logger.Debug("Updated devnet metadata with new execution mode: %s", cfg.Mode)
 		}
 	}
 
