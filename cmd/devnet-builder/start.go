@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -25,6 +26,7 @@ var (
 	startNoInteractive bool
 	startExportVersion string
 	startStartVersion  string
+	startImage         string // Docker image for docker mode
 )
 
 // StartResult represents the JSON output for the start command.
@@ -98,6 +100,10 @@ Examples:
 	cmd.Flags().StringVar(&startStartVersion, "start-version", "",
 		"Version for node start (non-interactive mode)")
 
+	// Docker image flag
+	cmd.Flags().StringVar(&startImage, "image", "",
+		"Docker image for docker mode (e.g., v1.0.0 or ghcr.io/org/image:tag)")
+
 	return cmd
 }
 
@@ -147,8 +153,11 @@ func runStart(cmd *cobra.Command, args []string) error {
 	var startVersion string
 	var dockerImage string // Selected docker image (only for docker mode)
 
+	// Determine if running in interactive mode
+	isInteractive := !startNoInteractive && !jsonMode
+
 	// Interactive mode: run selection flow if not disabled
-	if !startNoInteractive && !jsonMode {
+	if isInteractive {
 		selection, err := runInteractiveSelection(ctx, cmd)
 		if err != nil {
 			if interactive.IsCancellation(err) {
@@ -165,27 +174,23 @@ func runStart(cmd *cobra.Command, args []string) error {
 		startIsCustomRef = selection.StartIsCustomRef
 		// Use export version for provisioning (stableVersion flag)
 		startStableVersion = exportVersion
-
-		// For docker mode, also prompt for docker image selection
-		if startMode == "docker" {
-			imageSelection, err := runDockerImageSelection(ctx)
-			if err != nil {
-				if interactive.IsCancellation(err) {
-					fmt.Println("Operation cancelled.")
-					return nil
-				}
-				return err
-			}
-			dockerImage = imageSelection.ImageTag
-			// If custom image, use the full URL; otherwise construct GHCR URL
-			if !imageSelection.IsCustom {
-				dockerImage = fmt.Sprintf("ghcr.io/stablelabs/stable:%s", imageSelection.ImageTag)
-			}
-		}
 	} else {
 		// Non-interactive mode: both versions are the same
 		exportVersion = startStableVersion
 		startVersion = startStableVersion
+	}
+
+	// Resolve docker image for docker mode (handles --image flag, interactive selection, defaults)
+	if startMode == "docker" {
+		resolvedImage, err := resolveDockerImage(ctx, cmd, isInteractive)
+		if err != nil {
+			if interactive.IsCancellation(err) {
+				fmt.Println("Operation cancelled.")
+				return nil
+			}
+			return err
+		}
+		dockerImage = resolvedImage
 	}
 
 	// Validate inputs
@@ -433,6 +438,58 @@ type DockerImageSelectionResult struct {
 	ImageTag   string // Selected image tag or full custom URL
 	IsCustom   bool   // True if user entered a custom image URL
 	FromCache  bool   // True if versions were loaded from cache
+}
+
+// DefaultGHCRImage is the default GHCR image for stable.
+const DefaultGHCRImage = "ghcr.io/stablelabs/stable"
+
+// normalizeImageURL converts a tag-only input to a full GHCR URL.
+// If the input already contains a registry (contains "/" or ":"), it returns as-is.
+// Otherwise, it constructs: ghcr.io/stablelabs/stable:{tag}
+func normalizeImageURL(image string) string {
+	if image == "" {
+		return ""
+	}
+	// If it looks like a full URL (contains "/" indicating a registry path), return as-is
+	if strings.Contains(image, "/") {
+		return image
+	}
+	// Otherwise, treat it as a tag and construct GHCR URL
+	return fmt.Sprintf("%s:%s", DefaultGHCRImage, image)
+}
+
+// resolveDockerImage determines the docker image to use based on priority:
+// 1. --image flag (highest priority)
+// 2. Interactive selection (if in interactive mode and docker mode)
+// 3. Default latest tag (for non-interactive docker mode)
+// Returns the resolved image URL and any error.
+func resolveDockerImage(ctx context.Context, cmd *cobra.Command, isInteractive bool) (string, error) {
+	// Priority 1: --image flag was explicitly provided
+	if cmd.Flags().Changed("image") && startImage != "" {
+		return normalizeImageURL(startImage), nil
+	}
+
+	// Priority 2: Interactive mode - prompt user to select
+	if isInteractive && startMode == "docker" {
+		imageSelection, err := runDockerImageSelection(ctx)
+		if err != nil {
+			return "", err
+		}
+		// If custom image, user provided full URL; otherwise construct GHCR URL
+		if imageSelection.IsCustom {
+			return imageSelection.ImageTag, nil
+		}
+		return fmt.Sprintf("%s:%s", DefaultGHCRImage, imageSelection.ImageTag), nil
+	}
+
+	// Priority 3: Non-interactive mode with --image flag (but not explicitly changed)
+	// Use the provided value or fall back to empty (will use default in devnet package)
+	if startImage != "" {
+		return normalizeImageURL(startImage), nil
+	}
+
+	// No image specified - return empty to use default behavior
+	return "", nil
 }
 
 // DefaultDockerPackage is the default container package name for docker images.
