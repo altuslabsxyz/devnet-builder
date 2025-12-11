@@ -35,34 +35,40 @@ type ProvisionJSONResult struct {
 
 func NewProvisionCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "provision",
-		Short: "Provision devnet configuration without starting nodes",
+		Use:        "provision",
+		Short:      "Provision devnet configuration (deprecated: use 'init' instead)",
+		Deprecated: "use 'init' instead",
 		Long: `Provision creates devnet configuration and generates validators without starting nodes.
+
+DEPRECATED: This command is deprecated. Use 'devnet-builder init' instead.
 
 This allows you to:
 1. Modify config files (config.toml, app.toml) before starting
 2. Adjust genesis parameters
-3. Start nodes separately using 'devnet-builder run'
+3. Start nodes separately using 'devnet-builder up'
 
-The provision command performs:
+The init command performs:
 - Download snapshot from network
 - Export genesis state
 - Generate validator keys
 - Configure node directories
 
 Examples:
-  # Provision with default settings
-  devnet-builder provision
+  # Initialize with default settings
+  devnet-builder init
 
-  # Provision with testnet data
-  devnet-builder provision --network testnet
+  # Initialize with testnet data
+  devnet-builder init --network testnet
 
-  # Provision with 2 validators
-  devnet-builder provision --validators 2
+  # Initialize with 2 validators
+  devnet-builder init --validators 2
 
-  # After provisioning, modify config then run:
-  devnet-builder run`,
-		RunE: runProvision,
+  # After initializing, modify config then run:
+  devnet-builder up`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			PrintDeprecationWarning("provision", "init")
+			return runProvision(cmd, args)
+		},
 	}
 
 	cmd.Flags().StringVarP(&provisionNetwork, "network", "n", "mainnet",

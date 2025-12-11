@@ -50,9 +50,12 @@ type NodeResult struct {
 
 func NewStartCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "start",
-		Short: "Start a local devnet",
+		Use:        "start",
+		Short:      "Start a local devnet (deprecated: use 'deploy' instead)",
+		Deprecated: "use 'deploy' instead",
 		Long: `Start a local devnet with configurable validators and network source.
+
+DEPRECATED: This command is deprecated. Use 'devnet-builder deploy' instead.
 
 This command will:
 1. Check prerequisites (Docker/local binary, curl, jq, zstd/lz4)
@@ -63,20 +66,17 @@ This command will:
 
 Examples:
   # Start with default settings (4 validators, mainnet, docker mode)
-  devnet-builder start
+  devnet-builder deploy
 
   # Start with testnet data
-  devnet-builder start --network testnet
+  devnet-builder deploy --network testnet
 
   # Start with 2 validators
-  devnet-builder start --validators 2
-
-  # Start with local binary mode
-  devnet-builder start --mode local
-
-  # Start with specific stable version
-  devnet-builder start --stable-version v1.2.3`,
-		RunE: runStart,
+  devnet-builder deploy --validators 2`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			PrintDeprecationWarning("start", "deploy")
+			return runStart(cmd, args)
+		},
 	}
 
 	// Command flags

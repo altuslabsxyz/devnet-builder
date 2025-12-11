@@ -20,23 +20,29 @@ var (
 
 func NewCleanCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "clean",
-		Short: "Remove all devnet data",
+		Use:        "clean",
+		Short:      "Remove all devnet data (deprecated: use 'destroy' instead)",
+		Deprecated: "use 'destroy' instead",
 		Long: `Remove all devnet data from the home directory.
+
+DEPRECATED: This command is deprecated. Use 'devnet-builder destroy' instead.
 
 This command removes the devnet directory and optionally the snapshot cache.
 Use with caution as this is irreversible.
 
 Examples:
   # Remove devnet data (keeps snapshot cache)
-  devnet-builder clean
+  devnet-builder destroy
 
   # Remove devnet data and snapshot cache
-  devnet-builder clean --cache
+  devnet-builder destroy --cache
 
   # Skip confirmation prompt
-  devnet-builder clean --force`,
-		RunE: runClean,
+  devnet-builder destroy --force`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			PrintDeprecationWarning("clean", "destroy")
+			return runClean(cmd, args)
+		},
 	}
 
 	cmd.Flags().BoolVarP(&cleanForce, "force", "f", false,

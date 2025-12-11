@@ -41,31 +41,34 @@ type FailedNodeJSON struct {
 
 func NewRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "run",
-		Short: "Start nodes from a provisioned devnet",
+		Use:        "run",
+		Short:      "Start nodes from a provisioned devnet (deprecated: use 'up' instead)",
+		Deprecated: "use 'up' instead",
 		Long: `Start nodes from a previously provisioned devnet configuration.
 
-This command requires that 'devnet-builder provision' has been run first.
-It allows you to modify config files between provision and run.
+DEPRECATED: This command is deprecated. Use 'devnet-builder up' instead.
+
+This command requires that 'devnet-builder init' has been run first.
+It allows you to modify config files between init and up.
 
 Workflow:
-  1. devnet-builder provision    # Create config
+  1. devnet-builder init    # Create config
   2. # Edit config files...
-  3. devnet-builder run          # Start nodes
+  3. devnet-builder up      # Start nodes
 
 Examples:
   # Start nodes with default settings
-  devnet-builder run
+  devnet-builder up
 
   # Start with local binary mode
-  devnet-builder run --mode local
+  devnet-builder up --mode local
 
   # Start with specific binary from cache
-  devnet-builder run --binary-ref v1.2.3
-
-  # Start with custom health timeout
-  devnet-builder run --health-timeout 10m`,
-		RunE: runRun,
+  devnet-builder up --binary-ref v1.2.3`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			PrintDeprecationWarning("run", "up")
+			return runRun(cmd, args)
+		},
 	}
 
 	cmd.Flags().StringVarP(&runMode, "mode", "m", "",

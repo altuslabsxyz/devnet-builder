@@ -17,20 +17,26 @@ var (
 
 func NewStopCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "stop",
-		Short: "Stop the running devnet",
+		Use:        "stop",
+		Short:      "Stop the running devnet (deprecated: use 'down' instead)",
+		Deprecated: "use 'down' instead",
 		Long: `Stop all running nodes in the devnet.
+
+DEPRECATED: This command is deprecated. Use 'devnet-builder down' instead.
 
 This command gracefully stops all validator nodes with a configurable timeout.
 If nodes don't stop gracefully within the timeout, they will be forcefully terminated.
 
 Examples:
   # Stop with default timeout (30s)
-  devnet-builder stop
+  devnet-builder down
 
   # Stop with custom timeout
-  devnet-builder stop --timeout 60s`,
-		RunE: runStop,
+  devnet-builder down --timeout 60s`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			PrintDeprecationWarning("stop", "down")
+			return runStop(cmd, args)
+		},
 	}
 
 	cmd.Flags().DurationVarP(&stopTimeout, "timeout", "t", 30*time.Second,
