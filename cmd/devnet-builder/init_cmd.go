@@ -13,16 +13,16 @@ import (
 )
 
 var (
-	provisionNetwork    string
-	provisionValidators int
-	provisionAccounts   int
-	provisionMode       string
-	provisionNoCache    bool
-	provisionVersion    string
+	initNetwork    string
+	initValidators int
+	initAccounts   int
+	initMode       string
+	initNoCache    bool
+	initVersion    string
 )
 
-// ProvisionJSONResult represents the JSON output for the provision command.
-type ProvisionJSONResult struct {
+// InitJSONResult represents the JSON output for the init command.
+type InitJSONResult struct {
 	Status         string            `json:"status"`
 	ProvisionState string            `json:"provision_state"`
 	ChainID        string            `json:"chain_id,omitempty"`
@@ -33,14 +33,11 @@ type ProvisionJSONResult struct {
 	Error          string            `json:"error,omitempty"`
 }
 
-func NewProvisionCmd() *cobra.Command {
+func NewInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:        "provision",
-		Short:      "Provision devnet configuration (deprecated: use 'init' instead)",
-		Deprecated: "use 'init' instead",
-		Long: `Provision creates devnet configuration and generates validators without starting nodes.
-
-DEPRECATED: This command is deprecated. Use 'devnet-builder init' instead.
+		Use:   "init",
+		Short: "Initialize devnet configuration without starting nodes",
+		Long: `Initialize creates devnet configuration and generates validators without starting nodes.
 
 This allows you to:
 1. Modify config files (config.toml, app.toml) before starting
@@ -65,29 +62,26 @@ Examples:
 
   # After initializing, modify config then run:
   devnet-builder up`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			PrintDeprecationWarning("provision", "init")
-			return runProvision(cmd, args)
-		},
+		RunE: runInit,
 	}
 
-	cmd.Flags().StringVarP(&provisionNetwork, "network", "n", "mainnet",
+	cmd.Flags().StringVarP(&initNetwork, "network", "n", "mainnet",
 		"Network source (mainnet, testnet)")
-	cmd.Flags().IntVar(&provisionValidators, "validators", 4,
+	cmd.Flags().IntVar(&initValidators, "validators", 4,
 		"Number of validators (1-4)")
-	cmd.Flags().IntVar(&provisionAccounts, "accounts", 0,
+	cmd.Flags().IntVar(&initAccounts, "accounts", 0,
 		"Additional funded accounts")
-	cmd.Flags().StringVarP(&provisionMode, "mode", "m", "docker",
+	cmd.Flags().StringVarP(&initMode, "mode", "m", "docker",
 		"Execution mode (docker, local)")
-	cmd.Flags().BoolVar(&provisionNoCache, "no-cache", false,
+	cmd.Flags().BoolVar(&initNoCache, "no-cache", false,
 		"Skip snapshot cache")
-	cmd.Flags().StringVar(&provisionVersion, "stable-version", "latest",
+	cmd.Flags().StringVar(&initVersion, "stable-version", "latest",
 		"Stable repository version for genesis export")
 
 	return cmd
 }
 
-func runProvision(cmd *cobra.Command, args []string) error {
+func runInit(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
@@ -95,79 +89,79 @@ func runProvision(cmd *cobra.Command, args []string) error {
 	fileCfg := GetLoadedFileConfig()
 	if fileCfg != nil {
 		if !cmd.Flags().Changed("network") && fileCfg.Network != nil {
-			provisionNetwork = *fileCfg.Network
+			initNetwork = *fileCfg.Network
 		}
 		if !cmd.Flags().Changed("validators") && fileCfg.Validators != nil {
-			provisionValidators = *fileCfg.Validators
+			initValidators = *fileCfg.Validators
 		}
 		if !cmd.Flags().Changed("mode") && fileCfg.Mode != nil {
-			provisionMode = *fileCfg.Mode
+			initMode = *fileCfg.Mode
 		}
 		if !cmd.Flags().Changed("stable-version") && fileCfg.StableVersion != nil {
-			provisionVersion = *fileCfg.StableVersion
+			initVersion = *fileCfg.StableVersion
 		}
 		if !cmd.Flags().Changed("no-cache") && fileCfg.NoCache != nil {
-			provisionNoCache = *fileCfg.NoCache
+			initNoCache = *fileCfg.NoCache
 		}
 		if !cmd.Flags().Changed("accounts") && fileCfg.Accounts != nil {
-			provisionAccounts = *fileCfg.Accounts
+			initAccounts = *fileCfg.Accounts
 		}
 	}
 
 	// Apply environment variables
 	if network := os.Getenv("STABLE_DEVNET_NETWORK"); network != "" && !cmd.Flags().Changed("network") {
-		provisionNetwork = network
+		initNetwork = network
 	}
 	if mode := os.Getenv("STABLE_DEVNET_MODE"); mode != "" && !cmd.Flags().Changed("mode") {
-		provisionMode = mode
+		initMode = mode
 	}
 	if version := os.Getenv("STABLE_VERSION"); version != "" && !cmd.Flags().Changed("stable-version") {
-		provisionVersion = version
+		initVersion = version
 	}
 
 	// Validate inputs
-	if provisionNetwork != "mainnet" && provisionNetwork != "testnet" {
-		return outputProvisionError(fmt.Errorf("invalid network: %s (must be 'mainnet' or 'testnet')", provisionNetwork))
+	if initNetwork != "mainnet" && initNetwork != "testnet" {
+		return outputInitError(fmt.Errorf("invalid network: %s (must be 'mainnet' or 'testnet')", initNetwork))
 	}
-	if provisionValidators < 1 || provisionValidators > 4 {
-		return outputProvisionError(fmt.Errorf("invalid validators: %d (must be 1-4)", provisionValidators))
+	if initValidators < 1 || initValidators > 4 {
+		return outputInitError(fmt.Errorf("invalid validators: %d (must be 1-4)", initValidators))
 	}
-	if provisionMode != "docker" && provisionMode != "local" {
-		return outputProvisionError(fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", provisionMode))
+	if initMode != "docker" && initMode != "local" {
+		return outputInitError(fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", initMode))
 	}
 
 	// Check if devnet already exists
 	if devnet.DevnetExists(homeDir) {
-		return outputProvisionError(fmt.Errorf("devnet already exists at %s\nUse 'devnet-builder clean' to remove it first", homeDir))
+		return outputInitError(fmt.Errorf("devnet already exists at %s\nUse 'devnet-builder destroy' to remove it first", homeDir))
 	}
 
 	// Run provision
 	opts := devnet.ProvisionOptions{
 		HomeDir:       homeDir,
-		Network:       provisionNetwork,
-		NumValidators: provisionValidators,
-		NumAccounts:   provisionAccounts,
-		Mode:          devnet.ExecutionMode(provisionMode),
-		StableVersion: provisionVersion,
-		NoCache:       provisionNoCache,
+		Network:       initNetwork,
+		NumValidators: initValidators,
+		NumAccounts:   initAccounts,
+		Mode:          devnet.ExecutionMode(initMode),
+		StableVersion: initVersion,
+		NoCache:       initNoCache,
 		Logger:        logger,
 	}
 
 	result, err := devnet.Provision(ctx, opts)
 	if err != nil {
-		return outputProvisionError(err)
+		return outputInitError(err)
 	}
 
 	// Output result
 	if jsonMode {
-		return outputProvisionJSON(result)
+		return outputInitJSON(result)
 	}
-	return outputProvisionText(result)
+	return outputInitText(result)
 }
 
-func outputProvisionText(result *devnet.ProvisionResult) error {
+func outputInitText(result *devnet.ProvisionResult) error {
 	fmt.Println()
-	output.Success("Provision complete!")
+	output.Success("Initialization complete!")
 	fmt.Println()
 
 	output.Bold("Chain ID:     %s", result.Metadata.ChainID)
@@ -198,16 +192,16 @@ func outputProvisionText(result *devnet.ProvisionResult) error {
 	fmt.Println()
 
 	output.Bold("Next step:")
-	fmt.Println("  Run 'devnet-builder run' to start the nodes")
+	fmt.Println("  Run 'devnet-builder up' to start the nodes")
 	fmt.Println()
 
 	return nil
 }
 
-func outputProvisionJSON(result *devnet.ProvisionResult) error {
+func outputInitJSON(result *devnet.ProvisionResult) error {
 	devnetDir := filepath.Join(result.Metadata.HomeDir, "devnet")
 
-	jsonResult := ProvisionJSONResult{
+	jsonResult := InitJSONResult{
 		Status:         "success",
 		ProvisionState: string(result.Metadata.ProvisionState),
 		ChainID:        result.Metadata.ChainID,
@@ -218,7 +212,7 @@ func outputProvisionJSON(result *devnet.ProvisionResult) error {
 			"app.toml":     filepath.Join(devnetDir, "node0", "config", "app.toml"),
 			"genesis.json": result.GenesisPath,
 		},
-		NextCommand: "devnet-builder run",
+		NextCommand: "devnet-builder up",
 	}
 
 	data, err := json.MarshalIndent(jsonResult, "", "  ")
@@ -230,9 +224,9 @@ func outputProvisionJSON(result *devnet.ProvisionResult) error {
 	return nil
 }
 
-func outputProvisionError(err error) error {
+func outputInitError(err error) error {
 	if jsonMode {
-		jsonResult := ProvisionJSONResult{
+		jsonResult := InitJSONResult{
 			Status:         "error",
 			ProvisionState: "failed",
 			Error:          err.Error(),

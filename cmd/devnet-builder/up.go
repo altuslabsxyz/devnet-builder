@@ -14,14 +14,14 @@ import (
 )
 
 var (
-	runMode          string
-	runBinaryRef     string
-	runHealthTimeout time.Duration
-	runStableVersion string
+	upMode          string
+	upBinaryRef     string
+	upHealthTimeout time.Duration
+	upStableVersion string
 )
 
-// RunJSONResult represents the JSON output for the run command.
-type RunJSONResult struct {
+// UpJSONResult represents the JSON output for the up command.
+type UpJSONResult struct {
 	Status          string           `json:"status"`
 	ChainID         string           `json:"chain_id,omitempty"`
 	Mode            string           `json:"mode"`
@@ -31,30 +31,19 @@ type RunJSONResult struct {
 	Error           string           `json:"error,omitempty"`
 }
 
-// FailedNodeJSON represents a failed node in JSON output.
-type FailedNodeJSON struct {
-	Index   int      `json:"index"`
-	Error   string   `json:"error"`
-	LogPath string   `json:"log_path"`
-	LogTail []string `json:"log_tail,omitempty"`
-}
-
-func NewRunCmd() *cobra.Command {
+func NewUpCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:        "run",
-		Short:      "Start nodes from a provisioned devnet (deprecated: use 'up' instead)",
-		Deprecated: "use 'up' instead",
-		Long: `Start nodes from a previously provisioned devnet configuration.
+		Use:   "up",
+		Short: "Start nodes from existing configuration",
+		Long: `Start nodes from a previously initialized devnet configuration.
 
-DEPRECATED: This command is deprecated. Use 'devnet-builder up' instead.
-
-This command requires that 'devnet-builder init' has been run first.
-It allows you to modify config files between init and up.
+This command requires that 'devnet-builder init' or 'devnet-builder deploy'
+has been run first. It allows you to restart nodes after stopping them.
 
 Workflow:
-  1. devnet-builder init    # Create config
-  2. # Edit config files...
-  3. devnet-builder up      # Start nodes
+  1. devnet-builder init    # Create config (or deploy)
+  2. devnet-builder down    # Stop nodes
+  3. devnet-builder up      # Start nodes again
 
 Examples:
   # Start nodes with default settings
@@ -64,81 +53,75 @@ Examples:
   devnet-builder up --mode local
 
   # Start with specific binary from cache
-  devnet-builder up --binary-ref v1.2.3`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			PrintDeprecationWarning("run", "up")
-			return runRun(cmd, args)
-		},
+  devnet-builder up --binary-ref v1.2.3
+
+  # Start with custom health timeout
+  devnet-builder up --health-timeout 10m`,
+		RunE: runUp,
 	}
 
-	cmd.Flags().StringVarP(&runMode, "mode", "m", "",
-		"Execution mode (docker, local). If not specified, uses provision mode")
-	cmd.Flags().StringVar(&runBinaryRef, "binary-ref", "",
+	cmd.Flags().StringVarP(&upMode, "mode", "m", "",
+		"Execution mode (docker, local). If not specified, uses init mode")
+	cmd.Flags().StringVar(&upBinaryRef, "binary-ref", "",
 		"Binary reference from cache (for local mode)")
-	cmd.Flags().DurationVar(&runHealthTimeout, "health-timeout", 5*time.Minute,
+	cmd.Flags().DurationVar(&upHealthTimeout, "health-timeout", 5*time.Minute,
 		"Timeout for node health check")
-	cmd.Flags().StringVar(&runStableVersion, "stable-version", "",
-		"Stable repository version. If not specified, uses provision version")
+	cmd.Flags().StringVar(&upStableVersion, "stable-version", "",
+		"Stable repository version. If not specified, uses init version")
 
 	return cmd
 }
 
-func runRun(cmd *cobra.Command, args []string) error {
+func runUp(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
 	// Apply config.toml values
-	// NOTE: Mode is NOT applied from config.toml for the run command.
-	// The run command uses the execution mode from metadata (set during provision/start),
-	// and only the CLI --mode flag can override it.
 	fileCfg := GetLoadedFileConfig()
 	if fileCfg != nil {
-		// Mode intentionally not applied from config.toml - use metadata instead
 		if !cmd.Flags().Changed("stable-version") && fileCfg.StableVersion != nil {
-			runStableVersion = *fileCfg.StableVersion
+			upStableVersion = *fileCfg.StableVersion
 		}
 	}
 
 	// Apply environment variables
-	// NOTE: STABLE_DEVNET_MODE is NOT applied for the run command.
-	// Only the CLI --mode flag can override the metadata's execution mode.
 	if version := os.Getenv("STABLE_VERSION"); version != "" && !cmd.Flags().Changed("stable-version") {
-		runStableVersion = version
+		upStableVersion = version
 	}
 
 	// Validate mode if specified
-	if runMode != "" && runMode != "docker" && runMode != "local" {
-		return outputRunError(fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", runMode))
+	if upMode != "" && upMode != "docker" && upMode != "local" {
+		return outputUpError(fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", upMode))
 	}
 
 	// Check if devnet exists and is provisioned
 	if !devnet.DevnetExists(homeDir) {
-		return outputRunError(fmt.Errorf("devnet not found at %s\nRun 'devnet-builder provision' first", homeDir))
+		return outputUpError(fmt.Errorf("devnet not found at %s\nRun 'devnet-builder init' or 'devnet-builder deploy' first", homeDir))
 	}
 
 	// Load metadata to check provision state
 	metadata, err := devnet.LoadDevnetMetadata(homeDir)
 	if err != nil {
-		return outputRunError(fmt.Errorf("failed to load devnet metadata: %w", err))
+		return outputUpError(fmt.Errorf("failed to load devnet metadata: %w", err))
 	}
 
 	// Check if already running
 	if metadata.IsRunning() {
-		return outputRunError(fmt.Errorf("devnet is already running\nUse 'devnet-builder stop' first"))
+		return outputUpError(fmt.Errorf("devnet is already running\nUse 'devnet-builder down' first"))
 	}
 
 	// Build custom binary if binary-ref is specified
 	var customBinaryPath string
 	var isCustomRef bool
-	if runBinaryRef != "" {
+	if upBinaryRef != "" {
 		b := builder.NewBuilder(homeDir, logger)
-		logger.Info("Building binary from source (ref: %s)...", runBinaryRef)
+		logger.Info("Building binary from source (ref: %s)...", upBinaryRef)
 		buildResult, err := b.Build(ctx, builder.BuildOptions{
-			Ref:     runBinaryRef,
+			Ref:     upBinaryRef,
 			Network: metadata.NetworkSource,
 		})
 		if err != nil {
-			return outputRunError(fmt.Errorf("failed to build from source: %w", err))
+			return outputUpError(fmt.Errorf("failed to build from source: %w", err))
 		}
 		customBinaryPath = buildResult.BinaryPath
 		isCustomRef = true
@@ -148,10 +131,10 @@ func runRun(cmd *cobra.Command, args []string) error {
 	// Prepare run options
 	opts := devnet.RunOptions{
 		HomeDir:          homeDir,
-		Mode:             devnet.ExecutionMode(runMode),
-		StableVersion:    runStableVersion,
-		BinaryRef:        runBinaryRef,
-		HealthTimeout:    runHealthTimeout,
+		Mode:             devnet.ExecutionMode(upMode),
+		StableVersion:    upStableVersion,
+		BinaryRef:        upBinaryRef,
+		HealthTimeout:    upHealthTimeout,
 		Logger:           logger,
 		IsCustomRef:      isCustomRef,
 		CustomBinaryPath: customBinaryPath,
@@ -159,24 +142,23 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	result, err := devnet.Run(ctx, opts)
 	if err != nil {
-		// Still output partial results if available
 		if result != nil {
 			if jsonMode {
-				return outputRunJSONWithError(result, err)
+				return outputUpJSONWithError(result, err)
 			}
-			outputRunTextPartial(result)
+			outputUpTextPartial(result)
 		}
 		return err
 	}
 
 	// Output result
 	if jsonMode {
-		return outputRunJSON(result)
+		return outputUpJSON(result)
 	}
-	return outputRunText(result)
+	return outputUpText(result)
 }
 
-func outputRunText(result *devnet.RunResult) error {
+func outputUpText(result *devnet.RunResult) error {
 	fmt.Println()
 	output.Bold("Chain ID:     %s", result.Devnet.Metadata.ChainID)
 	output.Info("Network:      %s", result.Devnet.Metadata.NetworkSource)
@@ -216,7 +198,7 @@ func outputRunText(result *devnet.RunResult) error {
 	return nil
 }
 
-func outputRunTextPartial(result *devnet.RunResult) {
+func outputUpTextPartial(result *devnet.RunResult) {
 	if len(result.SuccessfulNodes) > 0 {
 		output.Info("Successfully started nodes: %v", result.SuccessfulNodes)
 	}
@@ -228,8 +210,8 @@ func outputRunTextPartial(result *devnet.RunResult) {
 	}
 }
 
-func outputRunJSON(result *devnet.RunResult) error {
-	jsonResult := RunJSONResult{
+func outputUpJSON(result *devnet.RunResult) error {
+	jsonResult := UpJSONResult{
 		Status:          "success",
 		ChainID:         result.Devnet.Metadata.ChainID,
 		Mode:            string(result.Devnet.Metadata.ExecutionMode),
@@ -278,8 +260,8 @@ func outputRunJSON(result *devnet.RunResult) error {
 	return nil
 }
 
-func outputRunJSONWithError(result *devnet.RunResult, err error) error {
-	jsonResult := RunJSONResult{
+func outputUpJSONWithError(result *devnet.RunResult, err error) error {
+	jsonResult := UpJSONResult{
 		Status:          "error",
 		SuccessfulNodes: result.SuccessfulNodes,
 		Error:           err.Error(),
@@ -307,9 +289,9 @@ func outputRunJSONWithError(result *devnet.RunResult, err error) error {
 	return err
 }
 
-func outputRunError(err error) error {
+func outputUpError(err error) error {
 	if jsonMode {
-		jsonResult := RunJSONResult{
+		jsonResult := UpJSONResult{
 			Status: "error",
 			Error:  err.Error(),
 		}

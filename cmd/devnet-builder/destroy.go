@@ -14,18 +14,15 @@ import (
 )
 
 var (
-	cleanForce bool
-	cleanCache bool
+	destroyForce bool
+	destroyCache bool
 )
 
-func NewCleanCmd() *cobra.Command {
+func NewDestroyCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:        "clean",
-		Short:      "Remove all devnet data (deprecated: use 'destroy' instead)",
-		Deprecated: "use 'destroy' instead",
+		Use:   "destroy",
+		Short: "Remove all devnet data",
 		Long: `Remove all devnet data from the home directory.
-
-DEPRECATED: This command is deprecated. Use 'devnet-builder destroy' instead.
 
 This command removes the devnet directory and optionally the snapshot cache.
 Use with caution as this is irreversible.
@@ -39,37 +36,34 @@ Examples:
 
   # Skip confirmation prompt
   devnet-builder destroy --force`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			PrintDeprecationWarning("clean", "destroy")
-			return runClean(cmd, args)
-		},
+		RunE: runDestroy,
 	}
 
-	cmd.Flags().BoolVarP(&cleanForce, "force", "f", false,
+	cmd.Flags().BoolVarP(&destroyForce, "force", "f", false,
 		"Skip confirmation prompt")
-	cmd.Flags().BoolVar(&cleanCache, "cache", false,
+	cmd.Flags().BoolVar(&destroyCache, "cache", false,
 		"Also clean snapshot cache")
 
 	return cmd
 }
 
-func runClean(cmd *cobra.Command, args []string) error {
+func runDestroy(cmd *cobra.Command, args []string) error {
 	logger := output.DefaultLogger
 
 	devnetDir := filepath.Join(homeDir, "devnet")
 	devnetExists := devnet.DevnetExists(homeDir)
 
-	if !devnetExists && !cleanCache {
+	if !devnetExists && !destroyCache {
 		if jsonMode {
-			return outputCleanError(fmt.Errorf("no devnet found"))
+			return outputDestroyError(fmt.Errorf("no devnet found"))
 		}
 		return fmt.Errorf("no devnet found at %s", homeDir)
 	}
 
 	// Confirmation prompt (unless --force)
-	if !cleanForce && !jsonMode {
+	if !destroyForce && !jsonMode {
 		msg := fmt.Sprintf("This will remove all devnet data at %s", devnetDir)
-		if cleanCache {
+		if destroyCache {
 			msg += " and all cached snapshots"
 		}
 		fmt.Println(msg)
@@ -79,25 +73,25 @@ func runClean(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		if !confirmed {
-			fmt.Println("Clean cancelled.")
+			fmt.Println("Destroy cancelled.")
 			return nil
 		}
 	}
 
 	// Clean devnet
 	if !jsonMode {
-		output.Info("Cleaning devnet...")
+		output.Info("Destroying devnet...")
 	}
 
 	if devnetExists {
 		if err := os.RemoveAll(devnetDir); err != nil {
-			// Try docker-based cleanup for root-owned files (created by docker containers)
+			// Try docker-based cleanup for root-owned files
 			if !jsonMode {
 				output.Info("Standard cleanup failed, trying docker-based cleanup for root-owned files...")
 			}
-			if dockerErr := cleanWithDocker(devnetDir); dockerErr != nil {
+			if dockerErr := destroyWithDocker(devnetDir); dockerErr != nil {
 				if jsonMode {
-					return outputCleanError(err)
+					return outputDestroyError(err)
 				}
 				return fmt.Errorf("failed to remove devnet: %w (docker cleanup also failed: %v)", err, dockerErr)
 			}
@@ -105,7 +99,7 @@ func runClean(cmd *cobra.Command, args []string) error {
 	}
 
 	// Clean cache if requested
-	if cleanCache {
+	if destroyCache {
 		if !jsonMode {
 			output.Info("Cleaning snapshot cache...")
 		}
@@ -116,17 +110,17 @@ func runClean(cmd *cobra.Command, args []string) error {
 	}
 
 	if jsonMode {
-		return outputCleanJSON(cleanCache)
+		return outputDestroyJSON(destroyCache)
 	}
 
-	output.Success("Devnet removed successfully.")
+	output.Success("Devnet destroyed successfully.")
 	return nil
 }
 
-func outputCleanJSON(cacheCleared bool) error {
+func outputDestroyJSON(cacheCleared bool) error {
 	result := map[string]interface{}{
 		"status":        "success",
-		"message":       "Devnet removed successfully",
+		"message":       "Devnet destroyed successfully",
 		"cache_cleared": cacheCleared,
 	}
 
@@ -135,10 +129,10 @@ func outputCleanJSON(cacheCleared bool) error {
 	return nil
 }
 
-func outputCleanError(err error) error {
+func outputDestroyError(err error) error {
 	result := map[string]interface{}{
 		"error":   true,
-		"code":    "CLEAN_FAILED",
+		"code":    "DESTROY_FAILED",
 		"message": err.Error(),
 	}
 
@@ -147,12 +141,8 @@ func outputCleanError(err error) error {
 	return err
 }
 
-// cleanWithDocker uses a docker container to remove root-owned files.
-// This is needed because docker containers running as root create files
-// owned by root, which the host user cannot delete without sudo.
-func cleanWithDocker(dir string) error {
-	// Use alpine image for minimal footprint
-	// Remove contents of the directory, not the mount point itself
+// destroyWithDocker uses a docker container to remove root-owned files.
+func destroyWithDocker(dir string) error {
 	cmd := exec.Command("docker", "run", "--rm",
 		"-v", fmt.Sprintf("%s:/cleanup", dir),
 		"alpine:latest",
@@ -163,6 +153,5 @@ func cleanWithDocker(dir string) error {
 		return fmt.Errorf("docker cleanup failed: %s: %w", string(cmdOutput), err)
 	}
 
-	// Remove the now-empty directory
 	return os.RemoveAll(dir)
 }

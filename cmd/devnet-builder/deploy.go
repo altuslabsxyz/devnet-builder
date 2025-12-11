@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -17,20 +16,20 @@ import (
 )
 
 var (
-	startNetwork       string
-	startValidators    int
-	startMode          string
-	startStableVersion string
-	startNoCache       bool
-	startAccounts      int
-	startNoInteractive bool
-	startExportVersion string
-	startStartVersion  string
-	startImage         string // Docker image for docker mode
+	deployNetwork       string
+	deployValidators    int
+	deployMode          string
+	deployStableVersion string
+	deployNoCache       bool
+	deployAccounts      int
+	deployNoInteractive bool
+	deployExportVersion string
+	deployStartVersion  string
+	deployImage         string
 )
 
-// StartResult represents the JSON output for the start command.
-type StartResult struct {
+// DeployResult represents the JSON output for the deploy command.
+type DeployResult struct {
 	Status      string       `json:"status"`
 	ChainID     string       `json:"chain_id"`
 	Network     string       `json:"network"`
@@ -40,22 +39,11 @@ type StartResult struct {
 	Nodes       []NodeResult `json:"nodes"`
 }
 
-// NodeResult represents a node in the JSON output.
-type NodeResult struct {
-	Index  int    `json:"index"`
-	RPC    string `json:"rpc"`
-	EVMRPC string `json:"evm_rpc"`
-	Status string `json:"status"`
-}
-
-func NewStartCmd() *cobra.Command {
+func NewDeployCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:        "start",
-		Short:      "Start a local devnet (deprecated: use 'deploy' instead)",
-		Deprecated: "use 'deploy' instead",
-		Long: `Start a local devnet with configurable validators and network source.
-
-DEPRECATED: This command is deprecated. Use 'devnet-builder deploy' instead.
+		Use:   "deploy",
+		Short: "Deploy a local devnet (provision + start)",
+		Long: `Deploy a local devnet with configurable validators and network source.
 
 This command will:
 1. Check prerequisites (Docker/local binary, curl, jq, zstd/lz4)
@@ -65,50 +53,53 @@ This command will:
 5. Start all validator nodes
 
 Examples:
-  # Start with default settings (4 validators, mainnet, docker mode)
+  # Deploy with default settings (4 validators, mainnet, docker mode)
   devnet-builder deploy
 
-  # Start with testnet data
+  # Deploy with testnet data
   devnet-builder deploy --network testnet
 
-  # Start with 2 validators
-  devnet-builder deploy --validators 2`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			PrintDeprecationWarning("start", "deploy")
-			return runStart(cmd, args)
-		},
+  # Deploy with 2 validators
+  devnet-builder deploy --validators 2
+
+  # Deploy with local binary mode
+  devnet-builder deploy --mode local
+
+  # Deploy with specific stable version
+  devnet-builder deploy --stable-version v1.2.3`,
+		RunE: runDeploy,
 	}
 
 	// Command flags
-	cmd.Flags().StringVarP(&startNetwork, "network", "n", "mainnet",
+	cmd.Flags().StringVarP(&deployNetwork, "network", "n", "mainnet",
 		"Network source (mainnet, testnet)")
-	cmd.Flags().IntVar(&startValidators, "validators", 4,
+	cmd.Flags().IntVar(&deployValidators, "validators", 4,
 		"Number of validators (1-4)")
-	cmd.Flags().StringVarP(&startMode, "mode", "m", "docker",
+	cmd.Flags().StringVarP(&deployMode, "mode", "m", "docker",
 		"Execution mode (docker, local)")
-	cmd.Flags().StringVar(&startStableVersion, "stable-version", "latest",
+	cmd.Flags().StringVar(&deployStableVersion, "stable-version", "latest",
 		"Stable repository version")
-	cmd.Flags().BoolVar(&startNoCache, "no-cache", false,
+	cmd.Flags().BoolVar(&deployNoCache, "no-cache", false,
 		"Skip snapshot cache")
-	cmd.Flags().IntVar(&startAccounts, "accounts", 0,
+	cmd.Flags().IntVar(&deployAccounts, "accounts", 0,
 		"Additional funded accounts")
 
 	// Interactive mode flags
-	cmd.Flags().BoolVar(&startNoInteractive, "no-interactive", false,
+	cmd.Flags().BoolVar(&deployNoInteractive, "no-interactive", false,
 		"Disable interactive mode (use flags instead)")
-	cmd.Flags().StringVar(&startExportVersion, "export-version", "",
+	cmd.Flags().StringVar(&deployExportVersion, "export-version", "",
 		"Version for genesis export (non-interactive mode)")
-	cmd.Flags().StringVar(&startStartVersion, "start-version", "",
+	cmd.Flags().StringVar(&deployStartVersion, "start-version", "",
 		"Version for node start (non-interactive mode)")
 
 	// Docker image flag
-	cmd.Flags().StringVar(&startImage, "image", "",
+	cmd.Flags().StringVar(&deployImage, "image", "",
 		"Docker image for docker mode (e.g., v1.0.0 or ghcr.io/org/image:tag)")
 
 	return cmd
 }
 
-func runStart(cmd *cobra.Command, args []string) error {
+func runDeploy(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
@@ -117,34 +108,34 @@ func runStart(cmd *cobra.Command, args []string) error {
 	if fileCfg != nil {
 		// Apply config file values if flags not explicitly set
 		if !cmd.Flags().Changed("network") && fileCfg.Network != nil {
-			startNetwork = *fileCfg.Network
+			deployNetwork = *fileCfg.Network
 		}
 		if !cmd.Flags().Changed("validators") && fileCfg.Validators != nil {
-			startValidators = *fileCfg.Validators
+			deployValidators = *fileCfg.Validators
 		}
 		if !cmd.Flags().Changed("mode") && fileCfg.Mode != nil {
-			startMode = *fileCfg.Mode
+			deployMode = *fileCfg.Mode
 		}
 		if !cmd.Flags().Changed("stable-version") && fileCfg.StableVersion != nil {
-			startStableVersion = *fileCfg.StableVersion
+			deployStableVersion = *fileCfg.StableVersion
 		}
 		if !cmd.Flags().Changed("no-cache") && fileCfg.NoCache != nil {
-			startNoCache = *fileCfg.NoCache
+			deployNoCache = *fileCfg.NoCache
 		}
 		if !cmd.Flags().Changed("accounts") && fileCfg.Accounts != nil {
-			startAccounts = *fileCfg.Accounts
+			deployAccounts = *fileCfg.Accounts
 		}
 	}
 
 	// Apply environment variable defaults (override config.toml, but not explicit flags)
 	if network := os.Getenv("STABLE_DEVNET_NETWORK"); network != "" && !cmd.Flags().Changed("network") {
-		startNetwork = network
+		deployNetwork = network
 	}
 	if mode := os.Getenv("STABLE_DEVNET_MODE"); mode != "" && !cmd.Flags().Changed("mode") {
-		startMode = mode
+		deployMode = mode
 	}
 	if version := os.Getenv("STABLE_VERSION"); version != "" && !cmd.Flags().Changed("stable-version") {
-		startStableVersion = version
+		deployStableVersion = version
 	}
 
 	// Track if versions are custom refs
@@ -152,15 +143,14 @@ func runStart(cmd *cobra.Command, args []string) error {
 	var startIsCustomRef bool
 	var exportVersion string
 	var startVersion string
-	var dockerImage string // Selected docker image (only for docker mode)
+	var dockerImage string
 
 	// Determine if running in interactive mode
-	isInteractive := !startNoInteractive && !jsonMode
+	isInteractive := !deployNoInteractive && !jsonMode
 
 	// Docker mode uses GHCR package versions, not GitHub releases
-	if startMode == "docker" {
-		// For docker mode, resolve docker image (handles --image flag, interactive selection, defaults)
-		resolvedImage, err := resolveDockerImage(ctx, cmd, isInteractive)
+	if deployMode == "docker" {
+		resolvedImage, err := resolveDeployDockerImage(ctx, cmd, isInteractive)
 		if err != nil {
 			if interactive.IsCancellation(err) {
 				fmt.Println("Operation cancelled.")
@@ -169,13 +159,12 @@ func runStart(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		dockerImage = resolvedImage
-		// Docker mode doesn't need export/start version selection - use defaults
-		exportVersion = startStableVersion
-		startVersion = startStableVersion
+		exportVersion = deployStableVersion
+		startVersion = deployStableVersion
 	} else {
 		// Local mode: run interactive selection flow for GitHub releases
 		if isInteractive {
-			selection, err := runInteractiveSelection(ctx, cmd)
+			selection, err := runDeployInteractiveSelection(ctx, cmd)
 			if err != nil {
 				if interactive.IsCancellation(err) {
 					fmt.Println("Operation cancelled.")
@@ -183,35 +172,32 @@ func runStart(cmd *cobra.Command, args []string) error {
 				}
 				return err
 			}
-			// Apply selections
-			startNetwork = selection.Network
+			deployNetwork = selection.Network
 			exportVersion = selection.ExportVersion
 			exportIsCustomRef = selection.ExportIsCustomRef
 			startVersion = selection.StartVersion
 			startIsCustomRef = selection.StartIsCustomRef
-			// Use export version for provisioning (stableVersion flag)
-			startStableVersion = exportVersion
+			deployStableVersion = exportVersion
 		} else {
-			// Non-interactive mode: both versions are the same
-			exportVersion = startStableVersion
-			startVersion = startStableVersion
+			exportVersion = deployStableVersion
+			startVersion = deployStableVersion
 		}
 	}
 
 	// Validate inputs
-	if startNetwork != "mainnet" && startNetwork != "testnet" {
-		return fmt.Errorf("invalid network: %s (must be 'mainnet' or 'testnet')", startNetwork)
+	if deployNetwork != "mainnet" && deployNetwork != "testnet" {
+		return fmt.Errorf("invalid network: %s (must be 'mainnet' or 'testnet')", deployNetwork)
 	}
-	if startValidators < 1 || startValidators > 4 {
-		return fmt.Errorf("invalid validators: %d (must be 1-4)", startValidators)
+	if deployValidators < 1 || deployValidators > 4 {
+		return fmt.Errorf("invalid validators: %d (must be 1-4)", deployValidators)
 	}
-	if startMode != "docker" && startMode != "local" {
-		return fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", startMode)
+	if deployMode != "docker" && deployMode != "local" {
+		return fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", deployMode)
 	}
 
 	// Check if devnet already exists
 	if devnet.DevnetExists(homeDir) {
-		return fmt.Errorf("devnet already exists at %s\nUse 'devnet-builder clean' to remove it first", homeDir)
+		return fmt.Errorf("devnet already exists at %s\nUse 'devnet-builder destroy' to remove it first", homeDir)
 	}
 
 	// Build from source if start version is a custom ref
@@ -221,7 +207,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 		logger.Info("Building binary from source (ref: %s)...", startVersion)
 		result, err := b.Build(ctx, builder.BuildOptions{
 			Ref:     startVersion,
-			Network: startNetwork,
+			Network: deployNetwork,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to build from source: %w", err)
@@ -231,26 +217,26 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Store start version info in metadata for reference
-	_ = startVersion      // Used for building, stored via CustomBinaryPath
-	_ = exportIsCustomRef // Export custom ref not yet supported (would need separate build)
+	_ = startVersion
+	_ = exportIsCustomRef
 
 	// Phase 1: Provision (create config, generate validators)
 	provisionOpts := devnet.ProvisionOptions{
 		HomeDir:       homeDir,
-		Network:       startNetwork,
-		NumValidators: startValidators,
-		NumAccounts:   startAccounts,
-		Mode:          devnet.ExecutionMode(startMode),
+		Network:       deployNetwork,
+		NumValidators: deployValidators,
+		NumAccounts:   deployAccounts,
+		Mode:          devnet.ExecutionMode(deployMode),
 		StableVersion: exportVersion,
 		DockerImage:   dockerImage,
-		NoCache:       startNoCache,
+		NoCache:       deployNoCache,
 		Logger:        logger,
 	}
 
 	_, err := devnet.Provision(ctx, provisionOpts)
 	if err != nil {
 		if jsonMode {
-			return outputStartError(err)
+			return outputDeployError(err)
 		}
 		return err
 	}
@@ -258,7 +244,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	// Phase 2: Run (start nodes)
 	runOpts := devnet.RunOptions{
 		HomeDir:          homeDir,
-		Mode:             devnet.ExecutionMode(startMode),
+		Mode:             devnet.ExecutionMode(deployMode),
 		StableVersion:    exportVersion,
 		HealthTimeout:    devnet.HealthCheckTimeout,
 		Logger:           logger,
@@ -268,27 +254,26 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	runResult, err := devnet.Run(ctx, runOpts)
 	if err != nil {
-		// Still output partial results if available
 		if runResult != nil && runResult.Devnet != nil {
 			if jsonMode {
-				return outputStartJSONFromRunResult(runResult, err)
+				return outputDeployJSONFromRunResult(runResult, err)
 			}
 		}
 		if jsonMode {
-			return outputStartError(err)
+			return outputDeployError(err)
 		}
 		return err
 	}
 
 	// Output result
 	if jsonMode {
-		return outputStartJSON(runResult.Devnet)
+		return outputDeployJSON(runResult.Devnet)
 	}
-	return outputStartText(runResult.Devnet)
+	return outputDeployText(runResult.Devnet)
 }
 
-func outputStartJSONFromRunResult(result *devnet.RunResult, err error) error {
-	jsonResult := StartResult{
+func outputDeployJSONFromRunResult(result *devnet.RunResult, err error) error {
+	jsonResult := DeployResult{
 		Status:      "partial",
 		ChainID:     result.Devnet.Metadata.ChainID,
 		Network:     result.Devnet.Metadata.NetworkSource,
@@ -323,7 +308,7 @@ func outputStartJSONFromRunResult(result *devnet.RunResult, err error) error {
 	return err
 }
 
-func outputStartText(d *devnet.Devnet) error {
+func outputDeployText(d *devnet.Devnet) error {
 	fmt.Println()
 	output.Bold("Chain ID:     %s", d.Metadata.ChainID)
 	output.Info("Network:      %s", d.Metadata.NetworkSource)
@@ -343,8 +328,8 @@ func outputStartText(d *devnet.Devnet) error {
 	return nil
 }
 
-func outputStartJSON(d *devnet.Devnet) error {
-	result := StartResult{
+func outputDeployJSON(d *devnet.Devnet) error {
+	result := DeployResult{
 		Status:      "success",
 		ChainID:     d.Metadata.ChainID,
 		Network:     d.Metadata.NetworkSource,
@@ -372,7 +357,7 @@ func outputStartJSON(d *devnet.Devnet) error {
 	return nil
 }
 
-func outputStartError(err error) error {
+func outputDeployError(err error) error {
 	result := map[string]interface{}{
 		"error":   true,
 		"code":    getErrorCode(err),
@@ -384,43 +369,10 @@ func outputStartError(err error) error {
 	return err
 }
 
-func getErrorCode(err error) string {
-	errStr := err.Error()
-	switch {
-	case contains(errStr, "prerequisite"):
-		return "PREREQUISITE_MISSING"
-	case contains(errStr, "already exists"):
-		return "DEVNET_ALREADY_RUNNING"
-	case contains(errStr, "snapshot"):
-		return "SNAPSHOT_DOWNLOAD_FAILED"
-	case contains(errStr, "start"):
-		return "NODE_START_FAILED"
-	case contains(errStr, "port"):
-		return "PORT_CONFLICT"
-	default:
-		return "GENERAL_ERROR"
-	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
-// runInteractiveSelection runs the interactive version selection flow.
-func runInteractiveSelection(ctx context.Context, cmd *cobra.Command) (*interactive.SelectionConfig, error) {
-	// Get config for cache settings
+// runDeployInteractiveSelection runs the interactive version selection flow.
+func runDeployInteractiveSelection(ctx context.Context, cmd *cobra.Command) (*interactive.SelectionConfig, error) {
 	fileCfg := GetLoadedFileConfig()
 
-	// Set up cache manager
 	cacheTTL := github.DefaultCacheTTL
 	if fileCfg != nil && fileCfg.CacheTTL != nil {
 		if ttl, err := time.ParseDuration(*fileCfg.CacheTTL); err == nil {
@@ -429,7 +381,6 @@ func runInteractiveSelection(ctx context.Context, cmd *cobra.Command) (*interact
 	}
 	cacheManager := github.NewCacheManager(homeDir, cacheTTL)
 
-	// Set up GitHub client with cache and optional token
 	clientOpts := []github.ClientOption{
 		github.WithCache(cacheManager),
 	}
@@ -438,79 +389,41 @@ func runInteractiveSelection(ctx context.Context, cmd *cobra.Command) (*interact
 	}
 	client := github.NewClient(clientOpts...)
 
-	// Run selection flow
 	selector := interactive.NewSelector(client)
 	return selector.RunSelectionFlow(ctx)
 }
 
-// DockerImageSelectionResult holds the result of docker image selection.
-type DockerImageSelectionResult struct {
-	ImageTag   string // Selected image tag or full custom URL
-	IsCustom   bool   // True if user entered a custom image URL
-	FromCache  bool   // True if versions were loaded from cache
-}
-
-// DefaultGHCRImage is the default GHCR image for stable.
-const DefaultGHCRImage = "ghcr.io/stablelabs/stable"
-
-// normalizeImageURL converts a tag-only input to a full GHCR URL.
-// If the input already contains a registry (contains "/" or ":"), it returns as-is.
-// Otherwise, it constructs: ghcr.io/stablelabs/stable:{tag}
-func normalizeImageURL(image string) string {
-	if image == "" {
-		return ""
-	}
-	// If it looks like a full URL (contains "/" indicating a registry path), return as-is
-	if strings.Contains(image, "/") {
-		return image
-	}
-	// Otherwise, treat it as a tag and construct GHCR URL
-	return fmt.Sprintf("%s:%s", DefaultGHCRImage, image)
-}
-
-// resolveDockerImage determines the docker image to use based on priority:
-// 1. --image flag (highest priority)
-// 2. Interactive selection (if in interactive mode and docker mode)
-// 3. Default latest tag (for non-interactive docker mode)
-// Returns the resolved image URL and any error.
-func resolveDockerImage(ctx context.Context, cmd *cobra.Command, isInteractive bool) (string, error) {
+// resolveDeployDockerImage determines the docker image to use.
+func resolveDeployDockerImage(ctx context.Context, cmd *cobra.Command, isInteractive bool) (string, error) {
 	// Priority 1: --image flag was explicitly provided
-	if cmd.Flags().Changed("image") && startImage != "" {
-		return normalizeImageURL(startImage), nil
+	if cmd.Flags().Changed("image") && deployImage != "" {
+		return normalizeImageURL(deployImage), nil
 	}
 
 	// Priority 2: Interactive mode - prompt user to select
-	if isInteractive && startMode == "docker" {
-		imageSelection, err := runDockerImageSelection(ctx)
+	if isInteractive && deployMode == "docker" {
+		imageSelection, err := runDeployDockerImageSelection(ctx)
 		if err != nil {
 			return "", err
 		}
-		// If custom image, user provided full URL; otherwise construct GHCR URL
 		if imageSelection.IsCustom {
 			return imageSelection.ImageTag, nil
 		}
 		return fmt.Sprintf("%s:%s", DefaultGHCRImage, imageSelection.ImageTag), nil
 	}
 
-	// Priority 3: Non-interactive mode with --image flag (but not explicitly changed)
-	// Use the provided value or fall back to empty (will use default in devnet package)
-	if startImage != "" {
-		return normalizeImageURL(startImage), nil
+	// Priority 3: Non-interactive mode with --image flag
+	if deployImage != "" {
+		return normalizeImageURL(deployImage), nil
 	}
 
-	// No image specified - return empty to use default behavior
 	return "", nil
 }
 
-// DefaultDockerPackage is the default container package name for docker images.
-const DefaultDockerPackage = "stable"
-
-// runDockerImageSelection prompts the user to select a docker image version.
-func runDockerImageSelection(ctx context.Context) (*DockerImageSelectionResult, error) {
-	// Get config for cache settings
+// runDeployDockerImageSelection prompts the user to select a docker image version.
+func runDeployDockerImageSelection(ctx context.Context) (*DockerImageSelectionResult, error) {
 	fileCfg := GetLoadedFileConfig()
 
-	// Set up cache manager
 	cacheTTL := github.DefaultCacheTTL
 	if fileCfg != nil && fileCfg.CacheTTL != nil {
 		if ttl, err := time.ParseDuration(*fileCfg.CacheTTL); err == nil {
@@ -519,7 +432,6 @@ func runDockerImageSelection(ctx context.Context) (*DockerImageSelectionResult, 
 	}
 	cacheManager := github.NewCacheManager(homeDir, cacheTTL)
 
-	// Set up GitHub client with cache and optional token
 	clientOpts := []github.ClientOption{
 		github.WithCache(cacheManager),
 	}
@@ -528,10 +440,8 @@ func runDockerImageSelection(ctx context.Context) (*DockerImageSelectionResult, 
 	}
 	client := github.NewClient(clientOpts...)
 
-	// Fetch available docker image versions
 	versions, fromCache, err := client.GetImageVersionsWithCache(ctx, DefaultDockerPackage)
 	if err != nil {
-		// Check if it's a warning (stale data)
 		if warning, ok := err.(*github.StaleDataWarning); ok {
 			fmt.Fprintf(os.Stderr, "Warning: %s\n", warning.Message)
 		} else {
@@ -547,7 +457,6 @@ func runDockerImageSelection(ctx context.Context) (*DockerImageSelectionResult, 
 		fmt.Println("(Using cached docker image data)")
 	}
 
-	// Run the interactive selection
 	imageTag, isCustom, err := interactive.SelectDockerImage(versions)
 	if err != nil {
 		return nil, err

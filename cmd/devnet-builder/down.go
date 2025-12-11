@@ -12,20 +12,19 @@ import (
 )
 
 var (
-	stopTimeout time.Duration
+	downTimeout time.Duration
 )
 
-func NewStopCmd() *cobra.Command {
+func NewDownCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:        "stop",
-		Short:      "Stop the running devnet (deprecated: use 'down' instead)",
-		Deprecated: "use 'down' instead",
+		Use:   "down",
+		Short: "Stop running nodes",
 		Long: `Stop all running nodes in the devnet.
-
-DEPRECATED: This command is deprecated. Use 'devnet-builder down' instead.
 
 This command gracefully stops all validator nodes with a configurable timeout.
 If nodes don't stop gracefully within the timeout, they will be forcefully terminated.
+
+Use 'devnet-builder up' to restart the nodes later.
 
 Examples:
   # Stop with default timeout (30s)
@@ -33,26 +32,23 @@ Examples:
 
   # Stop with custom timeout
   devnet-builder down --timeout 60s`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			PrintDeprecationWarning("stop", "down")
-			return runStop(cmd, args)
-		},
+		RunE: runDown,
 	}
 
-	cmd.Flags().DurationVarP(&stopTimeout, "timeout", "t", 30*time.Second,
+	cmd.Flags().DurationVarP(&downTimeout, "timeout", "t", 30*time.Second,
 		"Graceful shutdown timeout")
 
 	return cmd
 }
 
-func runStop(cmd *cobra.Command, args []string) error {
+func runDown(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
 	// Check if devnet exists
 	if !devnet.DevnetExists(homeDir) {
 		if jsonMode {
-			return outputStopError(fmt.Errorf("no devnet found"))
+			return outputDownError(fmt.Errorf("no devnet found"))
 		}
 		return fmt.Errorf("no devnet found at %s", homeDir)
 	}
@@ -61,7 +57,7 @@ func runStop(cmd *cobra.Command, args []string) error {
 	d, err := devnet.LoadDevnetWithNodes(homeDir, logger)
 	if err != nil {
 		if jsonMode {
-			return outputStopError(err)
+			return outputDownError(err)
 		}
 		return fmt.Errorf("failed to load devnet: %w", err)
 	}
@@ -71,22 +67,23 @@ func runStop(cmd *cobra.Command, args []string) error {
 		output.Info("Stopping devnet nodes...")
 	}
 
-	if err := d.Stop(ctx, stopTimeout); err != nil {
+	if err := d.Stop(ctx, downTimeout); err != nil {
 		if jsonMode {
-			return outputStopError(err)
+			return outputDownError(err)
 		}
 		return fmt.Errorf("failed to stop devnet: %w", err)
 	}
 
 	if jsonMode {
-		return outputStopJSON()
+		return outputDownJSON()
 	}
 
 	output.Success("Devnet stopped successfully.")
+	output.Info("Use 'devnet-builder up' to restart the nodes.")
 	return nil
 }
 
-func outputStopJSON() error {
+func outputDownJSON() error {
 	result := map[string]interface{}{
 		"status":  "success",
 		"message": "Devnet stopped successfully",
@@ -97,7 +94,7 @@ func outputStopJSON() error {
 	return nil
 }
 
-func outputStopError(err error) error {
+func outputDownError(err error) error {
 	result := map[string]interface{}{
 		"error":   true,
 		"code":    "DEVNET_NOT_RUNNING",

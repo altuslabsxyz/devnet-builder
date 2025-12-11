@@ -362,8 +362,9 @@ func Run(ctx context.Context, opts RunOptions) (*RunResult, error) {
 		}
 	}
 
-	// Apply run options to metadata if provided
+	// Apply run options to metadata if provided (CLI --mode flag only)
 	if opts.Mode != "" {
+		logger.Debug("Overriding execution mode from CLI flag: %s -> %s", metadata.ExecutionMode, opts.Mode)
 		metadata.ExecutionMode = opts.Mode
 	}
 	if opts.StableVersion != "" {
@@ -862,6 +863,18 @@ func (d *Devnet) SoftReset(ctx context.Context) error {
 		}
 		if err := os.MkdirAll(dataDir, 0755); err != nil {
 			return fmt.Errorf("failed to recreate data dir for %s: %w", n.Name, err)
+		}
+
+		// Recreate priv_validator_state.json with initial state
+		// This file is required by CometBFT to track validator signing state
+		privValStatePath := filepath.Join(dataDir, "priv_validator_state.json")
+		initialState := `{
+  "height": "0",
+  "round": 0,
+  "step": 0
+}`
+		if err := os.WriteFile(privValStatePath, []byte(initialState), 0644); err != nil {
+			return fmt.Errorf("failed to create priv_validator_state.json for %s: %w", n.Name, err)
 		}
 	}
 

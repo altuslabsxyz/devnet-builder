@@ -254,29 +254,45 @@ func runNodeLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	n := d.Nodes[index]
-	logPath := n.LogFilePath()
 
-	// Check if log file exists
-	if _, err := os.Stat(logPath); os.IsNotExist(err) {
-		return fmt.Errorf("log file not found: %s", logPath)
+	// Handle logs based on execution mode
+	switch metadata.ExecutionMode {
+	case devnet.ModeDocker:
+		if nodeLogFollow {
+			return node.FollowDockerLogs(ctx, n.DockerContainerName())
+		}
+		// Get last N lines from docker logs
+		lines, err := node.GetDockerLogs(ctx, n.DockerContainerName(), nodeLogLines)
+		if err != nil {
+			return fmt.Errorf("failed to get docker logs: %w", err)
+		}
+		for _, line := range lines {
+			fmt.Println(line)
+		}
+		return nil
+
+	case devnet.ModeLocal:
+		logPath := n.LogFilePath()
+		// Check if log file exists
+		if _, err := os.Stat(logPath); os.IsNotExist(err) {
+			return fmt.Errorf("log file not found: %s", logPath)
+		}
+		if nodeLogFollow {
+			return node.FollowLocalLogs(ctx, logPath)
+		}
+		// Print last N lines
+		lines, err := output.ReadLastLines(logPath, nodeLogLines)
+		if err != nil {
+			return fmt.Errorf("failed to read logs: %w", err)
+		}
+		for _, line := range lines {
+			fmt.Println(line)
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("unknown execution mode: %s", metadata.ExecutionMode)
 	}
-
-	if nodeLogFollow {
-		// Follow logs
-		return followNodeLogs(ctx, metadata, n, logPath)
-	}
-
-	// Print last N lines
-	lines, err := output.ReadLastLines(logPath, nodeLogLines)
-	if err != nil {
-		return fmt.Errorf("failed to read logs: %w", err)
-	}
-
-	for _, line := range lines {
-		fmt.Println(line)
-	}
-
-	return nil
 }
 
 func followNodeLogs(ctx context.Context, metadata *devnet.DevnetMetadata, n *node.Node, logPath string) error {
