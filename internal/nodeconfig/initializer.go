@@ -9,6 +9,12 @@ import (
 	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
+// isGHCRImage returns true if the image is from GitHub Container Registry.
+// GHCR images have stabled as entrypoint, so we don't need to prefix commands.
+func isGHCRImage(image string) bool {
+	return strings.HasPrefix(image, "ghcr.io/")
+}
+
 // ExecutionMode defines how nodes are executed.
 type ExecutionMode string
 
@@ -51,10 +57,15 @@ func (i *NodeInitializer) initDocker(ctx context.Context, nodeDir, moniker, chai
 		"run", "--rm",
 		"-v", fmt.Sprintf("%s:/root/.stabled", nodeDir),
 		i.dockerImage,
-		"stabled", "init", moniker,
+	}
+	// GHCR images have stabled as entrypoint, others need explicit command
+	if !isGHCRImage(i.dockerImage) {
+		args = append(args, "stabled")
+	}
+	args = append(args, "init", moniker,
 		"--chain-id", chainID,
 		"--home", "/root/.stabled",
-	}
+	)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmdOutput, err := cmd.CombinedOutput()
@@ -107,9 +118,14 @@ func (i *NodeInitializer) getNodeIDDocker(ctx context.Context, nodeDir string) (
 		"run", "--rm",
 		"-v", fmt.Sprintf("%s:/root/.stabled", nodeDir),
 		i.dockerImage,
-		"stabled", "comet", "show-node-id",
-		"--home", "/root/.stabled",
 	}
+	// GHCR images have stabled as entrypoint, others need explicit command
+	if !isGHCRImage(i.dockerImage) {
+		args = append(args, "stabled")
+	}
+	args = append(args, "comet", "show-node-id",
+		"--home", "/root/.stabled",
+	)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmdOutput, err := cmd.Output()
@@ -166,9 +182,14 @@ func (i *NodeInitializer) exportDocker(ctx context.Context, nodeDir, destPath st
 		"run", "--rm",
 		"-v", fmt.Sprintf("%s:/root/.stabled", nodeDir),
 		"-v", fmt.Sprintf("%s:/output", destPath),
-		i.dockerImage,
-		"bash", "-c",
-		"stabled export --home /root/.stabled > /output/genesis.json",
+	}
+	// GHCR images have stabled as entrypoint, need to override it for bash
+	if isGHCRImage(i.dockerImage) {
+		args = append(args, "--entrypoint", "bash", i.dockerImage, "-c",
+			"stabled export --home /root/.stabled > /output/genesis.json")
+	} else {
+		args = append(args, i.dockerImage, "bash", "-c",
+			"stabled export --home /root/.stabled > /output/genesis.json")
 	}
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
