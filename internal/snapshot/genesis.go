@@ -193,8 +193,12 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 				"run", "--rm",
 				"-v", exportHome + ":/data",
 				dockerImage,
-				"export", "--home", "/data",
 			}
+			// GHCR images have stabled as entrypoint, others need explicit command
+			if !strings.HasPrefix(dockerImage, "ghcr.io/") {
+				dockerArgs = append(dockerArgs, "stabled")
+			}
+			dockerArgs = append(dockerArgs, "export", "--home", "/data")
 
 			cmd := exec.CommandContext(ctx, "docker", dockerArgs...)
 

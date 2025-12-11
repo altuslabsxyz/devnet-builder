@@ -67,7 +67,12 @@ func (m *DockerManager) Start(ctx context.Context, node *Node, genesisPath strin
 		"-v", fmt.Sprintf("%s:/root/.stabled", node.HomeDir),
 		"-v", fmt.Sprintf("%s:/root/.stabled/config/genesis.json:ro", genesisPath),
 		m.Image,
-		"stabled", "start",
+	}
+	// GHCR images have stabled as entrypoint, others need explicit command
+	if !m.isGHCRImage() {
+		args = append(args, "stabled")
+	}
+	args = append(args, "start",
 		"--home", "/root/.stabled",
 		fmt.Sprintf("--rpc.laddr=tcp://0.0.0.0:%d", node.Ports.RPC),
 		fmt.Sprintf("--p2p.laddr=tcp://0.0.0.0:%d", node.Ports.P2P),
@@ -76,7 +81,7 @@ func (m *DockerManager) Start(ctx context.Context, node *Node, genesisPath strin
 		fmt.Sprintf("--api.enable=true"),
 		fmt.Sprintf("--json-rpc.address=0.0.0.0:%d", node.Ports.EVMRPC),
 		fmt.Sprintf("--json-rpc.ws-address=0.0.0.0:%d", node.Ports.EVMWS),
-	}
+	)
 
 	// Add EVM chain ID if set
 	if m.EVMChainID != "" {
@@ -281,16 +286,27 @@ func IsDockerAvailable(ctx context.Context) bool {
 	return cmd.Run() == nil
 }
 
+// isGHCRImage returns true if the image is from GitHub Container Registry.
+// GHCR images have stabled as entrypoint, so we don't need to prefix commands.
+func (m *DockerManager) isGHCRImage() bool {
+	return strings.HasPrefix(m.Image, "ghcr.io/")
+}
+
 // Init runs `stabled init` for a node in Docker.
 func (m *DockerManager) Init(ctx context.Context, nodeDir, moniker, chainID string) error {
 	args := []string{
 		"run", "--rm",
 		"-v", fmt.Sprintf("%s:/root/.stabled", nodeDir),
 		m.Image,
-		"stabled", "init", moniker,
+	}
+	// GHCR images have stabled as entrypoint, others need explicit command
+	if !m.isGHCRImage() {
+		args = append(args, "stabled")
+	}
+	args = append(args, "init", moniker,
 		"--chain-id", chainID,
 		"--home", "/root/.stabled",
-	}
+	)
 
 	m.Logger.Debug("Docker init: docker %s", strings.Join(args, " "))
 
@@ -308,9 +324,14 @@ func (m *DockerManager) GetNodeID(ctx context.Context, nodeDir string) (string, 
 		"run", "--rm",
 		"-v", fmt.Sprintf("%s:/root/.stabled", nodeDir),
 		m.Image,
-		"stabled", "comet", "show-node-id",
-		"--home", "/root/.stabled",
 	}
+	// GHCR images have stabled as entrypoint, others need explicit command
+	if !m.isGHCRImage() {
+		args = append(args, "stabled")
+	}
+	args = append(args, "comet", "show-node-id",
+		"--home", "/root/.stabled",
+	)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	output, err := cmd.Output()
@@ -326,9 +347,14 @@ func (m *DockerManager) Export(ctx context.Context, nodeDir, destPath string) er
 		"run", "--rm",
 		"-v", fmt.Sprintf("%s:/root/.stabled", nodeDir),
 		m.Image,
-		"stabled", "export",
-		"--home", "/root/.stabled",
 	}
+	// GHCR images have stabled as entrypoint, others need explicit command
+	if !m.isGHCRImage() {
+		args = append(args, "stabled")
+	}
+	args = append(args, "export",
+		"--home", "/root/.stabled",
+	)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
 
