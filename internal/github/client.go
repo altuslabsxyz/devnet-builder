@@ -290,3 +290,202 @@ type StaleDataWarning struct {
 func (e *StaleDataWarning) Error() string {
 	return e.Message
 }
+
+// FetchContainerVersions fetches container package versions from GHCR.
+func (c *Client) FetchContainerVersions(ctx context.Context, packageName string) ([]ContainerVersion, *RateLimitInfo, error) {
+	url := fmt.Sprintf("%s/orgs/%s/packages/container/%s/versions?per_page=%d&state=active",
+		GitHubAPIBaseURL, c.owner, packageName, DefaultPerPage)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to fetch container versions: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Parse rate limit info
+	rateLimitInfo := parseRateLimitHeaders(resp)
+
+	// Check for rate limiting
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
+		return nil, rateLimitInfo, &RateLimitError{
+			Limit:     rateLimitInfo.Limit,
+			Remaining: rateLimitInfo.Remaining,
+			Reset:     rateLimitInfo.Reset,
+		}
+	}
+
+	// Check for authentication errors
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, rateLimitInfo, &AuthenticationError{
+			Message: "GitHub authentication failed. Check your token.",
+		}
+	}
+
+	// Check for other errors
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, rateLimitInfo, fmt.Errorf("GitHub API error: %d - %s", resp.StatusCode, string(body))
+	}
+
+	// Parse response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, rateLimitInfo, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var versions []ContainerVersion
+	if err := json.Unmarshal(body, &versions); err != nil {
+		return nil, rateLimitInfo, fmt.Errorf("failed to parse container versions: %w", err)
+	}
+
+	return versions, rateLimitInfo, nil
+}
+
+// GetImageVersions returns simplified version list for UI display.
+func (c *Client) GetImageVersions(ctx context.Context, packageName string) ([]ImageVersion, error) {
+	versions, _, err := c.FetchContainerVersions(ctx, packageName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract unique tags and create ImageVersion list
+	tagMap := make(map[string]ImageVersion)
+	for _, v := range versions {
+		for _, tag := range v.Metadata.Container.Tags {
+			// Skip sha256 digest tags
+			if strings.HasPrefix(tag, "sha256:") {
+				continue
+			}
+			// Use the most recent created_at for each tag
+			existing, exists := tagMap[tag]
+			if !exists || v.CreatedAt.After(existing.CreatedAt) {
+				tagMap[tag] = ImageVersion{
+					Tag:       tag,
+					CreatedAt: v.CreatedAt,
+				}
+			}
+		}
+	}
+
+	// Convert map to slice and sort by date (newest first)
+	result := make([]ImageVersion, 0, len(tagMap))
+	for _, iv := range tagMap {
+		result = append(result, iv)
+	}
+
+	// Sort by CreatedAt descending
+	for i := 0; i < len(result)-1; i++ {
+		for j := i + 1; j < len(result); j++ {
+			if result[j].CreatedAt.After(result[i].CreatedAt) {
+				result[i], result[j] = result[j], result[i]
+			}
+		}
+	}
+
+	// Mark the first one as latest
+	if len(result) > 0 {
+		result[0].IsLatest = true
+	}
+
+	return result, nil
+}
+
+// GetImageVersionsWithCache returns image versions, using cache when available.
+func (c *Client) GetImageVersionsWithCache(ctx context.Context, packageName string) ([]ImageVersion, bool, error) {
+	// Try cache first
+	if c.cache != nil {
+		cache, err := c.cache.LoadContainerCache()
+		if err == nil && cache != nil && !c.cache.IsContainerCacheExpired(cache) {
+			// Convert cached versions to ImageVersion list
+			versions := c.convertToImageVersions(cache.Versions)
+			return versions, true, nil
+		}
+	}
+
+	// Fetch from API
+	containerVersions, _, err := c.FetchContainerVersions(ctx, packageName)
+	if err != nil {
+		// If we have stale cache, use it with warning
+		if c.cache != nil {
+			cache, loadErr := c.cache.LoadContainerCache()
+			if loadErr == nil && cache != nil {
+				versions := c.convertToImageVersions(cache.Versions)
+				return versions, true, &StaleDataWarning{
+					Message: fmt.Sprintf("Using cached data (fetched %s ago): %v",
+						time.Since(cache.FetchedAt).Round(time.Minute), err),
+				}
+			}
+		}
+		return nil, false, err
+	}
+
+	// Save to cache
+	if c.cache != nil {
+		cache := &ContainerVersionCache{
+			Version:   CacheSchemaVersion,
+			FetchedAt: time.Now(),
+			ExpiresAt: time.Now().Add(c.cache.TTL()),
+			Versions:  containerVersions,
+		}
+		_ = c.cache.SaveContainerCache(cache) // Ignore save errors
+	}
+
+	// Convert to ImageVersion list
+	versions := c.convertToImageVersions(containerVersions)
+	return versions, false, nil
+}
+
+// convertToImageVersions converts ContainerVersion list to ImageVersion list.
+func (c *Client) convertToImageVersions(versions []ContainerVersion) []ImageVersion {
+	tagMap := make(map[string]ImageVersion)
+	for _, v := range versions {
+		for _, tag := range v.Metadata.Container.Tags {
+			// Skip sha256 digest tags
+			if strings.HasPrefix(tag, "sha256:") {
+				continue
+			}
+			// Use the most recent created_at for each tag
+			existing, exists := tagMap[tag]
+			if !exists || v.CreatedAt.After(existing.CreatedAt) {
+				tagMap[tag] = ImageVersion{
+					Tag:       tag,
+					CreatedAt: v.CreatedAt,
+				}
+			}
+		}
+	}
+
+	// Convert map to slice and sort by date (newest first)
+	result := make([]ImageVersion, 0, len(tagMap))
+	for _, iv := range tagMap {
+		result = append(result, iv)
+	}
+
+	// Sort by CreatedAt descending
+	for i := 0; i < len(result)-1; i++ {
+		for j := i + 1; j < len(result); j++ {
+			if result[j].CreatedAt.After(result[i].CreatedAt) {
+				result[i], result[j] = result[j], result[i]
+			}
+		}
+	}
+
+	// Mark the first one as latest
+	if len(result) > 0 {
+		result[0].IsLatest = true
+	}
+
+	return result
+}

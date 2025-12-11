@@ -25,3 +25,31 @@ const CacheSchemaVersion = 1
 
 // DefaultCacheTTL is the default time-to-live for cached data.
 const DefaultCacheTTL = 1 * time.Hour
+
+// ContainerVersion represents a container package version from GHCR.
+type ContainerVersion struct {
+	ID        int       `json:"id"`
+	Name      string    `json:"name"`       // SHA digest
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Metadata  struct {
+		Container struct {
+			Tags []string `json:"tags"`
+		} `json:"container"`
+	} `json:"metadata"`
+}
+
+// ImageVersion represents a simplified version for display.
+type ImageVersion struct {
+	Tag       string
+	CreatedAt time.Time
+	IsLatest  bool
+}
+
+// ContainerVersionCache represents cached container version data.
+type ContainerVersionCache struct {
+	Version   int                `json:"version"`
+	FetchedAt time.Time          `json:"fetched_at"`
+	ExpiresAt time.Time          `json:"expires_at"`
+	Versions  []ContainerVersion `json:"versions"`
+}

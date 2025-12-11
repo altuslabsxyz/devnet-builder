@@ -55,3 +55,23 @@ var Networks = []NetworkOption{
 	{Name: "mainnet", Description: "Stable mainnet network"},
 	{Name: "testnet", Description: "Stable testnet network"},
 }
+
+// DockerImageItem represents a docker image version for display in promptui.
+type DockerImageItem struct {
+	Tag       string
+	CreatedAt time.Time
+	IsLatest  bool
+	IsCustom  bool // True for "Enter custom image..." option
+}
+
+// String returns display string for promptui.
+func (d DockerImageItem) String() string {
+	if d.IsCustom {
+		return d.Tag
+	}
+	suffix := ""
+	if d.IsLatest {
+		suffix = " (latest)"
+	}
+	return fmt.Sprintf("%s - %s%s", d.Tag, d.CreatedAt.Format("2006-01-02"), suffix)
+}
