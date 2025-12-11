@@ -87,16 +87,17 @@ const (
 
 // UpgradeConfig holds configuration for an upgrade operation.
 type UpgradeConfig struct {
-	Name          string        // Upgrade handler name (required)
-	TargetImage   string        // Docker image for upgrade (mutually exclusive with TargetBinary)
-	TargetBinary  string        // Local binary path for upgrade
-	CachePath     string        // Path to pre-built cached binary (for symlink switch)
-	CommitHash    string        // Commit hash of the cached binary
-	VotingPeriod  time.Duration // Expedited voting period (default: 60s)
-	HeightBuffer  int           // Blocks to add after voting (default: 10)
-	UpgradeHeight int64         // Explicit upgrade height (0 = auto-calculate)
-	ExportGenesis bool          // Export genesis before/after upgrade
-	GenesisDir    string        // Directory for genesis exports
+	Name          string               // Upgrade handler name (required)
+	Mode          devnet.ExecutionMode // Explicit execution mode (docker/local); empty = use metadata
+	TargetImage   string               // Docker image for upgrade (mutually exclusive with TargetBinary)
+	TargetBinary  string               // Local binary path for upgrade
+	CachePath     string               // Path to pre-built cached binary (for symlink switch)
+	CommitHash    string               // Commit hash of the cached binary
+	VotingPeriod  time.Duration        // Expedited voting period (default: 60s)
+	HeightBuffer  int                  // Blocks to add after voting (default: 10)
+	UpgradeHeight int64                // Explicit upgrade height (0 = auto-calculate)
+	ExportGenesis bool                 // Export genesis before/after upgrade
+	GenesisDir    string               // Directory for genesis exports
 }
 
 // Validate checks if the config is valid.

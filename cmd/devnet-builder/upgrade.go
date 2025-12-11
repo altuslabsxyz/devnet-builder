@@ -22,16 +22,17 @@ import (
 
 // Upgrade command flags
 var (
-	upgradeName        string
-	upgradeImage       string
-	upgradeBinary      string
-	votingPeriod       string
-	heightBuffer       int
-	upgradeHeight      int64
-	exportGenesis      bool
-	genesisDir         string
+	upgradeName          string
+	upgradeImage         string
+	upgradeBinary        string
+	upgradeMode          string // NEW: --mode flag for docker/local
+	votingPeriod         string
+	heightBuffer         int
+	upgradeHeight        int64
+	exportGenesis        bool
+	genesisDir           string
 	upgradeNoInteractive bool
-	upgradeVersion     string
+	upgradeVersion       string
 )
 
 // NewUpgradeCmd creates the upgrade command.
@@ -74,6 +75,7 @@ Examples:
 	cmd.Flags().StringVarP(&upgradeImage, "image", "i", "", "Target Docker image for upgrade")
 	cmd.Flags().StringVarP(&upgradeBinary, "binary", "b", "", "Target local binary path for upgrade")
 	cmd.Flags().StringVar(&upgradeVersion, "version", "", "Target version (tag or branch/commit for building)")
+	cmd.Flags().StringVarP(&upgradeMode, "mode", "m", "", "Execution mode: docker or local (default: from devnet metadata)")
 
 	// Interactive mode flags
 	cmd.Flags().BoolVar(&upgradeNoInteractive, "no-interactive", false, "Disable interactive mode")
@@ -147,8 +149,39 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("devnet is not running\nStart it with 'devnet-builder start'")
 	}
 
-	// Track if version is a custom ref (needs building)
-	var isCustomRef bool
+	// Resolve execution mode: flag > metadata default (T004)
+	resolvedMode := metadata.ExecutionMode
+	modeExplicitlySet := false
+	if upgradeMode != "" {
+		// Validate mode value
+		switch devnet.ExecutionMode(upgradeMode) {
+		case devnet.ModeDocker, devnet.ModeLocal:
+			resolvedMode = devnet.ExecutionMode(upgradeMode)
+			modeExplicitlySet = true
+		default:
+			return fmt.Errorf("invalid mode %q: must be 'docker' or 'local'", upgradeMode)
+		}
+	}
+
+	// Mode validation against --image/--binary flags (T005, T006)
+	if !jsonMode {
+		// Warn if mode doesn't match the provided flags
+		if resolvedMode == devnet.ModeDocker && upgradeBinary != "" && !modeExplicitlySet {
+			output.Warn("Devnet was started in docker mode but --binary was provided.")
+			output.Warn("Use --image for docker mode, or --mode local to switch modes.")
+		}
+		if resolvedMode == devnet.ModeLocal && upgradeImage != "" && !modeExplicitlySet {
+			output.Warn("Devnet was started in local mode but --image was provided.")
+			output.Warn("Use --binary for local mode, or --mode docker to switch modes.")
+		}
+		// Warn if explicitly switching modes (T010 - mode change warning)
+		if modeExplicitlySet && resolvedMode != metadata.ExecutionMode {
+			output.Warn("Switching execution mode from %s to %s.", metadata.ExecutionMode, resolvedMode)
+			output.Warn("The devnet will continue in %s mode after this upgrade.", resolvedMode)
+		}
+	}
+
+	// Track selected version and name
 	var selectedVersion string
 	var selectedName string
 
@@ -164,15 +197,10 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		}
 		selectedName = selection.UpgradeName
 		selectedVersion = selection.UpgradeVersion
-		isCustomRef = selection.IsCustomRef
 	} else {
 		// Non-interactive mode
 		selectedName = upgradeName
 		selectedVersion = upgradeVersion
-		// Determine if it's a custom ref (not a standard version tag)
-		if selectedVersion != "" && upgradeImage == "" && upgradeBinary == "" {
-			isCustomRef = !isStandardVersionTag(selectedVersion)
-		}
 	}
 
 	// Validate that we have either image, binary, or version to build
@@ -195,24 +223,34 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		// Continue without cache - will fall back to direct binary copy
 	}
 
-	// Pre-build to cache if version is a custom ref (BEFORE proposal submission)
-	// This eliminates "text file busy" errors by having binary ready before chain halt
+	// T011: Mode-aware version resolution
+	// For docker mode with standard version tag, use docker image
+	// For local mode or custom refs, build local binary
 	var cachedBinary *cache.CachedBinary
 	var customBinaryPath string
-	if isCustomRef && selectedVersion != "" && upgradeImage == "" && upgradeBinary == "" {
-		b := builder.NewBuilder(homeDir, logger)
-		logger.Info("Pre-building upgrade binary (ref: %s)...", selectedVersion)
+	var versionResolvedImage string
 
-		// Build to cache
-		cached, err := b.BuildToCache(ctx, builder.BuildOptions{
-			Ref:     selectedVersion,
-			Network: metadata.NetworkSource,
-		}, binaryCache)
-		if err != nil {
-			return fmt.Errorf("failed to pre-build binary: %w", err)
+	if selectedVersion != "" && upgradeImage == "" && upgradeBinary == "" {
+		if resolvedMode == devnet.ModeDocker && isStandardVersionTag(selectedVersion) {
+			// Docker mode with standard version tag: resolve to docker image
+			versionResolvedImage = fmt.Sprintf("ghcr.io/stablelabs/stable:%s", selectedVersion)
+			logger.Info("Using docker image for version %s: %s", selectedVersion, versionResolvedImage)
+		} else {
+			// Local mode or custom ref: build local binary
+			b := builder.NewBuilder(homeDir, logger)
+			logger.Info("Pre-building upgrade binary (ref: %s)...", selectedVersion)
+
+			// Build to cache
+			cached, err := b.BuildToCache(ctx, builder.BuildOptions{
+				Ref:     selectedVersion,
+				Network: metadata.NetworkSource,
+			}, binaryCache)
+			if err != nil {
+				return fmt.Errorf("failed to pre-build binary: %w", err)
+			}
+			cachedBinary = cached
+			logger.Success("Binary pre-built and cached (commit: %s)", cached.CommitHash[:12])
 		}
-		cachedBinary = cached
-		logger.Success("Binary pre-built and cached (commit: %s)", cached.CommitHash[:12])
 	}
 
 	// Parse voting period
@@ -227,10 +265,14 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	if customBinaryPath != "" {
 		targetBinary = customBinaryPath
 	}
+	if versionResolvedImage != "" {
+		targetImage = versionResolvedImage
+	}
 
 	// Build upgrade config
 	cfg := &upgrade.UpgradeConfig{
 		Name:          selectedName,
+		Mode:          resolvedMode, // T008: Pass resolved mode to UpgradeConfig
 		TargetImage:   targetImage,
 		TargetBinary:  targetBinary,
 		VotingPeriod:  vp,
@@ -335,10 +377,13 @@ func printUpgradePlan(cfg *upgrade.UpgradeConfig, metadata *devnet.DevnetMetadat
 	output.Bold("Upgrade Plan")
 	fmt.Println("─────────────────────────────────────────────────────────")
 	fmt.Printf("Upgrade Name:     %s\n", cfg.Name)
+	fmt.Printf("Mode:             %s\n", cfg.Mode) // T007: Display mode in upgrade plan
 	if cfg.TargetImage != "" {
 		fmt.Printf("Target Image:     %s\n", cfg.TargetImage)
-	} else {
+	} else if cfg.TargetBinary != "" {
 		fmt.Printf("Target Binary:    %s\n", cfg.TargetBinary)
+	} else if cfg.CachePath != "" {
+		fmt.Printf("Target Binary:    %s (cached)\n", cfg.CachePath)
 	}
 	fmt.Printf("Voting Period:    %s\n", cfg.VotingPeriod)
 	fmt.Printf("Height Buffer:    %d blocks\n", cfg.HeightBuffer)
