@@ -145,6 +145,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	var startIsCustomRef bool
 	var exportVersion string
 	var startVersion string
+	var dockerImage string // Selected docker image (only for docker mode)
 
 	// Interactive mode: run selection flow if not disabled
 	if !startNoInteractive && !jsonMode {
@@ -164,6 +165,23 @@ func runStart(cmd *cobra.Command, args []string) error {
 		startIsCustomRef = selection.StartIsCustomRef
 		// Use export version for provisioning (stableVersion flag)
 		startStableVersion = exportVersion
+
+		// For docker mode, also prompt for docker image selection
+		if startMode == "docker" {
+			imageSelection, err := runDockerImageSelection(ctx)
+			if err != nil {
+				if interactive.IsCancellation(err) {
+					fmt.Println("Operation cancelled.")
+					return nil
+				}
+				return err
+			}
+			dockerImage = imageSelection.ImageTag
+			// If custom image, use the full URL; otherwise construct GHCR URL
+			if !imageSelection.IsCustom {
+				dockerImage = fmt.Sprintf("ghcr.io/stablelabs/stable:%s", imageSelection.ImageTag)
+			}
+		}
 	} else {
 		// Non-interactive mode: both versions are the same
 		exportVersion = startStableVersion
@@ -214,6 +232,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 		NumAccounts:   startAccounts,
 		Mode:          devnet.ExecutionMode(startMode),
 		StableVersion: exportVersion,
+		DockerImage:   dockerImage,
 		NoCache:       startNoCache,
 		Logger:        logger,
 	}
@@ -407,4 +426,69 @@ func runInteractiveSelection(ctx context.Context, cmd *cobra.Command) (*interact
 	// Run selection flow
 	selector := interactive.NewSelector(client)
 	return selector.RunSelectionFlow(ctx)
+}
+
+// DockerImageSelectionResult holds the result of docker image selection.
+type DockerImageSelectionResult struct {
+	ImageTag   string // Selected image tag or full custom URL
+	IsCustom   bool   // True if user entered a custom image URL
+	FromCache  bool   // True if versions were loaded from cache
+}
+
+// DefaultDockerPackage is the default container package name for docker images.
+const DefaultDockerPackage = "stable"
+
+// runDockerImageSelection prompts the user to select a docker image version.
+func runDockerImageSelection(ctx context.Context) (*DockerImageSelectionResult, error) {
+	// Get config for cache settings
+	fileCfg := GetLoadedFileConfig()
+
+	// Set up cache manager
+	cacheTTL := github.DefaultCacheTTL
+	if fileCfg != nil && fileCfg.CacheTTL != nil {
+		if ttl, err := time.ParseDuration(*fileCfg.CacheTTL); err == nil {
+			cacheTTL = ttl
+		}
+	}
+	cacheManager := github.NewCacheManager(homeDir, cacheTTL)
+
+	// Set up GitHub client with cache and optional token
+	clientOpts := []github.ClientOption{
+		github.WithCache(cacheManager),
+	}
+	if fileCfg != nil && fileCfg.GitHubToken != nil && *fileCfg.GitHubToken != "" {
+		clientOpts = append(clientOpts, github.WithToken(*fileCfg.GitHubToken))
+	}
+	client := github.NewClient(clientOpts...)
+
+	// Fetch available docker image versions
+	versions, fromCache, err := client.GetImageVersionsWithCache(ctx, DefaultDockerPackage)
+	if err != nil {
+		// Check if it's a warning (stale data)
+		if warning, ok := err.(*github.StaleDataWarning); ok {
+			fmt.Fprintf(os.Stderr, "Warning: %s\n", warning.Message)
+		} else {
+			return nil, fmt.Errorf("failed to fetch docker image versions: %w", err)
+		}
+	}
+
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("no docker image versions available. Check your network connection or GitHub token")
+	}
+
+	if fromCache {
+		fmt.Println("(Using cached docker image data)")
+	}
+
+	// Run the interactive selection
+	imageTag, isCustom, err := interactive.SelectDockerImage(versions)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DockerImageSelectionResult{
+		ImageTag:  imageTag,
+		IsCustom:  isCustom,
+		FromCache: fromCache,
+	}, nil
 }
