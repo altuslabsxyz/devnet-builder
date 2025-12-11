@@ -202,27 +202,49 @@ func runStart(cmd *cobra.Command, args []string) error {
 		logger.Success("Binary built: %s (commit: %s)", result.BinaryPath, result.CommitHash)
 	}
 
-	// Start devnet
-	// Note: StableVersion is used for provisioning (export), CustomBinaryPath for node start
-	opts := devnet.StartOptions{
+	// Store start version info in metadata for reference
+	_ = startVersion      // Used for building, stored via CustomBinaryPath
+	_ = exportIsCustomRef // Export custom ref not yet supported (would need separate build)
+
+	// Phase 1: Provision (create config, generate validators)
+	provisionOpts := devnet.ProvisionOptions{
+		HomeDir:       homeDir,
+		Network:       startNetwork,
+		NumValidators: startValidators,
+		NumAccounts:   startAccounts,
+		Mode:          devnet.ExecutionMode(startMode),
+		StableVersion: exportVersion,
+		NoCache:       startNoCache,
+		Logger:        logger,
+	}
+
+	_, err := devnet.Provision(ctx, provisionOpts)
+	if err != nil {
+		if jsonMode {
+			return outputStartError(err)
+		}
+		return err
+	}
+
+	// Phase 2: Run (start nodes)
+	runOpts := devnet.RunOptions{
 		HomeDir:          homeDir,
-		Network:          startNetwork,
-		NumValidators:    startValidators,
-		NumAccounts:      startAccounts,
 		Mode:             devnet.ExecutionMode(startMode),
 		StableVersion:    exportVersion,
-		NoCache:          startNoCache,
+		HealthTimeout:    devnet.HealthCheckTimeout,
 		Logger:           logger,
 		IsCustomRef:      startIsCustomRef,
 		CustomBinaryPath: customBinaryPath,
 	}
 
-	// Store start version info in metadata for reference
-	_ = startVersion       // Used for building, stored via CustomBinaryPath
-	_ = exportIsCustomRef  // Export custom ref not yet supported (would need separate build)
-
-	d, err := devnet.Start(ctx, opts)
+	runResult, err := devnet.Run(ctx, runOpts)
 	if err != nil {
+		// Still output partial results if available
+		if runResult != nil && runResult.Devnet != nil {
+			if jsonMode {
+				return outputStartJSONFromRunResult(runResult, err)
+			}
+		}
 		if jsonMode {
 			return outputStartError(err)
 		}
@@ -231,9 +253,44 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Output result
 	if jsonMode {
-		return outputStartJSON(d)
+		return outputStartJSON(runResult.Devnet)
 	}
-	return outputStartText(d)
+	return outputStartText(runResult.Devnet)
+}
+
+func outputStartJSONFromRunResult(result *devnet.RunResult, err error) error {
+	jsonResult := StartResult{
+		Status:     "partial",
+		ChainID:    result.Devnet.Metadata.ChainID,
+		Network:    result.Devnet.Metadata.NetworkSource,
+		Mode:       string(result.Devnet.Metadata.ExecutionMode),
+		Validators: result.Devnet.Metadata.NumValidators,
+		Nodes:      make([]NodeResult, len(result.Devnet.Nodes)),
+	}
+
+	for i, n := range result.Devnet.Nodes {
+		status := "running"
+		for _, fn := range result.FailedNodes {
+			if fn.Index == n.Index {
+				status = "failed"
+				break
+			}
+		}
+		jsonResult.Nodes[i] = NodeResult{
+			Index:  n.Index,
+			RPC:    n.RPCURL(),
+			EVMRPC: n.EVMRPCURL(),
+			Status: status,
+		}
+	}
+
+	data, jsonErr := json.MarshalIndent(jsonResult, "", "  ")
+	if jsonErr != nil {
+		return jsonErr
+	}
+
+	fmt.Println(string(data))
+	return err
 }
 
 func outputStartText(d *devnet.Devnet) error {

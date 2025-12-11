@@ -197,3 +197,11 @@ func (n *Node) IsRunning() bool {
 func ContainerNameForIndex(index int) string {
 	return fmt.Sprintf("stable-devnet-node%d", index)
 }
+
+// DockerContainerName returns the Docker container name for this node.
+func (n *Node) DockerContainerName() string {
+	if n.ContainerName != "" {
+		return n.ContainerName
+	}
+	return ContainerNameForIndex(n.Index)
+}
