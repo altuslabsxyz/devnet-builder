@@ -15,6 +15,14 @@ import (
 	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
+// getCurrentUserID returns the current user's UID:GID for docker --user flag.
+// This ensures files created by containers are owned by the current user.
+func getCurrentUserID() string {
+	uid := os.Getuid()
+	gid := os.Getgid()
+	return fmt.Sprintf("%d:%d", uid, gid)
+}
+
 // GenesisMetadata contains metadata about an exported genesis.
 type GenesisMetadata struct {
 	// Source
@@ -159,6 +167,19 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 	}
 	logger.Debug("Copied genesis from %s to %s", opts.GenesisPath, configGenesis)
 
+	// Create minimal client.toml for stabled export to work
+	clientToml := filepath.Join(configDir, "client.toml")
+	clientTomlContent := `# Minimal client.toml for stabled export
+chain-id = ""
+keyring-backend = "test"
+output = "text"
+node = "tcp://localhost:26657"
+broadcast-mode = "sync"
+`
+	if err := os.WriteFile(clientToml, []byte(clientTomlContent), 0644); err != nil {
+		logger.Debug("Failed to create client.toml: %v", err)
+	}
+
 	// Verify data directory exists from snapshot extraction
 	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
 		return nil, fmt.Errorf("snapshot data directory not found at %s", dataDir)
@@ -191,6 +212,8 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 
 			dockerArgs := []string{
 				"run", "--rm",
+				"--user", getCurrentUserID(),
+				"-e", "HOME=/data",
 				"-v", exportHome + ":/data",
 				dockerImage,
 			}

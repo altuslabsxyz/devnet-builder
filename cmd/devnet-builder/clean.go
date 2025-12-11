@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -84,10 +85,16 @@ func runClean(cmd *cobra.Command, args []string) error {
 
 	if devnetExists {
 		if err := os.RemoveAll(devnetDir); err != nil {
-			if jsonMode {
-				return outputCleanError(err)
+			// Try docker-based cleanup for root-owned files (created by docker containers)
+			if !jsonMode {
+				output.Info("Standard cleanup failed, trying docker-based cleanup for root-owned files...")
 			}
-			return fmt.Errorf("failed to remove devnet: %w", err)
+			if dockerErr := cleanWithDocker(devnetDir); dockerErr != nil {
+				if jsonMode {
+					return outputCleanError(err)
+				}
+				return fmt.Errorf("failed to remove devnet: %w (docker cleanup also failed: %v)", err, dockerErr)
+			}
 		}
 	}
 
@@ -132,4 +139,24 @@ func outputCleanError(err error) error {
 	data, _ := json.MarshalIndent(result, "", "  ")
 	fmt.Println(string(data))
 	return err
+}
+
+// cleanWithDocker uses a docker container to remove root-owned files.
+// This is needed because docker containers running as root create files
+// owned by root, which the host user cannot delete without sudo.
+func cleanWithDocker(dir string) error {
+	// Use alpine image for minimal footprint
+	// Remove contents of the directory, not the mount point itself
+	cmd := exec.Command("docker", "run", "--rm",
+		"-v", fmt.Sprintf("%s:/cleanup", dir),
+		"alpine:latest",
+		"sh", "-c", "rm -rf /cleanup/*",
+	)
+	cmdOutput, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker cleanup failed: %s: %w", string(cmdOutput), err)
+	}
+
+	// Remove the now-empty directory
+	return os.RemoveAll(dir)
 }

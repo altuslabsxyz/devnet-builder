@@ -11,6 +11,14 @@ import (
 	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
+// getCurrentUserID returns the current user's UID:GID for docker --user flag.
+// This ensures files created by containers are owned by the current user.
+func getCurrentUserID() string {
+	uid := os.Getuid()
+	gid := os.Getgid()
+	return fmt.Sprintf("%d:%d", uid, gid)
+}
+
 const (
 	// DefaultDockerImage is the default Docker image for running nodes.
 	DefaultDockerImage = "stablelabs/stabled:latest"
@@ -60,12 +68,17 @@ func (m *DockerManager) Start(ctx context.Context, node *Node, genesisPath strin
 	m.removeContainer(ctx, containerName)
 
 	// Build docker run command
+	// Run as current user to ensure files are owned by the host user
+	// This prevents permission issues when cleaning/resetting the devnet
+	// Set HOME env var to /data so stabled doesn't try to write to /.stabled
 	args := []string{
 		"run", "-d",
 		"--name", containerName,
 		"--network", "host", // Use host networking for simplicity
-		"-v", fmt.Sprintf("%s:/root/.stabled", node.HomeDir),
-		"-v", fmt.Sprintf("%s:/root/.stabled/config/genesis.json:ro", genesisPath),
+		"--user", getCurrentUserID(),
+		"-e", "HOME=/data",
+		"-v", fmt.Sprintf("%s:/data", node.HomeDir),
+		"-v", fmt.Sprintf("%s:/data/config/genesis.json:ro", genesisPath),
 		m.Image,
 	}
 	// GHCR images have stabled as entrypoint, others need explicit command
@@ -73,7 +86,7 @@ func (m *DockerManager) Start(ctx context.Context, node *Node, genesisPath strin
 		args = append(args, "stabled")
 	}
 	args = append(args, "start",
-		"--home", "/root/.stabled",
+		"--home", "/data",
 		fmt.Sprintf("--rpc.laddr=tcp://0.0.0.0:%d", node.Ports.RPC),
 		fmt.Sprintf("--p2p.laddr=tcp://0.0.0.0:%d", node.Ports.P2P),
 		fmt.Sprintf("--grpc.address=0.0.0.0:%d", node.Ports.GRPC),
@@ -116,13 +129,12 @@ func (m *DockerManager) Start(ctx context.Context, node *Node, genesisPath strin
 
 // Stop stops a running Docker container.
 func (m *DockerManager) Stop(ctx context.Context, node *Node, timeout time.Duration) error {
-	if node.ContainerID == "" && node.ContainerName == "" {
-		return nil // Nothing to stop
-	}
-
 	containerRef := node.ContainerID
 	if containerRef == "" {
 		containerRef = node.ContainerName
+	}
+	if containerRef == "" {
+		containerRef = ContainerNameForIndex(node.Index)
 	}
 
 	// Graceful stop with timeout
@@ -174,6 +186,9 @@ func (m *DockerManager) GetLogs(ctx context.Context, node *Node, tail int, since
 	if containerRef == "" {
 		containerRef = node.ContainerName
 	}
+	if containerRef == "" {
+		containerRef = ContainerNameForIndex(node.Index)
+	}
 
 	args := []string{"logs"}
 	if tail > 0 {
@@ -198,6 +213,9 @@ func (m *DockerManager) FollowLogs(ctx context.Context, node *Node, tail int) (*
 	containerRef := node.ContainerID
 	if containerRef == "" {
 		containerRef = node.ContainerName
+	}
+	if containerRef == "" {
+		containerRef = ContainerNameForIndex(node.Index)
 	}
 
 	args := []string{"logs", "-f"}
@@ -234,12 +252,22 @@ func (e *ImagePullError) Error() string {
 	return fmt.Sprintf("failed to pull docker image '%s': %s", e.Image, e.Message)
 }
 
-// ValidateImage validates that a docker image exists and can be pulled.
+// ValidateImage validates that a docker image exists locally or can be pulled.
+// First checks if the image exists locally to avoid unnecessary pull attempts.
 // Returns a clear error message if the image cannot be found or pulled.
 func (m *DockerManager) ValidateImage(ctx context.Context) error {
 	m.Logger.Debug("Validating Docker image: %s", m.Image)
 
-	// Try to pull the image
+	// First, check if image exists locally
+	checkCmd := exec.CommandContext(ctx, "docker", "images", "-q", m.Image)
+	checkOutput, err := checkCmd.Output()
+	if err == nil && len(strings.TrimSpace(string(checkOutput))) > 0 {
+		m.Logger.Debug("Docker image found locally: %s", m.Image)
+		return nil
+	}
+
+	// Image not found locally, try to pull
+	m.Logger.Debug("Image not found locally, attempting to pull: %s", m.Image)
 	cmd := exec.CommandContext(ctx, "docker", "pull", m.Image)
 	output, err := cmd.CombinedOutput()
 	outputStr := string(output)
@@ -296,7 +324,9 @@ func (m *DockerManager) isGHCRImage() bool {
 func (m *DockerManager) Init(ctx context.Context, nodeDir, moniker, chainID string) error {
 	args := []string{
 		"run", "--rm",
-		"-v", fmt.Sprintf("%s:/root/.stabled", nodeDir),
+		"--user", getCurrentUserID(),
+		"-e", "HOME=/home/stabled",
+		"-v", fmt.Sprintf("%s:/home/stabled", nodeDir),
 		m.Image,
 	}
 	// GHCR images have stabled as entrypoint, others need explicit command
@@ -305,7 +335,7 @@ func (m *DockerManager) Init(ctx context.Context, nodeDir, moniker, chainID stri
 	}
 	args = append(args, "init", moniker,
 		"--chain-id", chainID,
-		"--home", "/root/.stabled",
+		"--home", "/home/stabled",
 	)
 
 	m.Logger.Debug("Docker init: docker %s", strings.Join(args, " "))
@@ -322,7 +352,9 @@ func (m *DockerManager) Init(ctx context.Context, nodeDir, moniker, chainID stri
 func (m *DockerManager) GetNodeID(ctx context.Context, nodeDir string) (string, error) {
 	args := []string{
 		"run", "--rm",
-		"-v", fmt.Sprintf("%s:/root/.stabled", nodeDir),
+		"--user", getCurrentUserID(),
+		"-e", "HOME=/home/stabled",
+		"-v", fmt.Sprintf("%s:/home/stabled", nodeDir),
 		m.Image,
 	}
 	// GHCR images have stabled as entrypoint, others need explicit command
@@ -330,7 +362,7 @@ func (m *DockerManager) GetNodeID(ctx context.Context, nodeDir string) (string, 
 		args = append(args, "stabled")
 	}
 	args = append(args, "comet", "show-node-id",
-		"--home", "/root/.stabled",
+		"--home", "/home/stabled",
 	)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
@@ -345,7 +377,9 @@ func (m *DockerManager) GetNodeID(ctx context.Context, nodeDir string) (string, 
 func (m *DockerManager) Export(ctx context.Context, nodeDir, destPath string) error {
 	args := []string{
 		"run", "--rm",
-		"-v", fmt.Sprintf("%s:/root/.stabled", nodeDir),
+		"--user", getCurrentUserID(),
+		"-e", "HOME=/home/stabled",
+		"-v", fmt.Sprintf("%s:/home/stabled", nodeDir),
 		m.Image,
 	}
 	// GHCR images have stabled as entrypoint, others need explicit command
@@ -353,7 +387,7 @@ func (m *DockerManager) Export(ctx context.Context, nodeDir, destPath string) er
 		args = append(args, "stabled")
 	}
 	args = append(args, "export",
-		"--home", "/root/.stabled",
+		"--home", "/home/stabled",
 	)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)

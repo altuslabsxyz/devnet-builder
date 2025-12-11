@@ -391,7 +391,7 @@ func Run(ctx context.Context, opts RunOptions) (*RunResult, error) {
 	devnet := NewDevnet(metadata, logger)
 	devnet.Nodes = nodes
 
-	progress := output.NewProgress(2)
+	progress := output.NewProgress(3)
 
 	// For docker mode, validate image before starting nodes
 	if metadata.ExecutionMode == ModeDocker && metadata.DockerImage != "" {
@@ -741,7 +741,12 @@ func (d *Devnet) startNode(ctx context.Context, n *node.Node, genesisPath string
 
 	switch d.Metadata.ExecutionMode {
 	case ModeDocker:
-		manager := node.NewDockerManagerWithEVMChainID(provision.GetDockerImage(d.Metadata.StableVersion), evmChainID, d.Logger)
+		// Use DockerImage from metadata (set during provisioning), fallback to StableVersion
+		dockerImage := d.Metadata.DockerImage
+		if dockerImage == "" {
+			dockerImage = provision.GetDockerImage(d.Metadata.StableVersion)
+		}
+		manager := node.NewDockerManagerWithEVMChainID(dockerImage, evmChainID, d.Logger)
 		return manager.Start(ctx, n, genesisPath)
 	case ModeLocal:
 		// Determine binary path

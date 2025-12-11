@@ -107,6 +107,42 @@ func (i *NodeInitializer) initLocal(ctx context.Context, nodeDir, moniker, chain
 		})
 		return fmt.Errorf("stabled init failed: %w", err)
 	}
+
+	// Fix permissions for Docker compatibility
+	// stabled init creates some files with 0600, but Docker needs 0644 to read them
+	if err := fixConfigPermissions(nodeDir); err != nil {
+		i.logger.Debug("Warning: failed to fix config permissions: %v", err)
+	}
+
+	return nil
+}
+
+// fixConfigPermissions ensures config files are readable by Docker containers.
+// stabled init creates client.toml and other files with 0600 permissions,
+// but Docker containers running as different users need read access.
+func fixConfigPermissions(nodeDir string) error {
+	configDir := filepath.Join(nodeDir, "config")
+
+	// Files that need to be readable by Docker containers
+	files := []string{
+		"client.toml",
+		"config.toml",
+		"app.toml",
+		"genesis.json",
+		"node_key.json",
+		"priv_validator_key.json",
+	}
+
+	for _, file := range files {
+		path := filepath.Join(configDir, file)
+		if _, err := os.Stat(path); err == nil {
+			// Make file readable (0644)
+			if err := os.Chmod(path, 0644); err != nil {
+				return fmt.Errorf("failed to chmod %s: %w", file, err)
+			}
+		}
+	}
+
 	return nil
 }
 
