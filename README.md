@@ -1,17 +1,49 @@
 # Stable Devnet
 
-Local development network for Stable blockchain using mainnet/testnet state export.
+> Start a local 4-validator devnet with mainnet state in 3 commands
+
+## TL;DR
+
+```bash
+git clone https://github.com/stablelabs/stable-devnet.git && cd stable-devnet
+make build
+./build/devnet-builder start
+```
+
+After ~2 minutes, you'll have a running devnet at:
+- **Cosmos RPC**: http://localhost:26657
+- **EVM JSON-RPC**: http://localhost:8545
+- **Chain ID**: 988
+
+---
+
+## Table of Contents
+
+- [TL;DR](#tldr)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [EVM Development](#evm-development)
+- [Test Accounts](#test-accounts)
+- [CLI Reference](#cli-reference)
+- [Version Compatibility](#version-compatibility)
+- [CI/CD Integration](#cicd-integration)
+- [Architecture](#architecture)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
+---
 
 ## Prerequisites
 
 - Go 1.21+ (for building devnet-builder)
 - Docker (for docker mode) OR `stabled` binary (for local mode)
 - curl, jq (for network operations)
-- zstd or lz4 (for snapshot decompression)
+- zstd (for snapshot decompression)
+
+---
 
 ## Installation
-
-### Build from source
 
 ```bash
 git clone https://github.com/stablelabs/stable-devnet.git
@@ -23,7 +55,7 @@ make build
 sudo mv ./build/devnet-builder /usr/local/bin/
 ```
 
-### Verify installation
+Verify installation:
 
 ```bash
 devnet-builder version
@@ -34,12 +66,10 @@ devnet-builder --help
 
 ## Quick Start
 
-### 1. Docker Mode (Recommended)
-
-Start a 4-validator devnet using Docker containers:
+### Docker Mode (Recommended)
 
 ```bash
-# Start with default settings
+# Start with default settings (4 validators, mainnet data)
 devnet-builder start
 
 # Check status
@@ -49,261 +79,399 @@ devnet-builder status
 devnet-builder stop
 ```
 
-### 2. Local Binary Mode
-
-Start using a local `stabled` binary:
+### Local Binary Mode
 
 ```bash
-# Ensure stabled is in PATH or specify location
+# Ensure stabled is in PATH
 devnet-builder start --mode local
-
-# If stabled is not in PATH, build it first:
-# git clone https://github.com/stablelabs/stable && cd stable && make install
 ```
 
----
-
-## Usage Guide
-
-### Starting a Devnet
+### Common Options
 
 ```bash
-# Default: 4 validators, mainnet data, docker mode
-devnet-builder start
+# Single validator (fastest startup)
+devnet-builder start --validators 1
 
-# Specify number of validators (1-4)
-devnet-builder start --validators 2
+# With test accounts
+devnet-builder start --accounts 5
 
 # Use testnet data instead of mainnet
 devnet-builder start --network testnet
 
-# Use local binary mode instead of Docker
-devnet-builder start --mode local
-
-# Skip snapshot cache (force re-download)
-devnet-builder start --no-cache
-
-# Specify stable version for building
+# Specify stable version (branch, tag, or commit)
 devnet-builder start --stable-version v1.2.3
-
-# Full example with all options
-devnet-builder start \
-  --network mainnet \
-  --validators 4 \
-  --mode docker \
-  --accounts 10
-```
-
-### Network Selection
-
-| Network | Description | Snapshot Source |
-|---------|-------------|-----------------|
-| `mainnet` | Production mainnet state | stable-mainnet-data.s3.amazonaws.com |
-| `testnet` | Testnet state | stable-testnet-data.s3.amazonaws.com |
-
-```bash
-# Use mainnet data (default)
-devnet-builder start --network mainnet
-
-# Use testnet data
-devnet-builder start --network testnet
-```
-
-### Validator Count
-
-Choose 1-4 validators based on your testing needs:
-
-```bash
-# Single validator (fastest, minimal resources)
-devnet-builder start --validators 1
-
-# Two validators (basic consensus testing)
-devnet-builder start --validators 2
-
-# Four validators (full devnet, default)
-devnet-builder start --validators 4
-```
-
-### Execution Modes
-
-#### Docker Mode (Default)
-
-- Requires Docker to be installed and running
-- Each node runs in an isolated container
-- Easier cleanup and isolation
-
-```bash
-devnet-builder start --mode docker
-```
-
-#### Local Binary Mode
-
-- Requires `stabled` binary in PATH
-- Nodes run as background processes
-- Useful when Docker is unavailable
-
-```bash
-# Ensure stabled is installed
-which stabled
-
-# Start in local mode
-devnet-builder start --mode local
+devnet-builder start --stable-version feat/my-feature
 ```
 
 ---
 
-## Lifecycle Management
+## EVM Development
 
-### Check Status
+### Network Configuration
+
+| Parameter | Value |
+|-----------|-------|
+| Network Name | Stable Devnet |
+| Chain ID | 988 |
+| Currency Symbol | USDT |
+| RPC URL | http://localhost:8545 |
+| WebSocket | ws://localhost:8546 |
+
+### MetaMask Setup
+
+1. Open MetaMask > Settings > Networks > Add Network
+2. Enter the configuration above
+3. Import test account using private key from `devnet-builder export-keys`
+
+### Send Test Transaction (cast)
 
 ```bash
-# Show devnet status and node health
-devnet-builder status
+# Export test account private key
+eval $(devnet-builder export-keys --format env)
 
-# JSON output for scripting
-devnet-builder status --json
+# Send transaction using Foundry's cast
+cast send --rpc-url http://localhost:8545 \
+  --private-key $ACCOUNT_0_PRIVATE_KEY \
+  0x0000000000000000000000000000000000000000 \
+  --value 1ether
 ```
 
-Output shows:
-- Chain ID, network, mode
-- Node status (running/stopped/syncing)
-- Block height, peer count, catching_up status
-
-### Stop Devnet
+### Deploy Contract (forge)
 
 ```bash
-# Graceful stop (default 30s timeout)
-devnet-builder stop
-
-# Custom timeout
-devnet-builder stop --timeout 60s
-```
-
-### Restart Devnet
-
-```bash
-# Stop and start again
-devnet-builder restart
-
-# With custom timeout
-devnet-builder restart --timeout 60s
-```
-
-### Reset Chain Data
-
-```bash
-# Soft reset: Clear chain data, keep genesis and config
-devnet-builder reset
-
-# Hard reset: Clear everything (requires re-provisioning)
-devnet-builder reset --hard
-
-# Skip confirmation prompt
-devnet-builder reset --force
-```
-
-### Clean Up
-
-```bash
-# Remove devnet data (keeps snapshot cache)
-devnet-builder clean
-
-# Remove devnet data AND snapshot cache
-devnet-builder clean --cache
-
-# Skip confirmation prompt
-devnet-builder clean --force
+# Deploy a simple contract
+forge create --rpc-url http://localhost:8545 \
+  --private-key $ACCOUNT_0_PRIVATE_KEY \
+  src/MyContract.sol:MyContract
 ```
 
 ---
 
-## Viewing Logs
+## Test Accounts
+
+Devnet creates pre-funded test accounts for development.
+
+### Export All Keys
 
 ```bash
-# View logs from all nodes
-devnet-builder logs
-
-# View logs from specific node
-devnet-builder logs node0
-devnet-builder logs node1
-
-# Follow logs in real-time (like tail -f)
-devnet-builder logs -f
-devnet-builder logs node0 -f
-
-# Show last N lines
-devnet-builder logs --tail 50
-
-# Logs since specific duration
-devnet-builder logs --since 5m
-```
-
----
-
-## Exporting Keys
-
-Export validator and account keys for testing:
-
-```bash
-# Human-readable format
+# View all test accounts
 devnet-builder export-keys
 
 # JSON format
 devnet-builder export-keys --format json
 
-# Environment variables (eval-able)
+# Set as environment variables
 eval $(devnet-builder export-keys --format env)
 
-# Export only validators
-devnet-builder export-keys --type validators
-
-# Export only accounts
+# Export only accounts (not validators)
 devnet-builder export-keys --type accounts
+```
+
+### Account Details
+
+When starting with `--accounts N`, devnet-builder creates N test accounts:
+
+| Account | Cosmos Address | EVM Address | Balance |
+|---------|----------------|-------------|---------|
+| account0 | stable1... | 0x... | 10,000 USDT |
+| account1 | stable1... | 0x... | 10,000 USDT |
+| ... | ... | ... | ... |
+
+### Mnemonic Recovery
+
+Each account is derived from a unique mnemonic stored in:
+`~/.stable-devnet/devnet/accounts/account{i}.json`
+
+```bash
+# View account mnemonic
+cat ~/.stable-devnet/devnet/accounts/account0.json | jq -r '.mnemonic'
+```
+
+### HD Derivation Path
+
+- Cosmos: `m/44'/118'/0'/0/0`
+- Ethereum: `m/44'/60'/0'/0/0`
+
+---
+
+## CLI Reference
+
+### Lifecycle Commands
+
+| Command | Description |
+|---------|-------------|
+| `devnet-builder start` | Start the devnet |
+| `devnet-builder stop` | Stop all nodes |
+| `devnet-builder restart` | Restart the devnet |
+| `devnet-builder status` | Show devnet status |
+| `devnet-builder logs [node]` | View node logs |
+
+### Data Management
+
+| Command | Description |
+|---------|-------------|
+| `devnet-builder reset` | Reset chain data (keep config) |
+| `devnet-builder reset --hard` | Full reset (re-provision required) |
+| `devnet-builder clean` | Remove devnet data |
+| `devnet-builder clean --cache` | Remove data AND snapshot cache |
+
+### Key Export
+
+| Command | Description |
+|---------|-------------|
+| `devnet-builder export-keys` | Human-readable format |
+| `devnet-builder export-keys --format json` | JSON format |
+| `devnet-builder export-keys --format env` | Environment variables |
+
+### Start Options
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--validators N` | Number of validators (1-4) | 4 |
+| `--accounts N` | Number of test accounts | 0 |
+| `--network` | mainnet or testnet | mainnet |
+| `--mode` | docker or local | docker |
+| `--stable-version` | Branch/tag/commit to build | latest |
+| `--no-cache` | Force re-download snapshot | false |
+| `--no-interactive` | Skip prompts (for CI) | false |
+
+### Interactive Version Selection
+
+When `--stable-version` is not specified, devnet-builder offers interactive selection:
+
+```bash
+devnet-builder start
+# Prompts: Select stable version
+# Options: main, latest tag, or custom branch/commit
 ```
 
 ---
 
-## Backup and Restore
+## Version Compatibility
 
-### Backup Devnet Data
+| Component | Minimum | Recommended | Notes |
+|-----------|---------|-------------|-------|
+| Go | 1.21 | 1.23 | Required for building |
+| Docker | 20.10 | 24.0 | For docker mode |
+| zstd | 1.4 | 1.5 | For snapshot decompression |
+| OS | Ubuntu 20.04, macOS 12 | Ubuntu 22.04, macOS 14 | Linux/macOS only |
+
+### Windows Support
+
+Windows is supported via WSL2:
 
 ```bash
-# Backup the entire devnet directory
-tar -czvf devnet-backup-$(date +%Y%m%d).tar.gz ~/.stable-devnet/devnet/
+# Install WSL2
+wsl --install
 
-# Backup only chain data (smaller)
-tar -czvf chaindata-backup-$(date +%Y%m%d).tar.gz \
-  ~/.stable-devnet/devnet/node*/data/
+# Inside WSL2
+sudo apt update && sudo apt install -y golang docker.io zstd
 ```
 
-### Restore from Backup
+---
+
+## CI/CD Integration
+
+### GitHub Actions Example
+
+```yaml
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build devnet-builder
+        run: make build
+
+      - name: Start devnet
+        run: |
+          ./build/devnet-builder start --validators 1 --no-interactive
+          sleep 30
+
+      - name: Health check
+        run: |
+          curl -s http://localhost:26657/status | jq -e '.result.sync_info.catching_up == false'
+
+      - name: Run integration tests
+        run: go test ./tests/integration/...
+
+      - name: Cleanup
+        if: always()
+        run: ./build/devnet-builder clean --force
+```
+
+### Non-Interactive Mode
+
+For CI environments, use `--no-interactive` to skip prompts:
 
 ```bash
-# Stop devnet first
-devnet-builder stop
+devnet-builder start --no-interactive
+devnet-builder clean --force
+```
 
-# Restore backup
-tar -xzvf devnet-backup-20241209.tar.gz -C ~/
+### JSON Output
 
-# Start devnet
+Machine-parseable status for scripts:
+
+```bash
+# Get status as JSON
+devnet-builder status --json
+
+# Check if running
+devnet-builder status --json | jq -e '.status == "running"'
+
+# Get chain ID
+devnet-builder status --json | jq -r '.chain_id'
+```
+
+---
+
+## Architecture
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │           devnet-builder CLI            │
+                    │  (provision, build, start, stop, ...)   │
+                    └─────────────────┬───────────────────────┘
+                                      │
+            ┌─────────────────────────┼─────────────────────────┐
+            │                         │                         │
+            ▼                         ▼                         ▼
+    ┌───────────────┐       ┌───────────────┐       ┌───────────────┐
+    │  Mainnet RPC  │       │   S3 Bucket   │       │    Docker/    │
+    │  (genesis)    │       │  (snapshot)   │       │    Local      │
+    └───────┬───────┘       └───────┬───────┘       └───────┬───────┘
+            │                       │                       │
+            └───────────────────────┼───────────────────────┘
+                                    │
+                    ┌───────────────┴───────────────┐
+                    │      Devnet Directory         │
+                    │   ~/.stable-devnet/devnet/    │
+                    ├───────────────────────────────┤
+                    │  node0/  node1/  node2/  ...  │
+                    │  accounts/  metadata.json     │
+                    └───────────────┬───────────────┘
+                                    │
+         ┌──────────────────────────┼──────────────────────────┐
+         │                          │                          │
+         ▼                          ▼                          ▼
+    ┌─────────┐               ┌─────────┐               ┌─────────┐
+    │  Node0  │◄─────────────►│  Node1  │◄─────────────►│  Node2  │
+    │  :26657 │   P2P Mesh    │  :36657 │   P2P Mesh    │  :46657 │
+    │  :8545  │               │  :18545 │               │  :28545 │
+    └─────────┘               └─────────┘               └─────────┘
+```
+
+### Data Flow
+
+1. **Provision**: Download genesis from mainnet RPC, snapshot from S3
+2. **Build**: Export state, create validators, generate test accounts
+3. **Start**: Launch validator nodes with P2P networking
+4. **Run**: Validators produce blocks, EVM and Cosmos APIs available
+
+### Endpoints
+
+| Service | Node 0 | Node 1 | Node 2 | Node 3 |
+|---------|--------|--------|--------|--------|
+| Cosmos RPC | 26657 | 36657 | 46657 | 56657 |
+| P2P | 26656 | 36656 | 46656 | 56656 |
+| EVM JSON-RPC | 8545 | 18545 | 28545 | 38545 |
+| EVM WebSocket | 8546 | 18546 | 28546 | 38546 |
+| gRPC | 9090 | 19090 | 29090 | 39090 |
+
+---
+
+## Troubleshooting
+
+### Port Already in Use
+
+```bash
+# Find process using port
+lsof -i :26657
+
+# Kill specific process
+kill -9 <PID>
+
+# Or kill all stabled processes
+pkill -f stabled
+```
+
+### Docker Container Issues
+
+```bash
+# List running containers
+docker ps -a | grep stable
+
+# Remove stuck containers
+docker rm -f $(docker ps -aq --filter name=stable)
+
+# Check Docker daemon
+systemctl status docker
+```
+
+### Snapshot Download Fails
+
+```bash
+# Clear snapshot cache and retry
+devnet-builder clean --cache
 devnet-builder start
+
+# Manual download (for debugging)
+curl -I https://stable-mainnet-data.s3.amazonaws.com/snapshots/stable_pruned.tar.zst
 ```
 
-### Backup Snapshot Cache
+### Node Won't Start
 
 ```bash
-# Snapshot cache location
-ls -la ~/.stable-devnet/snapshots/
+# Check node logs
+devnet-builder logs node0
 
-# Backup snapshot cache (saves re-download time)
-tar -czvf snapshot-cache.tar.gz ~/.stable-devnet/snapshots/
+# Common issues:
+# - "address already in use" -> ports conflict
+# - "validator set is nil" -> genesis issue
+# - "panic: runtime error" -> version mismatch
+```
+
+### Chain Not Producing Blocks
+
+```bash
+# Check if nodes are connected
+curl -s http://localhost:26657/net_info | jq '.result.n_peers'
+
+# Check consensus state
+curl -s http://localhost:26657/consensus_state | jq '.result.round_state.height'
+```
+
+### Reset to Clean State
+
+```bash
+# Soft reset (keep genesis)
+devnet-builder reset
+
+# Hard reset (re-provision)
+devnet-builder reset --hard
+
+# Full clean (remove everything)
+devnet-builder clean --cache --force
 ```
 
 ---
 
 ## Environment Variables
-
-Configure defaults via environment variables:
 
 ```bash
 # Set default home directory
@@ -324,191 +492,22 @@ export NO_COLOR=1
 
 ---
 
-## Common Workflows
-
-### Development Cycle
-
-```bash
-# 1. Start fresh devnet
-devnet-builder start
-
-# 2. Develop and test your changes
-# ... make code changes ...
-
-# 3. Reset chain data to test again
-devnet-builder reset
-devnet-builder start
-
-# 4. Clean up when done
-devnet-builder clean
-```
-
-### Testing Feature Branch
-
-```bash
-# Build with your feature branch
-devnet-builder build --stable-version feat/my-feature
-
-# Start devnet with that version
-devnet-builder start --stable-version feat/my-feature
-
-# Test your changes
-# ...
-
-# Compare with main
-devnet-builder clean
-devnet-builder start --stable-version main
-```
-
-### Integration Testing
-
-```bash
-# Start devnet
-devnet-builder start
-
-# Export keys for test scripts
-eval $(devnet-builder export-keys --format env)
-
-# Run integration tests
-go test ./tests/integration/...
-
-# Clean up
-devnet-builder clean
-```
-
-### CI/CD Pipeline
-
-```bash
-# Start devnet in JSON mode for parsing
-devnet-builder start --json > devnet-output.json
-
-# Wait for health check
-sleep 30
-devnet-builder status --json | jq -e '.status == "running"'
-
-# Run tests
-./run-tests.sh
-
-# Cleanup
-devnet-builder clean --force
-```
-
----
-
-## Shell Completion
-
-Enable tab completion for your shell:
-
-### Bash
-
-```bash
-# Add to ~/.bashrc
-source <(devnet-builder completion bash)
-
-# Or install system-wide
-devnet-builder completion bash > /etc/bash_completion.d/devnet-builder
-```
-
-### Zsh
-
-```bash
-# Add to ~/.zshrc
-source <(devnet-builder completion zsh)
-```
-
-### Fish
-
-```bash
-# Add to ~/.config/fish/config.fish
-devnet-builder completion fish | source
-```
-
-## Network Configuration
-
-### RPC Endpoints
-
-- Mainnet Cosmos RPC: `https://p40zma3acd216e70s-cosmos-rpc.stable.xyz`
-- Testnet Cosmos RPC: `https://cosmos-rpc.testnet.stable.xyz`
-
-### Snapshot Source
-
-- Mainnet: `https://stable-mainnet-data.s3.amazonaws.com/snapshots/stable_pruned.tar.zst`
-
-## Endpoints
-
-| Service | Node 0 | Node 1 | Node 2 | Node 3 |
-|---------|--------|--------|--------|--------|
-| RPC | 26657 | 36657 | 46657 | 56657 |
-| P2P | 26656 | 36656 | 46656 | 56656 |
-| EVM JSON-RPC | 8545 | 18545 | 28545 | 38545 |
-| EVM WebSocket | 8546 | 18546 | 28546 | 38546 |
-| gRPC | 9090 | 19090 | 29090 | 39090 |
-
-## How It Works
-
-1. **Snapshot Download**: Downloads the latest mainnet pruned snapshot (~13GB)
-2. **Genesis Download**: Fetches genesis from mainnet RPC endpoint
-3. **State Export**: Uses `stabled export` to export current state from snapshot
-4. **Devnet Build**: `devnet-builder` creates:
-   - 4 new validators with fresh keys
-   - 10 test accounts with tokens
-   - Redistributes tokens from largest holder
-   - Clears old staking state and creates new validators
-   - Preserves total supply (no inflation/deflation)
-5. **Node Start**: Starts 4 validator nodes with unique ports
-
 ## Directory Structure
 
 ```
-stable-devnet/
-├── cmd/devnet-builder/        # Go devnet builder tool
-├── scripts/                   # Local devnet management scripts
-│   ├── local-devnet.sh        # Main CLI script
-│   ├── provision-and-sync.sh  # Snapshot/genesis helpers
-│   └── manage-devnet.sh       # Lifecycle management helpers
-├── devnet/                    # Generated devnet data (gitignored)
-│   ├── accounts/              # Test account keyrings
+~/.stable-devnet/
+├── devnet/
 │   ├── node0/                 # Validator 0 home directory
 │   ├── node1/                 # Validator 1 home directory
 │   ├── node2/                 # Validator 2 home directory
-│   └── node3/                 # Validator 3 home directory
-└── ~/.stable-devnet/          # Cached data (user home)
-    ├── snapshots/             # Downloaded snapshots
-    │   └── mainnet/
-    └── genesis/               # Downloaded genesis files
-        └── mainnet-genesis.json
+│   ├── node3/                 # Validator 3 home directory
+│   ├── accounts/              # Test account keyrings
+│   └── metadata.json          # Devnet configuration
+├── snapshots/                 # Downloaded snapshots (cached)
+└── genesis/                   # Downloaded genesis files
 ```
 
-## Building devnet-builder
-
-```bash
-# Build the devnet-builder tool
-make build
-
-# The binary will be at ./build/devnet-builder
-```
-
-## Troubleshooting
-
-### Nodes not starting
-Check the node logs:
-```bash
-cat devnet/node0/node.log
-```
-
-### Port conflicts
-Make sure ports 26656-26657, 36656-36657, 46656-46657, 56656-56657, 8545, 18545, 28545, 38545, 9090, 19090, 29090, 39090 are available.
-
-### Kill all stabled processes
-```bash
-pkill -f stabled
-```
-
-### Clean and restart
-```bash
-./scripts/local-devnet.sh clean
-./scripts/local-devnet.sh start --local-binary /path/to/stabled
-```
+---
 
 ## License
 
