@@ -364,6 +364,16 @@ func Run(ctx context.Context, opts RunOptions) (*RunResult, error) {
 
 	progress := output.NewProgress(2)
 
+	// For docker mode, validate image before starting nodes
+	if metadata.ExecutionMode == ModeDocker && metadata.DockerImage != "" {
+		progress.Stage("Validating docker image")
+		dm := node.NewDockerManager(metadata.DockerImage, logger)
+		if err := dm.ValidateImage(ctx); err != nil {
+			return nil, fmt.Errorf("docker image validation failed: %w", err)
+		}
+		logger.Debug("Docker image validated: %s", metadata.DockerImage)
+	}
+
 	// Start nodes
 	progress.Stage("Starting nodes")
 
