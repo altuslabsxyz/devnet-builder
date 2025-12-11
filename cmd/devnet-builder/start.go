@@ -157,32 +157,9 @@ func runStart(cmd *cobra.Command, args []string) error {
 	// Determine if running in interactive mode
 	isInteractive := !startNoInteractive && !jsonMode
 
-	// Interactive mode: run selection flow if not disabled
-	if isInteractive {
-		selection, err := runInteractiveSelection(ctx, cmd)
-		if err != nil {
-			if interactive.IsCancellation(err) {
-				fmt.Println("Operation cancelled.")
-				return nil
-			}
-			return err
-		}
-		// Apply selections
-		startNetwork = selection.Network
-		exportVersion = selection.ExportVersion
-		exportIsCustomRef = selection.ExportIsCustomRef
-		startVersion = selection.StartVersion
-		startIsCustomRef = selection.StartIsCustomRef
-		// Use export version for provisioning (stableVersion flag)
-		startStableVersion = exportVersion
-	} else {
-		// Non-interactive mode: both versions are the same
-		exportVersion = startStableVersion
-		startVersion = startStableVersion
-	}
-
-	// Resolve docker image for docker mode (handles --image flag, interactive selection, defaults)
+	// Docker mode uses GHCR package versions, not GitHub releases
 	if startMode == "docker" {
+		// For docker mode, resolve docker image (handles --image flag, interactive selection, defaults)
 		resolvedImage, err := resolveDockerImage(ctx, cmd, isInteractive)
 		if err != nil {
 			if interactive.IsCancellation(err) {
@@ -192,6 +169,33 @@ func runStart(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		dockerImage = resolvedImage
+		// Docker mode doesn't need export/start version selection - use defaults
+		exportVersion = startStableVersion
+		startVersion = startStableVersion
+	} else {
+		// Local mode: run interactive selection flow for GitHub releases
+		if isInteractive {
+			selection, err := runInteractiveSelection(ctx, cmd)
+			if err != nil {
+				if interactive.IsCancellation(err) {
+					fmt.Println("Operation cancelled.")
+					return nil
+				}
+				return err
+			}
+			// Apply selections
+			startNetwork = selection.Network
+			exportVersion = selection.ExportVersion
+			exportIsCustomRef = selection.ExportIsCustomRef
+			startVersion = selection.StartVersion
+			startIsCustomRef = selection.StartIsCustomRef
+			// Use export version for provisioning (stableVersion flag)
+			startStableVersion = exportVersion
+		} else {
+			// Non-interactive mode: both versions are the same
+			exportVersion = startStableVersion
+			startVersion = startStableVersion
+		}
 	}
 
 	// Validate inputs
