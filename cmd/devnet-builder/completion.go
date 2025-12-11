@@ -18,7 +18,10 @@ To load completions:
 Bash:
   $ source <(devnet-builder completion bash)
 
-  # To load completions for each session, execute once:
+  # To load completions for each session, add to ~/.bashrc:
+  $ echo 'source <(devnet-builder completion bash)' >> ~/.bashrc
+
+  # Or install system-wide:
   # Linux:
   $ devnet-builder completion bash > /etc/bash_completion.d/devnet-builder
   # macOS:
