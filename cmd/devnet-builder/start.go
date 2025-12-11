@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -25,16 +26,18 @@ var (
 	startNoInteractive bool
 	startExportVersion string
 	startStartVersion  string
+	startImage         string // Docker image for docker mode
 )
 
 // StartResult represents the JSON output for the start command.
 type StartResult struct {
-	Status     string       `json:"status"`
-	ChainID    string       `json:"chain_id"`
-	Network    string       `json:"network"`
-	Mode       string       `json:"mode"`
-	Validators int          `json:"validators"`
-	Nodes      []NodeResult `json:"nodes"`
+	Status      string       `json:"status"`
+	ChainID     string       `json:"chain_id"`
+	Network     string       `json:"network"`
+	Mode        string       `json:"mode"`
+	DockerImage string       `json:"docker_image,omitempty"`
+	Validators  int          `json:"validators"`
+	Nodes       []NodeResult `json:"nodes"`
 }
 
 // NodeResult represents a node in the JSON output.
@@ -98,6 +101,10 @@ Examples:
 	cmd.Flags().StringVar(&startStartVersion, "start-version", "",
 		"Version for node start (non-interactive mode)")
 
+	// Docker image flag
+	cmd.Flags().StringVar(&startImage, "image", "",
+		"Docker image for docker mode (e.g., v1.0.0 or ghcr.io/org/image:tag)")
+
 	return cmd
 }
 
@@ -145,10 +152,15 @@ func runStart(cmd *cobra.Command, args []string) error {
 	var startIsCustomRef bool
 	var exportVersion string
 	var startVersion string
+	var dockerImage string // Selected docker image (only for docker mode)
 
-	// Interactive mode: run selection flow if not disabled
-	if !startNoInteractive && !jsonMode {
-		selection, err := runInteractiveSelection(ctx, cmd)
+	// Determine if running in interactive mode
+	isInteractive := !startNoInteractive && !jsonMode
+
+	// Docker mode uses GHCR package versions, not GitHub releases
+	if startMode == "docker" {
+		// For docker mode, resolve docker image (handles --image flag, interactive selection, defaults)
+		resolvedImage, err := resolveDockerImage(ctx, cmd, isInteractive)
 		if err != nil {
 			if interactive.IsCancellation(err) {
 				fmt.Println("Operation cancelled.")
@@ -156,18 +168,34 @@ func runStart(cmd *cobra.Command, args []string) error {
 			}
 			return err
 		}
-		// Apply selections
-		startNetwork = selection.Network
-		exportVersion = selection.ExportVersion
-		exportIsCustomRef = selection.ExportIsCustomRef
-		startVersion = selection.StartVersion
-		startIsCustomRef = selection.StartIsCustomRef
-		// Use export version for provisioning (stableVersion flag)
-		startStableVersion = exportVersion
-	} else {
-		// Non-interactive mode: both versions are the same
+		dockerImage = resolvedImage
+		// Docker mode doesn't need export/start version selection - use defaults
 		exportVersion = startStableVersion
 		startVersion = startStableVersion
+	} else {
+		// Local mode: run interactive selection flow for GitHub releases
+		if isInteractive {
+			selection, err := runInteractiveSelection(ctx, cmd)
+			if err != nil {
+				if interactive.IsCancellation(err) {
+					fmt.Println("Operation cancelled.")
+					return nil
+				}
+				return err
+			}
+			// Apply selections
+			startNetwork = selection.Network
+			exportVersion = selection.ExportVersion
+			exportIsCustomRef = selection.ExportIsCustomRef
+			startVersion = selection.StartVersion
+			startIsCustomRef = selection.StartIsCustomRef
+			// Use export version for provisioning (stableVersion flag)
+			startStableVersion = exportVersion
+		} else {
+			// Non-interactive mode: both versions are the same
+			exportVersion = startStableVersion
+			startVersion = startStableVersion
+		}
 	}
 
 	// Validate inputs
@@ -214,6 +242,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 		NumAccounts:   startAccounts,
 		Mode:          devnet.ExecutionMode(startMode),
 		StableVersion: exportVersion,
+		DockerImage:   dockerImage,
 		NoCache:       startNoCache,
 		Logger:        logger,
 	}
@@ -260,12 +289,13 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 func outputStartJSONFromRunResult(result *devnet.RunResult, err error) error {
 	jsonResult := StartResult{
-		Status:     "partial",
-		ChainID:    result.Devnet.Metadata.ChainID,
-		Network:    result.Devnet.Metadata.NetworkSource,
-		Mode:       string(result.Devnet.Metadata.ExecutionMode),
-		Validators: result.Devnet.Metadata.NumValidators,
-		Nodes:      make([]NodeResult, len(result.Devnet.Nodes)),
+		Status:      "partial",
+		ChainID:     result.Devnet.Metadata.ChainID,
+		Network:     result.Devnet.Metadata.NetworkSource,
+		Mode:        string(result.Devnet.Metadata.ExecutionMode),
+		DockerImage: result.Devnet.Metadata.DockerImage,
+		Validators:  result.Devnet.Metadata.NumValidators,
+		Nodes:       make([]NodeResult, len(result.Devnet.Nodes)),
 	}
 
 	for i, n := range result.Devnet.Nodes {
@@ -298,6 +328,9 @@ func outputStartText(d *devnet.Devnet) error {
 	output.Bold("Chain ID:     %s", d.Metadata.ChainID)
 	output.Info("Network:      %s", d.Metadata.NetworkSource)
 	output.Info("Mode:         %s", d.Metadata.ExecutionMode)
+	if d.Metadata.DockerImage != "" {
+		output.Info("Docker Image: %s", d.Metadata.DockerImage)
+	}
 	output.Info("Validators:   %d", d.Metadata.NumValidators)
 	fmt.Println()
 	output.Bold("Endpoints:")
@@ -312,12 +345,13 @@ func outputStartText(d *devnet.Devnet) error {
 
 func outputStartJSON(d *devnet.Devnet) error {
 	result := StartResult{
-		Status:     "success",
-		ChainID:    d.Metadata.ChainID,
-		Network:    d.Metadata.NetworkSource,
-		Mode:       string(d.Metadata.ExecutionMode),
-		Validators: d.Metadata.NumValidators,
-		Nodes:      make([]NodeResult, len(d.Nodes)),
+		Status:      "success",
+		ChainID:     d.Metadata.ChainID,
+		Network:     d.Metadata.NetworkSource,
+		Mode:        string(d.Metadata.ExecutionMode),
+		DockerImage: d.Metadata.DockerImage,
+		Validators:  d.Metadata.NumValidators,
+		Nodes:       make([]NodeResult, len(d.Nodes)),
 	}
 
 	for i, n := range d.Nodes {
@@ -407,4 +441,121 @@ func runInteractiveSelection(ctx context.Context, cmd *cobra.Command) (*interact
 	// Run selection flow
 	selector := interactive.NewSelector(client)
 	return selector.RunSelectionFlow(ctx)
+}
+
+// DockerImageSelectionResult holds the result of docker image selection.
+type DockerImageSelectionResult struct {
+	ImageTag   string // Selected image tag or full custom URL
+	IsCustom   bool   // True if user entered a custom image URL
+	FromCache  bool   // True if versions were loaded from cache
+}
+
+// DefaultGHCRImage is the default GHCR image for stable.
+const DefaultGHCRImage = "ghcr.io/stablelabs/stable"
+
+// normalizeImageURL converts a tag-only input to a full GHCR URL.
+// If the input already contains a registry (contains "/" or ":"), it returns as-is.
+// Otherwise, it constructs: ghcr.io/stablelabs/stable:{tag}
+func normalizeImageURL(image string) string {
+	if image == "" {
+		return ""
+	}
+	// If it looks like a full URL (contains "/" indicating a registry path), return as-is
+	if strings.Contains(image, "/") {
+		return image
+	}
+	// Otherwise, treat it as a tag and construct GHCR URL
+	return fmt.Sprintf("%s:%s", DefaultGHCRImage, image)
+}
+
+// resolveDockerImage determines the docker image to use based on priority:
+// 1. --image flag (highest priority)
+// 2. Interactive selection (if in interactive mode and docker mode)
+// 3. Default latest tag (for non-interactive docker mode)
+// Returns the resolved image URL and any error.
+func resolveDockerImage(ctx context.Context, cmd *cobra.Command, isInteractive bool) (string, error) {
+	// Priority 1: --image flag was explicitly provided
+	if cmd.Flags().Changed("image") && startImage != "" {
+		return normalizeImageURL(startImage), nil
+	}
+
+	// Priority 2: Interactive mode - prompt user to select
+	if isInteractive && startMode == "docker" {
+		imageSelection, err := runDockerImageSelection(ctx)
+		if err != nil {
+			return "", err
+		}
+		// If custom image, user provided full URL; otherwise construct GHCR URL
+		if imageSelection.IsCustom {
+			return imageSelection.ImageTag, nil
+		}
+		return fmt.Sprintf("%s:%s", DefaultGHCRImage, imageSelection.ImageTag), nil
+	}
+
+	// Priority 3: Non-interactive mode with --image flag (but not explicitly changed)
+	// Use the provided value or fall back to empty (will use default in devnet package)
+	if startImage != "" {
+		return normalizeImageURL(startImage), nil
+	}
+
+	// No image specified - return empty to use default behavior
+	return "", nil
+}
+
+// DefaultDockerPackage is the default container package name for docker images.
+const DefaultDockerPackage = "stable"
+
+// runDockerImageSelection prompts the user to select a docker image version.
+func runDockerImageSelection(ctx context.Context) (*DockerImageSelectionResult, error) {
+	// Get config for cache settings
+	fileCfg := GetLoadedFileConfig()
+
+	// Set up cache manager
+	cacheTTL := github.DefaultCacheTTL
+	if fileCfg != nil && fileCfg.CacheTTL != nil {
+		if ttl, err := time.ParseDuration(*fileCfg.CacheTTL); err == nil {
+			cacheTTL = ttl
+		}
+	}
+	cacheManager := github.NewCacheManager(homeDir, cacheTTL)
+
+	// Set up GitHub client with cache and optional token
+	clientOpts := []github.ClientOption{
+		github.WithCache(cacheManager),
+	}
+	if fileCfg != nil && fileCfg.GitHubToken != nil && *fileCfg.GitHubToken != "" {
+		clientOpts = append(clientOpts, github.WithToken(*fileCfg.GitHubToken))
+	}
+	client := github.NewClient(clientOpts...)
+
+	// Fetch available docker image versions
+	versions, fromCache, err := client.GetImageVersionsWithCache(ctx, DefaultDockerPackage)
+	if err != nil {
+		// Check if it's a warning (stale data)
+		if warning, ok := err.(*github.StaleDataWarning); ok {
+			fmt.Fprintf(os.Stderr, "Warning: %s\n", warning.Message)
+		} else {
+			return nil, fmt.Errorf("failed to fetch docker image versions: %w", err)
+		}
+	}
+
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("no docker image versions available. Check your network connection or GitHub token")
+	}
+
+	if fromCache {
+		fmt.Println("(Using cached docker image data)")
+	}
+
+	// Run the interactive selection
+	imageTag, isCustom, err := interactive.SelectDockerImage(versions)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DockerImageSelectionResult{
+		ImageTag:  imageTag,
+		IsCustom:  isCustom,
+		FromCache: fromCache,
+	}, nil
 }

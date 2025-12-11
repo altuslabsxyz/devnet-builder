@@ -262,3 +262,123 @@ func ConfirmUpgradeSelection(config *UpgradeSelectionConfig) (bool, error) {
 
 	return true, nil
 }
+
+// customImageOption is a special marker for custom docker image input.
+const customImageOption = "[Enter custom image...]"
+
+// SelectDockerImage prompts the user to select a docker image version from GHCR.
+// Users can also enter a custom image URL.
+// Returns the selected image tag (or full URL for custom), and whether it's a custom image.
+func SelectDockerImage(versions []github.ImageVersion) (string, bool, error) {
+	if len(versions) == 0 {
+		return "", false, fmt.Errorf("no docker image versions available")
+	}
+
+	// Convert to DockerImageItems, adding custom option at the end
+	items := make([]DockerImageItem, len(versions)+1)
+	for i, v := range versions {
+		items[i] = DockerImageItem{
+			Tag:       v.Tag,
+			CreatedAt: v.CreatedAt,
+			IsLatest:  v.IsLatest,
+		}
+	}
+	// Add custom image option at the end
+	items[len(versions)] = DockerImageItem{
+		Tag:      customImageOption,
+		IsCustom: true,
+	}
+
+	templates := &promptui.SelectTemplates{
+		Label:    "{{ . }}",
+		Active:   "{{ if .IsCustom }}▸ {{ .Tag | magenta }}{{ else }}▸ {{ .Tag | cyan }} - {{ .CreatedAt.Format \"2006-01-02\" }}{{ if .IsLatest }} {{ \"(latest)\" | green }}{{ end }}{{ end }}",
+		Inactive: "{{ if .IsCustom }}  {{ .Tag | faint }}{{ else }}  {{ .Tag }} - {{ .CreatedAt.Format \"2006-01-02\" }}{{ if .IsLatest }} {{ \"(latest)\" | green }}{{ end }}{{ end }}",
+		Selected: "{{ if .IsCustom }}✓ Custom image{{ else }}✓ {{ .Tag | green }}{{ end }}",
+		Details: `{{ if not .IsCustom }}
+--------- Image Details ----------
+{{ "Tag:" | faint }}      {{ .Tag }}
+{{ "Created:" | faint }}  {{ .CreatedAt.Format "2006-01-02 15:04:05" }}{{ else }}
+--------- Custom Image ----------
+{{ "Enter:" | faint }}    Full image URL (e.g., myregistry.io/image:tag){{ end }}`,
+	}
+
+	searcher := func(input string, index int) bool {
+		item := items[index]
+		// Always show custom option when searching
+		if item.IsCustom {
+			return true
+		}
+		tag := strings.ToLower(item.Tag)
+		input = strings.ToLower(strings.TrimSpace(input))
+		return strings.Contains(tag, input)
+	}
+
+	prompt := promptui.Select{
+		Label:             "Select docker image version",
+		Items:             items,
+		Templates:         templates,
+		Size:              10,
+		Searcher:          searcher,
+		StartInSearchMode: false,
+	}
+
+	index, _, err := prompt.Run()
+	if err != nil {
+		if err == promptui.ErrInterrupt {
+			return "", false, &CancellationError{Message: "operation cancelled by user"}
+		}
+		return "", false, err
+	}
+
+	selected := items[index]
+
+	// If custom image selected, prompt for the image URL
+	if selected.IsCustom {
+		imageURL, err := promptCustomImage()
+		if err != nil {
+			if err == promptui.ErrInterrupt {
+				return "", false, &CancellationError{Message: "operation cancelled by user"}
+			}
+			return "", false, err
+		}
+		return imageURL, true, nil
+	}
+
+	return selected.Tag, false, nil
+}
+
+// promptCustomImage prompts the user to enter a custom docker image URL.
+func promptCustomImage() (string, error) {
+	validate := func(input string) error {
+		input = strings.TrimSpace(input)
+		if len(input) == 0 {
+			return fmt.Errorf("image URL cannot be empty")
+		}
+		// Basic validation: no spaces
+		if strings.Contains(input, " ") {
+			return fmt.Errorf("image URL cannot contain spaces")
+		}
+		if len(input) > 200 {
+			return fmt.Errorf("image URL too long")
+		}
+		return nil
+	}
+
+	prompt := promptui.Prompt{
+		Label:    "Enter docker image URL",
+		Validate: validate,
+		Templates: &promptui.PromptTemplates{
+			Prompt:  "{{ . }}: ",
+			Valid:   "{{ . | green }}: ",
+			Invalid: "{{ . | red }}: ",
+			Success: "✓ Docker image: ",
+		},
+	}
+
+	result, err := prompt.Run()
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(result), nil
+}

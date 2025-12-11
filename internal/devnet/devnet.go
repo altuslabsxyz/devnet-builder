@@ -59,6 +59,7 @@ type ProvisionOptions struct {
 	NumAccounts   int
 	Mode          ExecutionMode
 	StableVersion string
+	DockerImage   string // Docker image to use (only for docker mode)
 	NoCache       bool
 	Logger        *output.Logger
 }
@@ -160,7 +161,17 @@ func Provision(ctx context.Context, opts ProvisionOptions) (*ProvisionResult, er
 
 	// Step 2: Provision (download snapshot and export genesis)
 	progress.Stage("Provisioning chain state")
-	dockerImage := provision.GetDockerImage(opts.StableVersion)
+
+	// Determine docker image: use provided image or fall back to default based on version
+	dockerImage := opts.DockerImage
+	if dockerImage == "" {
+		dockerImage = provision.GetDockerImage(opts.StableVersion)
+	}
+
+	// Store docker image in metadata for docker mode
+	if opts.Mode == ModeDocker {
+		metadata.DockerImage = dockerImage
+	}
 
 	// Convert ExecutionMode to provision.ExecutionMode
 	var provisionMode provision.ExecutionMode
@@ -352,6 +363,16 @@ func Run(ctx context.Context, opts RunOptions) (*RunResult, error) {
 	devnet.Nodes = nodes
 
 	progress := output.NewProgress(2)
+
+	// For docker mode, validate image before starting nodes
+	if metadata.ExecutionMode == ModeDocker && metadata.DockerImage != "" {
+		progress.Stage("Validating docker image")
+		dm := node.NewDockerManager(metadata.DockerImage, logger)
+		if err := dm.ValidateImage(ctx); err != nil {
+			return nil, fmt.Errorf("docker image validation failed: %w", err)
+		}
+		logger.Debug("Docker image validated: %s", metadata.DockerImage)
+	}
 
 	// Start nodes
 	progress.Stage("Starting nodes")

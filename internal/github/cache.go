@@ -167,3 +167,55 @@ type CacheInfo struct {
 	VersionCount int
 	IsExpired    bool
 }
+
+// ContainerCachePath returns the path to the container versions cache file.
+func (m *CacheManager) ContainerCachePath() string {
+	return filepath.Join(m.cacheDir, "container_versions.json")
+}
+
+// LoadContainerCache loads the container versions cache from disk.
+func (m *CacheManager) LoadContainerCache() (*ContainerVersionCache, error) {
+	data, err := os.ReadFile(m.ContainerCachePath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // No cache file exists
+		}
+		return nil, fmt.Errorf("failed to read container cache file: %w", err)
+	}
+
+	var cache ContainerVersionCache
+	if err := json.Unmarshal(data, &cache); err != nil {
+		return nil, fmt.Errorf("failed to parse container cache file: %w", err)
+	}
+
+	// Check schema version
+	if cache.Version != CacheSchemaVersion {
+		return nil, nil // Schema mismatch, treat as no cache
+	}
+
+	return &cache, nil
+}
+
+// SaveContainerCache saves the container versions cache to disk atomically.
+func (m *CacheManager) SaveContainerCache(cache *ContainerVersionCache) error {
+	// Ensure cache directory exists
+	if err := os.MkdirAll(m.cacheDir, 0755); err != nil {
+		return fmt.Errorf("failed to create cache directory: %w", err)
+	}
+
+	data, err := json.MarshalIndent(cache, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal container cache: %w", err)
+	}
+
+	// Write atomically
+	return writeFileAtomic(m.ContainerCachePath(), data)
+}
+
+// IsContainerCacheExpired returns true if the container cache has expired.
+func (m *CacheManager) IsContainerCacheExpired(cache *ContainerVersionCache) bool {
+	if cache == nil {
+		return true
+	}
+	return time.Now().After(cache.ExpiresAt)
+}

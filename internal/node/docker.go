@@ -218,6 +218,63 @@ func (m *DockerManager) PullImage(ctx context.Context) error {
 	return nil
 }
 
+// ImagePullError represents an error when pulling a docker image fails.
+type ImagePullError struct {
+	Image   string
+	Message string
+	Output  string
+}
+
+func (e *ImagePullError) Error() string {
+	return fmt.Sprintf("failed to pull docker image '%s': %s", e.Image, e.Message)
+}
+
+// ValidateImage validates that a docker image exists and can be pulled.
+// Returns a clear error message if the image cannot be found or pulled.
+func (m *DockerManager) ValidateImage(ctx context.Context) error {
+	m.Logger.Debug("Validating Docker image: %s", m.Image)
+
+	// Try to pull the image
+	cmd := exec.CommandContext(ctx, "docker", "pull", m.Image)
+	output, err := cmd.CombinedOutput()
+	outputStr := string(output)
+	if err != nil {
+		// Parse error to provide helpful message
+		if strings.Contains(outputStr, "not found") ||
+			strings.Contains(outputStr, "manifest unknown") ||
+			strings.Contains(outputStr, "does not exist") {
+			return &ImagePullError{
+				Image:   m.Image,
+				Message: "image not found in registry",
+				Output:  outputStr,
+			}
+		}
+		if strings.Contains(outputStr, "unauthorized") ||
+			strings.Contains(outputStr, "denied") {
+			return &ImagePullError{
+				Image:   m.Image,
+				Message: "authentication required or access denied",
+				Output:  outputStr,
+			}
+		}
+		if strings.Contains(outputStr, "timeout") ||
+			strings.Contains(outputStr, "connection refused") {
+			return &ImagePullError{
+				Image:   m.Image,
+				Message: "registry connection failed (check network)",
+				Output:  outputStr,
+			}
+		}
+		return &ImagePullError{
+			Image:   m.Image,
+			Message: err.Error(),
+			Output:  outputStr,
+		}
+	}
+
+	return nil
+}
+
 // IsDockerAvailable checks if Docker is available and running.
 func IsDockerAvailable(ctx context.Context) bool {
 	cmd := exec.CommandContext(ctx, "docker", "info")
