@@ -85,20 +85,20 @@ func runRun(cmd *cobra.Command, args []string) error {
 	logger := output.DefaultLogger
 
 	// Apply config.toml values
+	// NOTE: Mode is NOT applied from config.toml for the run command.
+	// The run command uses the execution mode from metadata (set during provision/start),
+	// and only the CLI --mode flag can override it.
 	fileCfg := GetLoadedFileConfig()
 	if fileCfg != nil {
-		if !cmd.Flags().Changed("mode") && fileCfg.Mode != nil {
-			runMode = *fileCfg.Mode
-		}
+		// Mode intentionally not applied from config.toml - use metadata instead
 		if !cmd.Flags().Changed("stable-version") && fileCfg.StableVersion != nil {
 			runStableVersion = *fileCfg.StableVersion
 		}
 	}
 
 	// Apply environment variables
-	if mode := os.Getenv("STABLE_DEVNET_MODE"); mode != "" && !cmd.Flags().Changed("mode") {
-		runMode = mode
-	}
+	// NOTE: STABLE_DEVNET_MODE is NOT applied for the run command.
+	// Only the CLI --mode flag can override the metadata's execution mode.
 	if version := os.Getenv("STABLE_VERSION"); version != "" && !cmd.Flags().Changed("stable-version") {
 		runStableVersion = version
 	}
