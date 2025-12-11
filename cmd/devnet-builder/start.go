@@ -31,12 +31,13 @@ var (
 
 // StartResult represents the JSON output for the start command.
 type StartResult struct {
-	Status     string       `json:"status"`
-	ChainID    string       `json:"chain_id"`
-	Network    string       `json:"network"`
-	Mode       string       `json:"mode"`
-	Validators int          `json:"validators"`
-	Nodes      []NodeResult `json:"nodes"`
+	Status      string       `json:"status"`
+	ChainID     string       `json:"chain_id"`
+	Network     string       `json:"network"`
+	Mode        string       `json:"mode"`
+	DockerImage string       `json:"docker_image,omitempty"`
+	Validators  int          `json:"validators"`
+	Nodes       []NodeResult `json:"nodes"`
 }
 
 // NodeResult represents a node in the JSON output.
@@ -284,12 +285,13 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 func outputStartJSONFromRunResult(result *devnet.RunResult, err error) error {
 	jsonResult := StartResult{
-		Status:     "partial",
-		ChainID:    result.Devnet.Metadata.ChainID,
-		Network:    result.Devnet.Metadata.NetworkSource,
-		Mode:       string(result.Devnet.Metadata.ExecutionMode),
-		Validators: result.Devnet.Metadata.NumValidators,
-		Nodes:      make([]NodeResult, len(result.Devnet.Nodes)),
+		Status:      "partial",
+		ChainID:     result.Devnet.Metadata.ChainID,
+		Network:     result.Devnet.Metadata.NetworkSource,
+		Mode:        string(result.Devnet.Metadata.ExecutionMode),
+		DockerImage: result.Devnet.Metadata.DockerImage,
+		Validators:  result.Devnet.Metadata.NumValidators,
+		Nodes:       make([]NodeResult, len(result.Devnet.Nodes)),
 	}
 
 	for i, n := range result.Devnet.Nodes {
@@ -322,6 +324,9 @@ func outputStartText(d *devnet.Devnet) error {
 	output.Bold("Chain ID:     %s", d.Metadata.ChainID)
 	output.Info("Network:      %s", d.Metadata.NetworkSource)
 	output.Info("Mode:         %s", d.Metadata.ExecutionMode)
+	if d.Metadata.DockerImage != "" {
+		output.Info("Docker Image: %s", d.Metadata.DockerImage)
+	}
 	output.Info("Validators:   %d", d.Metadata.NumValidators)
 	fmt.Println()
 	output.Bold("Endpoints:")
@@ -336,12 +341,13 @@ func outputStartText(d *devnet.Devnet) error {
 
 func outputStartJSON(d *devnet.Devnet) error {
 	result := StartResult{
-		Status:     "success",
-		ChainID:    d.Metadata.ChainID,
-		Network:    d.Metadata.NetworkSource,
-		Mode:       string(d.Metadata.ExecutionMode),
-		Validators: d.Metadata.NumValidators,
-		Nodes:      make([]NodeResult, len(d.Nodes)),
+		Status:      "success",
+		ChainID:     d.Metadata.ChainID,
+		Network:     d.Metadata.NetworkSource,
+		Mode:        string(d.Metadata.ExecutionMode),
+		DockerImage: d.Metadata.DockerImage,
+		Validators:  d.Metadata.NumValidators,
+		Nodes:       make([]NodeResult, len(d.Nodes)),
 	}
 
 	for i, n := range d.Nodes {
