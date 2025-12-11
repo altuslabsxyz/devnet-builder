@@ -2,10 +2,15 @@ package nodeconfig
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
@@ -43,12 +48,13 @@ func NewNodeInitializer(mode ExecutionMode, dockerImage string, logger *output.L
 }
 
 // Initialize runs `stabled init` for a node.
+// Note: Always uses local stabled binary for init because Docker images
+// may have issues with init command requiring pre-existing config files.
 func (i *NodeInitializer) Initialize(ctx context.Context, nodeDir, moniker, chainID string) error {
 	i.logger.Debug("Initializing node %s at %s", moniker, nodeDir)
 
-	if i.mode == ModeDocker {
-		return i.initDocker(ctx, nodeDir, moniker, chainID)
-	}
+	// Always use local init - Docker GHCR images have issues with init command
+	// that expects client.toml to already exist
 	return i.initLocal(ctx, nodeDir, moniker, chainID)
 }
 
@@ -85,7 +91,8 @@ func (i *NodeInitializer) initDocker(ctx context.Context, nodeDir, moniker, chai
 }
 
 func (i *NodeInitializer) initLocal(ctx context.Context, nodeDir, moniker, chainID string) error {
-	args := []string{"init", moniker, "--chain-id", chainID, "--home", nodeDir}
+	// Use --overwrite to handle existing genesis.json files
+	args := []string{"init", moniker, "--chain-id", chainID, "--home", nodeDir, "--overwrite"}
 	cmd := exec.CommandContext(ctx, "stabled", args...)
 	cmdOutput, err := cmd.CombinedOutput()
 	if err != nil {
@@ -103,68 +110,49 @@ func (i *NodeInitializer) initLocal(ctx context.Context, nodeDir, moniker, chain
 	return nil
 }
 
-// GetNodeID retrieves the node ID using `stabled comet show-node-id`.
+// GetNodeID retrieves the node ID from the node_key.json file.
+// This reads the node key directly without requiring stabled binary or docker.
 func (i *NodeInitializer) GetNodeID(ctx context.Context, nodeDir string) (string, error) {
 	i.logger.Debug("Getting node ID for %s", nodeDir)
 
-	if i.mode == ModeDocker {
-		return i.getNodeIDDocker(ctx, nodeDir)
-	}
-	return i.getNodeIDLocal(ctx, nodeDir)
+	// Read node_key.json directly
+	nodeKeyPath := filepath.Join(nodeDir, "config", "node_key.json")
+	return readNodeIDFromFile(nodeKeyPath)
 }
 
-func (i *NodeInitializer) getNodeIDDocker(ctx context.Context, nodeDir string) (string, error) {
-	args := []string{
-		"run", "--rm",
-		"-v", fmt.Sprintf("%s:/root/.stabled", nodeDir),
-		i.dockerImage,
-	}
-	// GHCR images have stabled as entrypoint, others need explicit command
-	if !isGHCRImage(i.dockerImage) {
-		args = append(args, "stabled")
-	}
-	args = append(args, "comet", "show-node-id",
-		"--home", "/root/.stabled",
-	)
-
-	cmd := exec.CommandContext(ctx, "docker", args...)
-	cmdOutput, err := cmd.Output()
+// readNodeIDFromFile reads the node ID from a node_key.json file.
+// The node ID is the hex-encoded address of the public key derived from the private key.
+func readNodeIDFromFile(nodeKeyPath string) (string, error) {
+	data, err := os.ReadFile(nodeKeyPath)
 	if err != nil {
-		// Print detailed error for diagnosis
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			i.logger.PrintCommandError(&output.CommandErrorInfo{
-				Command:  "docker",
-				Args:     args,
-				WorkDir:  nodeDir,
-				Stderr:   string(exitErr.Stderr),
-				ExitCode: exitErr.ExitCode(),
-				Error:    err,
-			})
-		}
-		return "", fmt.Errorf("docker show-node-id failed: %w", err)
+		return "", fmt.Errorf("failed to read node_key.json: %w", err)
 	}
-	return strings.TrimSpace(string(cmdOutput)), nil
-}
 
-func (i *NodeInitializer) getNodeIDLocal(ctx context.Context, nodeDir string) (string, error) {
-	args := []string{"comet", "show-node-id", "--home", nodeDir}
-	cmd := exec.CommandContext(ctx, "stabled", args...)
-	cmdOutput, err := cmd.Output()
-	if err != nil {
-		// Print detailed error for diagnosis
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			i.logger.PrintCommandError(&output.CommandErrorInfo{
-				Command:  "stabled",
-				Args:     args,
-				WorkDir:  nodeDir,
-				Stderr:   string(exitErr.Stderr),
-				ExitCode: exitErr.ExitCode(),
-				Error:    err,
-			})
-		}
-		return "", fmt.Errorf("stabled show-node-id failed: %w", err)
+	var nodeKey struct {
+		PrivKey struct {
+			Type  string `json:"type"`
+			Value string `json:"value"`
+		} `json:"priv_key"`
 	}
-	return strings.TrimSpace(string(cmdOutput)), nil
+
+	if err := json.Unmarshal(data, &nodeKey); err != nil {
+		return "", fmt.Errorf("failed to parse node_key.json: %w", err)
+	}
+
+	// Decode base64 private key
+	privKeyBytes, err := base64.StdEncoding.DecodeString(nodeKey.PrivKey.Value)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode private key: %w", err)
+	}
+
+	// Create ed25519 private key and get public key address
+	privKey := ed25519.PrivKey(privKeyBytes)
+	pubKey := privKey.PubKey()
+
+	// Node ID is the hex-encoded address (first 20 bytes of SHA256 of pubkey)
+	nodeID := fmt.Sprintf("%x", pubKey.Address())
+
+	return nodeID, nil
 }
 
 // Export runs `stabled export` to export the current state as genesis.
