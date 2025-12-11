@@ -186,7 +186,8 @@ func readNodeIDFromFile(nodeKeyPath string) (string, error) {
 	pubKey := privKey.PubKey()
 
 	// Node ID is the hex-encoded address (first 20 bytes of SHA256 of pubkey)
-	nodeID := fmt.Sprintf("%x", pubKey.Address())
+	// Note: CometBFT's Address type returns uppercase hex, but stabled uses lowercase
+	nodeID := strings.ToLower(fmt.Sprintf("%x", pubKey.Address()))
 
 	return nodeID, nil
 }
