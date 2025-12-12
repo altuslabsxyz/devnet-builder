@@ -21,6 +21,22 @@ var secretKeys = map[string]bool{
 	"github-token": true,
 }
 
+// keyAliases maps alternative key names to canonical names.
+var keyAliases = map[string]string{
+	"github_token":   "github-token",
+	"GITHUB_TOKEN":   "github-token",
+	"cache_ttl":      "cache-ttl",
+	"stable_version": "stable-version",
+}
+
+// normalizeKey converts a key to its canonical form.
+func normalizeKey(key string) string {
+	if canonical, ok := keyAliases[key]; ok {
+		return canonical
+	}
+	return key
+}
+
 // NewConfigSetCmd creates the config set subcommand.
 func NewConfigSetCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -56,7 +72,7 @@ Examples:
 }
 
 func runConfigSet(cmd *cobra.Command, args []string) error {
-	key := args[0]
+	key := normalizeKey(args[0])
 	var value string
 
 	// If value is not provided, prompt for it

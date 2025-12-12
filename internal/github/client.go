@@ -159,7 +159,15 @@ func (c *Client) fetchPage(ctx context.Context, url string) ([]GitHubRelease, st
 	// Check for 404 Not Found - often means private repo without proper token
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, "", rateLimitInfo, &NotFoundError{
-			Message: "Repository not found. If this is a private repository, ensure GITHUB_TOKEN is set with appropriate permissions.",
+			Message: `Repository not found. This usually means the repository is private and requires authentication.
+
+To set up GitHub authentication:
+  1. Create a Personal Access Token at https://github.com/settings/tokens
+     - For classic tokens: select 'repo' scope
+     - For fine-grained tokens: select 'Contents' read access
+  2. Configure the token using one of these methods:
+     - Run: devnet-builder config set github-token <your-token>
+     - Or set environment variable: export GITHUB_TOKEN=<your-token>`,
 		}
 	}
 
@@ -353,7 +361,15 @@ func (c *Client) FetchContainerVersions(ctx context.Context, packageName string)
 	// Check for 404 Not Found - often means private repo without proper token
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, rateLimitInfo, &NotFoundError{
-			Message: "Repository not found. If this is a private repository, ensure GITHUB_TOKEN is set with appropriate permissions.",
+			Message: `Repository not found. This usually means the repository is private and requires authentication.
+
+To set up GitHub authentication:
+  1. Create a Personal Access Token at https://github.com/settings/tokens
+     - For classic tokens: select 'repo' scope
+     - For fine-grained tokens: select 'Contents' read access
+  2. Configure the token using one of these methods:
+     - Run: devnet-builder config set github-token <your-token>
+     - Or set environment variable: export GITHUB_TOKEN=<your-token>`,
 		}
 	}
 
