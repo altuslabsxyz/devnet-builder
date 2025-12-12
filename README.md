@@ -13,7 +13,7 @@ make build
 After ~2 minutes, you'll have a running devnet at:
 - **Cosmos RPC**: http://localhost:26657
 - **EVM JSON-RPC**: http://localhost:8545
-- **Chain ID**: stable_4441-1
+- **Chain ID**: stable_988-1 (mainnet) or stabletestnet_2201-1 (testnet)
 
 ---
 
@@ -143,7 +143,8 @@ devnet-builder export-keys --type accounts
 | Parameter | Value |
 |-----------|-------|
 | Network Name | Stable Devnet |
-| Chain ID | stable_4441-1 |
+| Chain ID | stable_988-1 (mainnet fork) |
+| EVM Chain ID | 988 (mainnet) / 2201 (testnet) |
 | RPC URL | http://localhost:8545 |
 | WebSocket | ws://localhost:8546 |
 

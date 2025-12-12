@@ -227,7 +227,7 @@ devnet-builder status --json | jq '.nodes[0].height'
 
 ```
 Devnet Status: running
-Chain ID: stable_4441-1
+Chain ID: stable_988-1
 Execution Mode: docker
 Network Source: mainnet
 

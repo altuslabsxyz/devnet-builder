@@ -104,10 +104,11 @@ func (m *DevnetMetadata) Validate() error {
 		return fmt.Errorf("execution_mode must be 'docker' or 'local', got '%s'", m.ExecutionMode)
 	}
 
-	// Validate ChainID pattern
-	chainIDPattern := regexp.MustCompile(`^[a-z]+-devnet-\d+$`)
+	// Validate ChainID pattern - accepts both devnet format (stable-devnet-1) and
+	// forked network format (stable_988-1, stabletestnet_2201-1)
+	chainIDPattern := regexp.MustCompile(`^[a-z]+(_\d+-\d+|-devnet-\d+)$`)
 	if !chainIDPattern.MatchString(m.ChainID) {
-		return fmt.Errorf("chain_id must match pattern '^[a-z]+-devnet-\\d+$', got '%s'", m.ChainID)
+		return fmt.Errorf("chain_id must match Cosmos chain ID format, got '%s'", m.ChainID)
 	}
 
 	return nil
