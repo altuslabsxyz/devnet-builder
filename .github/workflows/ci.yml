@@ -135,5 +135,8 @@ jobs:
         run: |
           git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf "https://github.com/"
 
+      - name: Download dependencies
+        run: GOWORK=off go mod download
+
       - name: Build devnet-builder
         run: GOWORK=off make build
