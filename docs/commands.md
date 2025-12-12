@@ -44,11 +44,14 @@ devnet-builder deploy [flags]
 |------|------|---------|-------------|
 | `--validators` | int | 4 | Number of validator nodes |
 | `--accounts` | int | 0 | Number of additional funded accounts |
-| `--network` | string | mainnet | Network source (mainnet, testnet) |
-| `--mode` | string | docker | Execution mode (docker, local) |
+| `-n, --network` | string | mainnet | Network source (mainnet, testnet) |
+| `-m, --mode` | string | docker | Execution mode (docker, local) |
 | `--image` | string | | Docker image tag (e.g., 1.1.3-mainnet) |
 | `--stable-version` | string | latest | Stable version to use |
 | `--no-cache` | bool | false | Skip snapshot cache, download fresh |
+| `--no-interactive` | bool | false | Disable interactive mode |
+| `--export-version` | string | | Version for genesis export (non-interactive) |
+| `--start-version` | string | | Version for node start (non-interactive) |
 
 #### Examples
 
@@ -114,7 +117,8 @@ devnet-builder up [flags]
 |------|------|---------|-------------|
 | `--mode` | string | | Override execution mode |
 | `--binary-ref` | string | | Binary reference for local mode |
-| `--health-timeout` | duration | 30s | Timeout waiting for nodes to be healthy |
+| `--health-timeout` | duration | 5m | Timeout waiting for nodes to be healthy |
+| `--stable-version` | string | | Stable repository version (overrides init version) |
 
 #### Examples
 
@@ -123,10 +127,13 @@ devnet-builder up [flags]
 devnet-builder up
 
 # Start with longer health timeout
-devnet-builder up --health-timeout 60s
+devnet-builder up --health-timeout 10m
 
 # Start in local mode (overrides original)
 devnet-builder up --mode local
+
+# Start with specific binary from cache
+devnet-builder up --binary-ref v1.2.3
 ```
 
 ---
@@ -169,7 +176,7 @@ devnet-builder destroy [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--cache` | bool | false | Also remove binary cache |
+| `--cache` | bool | false | Also remove snapshot cache |
 | `--force` | bool | false | Skip confirmation prompt |
 
 #### Examples
@@ -181,7 +188,7 @@ devnet-builder destroy
 # Remove without confirmation
 devnet-builder destroy --force
 
-# Remove everything including binary cache
+# Remove everything including snapshot cache
 devnet-builder destroy --cache --force
 ```
 
@@ -303,17 +310,17 @@ devnet-builder node <subcommand> <node> [flags]
 #### Examples
 
 ```bash
-# Stop node1
-devnet-builder node stop node1
+# Stop node 1
+devnet-builder node stop 1
 
-# Start node1
-devnet-builder node start node1
+# Start node 1
+devnet-builder node start 1
 
-# View node2 logs
-devnet-builder node logs node2
+# View node 2 logs
+devnet-builder node logs 2
 
-# Follow node0 logs
-devnet-builder node logs node0 -f
+# Follow node 0 logs
+devnet-builder node logs 0 -f
 ```
 
 ---
@@ -332,16 +339,24 @@ devnet-builder upgrade [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--name` | string | | Upgrade handler name (required) |
-| `--image` | string | | Docker image for new version |
-| `--binary` | string | | Local binary path for new version |
-| `--mode` | string | | Override execution mode for upgrade |
+| `-n, --name` | string | | Upgrade handler name (required) |
+| `-i, --image` | string | | Docker image for new version |
+| `-b, --binary` | string | | Local binary path for new version |
+| `-m, --mode` | string | | Override execution mode for upgrade |
+| `--version` | string | | Target version (tag or branch/commit for building) |
 | `--export-genesis` | bool | false | Export genesis before/after upgrade |
-| `--height` | int | | Specific upgrade height (default: current + 50) |
+| `--genesis-dir` | string | | Directory for genesis exports |
+| `--upgrade-height` | int | 0 | Explicit upgrade height (0 = auto-calculate) |
+| `--height-buffer` | int | 30 | Blocks to add after voting period ends |
+| `--voting-period` | duration | 60s | Expedited voting period duration |
+| `--no-interactive` | bool | false | Disable interactive mode |
 
 #### Examples
 
 ```bash
+# Interactive mode (select version interactively)
+devnet-builder upgrade
+
 # Upgrade to new Docker image
 devnet-builder upgrade --name v2 --image ghcr.io/stablelabs/stable:v2.0.0
 
@@ -352,40 +367,57 @@ devnet-builder upgrade --name v2 --binary /path/to/stabled
 devnet-builder upgrade --name v2 --image v2.0.0-mainnet --export-genesis
 
 # Upgrade at specific height
-devnet-builder upgrade --name v2 --image v2.0.0-mainnet --height 15000
+devnet-builder upgrade --name v2 --image v2.0.0-mainnet --upgrade-height 15000
+
+# Non-interactive with explicit version
+devnet-builder upgrade --no-interactive --name v2 --version v2.0.0
+
+# Custom voting period
+devnet-builder upgrade --name v2 --image v2.0.0 --voting-period 120s
 ```
 
 ---
 
 ### build
 
-Build devnet configuration from genesis file without provisioning.
+Build devnet configuration from an exported genesis file.
 
 ```bash
-devnet-builder build [flags]
+devnet-builder build [genesis-export.json] [flags]
 ```
+
+#### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `genesis-export.json` | Path to exported genesis file |
 
 #### Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--validators` | int | 4 | Number of validators |
-| `--accounts` | int | 0 | Number of funded accounts |
-| `--validator-balance` | string | | Custom validator balance |
-| `--account-balance` | string | | Custom account balance |
-| `--genesis` | string | | Path to genesis file |
+| `--accounts` | int | 10 | Number of funded accounts |
+| `--validator-balance` | string | 1000000000000000000000astable,500000000000000000000agusdt | Balance for each validator |
+| `--account-balance` | string | 1000000000000000000000astable,500000000000000000000agusdt | Balance for each account |
+| `--validator-stake` | string | 100000000000000000000 | Stake amount for each validator (in astable) |
+| `--output` | string | ./devnet | Output directory for devnet files |
+| `--chain-id` | string | | Chain ID (defaults to from genesis) |
 
 #### Examples
 
 ```bash
+# Build from genesis file
+devnet-builder build genesis-export.json
+
 # Build with custom validator count
-devnet-builder build --validators 2
+devnet-builder build genesis-export.json --validators 2
 
 # Build with funded accounts
-devnet-builder build --validators 4 --accounts 5
+devnet-builder build genesis-export.json --validators 4 --accounts 5
 
-# Build from custom genesis
-devnet-builder build --genesis /path/to/genesis.json
+# Build to custom output directory
+devnet-builder build genesis-export.json --output /tmp/my-devnet
 ```
 
 ---
@@ -561,6 +593,7 @@ devnet-builder versions [flags]
 | `--list` | bool | false | List available versions |
 | `--refresh` | bool | false | Refresh version list from remote |
 | `--clear-cache` | bool | false | Clear version cache |
+| `--cache-info` | bool | false | Show cache status (age, expiry) |
 
 #### Examples
 
@@ -576,6 +609,9 @@ devnet-builder versions --refresh
 
 # Clear version cache
 devnet-builder versions --clear-cache
+
+# Show cache status
+devnet-builder versions --cache-info
 ```
 
 ---
