@@ -419,10 +419,21 @@ func printUpgradeProgress(p upgrade.UpgradeProgress) {
 	case upgrade.StageWaiting:
 		if p.TargetHeight > 0 {
 			remaining := p.TargetHeight - p.CurrentHeight
-			if remaining > 0 {
-				fmt.Printf("\r[4/6] %s Block %d/%d (%d remaining)   ",
-					color.CyanString("Waiting for upgrade height..."),
-					p.CurrentHeight, p.TargetHeight, remaining)
+			timeRemaining := time.Until(p.VotingEndTime)
+			if timeRemaining < 0 {
+				timeRemaining = 0
+			}
+			if remaining > 0 || timeRemaining > 0 {
+				// Show time remaining if voting period not complete, otherwise show blocks
+				if timeRemaining > 0 {
+					fmt.Printf("\r[4/6] %s Block %d/%d (%s remaining)   ",
+						color.CyanString("Waiting for voting period..."),
+						p.CurrentHeight, p.TargetHeight, timeRemaining.Round(time.Second))
+				} else {
+					fmt.Printf("\r[4/6] %s Block %d/%d (%d blocks remaining)   ",
+						color.CyanString("Waiting for upgrade height..."),
+						p.CurrentHeight, p.TargetHeight, remaining)
+				}
 			}
 		}
 	case upgrade.StageSwitching:

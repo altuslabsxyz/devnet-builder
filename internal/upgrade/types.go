@@ -139,6 +139,7 @@ type UpgradeProposal struct {
 	UpgradeName   string         // Handler name from config
 	UpgradeHeight int64          // Target block height
 	SubmittedAt   time.Time      // Submission timestamp
+	VotingEndTime time.Time      // Voting period end time
 	Status        ProposalStatus // Current proposal status
 }
 
@@ -150,6 +151,7 @@ type UpgradeProgress struct {
 	TotalVoters   int              // Total validators to vote
 	CurrentHeight int64            // Latest observed block height
 	TargetHeight  int64            // Upgrade target height
+	VotingEndTime time.Time        // Voting period end time (for display)
 	Error         error            // Error if stage failed
 	StartedAt     time.Time        // Upgrade start timestamp
 	CompletedAt   *time.Time       // Completion timestamp (nil if in progress)
