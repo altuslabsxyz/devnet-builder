@@ -21,8 +21,8 @@ const (
 
 // BinaryCache manages cached binary builds.
 type BinaryCache struct {
-	homeDir  string            // Base directory (~/.stable-devnet)
-	cacheDir string            // Cache directory path
+	homeDir  string                   // Base directory (~/.stable-devnet)
+	cacheDir string                   // Cache directory path
 	entries  map[string]*CachedBinary // In-memory index of cached binaries
 	logger   *output.Logger
 }

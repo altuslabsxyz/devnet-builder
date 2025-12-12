@@ -264,16 +264,16 @@ func Provision(ctx context.Context, opts ProvisionOptions) (*ProvisionResult, er
 
 		// Restore our validator keys (overwrite the ones created by stabled init)
 		if len(nodeKeyBackup) > 0 {
-			os.WriteFile(filepath.Join(nodeDir, "config", "node_key.json"), nodeKeyBackup, 0600)
+			_ = os.WriteFile(filepath.Join(nodeDir, "config", "node_key.json"), nodeKeyBackup, 0600)
 		}
 		if len(privValKeyBackup) > 0 {
-			os.WriteFile(filepath.Join(nodeDir, "config", "priv_validator_key.json"), privValKeyBackup, 0600)
+			_ = os.WriteFile(filepath.Join(nodeDir, "config", "priv_validator_key.json"), privValKeyBackup, 0600)
 		}
 		if len(privValStateBackup) > 0 {
-			os.WriteFile(filepath.Join(nodeDir, "data", "priv_validator_state.json"), privValStateBackup, 0644)
+			_ = os.WriteFile(filepath.Join(nodeDir, "data", "priv_validator_state.json"), privValStateBackup, 0644)
 		}
 		if len(genesisBackup) > 0 {
-			os.WriteFile(filepath.Join(nodeDir, "config", "genesis.json"), genesisBackup, 0644)
+			_ = os.WriteFile(filepath.Join(nodeDir, "config", "genesis.json"), genesisBackup, 0644)
 		}
 
 		// Get node ID from the generated priv_validator_key.json
@@ -640,16 +640,16 @@ func Start(ctx context.Context, opts StartOptions) (*Devnet, error) {
 
 		// Restore our validator keys (overwrite the ones created by stabled init)
 		if len(nodeKeyBackup) > 0 {
-			os.WriteFile(filepath.Join(nodeDir, "config", "node_key.json"), nodeKeyBackup, 0600)
+			_ = os.WriteFile(filepath.Join(nodeDir, "config", "node_key.json"), nodeKeyBackup, 0600)
 		}
 		if len(privValKeyBackup) > 0 {
-			os.WriteFile(filepath.Join(nodeDir, "config", "priv_validator_key.json"), privValKeyBackup, 0600)
+			_ = os.WriteFile(filepath.Join(nodeDir, "config", "priv_validator_key.json"), privValKeyBackup, 0600)
 		}
 		if len(privValStateBackup) > 0 {
-			os.WriteFile(filepath.Join(nodeDir, "data", "priv_validator_state.json"), privValStateBackup, 0644)
+			_ = os.WriteFile(filepath.Join(nodeDir, "data", "priv_validator_state.json"), privValStateBackup, 0644)
 		}
 		if len(genesisBackup) > 0 {
-			os.WriteFile(filepath.Join(nodeDir, "config", "genesis.json"), genesisBackup, 0644)
+			_ = os.WriteFile(filepath.Join(nodeDir, "config", "genesis.json"), genesisBackup, 0644)
 		}
 
 		// Get node ID from the node_key.json

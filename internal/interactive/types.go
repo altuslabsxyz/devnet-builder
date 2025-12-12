@@ -7,11 +7,11 @@ import (
 
 // SelectionConfig represents the user's selection state during interactive mode for start command.
 type SelectionConfig struct {
-	Network             string // "mainnet" or "testnet"
-	ExportVersion       string // Version for genesis export
-	StartVersion        string // Version for node start
-	ExportIsCustomRef   bool   // True if export version is a custom branch/commit
-	StartIsCustomRef    bool   // True if start version is a custom branch/commit
+	Network           string // "mainnet" or "testnet"
+	ExportVersion     string // Version for genesis export
+	StartVersion      string // Version for node start
+	ExportIsCustomRef bool   // True if export version is a custom branch/commit
+	StartIsCustomRef  bool   // True if start version is a custom branch/commit
 }
 
 // UpgradeSelectionConfig represents the user's selection state during interactive upgrade mode.

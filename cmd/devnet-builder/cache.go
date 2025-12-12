@@ -241,14 +241,14 @@ func runCacheClean(force bool) error {
 
 // CacheInfoJSON represents cache info in JSON format.
 type CacheInfoJSON struct {
-	CacheDir       string  `json:"cache_dir"`
-	SymlinkPath    string  `json:"symlink_path"`
-	SymlinkExists  bool    `json:"symlink_exists"`
-	SymlinkTarget  string  `json:"symlink_target,omitempty"`
-	ActiveCommit   string  `json:"active_commit,omitempty"`
-	TotalEntries   int     `json:"total_entries"`
-	TotalSize      int64   `json:"total_size"`
-	TotalSizeHuman string  `json:"total_size_human"`
+	CacheDir       string `json:"cache_dir"`
+	SymlinkPath    string `json:"symlink_path"`
+	SymlinkExists  bool   `json:"symlink_exists"`
+	SymlinkTarget  string `json:"symlink_target,omitempty"`
+	ActiveCommit   string `json:"active_commit,omitempty"`
+	TotalEntries   int    `json:"total_entries"`
+	TotalSize      int64  `json:"total_size"`
+	TotalSizeHuman string `json:"total_size_human"`
 }
 
 // NewCacheInfoCmd creates the cache info command.
