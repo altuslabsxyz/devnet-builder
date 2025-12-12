@@ -27,16 +27,18 @@ type ValidatorKey struct {
 	Index int `json:"index"`
 
 	// Account key (secp256k1/ethsecp256k1)
-	Address       string `json:"address"`                  // stable1... (account address)
-	AddressHex    string `json:"address_hex"`              // 0x... (EVM address)
-	ValoperAddr   string `json:"valoper_address"`          // stablevaloper1...
-	AccountPubKey string `json:"account_pubkey,omitempty"` // base64 encoded account pubkey
+	Address          string `json:"address"`                      // stable1... (account address)
+	AddressHex       string `json:"address_hex"`                  // 0x... (EVM address)
+	ValoperAddr      string `json:"valoper_address"`              // stablevaloper1...
+	AccountPubKey    string `json:"account_pubkey,omitempty"`     // base64 encoded account pubkey
+	AccountPrivKey   string `json:"account_privkey,omitempty"`    // hex encoded account private key
+	AccountPrivKeyHex string `json:"account_privkey_hex,omitempty"` // hex private key for EVM (without 0x prefix)
 
 	// Consensus key (ed25519)
-	ValconsAddr    string `json:"valcons_address"`             // stablevalcons1...
-	ConsPubKey     string `json:"cons_pubkey"`                 // base64 encoded consensus pubkey
-	ConsAddrHex    string `json:"cons_address_hex"`            // hex consensus address
-	ConsPrivKeyHex string `json:"cons_privkey_hex,omitempty"`  // hex consensus private key
+	ValconsAddr    string `json:"valcons_address"`            // stablevalcons1...
+	ConsPubKey     string `json:"cons_pubkey"`                // base64 encoded consensus pubkey
+	ConsAddrHex    string `json:"cons_address_hex"`           // hex consensus address
+	ConsPrivKeyHex string `json:"cons_privkey_hex,omitempty"` // hex consensus private key
 
 	Mnemonic string `json:"mnemonic,omitempty"`
 }
@@ -175,6 +177,27 @@ func extractValidatorKey(homeDir string, index int) (*ValidatorKey, error) {
 		key.AccountPubKey = base64.StdEncoding.EncodeToString(pubKey.Bytes())
 	}
 
+	// Try to extract private key from local record
+	localInfo := record.GetLocal()
+	if localInfo != nil {
+		privKeyAny := localInfo.PrivKey
+		if privKeyAny != nil {
+			// The private key bytes are stored in the Any.Value field
+			// For ethsecp256k1, the raw key is 32 bytes
+			privKeyBytes := privKeyAny.GetValue()
+			if len(privKeyBytes) >= 32 {
+				// For ethsecp256k1 keys, extract the actual key bytes
+				// The value contains the protobuf-encoded key, we need the last 32 bytes
+				rawKey := privKeyBytes
+				if len(privKeyBytes) > 32 {
+					rawKey = privKeyBytes[len(privKeyBytes)-32:]
+				}
+				key.AccountPrivKey = base64.StdEncoding.EncodeToString(rawKey)
+				key.AccountPrivKeyHex = hex.EncodeToString(rawKey)
+			}
+		}
+	}
+
 	// Read consensus key from priv_validator_key.json
 	privKeyPath := filepath.Join(nodeDir, "config", "priv_validator_key.json")
 	if data, err := os.ReadFile(privKeyPath); err == nil {
@@ -210,10 +233,16 @@ func extractValidatorKey(homeDir string, index int) (*ValidatorKey, error) {
 		}
 	}
 
-	// Try to read mnemonic from a stored file (if available)
-	mnemonicPath := filepath.Join(nodeDir, "mnemonic.txt")
-	if data, err := os.ReadFile(mnemonicPath); err == nil {
-		key.Mnemonic = strings.TrimSpace(string(data))
+	// Try to read mnemonic from validator JSON file (if available)
+	validatorFile := filepath.Join(nodeDir, fmt.Sprintf("validator%d.json", index))
+	if data, err := os.ReadFile(validatorFile); err == nil {
+		var validatorData struct {
+			Address  string `json:"address"`
+			Mnemonic string `json:"mnemonic"`
+		}
+		if err := json.Unmarshal(data, &validatorData); err == nil {
+			key.Mnemonic = validatorData.Mnemonic
+		}
 	}
 
 	return key, nil

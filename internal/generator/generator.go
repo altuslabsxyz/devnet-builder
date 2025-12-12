@@ -206,9 +206,28 @@ func (g *DevnetGenerator) generateValidators() error {
 
 		// Generate and save account key using testutil (similar to testnet.go:294)
 		valName := fmt.Sprintf("validator%d", i)
-		accAddr, _, err := testutil.GenerateSaveCoinKey(kr, valName, "", true, algo)
+		accAddr, mnemonic, err := testutil.GenerateSaveCoinKey(kr, valName, "", true, algo)
 		if err != nil {
 			return fmt.Errorf("failed to generate key for %s: %w", valName, err)
+		}
+
+		// Save validator mnemonic to JSON file for export-keys command
+		validatorData := struct {
+			Address  string `json:"address"`
+			Mnemonic string `json:"mnemonic"`
+		}{
+			Address:  accAddr.String(),
+			Mnemonic: mnemonic,
+		}
+
+		jsonData, err := json.MarshalIndent(validatorData, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal validator %s: %w", valName, err)
+		}
+
+		validatorFile := filepath.Join(nodeDir, fmt.Sprintf("%s.json", valName))
+		if err := os.WriteFile(validatorFile, jsonData, 0600); err != nil {
+			return fmt.Errorf("failed to write validator file %s: %w", validatorFile, err)
 		}
 
 		// Operator address derived from account address
