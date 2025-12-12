@@ -160,8 +160,8 @@ func (m *SymlinkManager) MigrateToSymlink(cache *BinaryCache, commitHash, ref, n
 func extractCommitHashFromPath(path string) string {
 	// Path format: ../cache/binaries/{commit_hash}/stabled
 	// or absolute: /home/user/.stable-devnet/cache/binaries/{commit_hash}/stabled
-	dir := filepath.Dir(path)           // ../cache/binaries/{commit_hash}
-	commitHash := filepath.Base(dir)     // {commit_hash}
+	dir := filepath.Dir(path)        // ../cache/binaries/{commit_hash}
+	commitHash := filepath.Base(dir) // {commit_hash}
 
 	if isValidCommitHash(commitHash) {
 		return commitHash

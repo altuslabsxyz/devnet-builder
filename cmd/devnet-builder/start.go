@@ -445,9 +445,9 @@ func runInteractiveSelection(ctx context.Context, cmd *cobra.Command) (*interact
 
 // DockerImageSelectionResult holds the result of docker image selection.
 type DockerImageSelectionResult struct {
-	ImageTag   string // Selected image tag or full custom URL
-	IsCustom   bool   // True if user entered a custom image URL
-	FromCache  bool   // True if versions were loaded from cache
+	ImageTag  string // Selected image tag or full custom URL
+	IsCustom  bool   // True if user entered a custom image URL
+	FromCache bool   // True if versions were loaded from cache
 }
 
 // DefaultGHCRImage is the default GHCR image for stable.

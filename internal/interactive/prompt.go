@@ -197,7 +197,7 @@ func PromptUpgradeName(defaultName string) (string, error) {
 	if len(suggestedName) > 0 && suggestedName[0] == 'v' {
 		suggestedName = suggestedName[1:] + "-upgrade"
 	} else {
-		suggestedName = suggestedName + "-upgrade"
+		suggestedName += "-upgrade"
 	}
 
 	validate := func(input string) error {

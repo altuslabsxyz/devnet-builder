@@ -29,7 +29,7 @@ const DefaultCacheTTL = 1 * time.Hour
 // ContainerVersion represents a container package version from GHCR.
 type ContainerVersion struct {
 	ID        int       `json:"id"`
-	Name      string    `json:"name"`       // SHA digest
+	Name      string    `json:"name"` // SHA digest
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Metadata  struct {

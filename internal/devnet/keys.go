@@ -14,8 +14,8 @@ import (
 	dbm "github.com/cosmos/cosmos-db"
 	sdkkeyring "github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/testutil/sims"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/stablelabs/stable/app"
 	appcfg "github.com/stablelabs/stable/app/config"
@@ -27,11 +27,11 @@ type ValidatorKey struct {
 	Index int `json:"index"`
 
 	// Account key (secp256k1/ethsecp256k1)
-	Address          string `json:"address"`                      // stable1... (account address)
-	AddressHex       string `json:"address_hex"`                  // 0x... (EVM address)
-	ValoperAddr      string `json:"valoper_address"`              // stablevaloper1...
-	AccountPubKey    string `json:"account_pubkey,omitempty"`     // base64 encoded account pubkey
-	AccountPrivKey   string `json:"account_privkey,omitempty"`    // hex encoded account private key
+	Address           string `json:"address"`                       // stable1... (account address)
+	AddressHex        string `json:"address_hex"`                   // 0x... (EVM address)
+	ValoperAddr       string `json:"valoper_address"`               // stablevaloper1...
+	AccountPubKey     string `json:"account_pubkey,omitempty"`      // base64 encoded account pubkey
+	AccountPrivKey    string `json:"account_privkey,omitempty"`     // hex encoded account private key
 	AccountPrivKeyHex string `json:"account_privkey_hex,omitempty"` // hex private key for EVM (without 0x prefix)
 
 	// Consensus key (ed25519)
@@ -45,12 +45,12 @@ type ValidatorKey struct {
 
 // AccountKey represents an account's key information.
 type AccountKey struct {
-	Index         int    `json:"index"`
-	Address       string `json:"address"`                   // stable1...
-	AddressHex    string `json:"address_hex"`               // 0x... (EVM address)
-	PubKey        string `json:"pubkey,omitempty"`          // base64 encoded pubkey
-	PrivKey       string `json:"privkey,omitempty"`         // base64 encoded private key (if available)
-	Mnemonic      string `json:"mnemonic,omitempty"`
+	Index      int    `json:"index"`
+	Address    string `json:"address"`           // stable1...
+	AddressHex string `json:"address_hex"`       // 0x... (EVM address)
+	PubKey     string `json:"pubkey,omitempty"`  // base64 encoded pubkey
+	PrivKey    string `json:"privkey,omitempty"` // base64 encoded private key (if available)
+	Mnemonic   string `json:"mnemonic,omitempty"`
 }
 
 // KeyExport contains all exported keys.
@@ -323,7 +323,8 @@ func FormatKeysText(export *KeyExport) string {
 	if len(export.Validators) > 0 {
 		output += "Validator Keys\n"
 		output += "══════════════════════════════════════════════════════════════════════════════\n"
-		for _, v := range export.Validators {
+		for i := range export.Validators {
+			v := &export.Validators[i]
 			output += fmt.Sprintf("Node %d:\n", v.Index)
 			output += fmt.Sprintf("  Account Address:     %s\n", v.Address)
 			output += fmt.Sprintf("  Account Address HEX: %s\n", v.AddressHex)
@@ -376,7 +377,8 @@ func FormatKeysText(export *KeyExport) string {
 func FormatKeysEnv(export *KeyExport) string {
 	var output string
 
-	for _, v := range export.Validators {
+	for i := range export.Validators {
+		v := &export.Validators[i]
 		output += fmt.Sprintf("export VALIDATOR_%d_ADDRESS=\"%s\"\n", v.Index, v.Address)
 		output += fmt.Sprintf("export VALIDATOR_%d_ADDRESS_HEX=\"%s\"\n", v.Index, v.AddressHex)
 		output += fmt.Sprintf("export VALIDATOR_%d_VALOPER=\"%s\"\n", v.Index, v.ValoperAddr)
