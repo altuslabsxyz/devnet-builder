@@ -156,6 +156,13 @@ func (c *Client) fetchPage(ctx context.Context, url string) ([]GitHubRelease, st
 		}
 	}
 
+	// Check for 404 Not Found - often means private repo without proper token
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, "", rateLimitInfo, &NotFoundError{
+			Message: "Repository not found. If this is a private repository, ensure GITHUB_TOKEN is set with appropriate permissions.",
+		}
+	}
+
 	// Check for other errors
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -282,6 +289,16 @@ func (e *AuthenticationError) Error() string {
 	return e.Message
 }
 
+// NotFoundError indicates the resource was not found (404).
+// This often happens when accessing private repos without proper authentication.
+type NotFoundError struct {
+	Message string
+}
+
+func (e *NotFoundError) Error() string {
+	return e.Message
+}
+
 // StaleDataWarning indicates stale cached data is being used.
 type StaleDataWarning struct {
 	Message string
@@ -330,6 +347,13 @@ func (c *Client) FetchContainerVersions(ctx context.Context, packageName string)
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, rateLimitInfo, &AuthenticationError{
 			Message: "GitHub authentication failed. Check your token.",
+		}
+	}
+
+	// Check for 404 Not Found - often means private repo without proper token
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, rateLimitInfo, &NotFoundError{
+			Message: "Repository not found. If this is a private repository, ensure GITHUB_TOKEN is set with appropriate permissions.",
 		}
 	}
 
