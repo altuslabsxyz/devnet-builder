@@ -14,26 +14,27 @@ on:
           - mainnet
         default: 'testnet'
       source_image_tag:
-        description: 'Source Docker image tag (for initial devnet, e.g., latest-testnet, v1.1.2)'
+        description: 'Source Docker image tag (for initial devnet)'
         required: true
         type: string
         default: 'latest-testnet'
       upgrade_image_tag:
-        description: 'Target Docker image tag after upgrade (e.g., v1.1.3, sha-abc1234)'
+        description: 'Target Docker image tag after upgrade'
         required: true
         type: string
       upgrade_name:
-        description: 'Upgrade handler name registered in new binary (e.g., v1.1.3-upgrade, mainnet-v2)'
+        description: 'Upgrade handler name registered in new binary'
         required: true
         type: string
+      validators:
+        description: 'Number of validators'
+        required: false
+        type: string
+        default: '4'
 
 env:
   STABLED_IMAGE: ghcr.io/stablelabs/stable
-  NUM_VALIDATORS: 4
   DEVNET_BASE_DIR: /data/.devnet
-  GOV_PRECOMPILE: "0x0000000000000000000000000000000000000805"
-  GOV_AUTHORITY: "stable10d07y265gmmuvt4z0w9aw880jnsr700jjjzdw5"
-  EXPEDITED_VOTING_PERIOD_SECS: 60
 
 jobs:
   deploy-and-upgrade:
@@ -43,42 +44,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Determine snapshot configuration
-        id: config
-        run: |
-          SNAPSHOT_NETWORK="${{ inputs.snapshot_network }}"
-
-          if [ "$SNAPSHOT_NETWORK" = "mainnet" ]; then
-            SNAPSHOT_URL="https://stable-mainnet-data.s3.amazonaws.com/snapshots/stable_pruned.tar.zst"
-            CHAIN_ID="stable_988-1"
-            RPC_ENDPOINT="https://cosmos-rpc-internal.stable.xyz"
-            PEERS="39fef24240d80e2cd5bdcbe101298c36f0d83fa1@57.129.53.87:26656"
-          else
-            # testnet (default)
-            SNAPSHOT_URL="https://stable-snapshot.s3.eu-central-1.amazonaws.com/snapshot.tar.lz4"
-            CHAIN_ID="stabletestnet_2201-1"
-            RPC_ENDPOINT="https://cosmos-rpc.testnet.stable.xyz"
-            PEERS="128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656"
-          fi
-
-          echo "snapshot_url=$SNAPSHOT_URL" >> $GITHUB_OUTPUT
-          echo "chain_id=$CHAIN_ID" >> $GITHUB_OUTPUT
-          echo "rpc_endpoint=$RPC_ENDPOINT" >> $GITHUB_OUTPUT
-          echo "persistent_peers=$PEERS" >> $GITHUB_OUTPUT
-
-          echo "Configuration:"
-          echo "  Network: $SNAPSHOT_NETWORK"
-          echo "  Snapshot URL: $SNAPSHOT_URL"
-          echo "  Chain ID: $CHAIN_ID"
-          echo "  RPC: $RPC_ENDPOINT"
-          echo "  Source image tag: ${{ inputs.source_image_tag }}"
-          echo "  Upgrade image tag: ${{ inputs.upgrade_image_tag }}"
-          echo "  Upgrade handler name: ${{ inputs.upgrade_name }}"
-
       - name: Login to GitHub Container Registry
         run: |
           echo "${{ secrets.GH_PAT }}" | docker login ghcr.io -u qj0r9j0vc2 --password-stdin
-          echo "Login successful"
 
       - name: Pull Docker images
         run: |
@@ -94,387 +62,48 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq lz4 zstd jq xxd
-
-          # Install Foundry (cast)
-          if ! command -v cast &> /dev/null; then
-            echo "Installing Foundry..."
-            curl -L https://foundry.paradigm.xyz | bash
-            source ~/.bashrc || true
-            ~/.foundry/bin/foundryup
-            echo "$HOME/.foundry/bin" >> $GITHUB_PATH
-          else
-            echo "Foundry already installed"
-          fi
-
-      - name: Stop existing services
-        run: |
-          echo "Stopping existing services..."
-
-          # Stop devnet docker compose
-          cd "${GITHUB_WORKSPACE}/docker"
-          DEVNET_DIR="$DEVNET_BASE_DIR" docker compose down 2>/dev/null || true
-
-          # Remove any existing devnet containers
-          docker rm -f devnet-node0 devnet-node1 devnet-node2 devnet-node3 2>/dev/null || true
-
-          # Kill any existing provision-sync containers (from previous runs)
-          echo "Cleaning up provision-sync containers..."
-          docker ps -a --filter "name=provision-sync" --format "{{.ID}}" | xargs -r docker rm -f 2>/dev/null || true
-
-          # Wait for ports to be released
-          sleep 5
-
-          echo "Existing services stopped"
-
-      - name: Provision chain with snapshot
-        id: provision
-        run: |
-          SOURCE_IMAGE="${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
-          CHAIN_ID="${{ steps.config.outputs.chain_id }}"
-          SNAPSHOT_URL="${{ steps.config.outputs.snapshot_url }}"
-          RPC_ENDPOINT="${{ steps.config.outputs.rpc_endpoint }}"
-          PEERS="${{ steps.config.outputs.persistent_peers }}"
-
-          WORK_DIR="/data/.provision-${CHAIN_ID}"
-          GENESIS_EXPORT="${GITHUB_WORKSPACE}/genesis-export.json"
-
-          echo "Provisioning chain..."
-          echo "  Image: $SOURCE_IMAGE"
-          echo "  Chain ID: $CHAIN_ID"
-          echo "  Work Dir: $WORK_DIR"
-
-          # Clean and create work directory
-          sudo rm -rf "$WORK_DIR"
-          sudo mkdir -p "$WORK_DIR"
-          sudo chown -R $(whoami):$(whoami) "$WORK_DIR"
-
-          # Initialize chain
-          echo "Initializing chain..."
-          docker run --rm -u 0 \
-            -v "$WORK_DIR:/data" \
-            "$SOURCE_IMAGE" \
-            init "provisioner" --chain-id "$CHAIN_ID" --home /data
-
-          # Fix permissions
-          sudo chown -R $(whoami):$(whoami) "$WORK_DIR"
-
-          # Copy fixed node_key.json
-          cp "${GITHUB_WORKSPACE}/config/node_key.json" "$WORK_DIR/config/node_key.json"
-
-          # Download genesis from RPC
-          if [ -n "$RPC_ENDPOINT" ]; then
-            echo "Downloading genesis from RPC: ${RPC_ENDPOINT}/genesis"
-            GENESIS_RESPONSE=$(curl -s "${RPC_ENDPOINT}/genesis")
-
-            if echo "$GENESIS_RESPONSE" | jq -e '.result.genesis' > /dev/null 2>&1; then
-              echo "$GENESIS_RESPONSE" | jq '.result.genesis' > "$WORK_DIR/config/genesis.json"
-              echo "Genesis downloaded successfully"
-            else
-              echo "Warning: Failed to parse genesis from RPC"
-            fi
-          fi
-
-          # Download and extract snapshot
-          echo "Downloading snapshot..."
-          SNAPSHOT_FILE="/tmp/snapshot.tar"
-
-          case "$SNAPSHOT_URL" in
-            *.tar.lz4) curl -fL "$SNAPSHOT_URL" | lz4 -dc > "$SNAPSHOT_FILE" ;;
-            *.tar.zst) curl -fL "$SNAPSHOT_URL" | zstd -dc > "$SNAPSHOT_FILE" ;;
-            *.tar.gz)  curl -fL "$SNAPSHOT_URL" | gunzip > "$SNAPSHOT_FILE" ;;
-            *.tar)     curl -fL -o "$SNAPSHOT_FILE" "$SNAPSHOT_URL" ;;
-          esac
-
-          # Validate snapshot download
-          if [ ! -f "$SNAPSHOT_FILE" ] || [ ! -s "$SNAPSHOT_FILE" ]; then
-            echo "Error: Snapshot download failed or file is empty"
-            exit 1
-          fi
-
-          echo "Snapshot file size: $(du -h "$SNAPSHOT_FILE" | cut -f1)"
-
-          echo "Extracting snapshot..."
-          rm -rf "$WORK_DIR/data"
-          mkdir -p "$WORK_DIR/data"
-
-          if ! tar -xf "$SNAPSHOT_FILE" -C "$WORK_DIR/data"; then
-            echo "Error: Snapshot extraction failed"
-            rm -f "$SNAPSHOT_FILE"
-            exit 1
-          fi
-
-          rm -f "$SNAPSHOT_FILE"
-
-          # Handle nested data directory
-          if [ -d "$WORK_DIR/data/data" ] && [ ! -f "$WORK_DIR/data/priv_validator_state.json" ]; then
-            if [ -f "$WORK_DIR/data/data/priv_validator_state.json" ]; then
-              mv "$WORK_DIR/data/data"/* "$WORK_DIR/data/" 2>/dev/null || true
-              rm -rf "$WORK_DIR/data/data"
-            fi
-          fi
-
-          # Ensure priv_validator_state.json exists
-          if [ ! -f "$WORK_DIR/data/priv_validator_state.json" ]; then
-            echo '{"height":"0","round":0,"step":0}' > "$WORK_DIR/data/priv_validator_state.json"
-          fi
-
-          sudo chown -R $(whoami):$(whoami) "$WORK_DIR"
-
-          # Configure node
-          CONFIG_FILE="$WORK_DIR/config/config.toml"
-          APP_FILE="$WORK_DIR/config/app.toml"
-          sed -i 's/enable = true/enable = false/g' "$CONFIG_FILE"
-          [ -n "$PEERS" ] && sed -i "s/persistent_peers = \"\"/persistent_peers = \"$PEERS\"/g" "$CONFIG_FILE"
-
-          # Set correct evm-chain-id based on network
-          SNAPSHOT_NETWORK="${{ inputs.snapshot_network }}"
-          if [ "$SNAPSHOT_NETWORK" = "mainnet" ]; then
-            EVM_CHAIN_ID=988
-          else
-            EVM_CHAIN_ID=2201
-          fi
-          echo "Setting evm-chain-id = $EVM_CHAIN_ID for $SNAPSHOT_NETWORK"
-          sed -i "s/^evm-chain-id = .*/evm-chain-id = $EVM_CHAIN_ID/g" "$APP_FILE"
-
-          # Sync to latest block
-          echo "Starting node to sync..."
-          CONTAINER_NAME="provision-sync-$$"
-
-          docker run -d -u 0 --name "$CONTAINER_NAME" \
-            -v "$WORK_DIR:/data" \
-            --network host \
-            "$SOURCE_IMAGE" \
-            start --home /data --chain-id $CHAIN_ID
-
-          # Wait for sync
-          TIMEOUT=1800
-          ELAPSED=0
-          SYNC_COMPLETE=false
-
-          while [ $ELAPSED -lt $TIMEOUT ]; do
-            sleep 30
-            ELAPSED=$((ELAPSED + 30))
-
-            STATUS=$(curl -s http://localhost:26657/status 2>/dev/null || echo '{}')
-            CATCHING_UP=$(echo "$STATUS" | jq -r 'if .result.sync_info.catching_up == null then true else .result.sync_info.catching_up end')
-            HEIGHT=$(echo "$STATUS" | jq -r '.result.sync_info.latest_block_height // "0"')
-
-            echo "[${ELAPSED}s] Height: $HEIGHT, Catching up: $CATCHING_UP"
-
-            if [ "$CATCHING_UP" = "false" ]; then
-              echo "Node synced after ${ELAPSED}s at height $HEIGHT"
-              SYNC_COMPLETE=true
-              break
-            fi
-          done
-
-          docker stop "$CONTAINER_NAME" || true
-          docker rm "$CONTAINER_NAME" || true
-
-          # Check if sync completed or timed out
-          if [ "$SYNC_COMPLETE" != "true" ]; then
-            echo "Error: Sync timed out after ${TIMEOUT}s"
-            exit 1
-          fi
-
-          # Export genesis
-          echo "Exporting genesis..."
-          docker run --rm -u 0 \
-            -v "$WORK_DIR:/data" \
-            "$SOURCE_IMAGE" \
-            export --home /data > "$GENESIS_EXPORT"
-
-          # Validate genesis export - check file exists and is valid JSON
-          if [ ! -s "$GENESIS_EXPORT" ]; then
-            echo "Error: Genesis export file is empty"
-            exit 1
-          fi
-
-          # Validate JSON structure
-          if ! jq -e '.chain_id' "$GENESIS_EXPORT" > /dev/null 2>&1; then
-            echo "Error: Genesis export is not valid JSON or missing chain_id"
-            echo "First 500 bytes:"
-            head -c 500 "$GENESIS_EXPORT"
-            exit 1
-          fi
-
-          EXPORTED_CHAIN_ID=$(jq -r '.chain_id' "$GENESIS_EXPORT")
-          echo "Genesis exported successfully"
-          echo "  Size: $(wc -c < "$GENESIS_EXPORT") bytes"
-          echo "  Chain ID: $EXPORTED_CHAIN_ID"
-          echo "genesis_file=$GENESIS_EXPORT" >> $GITHUB_OUTPUT
+          sudo apt-get install -y -qq lz4 zstd jq
 
       - name: Build devnet-builder
         env:
           GOPRIVATE: github.com/stablelabs/*
         run: |
-          echo "Building devnet-builder..."
           git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf "https://github.com/"
           go clean -cache -modcache 2>/dev/null || true
-          cd "${GITHUB_WORKSPACE}"
           go mod download
           make build
-          ls -la build/
 
-      - name: Build devnet
-        id: build
+      - name: Stop existing services
+        run: |
+          echo "Stopping existing services..."
+          "${GITHUB_WORKSPACE}/build/devnet-builder" down --home "$DEVNET_BASE_DIR" 2>/dev/null || true
+          docker rm -f devnet-node0 devnet-node1 devnet-node2 devnet-node3 2>/dev/null || true
+          sleep 5
+
+      - name: Deploy devnet with source binary
         run: |
           SOURCE_IMAGE="${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
-          GENESIS_FILE="${{ steps.provision.outputs.genesis_file }}"
-          DEVNET_CHAIN_ID="${{ steps.config.outputs.chain_id }}"
-          OUTPUT_DIR="${GITHUB_WORKSPACE}/devnet"
-          DEVNET_BUILDER_OUTPUT="${GITHUB_WORKSPACE}/devnet-builder-output"
 
-          echo "Building devnet..."
-          rm -rf "$OUTPUT_DIR" "$DEVNET_BUILDER_OUTPUT"
+          echo "Deploying devnet with source binary..."
+          echo "  Network: ${{ inputs.snapshot_network }}"
+          echo "  Source image: $SOURCE_IMAGE"
+          echo "  Validators: ${{ inputs.validators }}"
 
-          # Run devnet-builder
-          # 990K STABLE / 8 accounts = ~123K each, use 120K per account
-          ACCOUNT_BALANCE="120000000000000000000000astable,1000000000000000000000agusdt"
+          "${GITHUB_WORKSPACE}/build/devnet-builder" deploy \
+            --home "$DEVNET_BASE_DIR" \
+            --network "${{ inputs.snapshot_network }}" \
+            --validators "${{ inputs.validators }}" \
+            --mode docker \
+            --image "$SOURCE_IMAGE" \
+            --no-interactive \
+            --verbose
 
-          "${GITHUB_WORKSPACE}/build/devnet-builder" build "$GENESIS_FILE" \
-            --validators "$NUM_VALIDATORS" \
-            --accounts "$NUM_VALIDATORS" \
-            --chain-id "$DEVNET_CHAIN_ID" \
-            --validator-balance "$ACCOUNT_BALANCE" \
-            --account-balance "$ACCOUNT_BALANCE" \
-            --output "$DEVNET_BUILDER_OUTPUT"
-
-          # Initialize node configs
-          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
-            NODE_DIR="$OUTPUT_DIR/node${i}"
-            mkdir -p "$NODE_DIR"
-
-            docker run --rm -u 0 \
-              -v "$NODE_DIR:/data" \
-              "$SOURCE_IMAGE" \
-              init "validator${i}" --chain-id "$DEVNET_CHAIN_ID" --home /data 2>/dev/null || true
-
-            sudo chown -R $(whoami):$(whoami) "$NODE_DIR"
-          done
-
-          # Copy validator keys from devnet-builder
-          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
-            cp "$DEVNET_BUILDER_OUTPUT/node${i}/config/priv_validator_key.json" "$OUTPUT_DIR/node${i}/config/"
-            cp "$DEVNET_BUILDER_OUTPUT/node${i}/data/priv_validator_state.json" "$OUTPUT_DIR/node${i}/data/"
-            cp "$DEVNET_BUILDER_OUTPUT/node${i}/config/genesis.json" "$OUTPUT_DIR/node${i}/config/"
-          done
-
-          # Copy accounts
-          mkdir -p "$OUTPUT_DIR/accounts"
-          cp -r "$DEVNET_BUILDER_OUTPUT/accounts/"* "$OUTPUT_DIR/accounts/" 2>/dev/null || true
-
-          # Configure networking
-          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
-            NODE_ID=$(docker run --rm -u 0 \
-              -v "$OUTPUT_DIR/node${i}:/data" \
-              "$SOURCE_IMAGE" \
-              comet show-node-id --home /data 2>/dev/null)
-            eval "NODE${i}_ID=$NODE_ID"
-          done
-
-          PERSISTENT_PEERS="${NODE0_ID}@127.0.0.1:26656,${NODE1_ID}@127.0.0.1:26666,${NODE2_ID}@127.0.0.1:26676,${NODE3_ID}@127.0.0.1:26686"
-
-          # Main RPC node (node0)
-          MAIN_RPC_NODE=0
-
-          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
-            NODE_NAME="node${i}"
-            CONFIG_FILE="$OUTPUT_DIR/node${i}/config/config.toml"
-            APP_FILE="$OUTPUT_DIR/node${i}/config/app.toml"
-
-            echo "Configuring $NODE_NAME..."
-
-            P2P_PORT=$((26656 + i * 10))
-            RPC_PORT=$((26657 + i * 10))
-            PROXY_PORT=$((26658 + i * 10))
-
-            # Basic network configuration
-            sed -i "s|^persistent_peers = .*|persistent_peers = \"$PERSISTENT_PEERS\"|g" "$CONFIG_FILE"
-            sed -i "s|allow_duplicate_ip = .*|allow_duplicate_ip = true|g" "$CONFIG_FILE"
-            sed -i "s|addr_book_strict = .*|addr_book_strict = false|g" "$CONFIG_FILE"
-            sed -i "s|laddr = \"tcp://0.0.0.0:26656\"|laddr = \"tcp://0.0.0.0:$P2P_PORT\"|g" "$CONFIG_FILE"
-            sed -i "s|laddr = \"tcp://127.0.0.1:26656\"|laddr = \"tcp://0.0.0.0:$P2P_PORT\"|g" "$CONFIG_FILE"
-            sed -i "s|laddr = \"tcp://0.0.0.0:26657\"|laddr = \"tcp://0.0.0.0:$RPC_PORT\"|g" "$CONFIG_FILE"
-            sed -i "s|laddr = \"tcp://127.0.0.1:26657\"|laddr = \"tcp://0.0.0.0:$RPC_PORT\"|g" "$CONFIG_FILE"
-            sed -i "s|proxy_app = \"tcp://127.0.0.1:26658\"|proxy_app = \"tcp://127.0.0.1:$PROXY_PORT\"|g" "$CONFIG_FILE"
-
-            # Configure app.toml
-            if [ $i -eq $MAIN_RPC_NODE ]; then
-              # Main RPC node: enable all services (API, gRPC, JSON-RPC)
-              sed -i 's|enable = false|enable = true|g' "$APP_FILE"
-              sed -i 's|address = "tcp://localhost:1317"|address = "tcp://0.0.0.0:1317"|g' "$APP_FILE"
-              sed -i 's|address = "127.0.0.1:8545"|address = "0.0.0.0:8545"|g' "$APP_FILE"
-              sed -i 's|ws-address = "127.0.0.1:8546"|ws-address = "0.0.0.0:8546"|g' "$APP_FILE"
-              sed -i 's|api = "eth,net,web3"|api = "eth,txpool,personal,net,debug,web3"|g' "$APP_FILE"
-              sed -i 's|enabled-unsafe-cors = false|enabled-unsafe-cors = true|g' "$APP_FILE"
-              sed -i 's|laddr = "tcp://127.0.0.1:26657"|laddr = "tcp://0.0.0.0:26657"|g' "$CONFIG_FILE"
-              echo "  Enabled all services for $NODE_NAME (main RPC node)"
-            else
-              # Other nodes: disable all services
-              sed -i 's|enable = true|enable = false|g' "$APP_FILE"
-              echo "  Disabled services for $NODE_NAME"
-            fi
-
-            # Disable prometheus
-            sed -i 's|prometheus = true|prometheus = false|g' "$CONFIG_FILE"
-
-            # Configure consensus parameters for faster block times
-            echo "  Configuring consensus parameters for $NODE_NAME..."
-            sed -i \
-                -e '/^\[consensus\]/,/^\[/ {
-                  s/^timeout_propose = .*/timeout_propose = "5s"/
-                  s/^timeout_propose_delta = .*/timeout_propose_delta = "10ms"/
-                  s/^timeout_prevote = .*/timeout_prevote = "50ms"/
-                  s/^timeout_prevote_delta = .*/timeout_prevote_delta = "10ms"/
-                  s/^timeout_precommit = .*/timeout_precommit = "50ms"/
-                  s/^timeout_precommit_delta = .*/timeout_precommit_delta = "10ms"/
-                  s/^timeout_commit = .*/timeout_commit = "650ms"/
-                }' \
-                "$CONFIG_FILE"
-
-            echo "  $NODE_NAME configuration completed"
-          done
-
-          rm -rf "$DEVNET_BUILDER_OUTPUT"
-          echo "output_dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
-          echo "chain_id=$DEVNET_CHAIN_ID" >> $GITHUB_OUTPUT
-
-      - name: Deploy devnet
-        run: |
-          OUTPUT_DIR="${{ steps.build.outputs.output_dir }}"
-
-          if [ -d "$DEVNET_BASE_DIR" ]; then
-            BACKUP="${DEVNET_BASE_DIR}_backup_$(date +%Y%m%d_%H%M%S)"
-            sudo mv "$DEVNET_BASE_DIR" "$BACKUP"
-          fi
-
-          sudo mkdir -p "$DEVNET_BASE_DIR"
-          sudo cp -a "$OUTPUT_DIR"/* "$DEVNET_BASE_DIR/"
-          sudo chown -R $(whoami):$(whoami) "$DEVNET_BASE_DIR"
-
-      - name: Start devnet with source binary
-        run: |
-          CHAIN_ID="${{ steps.build.outputs.chain_id }}"
-          cd "${GITHUB_WORKSPACE}/docker"
-
-          DEVNET_DIR="$DEVNET_BASE_DIR" \
-          STABLED_IMAGE="${STABLED_IMAGE}" \
-          STABLED_TAG="${{ inputs.source_image_tag }}" \
-          CHAIN_ID="$CHAIN_ID" \
-          docker compose up -d
-
-          echo "Docker compose started"
-          docker compose ps
-
-      - name: Wait for chain to produce blocks
+      - name: Wait for chain to be ready
         run: |
           echo "Waiting for chain to start producing blocks..."
           TIMEOUT=300
           ELAPSED=0
 
-          # First, wait for chain to sync
           while [ $ELAPSED -lt $TIMEOUT ]; do
             sleep 10
             ELAPSED=$((ELAPSED + 10))
@@ -491,31 +120,8 @@ jobs:
             fi
           done
 
-          # Wait for sufficient block history (EVM RPC needs ~50 blocks for gas estimation)
-          echo "Waiting for sufficient block history for EVM RPC..."
-          MIN_BLOCKS_NEEDED=50
-
-          while [ $ELAPSED -lt $TIMEOUT ]; do
-            sleep 10
-            ELAPSED=$((ELAPSED + 10))
-
-            # Get current height and earliest available block
-            STATUS=$(curl -s http://localhost:26657/status 2>/dev/null || echo '{}')
-            CURRENT_HEIGHT=$(echo "$STATUS" | jq -r '.result.sync_info.latest_block_height // "0"')
-            EARLIEST=$(echo "$STATUS" | jq -r '.result.sync_info.earliest_block_height // "0"')
-
-            AVAILABLE_HISTORY=$((CURRENT_HEIGHT - EARLIEST))
-            echo "[${ELAPSED}s] Height: $CURRENT_HEIGHT, Earliest: $EARLIEST, Available history: $AVAILABLE_HISTORY blocks"
-
-            if [ "$AVAILABLE_HISTORY" -ge "$MIN_BLOCKS_NEEDED" ]; then
-              echo "Sufficient block history available!"
-              break
-            fi
-          done
-
           # Wait for EVM JSON-RPC to be ready
-          echo "Waiting for EVM JSON-RPC to be ready..."
-          EVM_READY=false
+          echo "Waiting for EVM JSON-RPC..."
           EVM_TIMEOUT=120
           EVM_ELAPSED=0
 
@@ -523,626 +129,73 @@ jobs:
             sleep 5
             EVM_ELAPSED=$((EVM_ELAPSED + 5))
 
-            # Test eth_chainId
             CHAIN_ID_RESULT=$(curl -s -X POST http://localhost:8545 \
               -H "Content-Type: application/json" \
               -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' 2>/dev/null || echo '{}')
 
             if echo "$CHAIN_ID_RESULT" | jq -e '.result' > /dev/null 2>&1; then
-              CHAIN_ID_HEX=$(echo "$CHAIN_ID_RESULT" | jq -r '.result')
-              echo "[${EVM_ELAPSED}s] EVM chain ID: $CHAIN_ID_HEX"
-
-              # Test eth_blockNumber
-              BLOCK_RESULT=$(curl -s -X POST http://localhost:8545 \
-                -H "Content-Type: application/json" \
-                -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null || echo '{}')
-
-              if echo "$BLOCK_RESULT" | jq -e '.result' > /dev/null 2>&1; then
-                EVM_BLOCK=$(echo "$BLOCK_RESULT" | jq -r '.result')
-                echo "[${EVM_ELAPSED}s] EVM block: $EVM_BLOCK"
-                EVM_READY=true
-                break
-              fi
+              echo "EVM JSON-RPC is ready!"
+              break
             fi
 
             echo "[${EVM_ELAPSED}s] EVM RPC not ready yet..."
           done
 
-          if [ "$EVM_READY" != "true" ]; then
-            echo "Error: EVM JSON-RPC failed to become ready"
-            exit 1
-          fi
-
-          echo "EVM JSON-RPC is ready!"
-
-      - name: Calculate upgrade height
+      - name: Perform upgrade
         id: upgrade
         run: |
-          echo "Calculating upgrade height..."
-
-          # Get current block info
-          STATUS=$(curl -s http://localhost:26657/status)
-          CURRENT_HEIGHT=$(echo "$STATUS" | jq -r '.result.sync_info.latest_block_height')
-          CURRENT_TIME=$(echo "$STATUS" | jq -r '.result.sync_info.latest_block_time')
-          EARLIEST_HEIGHT=$(echo "$STATUS" | jq -r '.result.sync_info.earliest_block_height // "1"')
-
-          echo "Current height: $CURRENT_HEIGHT"
-          echo "Earliest height: $EARLIEST_HEIGHT"
-          echo "Current time: $CURRENT_TIME"
-
-          # Calculate block time using available history only
-          # Use earliest available block or go back 50 blocks, whichever is higher
-          EARLIER_HEIGHT=$((CURRENT_HEIGHT - 50))
-          if [ "$EARLIER_HEIGHT" -lt "$EARLIEST_HEIGHT" ]; then
-            EARLIER_HEIGHT=$EARLIEST_HEIGHT
-            echo "Using earliest available height: $EARLIER_HEIGHT (pruned snapshot)"
-          fi
-
-          EARLIER_BLOCK=$(curl -s "http://localhost:26657/block?height=$EARLIER_HEIGHT")
-          EARLIER_TIME=$(echo "$EARLIER_BLOCK" | jq -r '.result.block.header.time // empty')
-
-          BLOCK_TIME_SECS=2  # Default fallback
-
-          if [ -n "$EARLIER_TIME" ]; then
-            # Calculate block time in seconds
-            CURRENT_TS=$(date -d "$CURRENT_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${CURRENT_TIME%.*}" +%s 2>/dev/null || echo "0")
-            EARLIER_TS=$(date -d "$EARLIER_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${EARLIER_TIME%.*}" +%s 2>/dev/null || echo "0")
-
-            BLOCKS_DIFF=$((CURRENT_HEIGHT - EARLIER_HEIGHT))
-            if [ "$BLOCKS_DIFF" -gt 0 ] && [ "$CURRENT_TS" -gt "$EARLIER_TS" ]; then
-              TIME_DIFF=$((CURRENT_TS - EARLIER_TS))
-              BLOCK_TIME_SECS=$((TIME_DIFF / BLOCKS_DIFF))
-              # Sanity check: block time should be between 1 and 10 seconds
-              if [ "$BLOCK_TIME_SECS" -lt 1 ]; then
-                BLOCK_TIME_SECS=1
-              elif [ "$BLOCK_TIME_SECS" -gt 10 ]; then
-                BLOCK_TIME_SECS=2
-                echo "Warning: Calculated block time too high, using fallback"
-              fi
-            fi
-          else
-            echo "Warning: Could not fetch historical block, using default block time"
-          fi
-
-          echo "Block time: ${BLOCK_TIME_SECS}s"
-
-          # Calculate upgrade height
-          # upgrade_height = current + (voting_period / block_time) + buffer
-          BLOCKS_FOR_VOTING=$((EXPEDITED_VOTING_PERIOD_SECS / BLOCK_TIME_SECS))
-          BUFFER_BLOCKS=10  # Minimal buffer after voting ends
-          UPGRADE_HEIGHT=$((CURRENT_HEIGHT + BLOCKS_FOR_VOTING + BUFFER_BLOCKS))
-
-          echo "Voting period: ${EXPEDITED_VOTING_PERIOD_SECS}s = ~${BLOCKS_FOR_VOTING} blocks"
-          echo "Buffer: ${BUFFER_BLOCKS} blocks"
-          echo "Upgrade height: $UPGRADE_HEIGHT"
-
-          echo "upgrade_height=$UPGRADE_HEIGHT" >> $GITHUB_OUTPUT
-          echo "block_time=$BLOCK_TIME_SECS" >> $GITHUB_OUTPUT
-
-      - name: Submit upgrade proposal via EVM
-        id: proposal
-        run: |
-          SOURCE_IMAGE="${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
-          UPGRADE_HEIGHT="${{ steps.upgrade.outputs.upgrade_height }}"
+          UPGRADE_IMAGE="${STABLED_IMAGE}:${{ inputs.upgrade_image_tag }}"
           UPGRADE_NAME="${{ inputs.upgrade_name }}"
-          CHAIN_ID="${{ steps.build.outputs.chain_id }}"
 
-          echo "Submitting upgrade proposal..."
+          echo "Performing upgrade..."
           echo "  Upgrade name: $UPGRADE_NAME"
-          echo "  Upgrade height: $UPGRADE_HEIGHT"
-
-          # Get validator0 private key and address
-          VALIDATOR0_PRIVKEY=$(docker run --rm -u 0 \
-            -v "$DEVNET_BASE_DIR/accounts:/data" \
-            "$SOURCE_IMAGE" \
-            keys unsafe-export-eth-key validator0 --keyring-backend test --home /data 2>/dev/null)
-
-          VALIDATOR0_BECH32=$(docker run --rm -u 0 \
-            -v "$DEVNET_BASE_DIR/accounts:/data" \
-            "$SOURCE_IMAGE" \
-            keys show validator0 --keyring-backend test --home /data --output json 2>/dev/null | jq -r '.address')
-
-          # Convert bech32 to EVM address using debug addr
-          # Output format: "Address (hex): A41BEA69E25BC2DD43A329AB5EF27D7012D79377"
-          VALIDATOR0_HEX=$(docker run --rm -u 0 \
-            -v "$DEVNET_BASE_DIR/accounts:/data" \
-            "$SOURCE_IMAGE" \
-            debug addr "$VALIDATOR0_BECH32" 2>&1 | grep "Address (hex):" | awk '{print $3}')
-
-          # Convert to lowercase (output is uppercase)
-          VALIDATOR0_HEX=$(echo "$VALIDATOR0_HEX" | tr '[:upper:]' '[:lower:]')
-
-          if [ -z "$VALIDATOR0_HEX" ]; then
-            echo "Error: Failed to extract hex address for $VALIDATOR0_BECH32"
-            echo "Debug addr output:"
-            docker run --rm -u 0 \
-              -v "$DEVNET_BASE_DIR/accounts:/data" \
-              "$SOURCE_IMAGE" \
-              debug addr "$VALIDATOR0_BECH32" 2>&1
-            exit 1
-          fi
-
-          echo "Validator0 address: $VALIDATOR0_BECH32"
-          echo "Validator0 hex: 0x$VALIDATOR0_HEX"
-
-          # Check validator balance
-          echo ""
-          echo "=== Checking validator0 balance ==="
-
-          # Check via Cosmos REST API
-          COSMOS_BALANCE=$(curl -s "http://localhost:1317/cosmos/bank/v1beta1/balances/$VALIDATOR0_BECH32")
-          echo "Cosmos balance:"
-          echo "$COSMOS_BALANCE" | jq .
-
-          ASTABLE_BALANCE=$(echo "$COSMOS_BALANCE" | jq -r '.balances[] | select(.denom == "astable") | .amount // "0"')
-          echo "astable balance: $ASTABLE_BALANCE"
-
-          if [ -z "$ASTABLE_BALANCE" ] || [ "$ASTABLE_BALANCE" = "0" ] || [ "$ASTABLE_BALANCE" = "null" ]; then
-            echo "ERROR: Validator0 has no balance!"
-            echo "Make sure devnet-builder is setting --validator-balance correctly"
-            exit 1
-          fi
-
-          echo "Validator0 has sufficient balance!"
-          echo ""
-
-          # Build proposal JSON using printf to avoid heredoc YAML issues
-          PROPOSAL_JSON=$(printf '{"messages":[{"@type":"/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade","authority":"%s","plan":{"name":"%s","height":"%s","info":"Automated devnet upgrade to %s"}}],"metadata":"","title":"Software Upgrade: %s","summary":"Automated devnet upgrade from %s to %s","expedited":true}' \
-            "$GOV_AUTHORITY" \
-            "$UPGRADE_NAME" \
-            "$UPGRADE_HEIGHT" \
-            "$UPGRADE_NAME" \
-            "$UPGRADE_NAME" \
-            "${{ inputs.source_image_tag }}" \
-            "${{ inputs.upgrade_image_tag }}")
-
-          echo "Proposal JSON:"
-          echo "$PROPOSAL_JSON"
-
-          # Convert JSON to hex bytes
-          PROPOSAL_HEX=$(echo -n "$PROPOSAL_JSON" | xxd -p | tr -d '\n')
-
-          # Submit proposal using cast with retry logic
-          echo "Submitting proposal via governance precompile..."
-
-          MAX_RETRIES=5
-          RETRY_DELAY=15
-          TX_RESULT=""
-
-          for attempt in $(seq 1 $MAX_RETRIES); do
-            echo "Attempt $attempt of $MAX_RETRIES..."
-            echo "  Target: $GOV_PRECOMPILE"
-            echo "  Proposer: 0x$VALIDATOR0_HEX"
-            echo "  Proposal hex length: ${#PROPOSAL_HEX}"
-
-            # Use cast to send transaction (quotes around denom for safety)
-            set +e
-            TX_RESULT=$(~/.foundry/bin/cast send "$GOV_PRECOMPILE" \
-              "submitProposal(address,bytes,(string,uint256)[])" \
-              "0x$VALIDATOR0_HEX" \
-              "0x$PROPOSAL_HEX" \
-              '[("astable",50000000000000000000001)]' \
-              --private-key "$VALIDATOR0_PRIVKEY" \
-              --rpc-url "http://localhost:8545" \
-              --gas-limit 3000000 \
-              --json 2>&1)
-            CAST_EXIT_CODE=$?
-            set -e
-
-            echo "Cast exit code: $CAST_EXIT_CODE"
-            echo "Cast output: $TX_RESULT"
-
-            # Check if cast command itself failed
-            if [ $CAST_EXIT_CODE -ne 0 ]; then
-              echo "Cast command failed with exit code $CAST_EXIT_CODE"
-              echo "Full output:"
-              echo "$TX_RESULT"
-              sleep $RETRY_DELAY
-              continue
-            fi
-
-            # Check if it's an RPC error about height availability
-            if echo "$TX_RESULT" | grep -q "height.*is not available"; then
-              echo "RPC height availability error, waiting ${RETRY_DELAY}s for more blocks..."
-              sleep $RETRY_DELAY
-              continue
-            fi
-
-            # Check if TX was successful
-            TX_HASH=$(echo "$TX_RESULT" | jq -r '.transactionHash // empty' 2>/dev/null)
-            if [ -n "$TX_HASH" ]; then
-              echo "Transaction submitted successfully!"
-              break
-            fi
-
-            # Other error, wait and retry
-            echo "Transaction failed, retrying in ${RETRY_DELAY}s..."
-            sleep $RETRY_DELAY
-          done
-
-          echo "Transaction result:"
-          echo "$TX_RESULT" | jq . 2>/dev/null || echo "$TX_RESULT"
-
-          # Check if TX successful
-          TX_HASH=$(echo "$TX_RESULT" | jq -r '.transactionHash // empty')
-          if [ -z "$TX_HASH" ]; then
-            echo "Error: Proposal submission failed - no transaction hash"
-            echo "TX Result: $TX_RESULT"
-            exit 1
-          fi
-
-          echo "Proposal TX submitted: $TX_HASH"
-
-          # Wait for TX to be processed
-          sleep 5
-
-          # Check transaction receipt status
-          echo "Checking transaction receipt..."
-          TX_RECEIPT=$(curl -s -X POST http://localhost:8545 \
-            -H "Content-Type: application/json" \
-            -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionReceipt\",\"params\":[\"$TX_HASH\"],\"id\":1}")
-
-          TX_STATUS=$(echo "$TX_RECEIPT" | jq -r '.result.status // empty')
-          echo "Transaction status: $TX_STATUS"
-
-          if [ "$TX_STATUS" = "0x0" ]; then
-            echo "Error: Transaction reverted!"
-            echo ""
-            echo "=== Full Transaction Receipt ==="
-            echo "$TX_RECEIPT" | jq '.result' 2>/dev/null || echo "$TX_RECEIPT"
-            echo ""
-            echo "=== Revert Reason ==="
-            REVERT_REASON=$(echo "$TX_RECEIPT" | jq -r '.result.revertReason // "Not available"')
-            echo "$REVERT_REASON"
-            echo ""
-
-            # Try to get more details via debug_traceTransaction if available
-            echo "=== Attempting debug trace ==="
-            DEBUG_TRACE=$(curl -s -X POST http://localhost:8545 \
-              -H "Content-Type: application/json" \
-              -d "{\"jsonrpc\":\"2.0\",\"method\":\"debug_traceTransaction\",\"params\":[\"$TX_HASH\"],\"id\":1}" 2>/dev/null)
-            if echo "$DEBUG_TRACE" | jq -e '.result' > /dev/null 2>&1; then
-              echo "$DEBUG_TRACE" | jq '.result.returnValue // .result' 2>/dev/null | head -100
-            else
-              echo "Debug trace not available"
-            fi
-
-            exit 1
-          fi
-
-          echo "Transaction succeeded!"
-
-          # Verify proposal was actually created
-          PROPOSAL_STATUS=$(curl -s "http://localhost:1317/cosmos/gov/v1/proposals?pagination.limit=1&pagination.reverse=true")
-          ACTUAL_PROPOSAL_ID=$(echo "$PROPOSAL_STATUS" | jq -r '.proposals[0].id // empty')
-
-          if [ -z "$ACTUAL_PROPOSAL_ID" ]; then
-            echo "Error: Proposal not found after submission"
-            echo "Response: $PROPOSAL_STATUS"
-            exit 1
-          fi
-
-          echo "Proposal created with ID: $ACTUAL_PROPOSAL_ID"
-          echo "proposal_id=$ACTUAL_PROPOSAL_ID" >> $GITHUB_OUTPUT
-
-      - name: Vote YES from all validators
-        run: |
-          SOURCE_IMAGE="${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
-          PROPOSAL_ID="${{ steps.proposal.outputs.proposal_id }}"
-
-          echo "Voting YES from all validators on proposal $PROPOSAL_ID..."
-
-          VOTE_SUCCESS=0
-
-          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
-            echo ""
-            echo "Voting from validator${i}..."
-
-            # Get validator private key
-            VALIDATOR_PRIVKEY=$(docker run --rm -u 0 \
-              -v "$DEVNET_BASE_DIR/accounts:/data" \
-              "$SOURCE_IMAGE" \
-              keys unsafe-export-eth-key "validator${i}" --keyring-backend test --home /data 2>/dev/null)
-
-            # Get validator address
-            VALIDATOR_BECH32=$(docker run --rm -u 0 \
-              -v "$DEVNET_BASE_DIR/accounts:/data" \
-              "$SOURCE_IMAGE" \
-              keys show "validator${i}" --keyring-backend test --home /data --output json 2>/dev/null | jq -r '.address')
-
-            # Convert to hex using debug addr
-            # Output format: "Address (hex): A41BEA69E25BC2DD43A329AB5EF27D7012D79377"
-            VALIDATOR_HEX=$(docker run --rm -u 0 \
-              -v "$DEVNET_BASE_DIR/accounts:/data" \
-              "$SOURCE_IMAGE" \
-              debug addr "$VALIDATOR_BECH32" 2>&1 | grep "Address (hex):" | awk '{print $3}')
-
-            # Convert to lowercase
-            VALIDATOR_HEX=$(echo "$VALIDATOR_HEX" | tr '[:upper:]' '[:lower:]')
-
-            if [ -z "$VALIDATOR_HEX" ]; then
-              echo "  Warning: Failed to get hex address for validator${i}"
-              echo "  Debug output:"
-              docker run --rm -u 0 \
-                -v "$DEVNET_BASE_DIR/accounts:/data" \
-                "$SOURCE_IMAGE" \
-                debug addr "$VALIDATOR_BECH32" 2>&1
-              continue
-            fi
-
-            echo "  Address: $VALIDATOR_BECH32 (0x$VALIDATOR_HEX)"
-
-            # Vote YES (option 1) with retry logic
-            VOTE_MAX_RETRIES=3
-            VOTE_RETRY_DELAY=10
-            TX_HASH=""
-
-            for vote_attempt in $(seq 1 $VOTE_MAX_RETRIES); do
-              VOTE_RESULT=$(~/.foundry/bin/cast send "$GOV_PRECOMPILE" \
-                "vote(address,uint64,uint8,string)" \
-                "0x$VALIDATOR_HEX" \
-                "$PROPOSAL_ID" \
-                1 \
-                "" \
-                --private-key "$VALIDATOR_PRIVKEY" \
-                --rpc-url "http://localhost:8545" \
-                --gas-limit 500000 \
-                --json 2>&1 || echo '{"error": "vote failed"}')
-
-              # Check for height availability error
-              if echo "$VOTE_RESULT" | grep -q "height.*is not available"; then
-                echo "  RPC height error, retrying in ${VOTE_RETRY_DELAY}s..."
-                sleep $VOTE_RETRY_DELAY
-                continue
-              fi
-
-              TX_HASH=$(echo "$VOTE_RESULT" | jq -r '.transactionHash // empty' 2>/dev/null)
-              if [ -n "$TX_HASH" ]; then
-                break
-              fi
-
-              echo "  Vote attempt $vote_attempt failed, retrying..."
-              sleep $VOTE_RETRY_DELAY
-            done
-
-            if [ -n "$TX_HASH" ]; then
-              echo "  Voted! TX: $TX_HASH"
-              VOTE_SUCCESS=$((VOTE_SUCCESS + 1))
-            else
-              echo "  Warning: Vote failed for validator${i} after $VOTE_MAX_RETRIES attempts"
-              echo "  Result: $VOTE_RESULT"
-            fi
-
-            sleep 3
-          done
-
-          echo ""
-          echo "Votes succeeded: $VOTE_SUCCESS / $NUM_VALIDATORS"
-
-          if [ $VOTE_SUCCESS -eq 0 ]; then
-            echo "Error: All votes failed"
-            exit 1
-          fi
-
-      - name: Save pre-upgrade genesis
-        run: |
-          SOURCE_IMAGE="${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
-          CHAIN_ID="${{ steps.build.outputs.chain_id }}"
-          GENESIS_DIR="${GITHUB_WORKSPACE}/genesis-snapshots"
-          mkdir -p "$GENESIS_DIR"
-
-          echo "Saving pre-upgrade genesis..."
-
-          # Get current height before export
-          HEIGHT=$(curl -s http://localhost:26657/status | jq -r '.result.sync_info.latest_block_height')
-          echo "$HEIGHT" > "$GENESIS_DIR/height-pre-upgrade.txt"
-
-          # Save current status
-          curl -s http://localhost:26657/status > "$GENESIS_DIR/status-pre-upgrade.json"
-
-          # Stop all nodes for clean export
-          echo "Stopping nodes for genesis export..."
-          cd "${GITHUB_WORKSPACE}/docker"
-          DEVNET_DIR="$DEVNET_BASE_DIR" docker compose down
-          sleep 5
-
-          # Export genesis using stabled export
-          echo "Exporting genesis at height $HEIGHT..."
-          docker run --rm -u 0 \
-            -v "$DEVNET_BASE_DIR/node0:/data" \
-            "$SOURCE_IMAGE" \
-            export --home /data > "$GENESIS_DIR/genesis-pre-upgrade.json"
-
-          echo "Pre-upgrade genesis exported at height: $HEIGHT"
-          echo "Genesis file size: $(wc -c < "$GENESIS_DIR/genesis-pre-upgrade.json") bytes"
-
-          # Restart nodes
-          echo "Restarting nodes..."
-          DEVNET_DIR="$DEVNET_BASE_DIR" \
-          STABLED_IMAGE="${STABLED_IMAGE}" \
-          STABLED_TAG="${{ inputs.source_image_tag }}" \
-          CHAIN_ID="$CHAIN_ID" \
-          docker compose up -d
-
-          # Wait for nodes to be ready
-          echo "Waiting for nodes to restart..."
-          sleep 20
-
-          echo "Files:"
-          ls -la "$GENESIS_DIR/"
-
-      - name: Wait for upgrade height
-        run: |
-          UPGRADE_HEIGHT="${{ steps.upgrade.outputs.upgrade_height }}"
-          BLOCK_TIME="${{ steps.upgrade.outputs.block_time }}"
-
-          echo "Waiting for upgrade height: $UPGRADE_HEIGHT"
-          echo "Estimated block time: ${BLOCK_TIME}s"
-
-          TIMEOUT=3600  # 1 hour max
-          ELAPSED=0
-          POLL_INTERVAL=10
-
-          while [ $ELAPSED -lt $TIMEOUT ]; do
-            # Check current height
-            STATUS=$(curl -s http://localhost:26657/status 2>/dev/null || echo '{}')
-            CURRENT=$(echo "$STATUS" | jq -r '.result.sync_info.latest_block_height // "0"')
-
-            echo "[${ELAPSED}s] Current height: $CURRENT, Upgrade at: $UPGRADE_HEIGHT"
-
-            # Check if upgrade has triggered (node halted)
-            if docker logs devnet-node0 2>&1 | tail -50 | grep -qE "UPGRADE.*NEEDED|upgrade needed|CONSENSUS FAILURE"; then
-              echo "Upgrade triggered!"
-              break
-            fi
-
-            # Check if we've passed upgrade height significantly
-            if [ "$CURRENT" -ge "$UPGRADE_HEIGHT" ]; then
-              echo "Reached upgrade height, checking for halt..."
-              sleep 15
-
-              # Check if chain is halted
-              NEW_STATUS=$(curl -s http://localhost:26657/status 2>/dev/null || echo '{}')
-              NEW_HEIGHT=$(echo "$NEW_STATUS" | jq -r '.result.sync_info.latest_block_height // "0"')
-
-              if [ "$NEW_HEIGHT" = "$CURRENT" ]; then
-                echo "Chain appears halted at height $NEW_HEIGHT"
-                break
-              fi
-            fi
-
-            sleep $POLL_INTERVAL
-            ELAPSED=$((ELAPSED + POLL_INTERVAL))
-          done
-
-          if [ $ELAPSED -ge $TIMEOUT ]; then
-            echo "Warning: Timeout waiting for upgrade"
-          fi
-
-      - name: Stop nodes and switch binary
-        run: |
-          echo "Stopping nodes..."
-          cd "${GITHUB_WORKSPACE}/docker"
-          DEVNET_DIR="$DEVNET_BASE_DIR" docker compose down
-
-          echo "Waiting for containers to stop..."
-          sleep 10
-
-      - name: Start nodes with upgraded binary
-        run: |
-          CHAIN_ID="${{ steps.build.outputs.chain_id }}"
-
-          echo "Starting nodes with upgraded binary: ${{ inputs.upgrade_image_tag }}"
-          cd "${GITHUB_WORKSPACE}/docker"
-
-          DEVNET_DIR="$DEVNET_BASE_DIR" \
-          STABLED_IMAGE="${STABLED_IMAGE}" \
-          STABLED_TAG="${{ inputs.upgrade_image_tag }}" \
-          CHAIN_ID="$CHAIN_ID" \
-          docker compose up -d
-
-          echo "Docker compose started"
-          docker compose ps
+          echo "  Target image: $UPGRADE_IMAGE"
+
+          "${GITHUB_WORKSPACE}/build/devnet-builder" upgrade \
+            --home "$DEVNET_BASE_DIR" \
+            --name "$UPGRADE_NAME" \
+            --image "$UPGRADE_IMAGE" \
+            --export-genesis \
+            --no-interactive \
+            --verbose
 
       - name: Verify upgrade
         run: |
-          UPGRADE_HEIGHT="${{ steps.upgrade.outputs.upgrade_height }}"
-
-          echo "Waiting for chain to resume after upgrade..."
+          echo "Verifying upgrade..."
           sleep 30
 
-          TIMEOUT=300
-          ELAPSED=0
+          "${GITHUB_WORKSPACE}/build/devnet-builder" status --home "$DEVNET_BASE_DIR"
 
-          while [ $ELAPSED -lt $TIMEOUT ]; do
-            STATUS=$(curl -s http://localhost:26657/status 2>/dev/null || echo '{}')
-            HEIGHT=$(echo "$STATUS" | jq -r '.result.sync_info.latest_block_height // "0"')
-            CATCHING_UP=$(echo "$STATUS" | jq -r 'if .result.sync_info.catching_up == null then true else .result.sync_info.catching_up end')
+          # Check chain is producing blocks
+          STATUS=$(curl -s http://localhost:26657/status 2>/dev/null || echo '{}')
+          HEIGHT=$(echo "$STATUS" | jq -r '.result.sync_info.latest_block_height // "0"')
+          CATCHING_UP=$(echo "$STATUS" | jq -r 'if .result.sync_info.catching_up == null then true else .result.sync_info.catching_up end')
 
-            echo "[${ELAPSED}s] Height: $HEIGHT (upgrade was at $UPGRADE_HEIGHT)"
+          echo "Current height: $HEIGHT"
+          echo "Catching up: $CATCHING_UP"
 
-            if [ "$CATCHING_UP" = "false" ] && [ "$HEIGHT" -gt "$UPGRADE_HEIGHT" ]; then
-              echo ""
-              echo "=========================================="
-              echo "UPGRADE SUCCESSFUL!"
-              echo "=========================================="
-              echo "Chain is producing blocks after upgrade"
-              echo "Current height: $HEIGHT"
-              curl -s http://localhost:26657/status | jq '.result.sync_info'
-              break
-            fi
-
-            sleep 10
-            ELAPSED=$((ELAPSED + 10))
-          done
-
-          if [ $ELAPSED -ge $TIMEOUT ]; then
-            echo "Warning: Chain may not be fully operational after upgrade"
-            echo "Checking container logs..."
-            docker logs devnet-node0 2>&1 | tail -100
+          if [ "$CATCHING_UP" = "false" ] && [ "$HEIGHT" -gt "0" ]; then
+            echo ""
+            echo "=========================================="
+            echo "UPGRADE SUCCESSFUL!"
+            echo "=========================================="
+          else
+            echo "Warning: Chain may not be fully operational"
+            docker logs devnet-node0 2>&1 | tail -50
           fi
 
-      - name: Save post-upgrade genesis
+      - name: Export account keys
         run: |
-          UPGRADE_IMAGE="${STABLED_IMAGE}:${{ inputs.upgrade_image_tag }}"
-          CHAIN_ID="${{ steps.build.outputs.chain_id }}"
-          GENESIS_DIR="${GITHUB_WORKSPACE}/genesis-snapshots"
-          mkdir -p "$GENESIS_DIR"
-
-          echo "Saving post-upgrade genesis..."
-
-          # Wait a bit for chain to stabilize
-          sleep 10
-
-          # Get current height
-          HEIGHT=$(curl -s http://localhost:26657/status | jq -r '.result.sync_info.latest_block_height')
-          echo "$HEIGHT" > "$GENESIS_DIR/height-post-upgrade.txt"
-
-          # Save current status
-          curl -s http://localhost:26657/status > "$GENESIS_DIR/status-post-upgrade.json"
-
-          # Save app version info
-          curl -s http://localhost:26657/abci_info > "$GENESIS_DIR/abci-info-post-upgrade.json"
-
-          # Stop all nodes for clean export
-          echo "Stopping nodes for genesis export..."
-          cd "${GITHUB_WORKSPACE}/docker"
-          DEVNET_DIR="$DEVNET_BASE_DIR" docker compose down
-          sleep 5
-
-          # Export genesis using stabled export (with upgrade image)
-          echo "Exporting genesis at height $HEIGHT..."
-          docker run --rm -u 0 \
-            -v "$DEVNET_BASE_DIR/node0:/data" \
-            "$UPGRADE_IMAGE" \
-            export --home /data > "$GENESIS_DIR/genesis-post-upgrade.json"
-
-          echo "Post-upgrade genesis exported at height: $HEIGHT"
-          echo "Genesis file size: $(wc -c < "$GENESIS_DIR/genesis-post-upgrade.json") bytes"
-
-          # Restart nodes
-          echo "Restarting nodes..."
-          DEVNET_DIR="$DEVNET_BASE_DIR" \
-          STABLED_IMAGE="${STABLED_IMAGE}" \
-          STABLED_TAG="${{ inputs.upgrade_image_tag }}" \
-          CHAIN_ID="$CHAIN_ID" \
-          docker compose up -d
-
-          # Wait for nodes to be ready
-          echo "Waiting for nodes to restart..."
-          sleep 20
-
-          echo "Files:"
-          ls -la "$GENESIS_DIR/"
-
-          # Show summary of genesis files
-          echo ""
-          echo "Genesis file sizes:"
-          echo "  Pre-upgrade:  $(wc -c < "$GENESIS_DIR/genesis-pre-upgrade.json") bytes"
-          echo "  Post-upgrade: $(wc -c < "$GENESIS_DIR/genesis-post-upgrade.json") bytes"
+          echo "=========================================="
+          echo "Account Keys"
+          echo "=========================================="
+          "${GITHUB_WORKSPACE}/build/devnet-builder" export-keys --home "$DEVNET_BASE_DIR" --json
+          echo "=========================================="
 
       - name: Display summary
         run: |
+          CHAIN_ID=$("${GITHUB_WORKSPACE}/build/devnet-builder" status --home "$DEVNET_BASE_DIR" --json 2>/dev/null | jq -r '.chain_id // "unknown"' || echo "unknown")
+
           echo ""
           echo "=========================================="
           echo "Devnet Upgrade Summary"
@@ -1151,24 +204,23 @@ jobs:
           echo "Source Image: ${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
           echo "Upgrade Image: ${STABLED_IMAGE}:${{ inputs.upgrade_image_tag }}"
           echo "Upgrade Name: ${{ inputs.upgrade_name }}"
-          echo "Upgrade Height: ${{ steps.upgrade.outputs.upgrade_height }}"
-          echo "Chain ID: ${{ steps.build.outputs.chain_id }}"
-          echo "Validators: $NUM_VALIDATORS"
+          echo "Chain ID: $CHAIN_ID"
+          echo "Validators: ${{ inputs.validators }}"
           echo "Directory: $DEVNET_BASE_DIR"
           echo ""
           echo "Endpoints:"
           echo "  RPC: http://localhost:26657"
           echo "  EVM JSON-RPC: http://localhost:8545"
           echo "  gRPC: localhost:9090"
-          echo "=========================================="
           echo ""
-          echo "Genesis snapshots saved to: genesis-snapshots/"
+          echo "Genesis snapshots saved to: $DEVNET_BASE_DIR/devnet/genesis-snapshots/"
+          echo "=========================================="
 
       - name: Upload genesis snapshots
         uses: actions/upload-artifact@v4
         with:
           name: genesis-snapshots-${{ inputs.upgrade_name }}-${{ github.run_number }}
-          path: genesis-snapshots/
+          path: ${{ env.DEVNET_BASE_DIR }}/devnet/genesis-snapshots/
           retention-days: 30
 
       - name: Logout from GitHub Container Registry

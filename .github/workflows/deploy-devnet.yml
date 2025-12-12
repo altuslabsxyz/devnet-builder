@@ -12,18 +12,7 @@ on:
         options:
           - testnet
           - mainnet
-          - custom
         default: 'testnet'
-      custom_snapshot_url:
-        description: 'Custom snapshot URL (only for custom network)'
-        required: false
-        type: string
-        default: ''
-      custom_chain_id:
-        description: 'Custom chain ID (only for custom network)'
-        required: false
-        type: string
-        default: ''
       source_image_tag:
         description: 'Source Docker image tag (for snapshot processing)'
         required: true
@@ -34,25 +23,14 @@ on:
         required: true
         type: string
         default: 'latest-testnet'
-      rpc_endpoint:
-        description: 'RPC endpoint for genesis download (optional)'
+      validators:
+        description: 'Number of validators'
         required: false
         type: string
-        default: ''
-      persistent_peers:
-        description: 'Persistent peers (optional)'
-        required: false
-        type: string
-        default: ''
-      devnet_chain_id:
-        description: 'Devnet chain ID (optional, defaults to source chain ID)'
-        required: false
-        type: string
-        default: ''
+        default: '4'
 
 env:
   STABLED_IMAGE: ghcr.io/stablelabs/stable
-  NUM_VALIDATORS: 4
   DEVNET_BASE_DIR: /data/.devnet
 
 jobs:
@@ -63,439 +41,60 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Determine snapshot configuration
-        id: config
-        run: |
-          SNAPSHOT_NETWORK="${{ inputs.snapshot_network }}"
-
-          if [ "$SNAPSHOT_NETWORK" = "mainnet" ]; then
-            SNAPSHOT_URL="https://stable-mainnet-data.s3.amazonaws.com/snapshots/stable_pruned.tar.zst"
-            CHAIN_ID="stable_988-1"
-            RPC_ENDPOINT="https://cosmos-rpc-internal.stable.xyz"
-            PEERS="39fef24240d80e2cd5bdcbe101298c36f0d83fa1@57.129.53.87:26656"
-          elif [ "$SNAPSHOT_NETWORK" = "testnet" ]; then
-            SNAPSHOT_URL="https://stable-snapshot.s3.eu-central-1.amazonaws.com/snapshot.tar.lz4"
-            CHAIN_ID="stabletestnet_2201-1"
-            RPC_ENDPOINT="https://cosmos-rpc.testnet.stable.xyz"
-            PEERS="128accd3e8ee379bfdf54560c21345451c7048c7@peer1.testnet.stable.xyz:26656,5ed0f977a26ccf290e184e364fb04e268ef16430@peer2.testnet.stable.xyz:26656"
-          else
-            SNAPSHOT_URL="${{ inputs.custom_snapshot_url }}"
-            CHAIN_ID="${{ inputs.custom_chain_id }}"
-            RPC_ENDPOINT="${{ inputs.rpc_endpoint }}"
-            PEERS="${{ inputs.persistent_peers }}"
-
-            if [ -z "$SNAPSHOT_URL" ] || [ -z "$CHAIN_ID" ]; then
-              echo "Error: custom_snapshot_url and custom_chain_id required for custom network"
-              exit 1
-            fi
-          fi
-
-          # Override if provided
-          [ -n "${{ inputs.rpc_endpoint }}" ] && RPC_ENDPOINT="${{ inputs.rpc_endpoint }}"
-          [ -n "${{ inputs.persistent_peers }}" ] && PEERS="${{ inputs.persistent_peers }}"
-
-          # Devnet chain ID
-          DEVNET_CHAIN_ID="${{ inputs.devnet_chain_id }}"
-          [ -z "$DEVNET_CHAIN_ID" ] && DEVNET_CHAIN_ID="$CHAIN_ID"
-
-          echo "snapshot_url=$SNAPSHOT_URL" >> $GITHUB_OUTPUT
-          echo "chain_id=$CHAIN_ID" >> $GITHUB_OUTPUT
-          echo "devnet_chain_id=$DEVNET_CHAIN_ID" >> $GITHUB_OUTPUT
-          echo "rpc_endpoint=$RPC_ENDPOINT" >> $GITHUB_OUTPUT
-          echo "persistent_peers=$PEERS" >> $GITHUB_OUTPUT
-
-          echo "Configuration:"
-          echo "  Network: $SNAPSHOT_NETWORK"
-          echo "  Snapshot URL: $SNAPSHOT_URL"
-          echo "  Chain ID: $CHAIN_ID"
-          echo "  Devnet Chain ID: $DEVNET_CHAIN_ID"
-          echo "  RPC: $RPC_ENDPOINT"
-
       - name: Login to GitHub Container Registry
         run: |
           echo "${{ secrets.GH_PAT }}" | docker login ghcr.io -u qj0r9j0vc2 --password-stdin
-          echo "Login successful"
 
-      - name: Pull Docker images
-        run: |
-          SOURCE_IMAGE="${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
-          TARGET_IMAGE="${STABLED_IMAGE}:${{ inputs.target_image_tag }}"
-
-          echo "Pulling source image: $SOURCE_IMAGE"
-          docker pull "$SOURCE_IMAGE"
-
-          if [ "$SOURCE_IMAGE" != "$TARGET_IMAGE" ]; then
-            echo "Pulling target image: $TARGET_IMAGE"
-            docker pull "$TARGET_IMAGE"
-          fi
-
-      - name: Install decompression tools
+      - name: Install tools
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq lz4 zstd jq
-
-      - name: Provision chain with snapshot
-        id: provision
-        run: |
-          SOURCE_IMAGE="${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
-          CHAIN_ID="${{ steps.config.outputs.chain_id }}"
-          SNAPSHOT_URL="${{ steps.config.outputs.snapshot_url }}"
-          RPC_ENDPOINT="${{ steps.config.outputs.rpc_endpoint }}"
-          PEERS="${{ steps.config.outputs.persistent_peers }}"
-
-          WORK_DIR="/data/.provision-${CHAIN_ID}"
-          GENESIS_EXPORT="${GITHUB_WORKSPACE}/genesis-export.json"
-
-          echo "Provisioning chain..."
-          echo "  Image: $SOURCE_IMAGE"
-          echo "  Chain ID: $CHAIN_ID"
-          echo "  Work Dir: $WORK_DIR"
-
-          # Clean and create work directory
-          sudo rm -rf "$WORK_DIR"
-          sudo mkdir -p "$WORK_DIR"
-          sudo chown -R $(whoami):$(whoami) "$WORK_DIR"
-
-          # Initialize chain
-          echo "Initializing chain..."
-          docker run --rm -u 0 \
-            -v "$WORK_DIR:/data" \
-            "$SOURCE_IMAGE" \
-            init "provisioner" --chain-id "$CHAIN_ID" --home /data
-
-          # Debug: check directory structure
-          echo "Checking directory structure..."
-          ls -la "$WORK_DIR/" || echo "ERROR: WORK_DIR empty"
-          ls -la "$WORK_DIR/config/" || echo "ERROR: config dir not found"
-
-          # Fix permissions (docker creates files as root)
-          sudo chown -R $(whoami):$(whoami) "$WORK_DIR"
-
-          # Copy fixed node_key.json
-          cp "${GITHUB_WORKSPACE}/config/node_key.json" "$WORK_DIR/config/node_key.json"
-
-          # Download genesis from RPC
-          if [ -n "$RPC_ENDPOINT" ]; then
-            echo "Downloading genesis from RPC: ${RPC_ENDPOINT}/genesis"
-            GENESIS_RESPONSE=$(curl -s "${RPC_ENDPOINT}/genesis")
-
-            # Check if response is valid JSON
-            if echo "$GENESIS_RESPONSE" | jq -e '.result.genesis' > /dev/null 2>&1; then
-              echo "$GENESIS_RESPONSE" | jq '.result.genesis' > "$WORK_DIR/config/genesis.json"
-              echo "Genesis downloaded successfully"
-            else
-              echo "Warning: Failed to parse genesis from RPC, will use genesis from init"
-              echo "Response preview: $(echo "$GENESIS_RESPONSE" | head -c 200)"
-            fi
-          fi
-
-          # Download and extract snapshot
-          echo "Downloading snapshot..."
-          SNAPSHOT_FILE="/tmp/snapshot.tar"
-
-          case "$SNAPSHOT_URL" in
-            *.tar.lz4) curl -L "$SNAPSHOT_URL" | lz4 -dc > "$SNAPSHOT_FILE" ;;
-            *.tar.zst) curl -L "$SNAPSHOT_URL" | zstd -dc > "$SNAPSHOT_FILE" ;;
-            *.tar.gz)  curl -L "$SNAPSHOT_URL" | gunzip > "$SNAPSHOT_FILE" ;;
-            *.tar)     curl -L -o "$SNAPSHOT_FILE" "$SNAPSHOT_URL" ;;
-          esac
-
-          echo "Extracting snapshot..."
-          rm -rf "$WORK_DIR/data"
-          mkdir -p "$WORK_DIR/data"
-          tar -xf "$SNAPSHOT_FILE" -C "$WORK_DIR/data"
-          rm -f "$SNAPSHOT_FILE"
-
-          # Handle nested data directory from snapshot
-          # Some snapshots extract as data/data/*, need to flatten
-          if [ -d "$WORK_DIR/data/data" ] && [ ! -f "$WORK_DIR/data/priv_validator_state.json" ]; then
-            echo "Detected nested data directory, checking structure..."
-            ls -la "$WORK_DIR/data/"
-
-            # If priv_validator_state.json is in nested data, move contents up
-            if [ -f "$WORK_DIR/data/data/priv_validator_state.json" ]; then
-              echo "Moving nested data contents up..."
-              mv "$WORK_DIR/data/data"/* "$WORK_DIR/data/" 2>/dev/null || true
-              rm -rf "$WORK_DIR/data/data"
-            fi
-          fi
-
-          # Ensure priv_validator_state.json exists
-          if [ ! -f "$WORK_DIR/data/priv_validator_state.json" ]; then
-            echo "Creating priv_validator_state.json..."
-            echo '{"height":"0","round":0,"step":0}' > "$WORK_DIR/data/priv_validator_state.json"
-          fi
-
-          # Fix permissions after extraction
-          sudo chown -R $(whoami):$(whoami) "$WORK_DIR"
-
-          echo "Data directory after extraction:"
-          ls -la "$WORK_DIR/data/"
-
-          # Configure node
-          CONFIG_FILE="$WORK_DIR/config/config.toml"
-          sed -i 's/enable = true/enable = false/g' "$CONFIG_FILE"
-          [ -n "$PEERS" ] && sed -i "s/persistent_peers = \"\"/persistent_peers = \"$PEERS\"/g" "$CONFIG_FILE"
-
-          # Sync to latest block
-          echo "Starting node to sync..."
-          CONTAINER_NAME="provision-sync-$$"
-
-          docker run -d -u 0 --name "$CONTAINER_NAME" \
-            -v "$WORK_DIR:/data" \
-            --network host \
-            "$SOURCE_IMAGE" \
-            start --home /data --chain-id $CHAIN_ID
-
-          # Wait for sync (check every 30s, timeout 30min)
-          TIMEOUT=1800
-          ELAPSED=0
-          while [ $ELAPSED -lt $TIMEOUT ]; do
-            sleep 30
-            ELAPSED=$((ELAPSED + 30))
-
-            CATCHING_UP=$(curl -s http://localhost:26657/status 2>/dev/null | jq -r '.result.sync_info.catching_up' || echo "true")
-
-            if [ "$CATCHING_UP" = "false" ]; then
-              echo "Node synced after ${ELAPSED}s"
-              break
-            fi
-
-            echo "[${ELAPSED}s] Still syncing..."
-          done
-
-          # Stop node
-          docker stop "$CONTAINER_NAME" || true
-          docker rm "$CONTAINER_NAME" || true
-
-          # Export genesis
-          echo "Exporting genesis..."
-          docker run --rm -u 0 \
-            -v "$WORK_DIR:/data" \
-            "$SOURCE_IMAGE" \
-            export --home /data > "$GENESIS_EXPORT"
-
-          # Verify export
-          if [ ! -s "$GENESIS_EXPORT" ]; then
-            echo "Error: Genesis export failed"
-            exit 1
-          fi
-
-          echo "Genesis exported: $(wc -c < "$GENESIS_EXPORT") bytes"
-          echo "genesis_file=$GENESIS_EXPORT" >> $GITHUB_OUTPUT
 
       - name: Build devnet-builder
         env:
           GOPRIVATE: github.com/stablelabs/*
         run: |
-          echo "Building devnet-builder..."
-
-          # Configure git for private repos
           git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf "https://github.com/"
-
-          # Clean Go cache to avoid version conflicts
           go clean -cache -modcache 2>/dev/null || true
-
-          cd "${GITHUB_WORKSPACE}"
           go mod download
           make build
-          ls -la build/
-
-      - name: Build devnet
-        id: build
-        run: |
-          TARGET_IMAGE="${STABLED_IMAGE}:${{ inputs.target_image_tag }}"
-          GENESIS_FILE="${{ steps.provision.outputs.genesis_file }}"
-          DEVNET_CHAIN_ID="${{ steps.config.outputs.devnet_chain_id }}"
-          OUTPUT_DIR="${GITHUB_WORKSPACE}/devnet"
-          DEVNET_BUILDER_OUTPUT="${GITHUB_WORKSPACE}/devnet-builder-output"
-
-          echo "Building devnet..."
-          echo "  Genesis: $GENESIS_FILE"
-          echo "  Chain ID: $DEVNET_CHAIN_ID"
-          echo "  Validators: $NUM_VALIDATORS"
-          
-          ACCOUNT_BALANCE="120000000000000000000000astable,1000000000000000000000agusdt"
-          rm -rf "$OUTPUT_DIR" "$DEVNET_BUILDER_OUTPUT"
-
-          # Step 1: Run devnet-builder to generate validator keys and updated genesis
-          echo ""
-          echo "Step 1: Running devnet-builder..."
-          "${GITHUB_WORKSPACE}/build/devnet-builder" build "$GENESIS_FILE" \
-            --validators "$NUM_VALIDATORS" \
-            --accounts "$NUM_VALIDATORS" \
-            --chain-id "$DEVNET_CHAIN_ID" \
-            --validator-balance "$ACCOUNT_BALANCE" \
-            --account-balance "$ACCOUNT_BALANCE" \
-            --output "$DEVNET_BUILDER_OUTPUT"
-
-          echo "devnet-builder output:"
-          ls -la "$DEVNET_BUILDER_OUTPUT"
-
-          # Step 2: Initialize node configs with stabled init
-          echo ""
-          echo "Step 2: Initializing node configs..."
-          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
-            NODE_DIR="$OUTPUT_DIR/node${i}"
-            mkdir -p "$NODE_DIR"
-
-            echo "  Initializing node${i}..."
-            docker run --rm -u 0 \
-              -v "$NODE_DIR:/data" \
-              "$TARGET_IMAGE" \
-              init "validator${i}" --chain-id "$DEVNET_CHAIN_ID" --home /data 2>/dev/null || true
-
-            sudo chown -R $(whoami):$(whoami) "$NODE_DIR"
-          done
-
-          # Step 3: Overlay devnet-builder output (priv_validator_key.json, genesis.json, priv_validator_state.json)
-          echo ""
-          echo "Step 3: Copying validator keys from devnet-builder..."
-          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
-            # Copy priv_validator_key.json (THIS IS THE KEY FIX!)
-            cp "$DEVNET_BUILDER_OUTPUT/node${i}/config/priv_validator_key.json" "$OUTPUT_DIR/node${i}/config/"
-
-            # Copy priv_validator_state.json
-            cp "$DEVNET_BUILDER_OUTPUT/node${i}/data/priv_validator_state.json" "$OUTPUT_DIR/node${i}/data/"
-
-            # Copy updated genesis with new validators
-            cp "$DEVNET_BUILDER_OUTPUT/node${i}/config/genesis.json" "$OUTPUT_DIR/node${i}/config/"
-
-            echo "  node${i}: priv_validator_key.json, genesis.json copied"
-          done
-
-          # Copy accounts
-          mkdir -p "$OUTPUT_DIR/accounts"
-          cp -r "$DEVNET_BUILDER_OUTPUT/accounts/"* "$OUTPUT_DIR/accounts/" 2>/dev/null || true
-
-          # Step 4: Get node IDs and configure networking
-          echo ""
-          echo "Step 4: Configuring networking..."
-          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
-            NODE_ID=$(docker run --rm -u 0 \
-              -v "$OUTPUT_DIR/node${i}:/data" \
-              "$TARGET_IMAGE" \
-              comet show-node-id --home /data 2>/dev/null)
-            echo "  node${i} ID: $NODE_ID"
-            eval "NODE${i}_ID=$NODE_ID"
-          done
-
-          PERSISTENT_PEERS="${NODE0_ID}@127.0.0.1:26656,${NODE1_ID}@127.0.0.1:26666,${NODE2_ID}@127.0.0.1:26676,${NODE3_ID}@127.0.0.1:26686"
-
-          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
-            CONFIG_FILE="$OUTPUT_DIR/node${i}/config/config.toml"
-            APP_FILE="$OUTPUT_DIR/node${i}/config/app.toml"
-
-            P2P_PORT=$((26656 + i * 10))
-            RPC_PORT=$((26657 + i * 10))
-            PROXY_PORT=$((26658 + i * 10))
-
-            echo "  Configuring node${i} (P2P:$P2P_PORT, RPC:$RPC_PORT)..."
-
-            # Update config.toml
-            sed -i "s|^persistent_peers = .*|persistent_peers = \"$PERSISTENT_PEERS\"|g" "$CONFIG_FILE"
-            sed -i "s|allow_duplicate_ip = .*|allow_duplicate_ip = true|g" "$CONFIG_FILE"
-            sed -i "s|addr_book_strict = .*|addr_book_strict = false|g" "$CONFIG_FILE"
-            sed -i "s|laddr = \"tcp://0.0.0.0:26656\"|laddr = \"tcp://0.0.0.0:$P2P_PORT\"|g" "$CONFIG_FILE"
-            sed -i "s|laddr = \"tcp://127.0.0.1:26656\"|laddr = \"tcp://0.0.0.0:$P2P_PORT\"|g" "$CONFIG_FILE"
-            sed -i "s|laddr = \"tcp://0.0.0.0:26657\"|laddr = \"tcp://0.0.0.0:$RPC_PORT\"|g" "$CONFIG_FILE"
-            sed -i "s|laddr = \"tcp://127.0.0.1:26657\"|laddr = \"tcp://0.0.0.0:$RPC_PORT\"|g" "$CONFIG_FILE"
-            sed -i "s|proxy_app = \"tcp://127.0.0.1:26658\"|proxy_app = \"tcp://127.0.0.1:$PROXY_PORT\"|g" "$CONFIG_FILE"
-
-            # Update app.toml - enable services on node0 only
-            if [ $i -eq 0 ]; then
-              sed -i 's|enable = false|enable = true|g' "$APP_FILE"
-              sed -i 's|address = "tcp://localhost:1317"|address = "tcp://0.0.0.0:1317"|g' "$APP_FILE"
-              sed -i 's|address = "127.0.0.1:8545"|address = "0.0.0.0:8545"|g' "$APP_FILE"
-              sed -i 's|ws-address = "127.0.0.1:8546"|ws-address = "0.0.0.0:8546"|g' "$APP_FILE"
-            fi
-          done
-
-          # Cleanup
-          rm -rf "$DEVNET_BUILDER_OUTPUT"
-
-          echo ""
-          echo "Devnet built successfully!"
-          echo "  Each node has matching priv_validator_key.json from devnet-builder"
-          ls -la "$OUTPUT_DIR"
-
-          echo "output_dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
-          echo "chain_id=$DEVNET_CHAIN_ID" >> $GITHUB_OUTPUT
 
       - name: Stop existing services
         run: |
           echo "Stopping existing devnet services..."
-
-          # Stop docker compose if running
-          cd "${GITHUB_WORKSPACE}/docker"
-          DEVNET_DIR="$DEVNET_BASE_DIR" docker compose down 2>/dev/null || true
-
-          # Clean up old systemd services (migration)
-          for i in $(seq 0 9); do
-            sudo systemctl stop "devnet-node${i}" 2>/dev/null || true
-            sudo systemctl disable "devnet-node${i}" 2>/dev/null || true
-          done
-          sudo rm -f /etc/systemd/system/devnet-node*.service
-          sudo systemctl daemon-reload
+          "${GITHUB_WORKSPACE}/build/devnet-builder" down --home "$DEVNET_BASE_DIR" 2>/dev/null || true
 
           # Remove any orphaned containers
           docker rm -f devnet-node0 devnet-node1 devnet-node2 devnet-node3 2>/dev/null || true
 
       - name: Deploy devnet
         run: |
-          OUTPUT_DIR="${{ steps.build.outputs.output_dir }}"
-
-          echo "Deploying to $DEVNET_BASE_DIR..."
-
-          # Backup existing (only after services are stopped)
-          if [ -d "$DEVNET_BASE_DIR" ]; then
-            BACKUP="${DEVNET_BASE_DIR}_backup_$(date +%Y%m%d_%H%M%S)"
-            echo "Backing up existing devnet to $BACKUP..."
-            sudo mv "$DEVNET_BASE_DIR" "$BACKUP"
-          fi
-
-          # Deploy new devnet
-          sudo mkdir -p "$DEVNET_BASE_DIR"
-          sudo cp -a "$OUTPUT_DIR"/* "$DEVNET_BASE_DIR/"
-          sudo chown -R $(whoami):$(whoami) "$DEVNET_BASE_DIR"
-
-          echo "Deployed successfully"
-          ls -la "$DEVNET_BASE_DIR/"
-
-      - name: Start devnet with docker compose
-        run: |
+          SOURCE_IMAGE="${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
           TARGET_IMAGE="${STABLED_IMAGE}:${{ inputs.target_image_tag }}"
-          CHAIN_ID="${{ steps.build.outputs.chain_id }}"
 
-          echo "Starting devnet with docker compose..."
-          echo "  Chain ID: $CHAIN_ID"
-          cd "${GITHUB_WORKSPACE}/docker"
+          echo "Deploying devnet..."
+          echo "  Network: ${{ inputs.snapshot_network }}"
+          echo "  Source image: $SOURCE_IMAGE"
+          echo "  Target image: $TARGET_IMAGE"
+          echo "  Validators: ${{ inputs.validators }}"
 
-          # Start with environment variables
-          DEVNET_DIR="$DEVNET_BASE_DIR" \
-          STABLED_IMAGE="${STABLED_IMAGE}" \
-          STABLED_TAG="${{ inputs.target_image_tag }}" \
-          CHAIN_ID="$CHAIN_ID" \
-          docker compose up -d
-
-          echo "Docker compose started"
-          docker compose ps
+          "${GITHUB_WORKSPACE}/build/devnet-builder" deploy \
+            --home "$DEVNET_BASE_DIR" \
+            --network "${{ inputs.snapshot_network }}" \
+            --validators "${{ inputs.validators }}" \
+            --mode docker \
+            --image "$TARGET_IMAGE" \
+            --export-version "${{ inputs.source_image_tag }}" \
+            --start-version "${{ inputs.target_image_tag }}" \
+            --no-interactive \
+            --verbose
 
       - name: Verify deployment
         run: |
           echo "Waiting for nodes to start..."
           sleep 30
 
-          echo "Checking docker compose services..."
-          cd "${GITHUB_WORKSPACE}/docker"
-          DEVNET_DIR="$DEVNET_BASE_DIR" docker compose ps
-
-          echo ""
-          echo "Checking container status..."
-          for i in $(seq 0 $((NUM_VALIDATORS - 1))); do
-            STATUS=$(docker inspect -f '{{.State.Status}}' "devnet-node${i}" 2>/dev/null || echo "not found")
-            echo "  devnet-node${i}: $STATUS"
-          done
+          "${GITHUB_WORKSPACE}/build/devnet-builder" status --home "$DEVNET_BASE_DIR"
 
           echo ""
           echo "Checking RPC endpoint..."
@@ -511,29 +110,16 @@ jobs:
 
       - name: Export account keys
         run: |
-          TARGET_IMAGE="${STABLED_IMAGE}:${{ inputs.target_image_tag }}"
-          ACCOUNTS_DIR="$DEVNET_BASE_DIR/accounts"
-
           echo "=========================================="
-          echo "Account Private Keys"
+          echo "Account Keys"
           echo "=========================================="
-
-          docker run --rm -u 0 \
-            -v "$ACCOUNTS_DIR:/data" \
-            "$TARGET_IMAGE" \
-            keys list --keyring-backend test --home /data --output json 2>/dev/null | \
-          jq -r '.[].name' | while read -r KEY_NAME; do
-            PRIVKEY=$(docker run --rm -u 0 \
-              -v "$ACCOUNTS_DIR:/data" \
-              "$TARGET_IMAGE" \
-              keys unsafe-export-eth-key "$KEY_NAME" --keyring-backend test --home /data 2>/dev/null || echo "ERROR")
-            echo "\"$KEY_NAME\": \"$PRIVKEY\""
-          done
-
+          "${GITHUB_WORKSPACE}/build/devnet-builder" export-keys --home "$DEVNET_BASE_DIR" --json
           echo "=========================================="
 
       - name: Display summary
         run: |
+          CHAIN_ID=$("${GITHUB_WORKSPACE}/build/devnet-builder" status --home "$DEVNET_BASE_DIR" --json 2>/dev/null | jq -r '.chain_id // "unknown"' || echo "unknown")
+
           echo ""
           echo "=========================================="
           echo "Devnet Deployment Summary"
@@ -541,8 +127,8 @@ jobs:
           echo "Network: ${{ inputs.snapshot_network }}"
           echo "Source Image: ${STABLED_IMAGE}:${{ inputs.source_image_tag }}"
           echo "Target Image: ${STABLED_IMAGE}:${{ inputs.target_image_tag }}"
-          echo "Chain ID: ${{ steps.build.outputs.chain_id }}"
-          echo "Validators: $NUM_VALIDATORS"
+          echo "Chain ID: $CHAIN_ID"
+          echo "Validators: ${{ inputs.validators }}"
           echo "Directory: $DEVNET_BASE_DIR"
           echo ""
           echo "Endpoints:"
@@ -551,10 +137,9 @@ jobs:
           echo "  gRPC: localhost:9090"
           echo ""
           echo "Commands:"
-          echo "  Status: cd ${GITHUB_WORKSPACE}/docker && DEVNET_DIR=$DEVNET_BASE_DIR docker compose ps"
-          echo "  Logs: docker logs -f devnet-node0"
-          echo "  Stop: cd ${GITHUB_WORKSPACE}/docker && DEVNET_DIR=$DEVNET_BASE_DIR docker compose down"
-          echo "  Start: cd ${GITHUB_WORKSPACE}/docker && DEVNET_DIR=$DEVNET_BASE_DIR docker compose up -d"
+          echo "  Status: devnet-builder status --home $DEVNET_BASE_DIR"
+          echo "  Logs: devnet-builder logs -f --home $DEVNET_BASE_DIR"
+          echo "  Stop: devnet-builder down --home $DEVNET_BASE_DIR"
           echo "=========================================="
 
       - name: Logout from GitHub Container Registry
