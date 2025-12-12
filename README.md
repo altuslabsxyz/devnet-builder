@@ -178,4 +178,4 @@ For more troubleshooting help, see [docs/troubleshooting.md](docs/troubleshootin
 
 ## License
 
-Refer to the main Stable repository for license information.
+This project is licensed under the [MIT License](LICENSE).
