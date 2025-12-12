@@ -22,9 +22,10 @@ import (
 type ProposalOptions struct {
 	UpgradeName   string
 	UpgradeHeight int64
-	ProposerKey   string // EVM private key (hex, no 0x prefix)
-	ProposerAddr  string // EVM address (0x prefixed)
-	EVMRPCURL     string // EVM JSON-RPC URL
+	VotingPeriod  time.Duration // Expedited voting period
+	ProposerKey   string        // EVM private key (hex, no 0x prefix)
+	ProposerAddr  string        // EVM address (0x prefixed)
+	EVMRPCURL     string        // EVM JSON-RPC URL
 	DepositAmount string
 	DepositDenom  string
 	Logger        *output.Logger
@@ -169,12 +170,18 @@ func SubmitProposal(ctx context.Context, opts *ProposalOptions) (*UpgradeProposa
 		}
 	}
 
+	submittedAt := time.Now()
+	votingPeriod := opts.VotingPeriod
+	if votingPeriod == 0 {
+		votingPeriod = DefaultVotingPeriod
+	}
 	return &UpgradeProposal{
 		ID:            proposalID,
 		TxHash:        txHash,
 		UpgradeName:   opts.UpgradeName,
 		UpgradeHeight: opts.UpgradeHeight,
-		SubmittedAt:   time.Now(),
+		SubmittedAt:   submittedAt,
+		VotingEndTime: submittedAt.Add(votingPeriod),
 		Status:        ProposalPending,
 	}, nil
 }

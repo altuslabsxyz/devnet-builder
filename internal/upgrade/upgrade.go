@@ -88,6 +88,7 @@ func ExecuteUpgrade(ctx context.Context, cfg *UpgradeConfig, opts *ExecuteOption
 	proposal, err := SubmitProposal(ctx, &ProposalOptions{
 		UpgradeName:   cfg.Name,
 		UpgradeHeight: upgradeHeight,
+		VotingPeriod:  cfg.VotingPeriod,
 		ProposerKey:   validators[0].PrivateKey,
 		ProposerAddr:  validators[0].HexAddress,
 		EVMRPCURL:     evmRPCURL,
@@ -103,6 +104,7 @@ func ExecuteUpgrade(ctx context.Context, cfg *UpgradeConfig, opts *ExecuteOption
 	}
 
 	progress.Proposal = proposal
+	progress.VotingEndTime = proposal.VotingEndTime
 	result.ProposalID = proposal.ID
 	result.UpgradeHeight = upgradeHeight
 	notifyProgress()
