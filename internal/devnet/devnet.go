@@ -240,7 +240,17 @@ func Provision(ctx context.Context, opts ProvisionOptions) (*ProvisionResult, er
 	} else {
 		initMode = nodeconfig.ModeLocal
 	}
-	initializer := nodeconfig.NewNodeInitializer(initMode, dockerImage, logger)
+
+	// Create initializer - for local mode, use managed binary path
+	var initializer *nodeconfig.NodeInitializer
+	if opts.Mode == ModeLocal {
+		// For local mode, always use the managed binary at ~/.stable-devnet/bin/stabled
+		symlinkMgr := cache.NewSymlinkManager(opts.HomeDir)
+		localBinaryPath := symlinkMgr.SymlinkPath()
+		initializer = nodeconfig.NewNodeInitializerWithBinary(initMode, dockerImage, localBinaryPath, logger)
+	} else {
+		initializer = nodeconfig.NewNodeInitializer(initMode, dockerImage, logger)
+	}
 	nodeIDs := make([]string, opts.NumValidators)
 	nodes := make([]*node.Node, opts.NumValidators)
 
@@ -618,7 +628,17 @@ func Start(ctx context.Context, opts StartOptions) (*Devnet, error) {
 	} else {
 		initMode = nodeconfig.ModeLocal
 	}
-	initializer := nodeconfig.NewNodeInitializer(initMode, dockerImage, logger)
+
+	// Create initializer - for local mode, use managed binary path
+	var initializer *nodeconfig.NodeInitializer
+	if opts.Mode == ModeLocal {
+		// For local mode, always use the managed binary at ~/.stable-devnet/bin/stabled
+		symlinkMgr := cache.NewSymlinkManager(opts.HomeDir)
+		localBinaryPath := symlinkMgr.SymlinkPath()
+		initializer = nodeconfig.NewNodeInitializerWithBinary(initMode, dockerImage, localBinaryPath, logger)
+	} else {
+		initializer = nodeconfig.NewNodeInitializer(initMode, dockerImage, logger)
+	}
 	nodeIDs := make([]string, opts.NumValidators)
 	nodes := make([]*node.Node, opts.NumValidators)
 
@@ -760,21 +780,12 @@ func (d *Devnet) startNode(ctx context.Context, n *node.Node, genesisPath string
 }
 
 // resolveBinaryPath determines the binary path to use for local mode.
-// Priority: symlink path (if exists) > custom binary path > default "stabled"
+// For local mode, ALWAYS use ~/.stable-devnet/bin/stabled.
+// This binary must exist and should be built via goreleaser.
 func (d *Devnet) resolveBinaryPath() string {
-	// Check if symlink exists
+	// Always use the managed binary at ~/.stable-devnet/bin/stabled
 	symlinkMgr := cache.NewSymlinkManager(d.Metadata.HomeDir)
-	if symlinkMgr.IsSymlink() {
-		return symlinkMgr.SymlinkPath()
-	}
-
-	// Check if there's a custom binary path set
-	if d.Metadata.CustomBinaryPath != "" {
-		return d.Metadata.CustomBinaryPath
-	}
-
-	// Fall back to default
-	return ""
+	return symlinkMgr.SymlinkPath()
 }
 
 // Stop stops all nodes in the devnet.

@@ -32,6 +32,7 @@ const (
 type NodeInitializer struct {
 	mode        ExecutionMode
 	dockerImage string
+	binaryPath  string // Path to local stabled binary (used for local mode)
 	logger      *output.Logger
 }
 
@@ -43,6 +44,20 @@ func NewNodeInitializer(mode ExecutionMode, dockerImage string, logger *output.L
 	return &NodeInitializer{
 		mode:        mode,
 		dockerImage: dockerImage,
+		logger:      logger,
+	}
+}
+
+// NewNodeInitializerWithBinary creates a new NodeInitializer with a specific binary path.
+// For local mode, this should be the managed binary at ~/.stable-devnet/bin/stabled.
+func NewNodeInitializerWithBinary(mode ExecutionMode, dockerImage, binaryPath string, logger *output.Logger) *NodeInitializer {
+	if logger == nil {
+		logger = output.DefaultLogger
+	}
+	return &NodeInitializer{
+		mode:        mode,
+		dockerImage: dockerImage,
+		binaryPath:  binaryPath,
 		logger:      logger,
 	}
 }
@@ -91,14 +106,20 @@ func (i *NodeInitializer) initDocker(ctx context.Context, nodeDir, moniker, chai
 }
 
 func (i *NodeInitializer) initLocal(ctx context.Context, nodeDir, moniker, chainID string) error {
+	// Determine binary path - use managed binary if set, otherwise fallback to PATH lookup
+	binaryPath := i.binaryPath
+	if binaryPath == "" {
+		binaryPath = "stabled" // Fallback for backward compatibility
+	}
+
 	// Use --overwrite to handle existing genesis.json files
 	args := []string{"init", moniker, "--chain-id", chainID, "--home", nodeDir, "--overwrite"}
-	cmd := exec.CommandContext(ctx, "stabled", args...)
+	cmd := exec.CommandContext(ctx, binaryPath, args...)
 	cmdOutput, err := cmd.CombinedOutput()
 	if err != nil {
 		// Print detailed error for diagnosis
 		i.logger.PrintCommandError(&output.CommandErrorInfo{
-			Command:  "stabled",
+			Command:  binaryPath,
 			Args:     args,
 			WorkDir:  nodeDir,
 			Stderr:   string(cmdOutput),
@@ -226,8 +247,14 @@ func (i *NodeInitializer) exportDocker(ctx context.Context, nodeDir, destPath st
 }
 
 func (i *NodeInitializer) exportLocal(ctx context.Context, nodeDir, destPath string) error {
+	// Determine binary path - use managed binary if set, otherwise fallback to PATH lookup
+	binaryPath := i.binaryPath
+	if binaryPath == "" {
+		binaryPath = "stabled" // Fallback for backward compatibility
+	}
+
 	cmd := exec.CommandContext(ctx, "bash", "-c",
-		fmt.Sprintf("stabled export --home %s > %s", nodeDir, destPath),
+		fmt.Sprintf("%s export --home %s > %s", binaryPath, nodeDir, destPath),
 	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {

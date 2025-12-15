@@ -74,10 +74,24 @@ func (m *LocalManager) Start(ctx context.Context, node *Node, genesisPath string
 		return fmt.Errorf("node %s is already running", node.Name)
 	}
 
-	// Check if binary exists
-	binaryPath, err := exec.LookPath(m.Binary)
+	// Validate binary path
+	binaryPath := m.Binary
+	if binaryPath == "" {
+		return fmt.Errorf("no binary path specified for local mode")
+	}
+
+	// Check if binary exists at the specified path
+	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
+		return fmt.Errorf("binary not found at %s\nHint: Build the stabled binary first with 'devnet-builder build-binary'", binaryPath)
+	}
+
+	// Verify binary is executable
+	info, err := os.Stat(binaryPath)
 	if err != nil {
-		return fmt.Errorf("binary %s not found: %w", m.Binary, err)
+		return fmt.Errorf("failed to stat binary: %w", err)
+	}
+	if info.Mode()&0111 == 0 {
+		return fmt.Errorf("binary at %s is not executable", binaryPath)
 	}
 
 	// Ensure node home directory exists
@@ -334,11 +348,18 @@ func splitLines(content string) []string {
 	return lines
 }
 
-// IsLocalBinaryAvailable checks if the local binary is available.
-func IsLocalBinaryAvailable(binary string) bool {
-	if binary == "" {
-		binary = DefaultLocalBinary
+// IsLocalBinaryAvailable checks if the local binary is available at the given path.
+// For local mode, the binary must be an absolute path (e.g., ~/.stable-devnet/bin/stabled).
+func IsLocalBinaryAvailable(binaryPath string) bool {
+	if binaryPath == "" {
+		return false
 	}
-	_, err := exec.LookPath(binary)
-	return err == nil
+
+	info, err := os.Stat(binaryPath)
+	if err != nil {
+		return false
+	}
+
+	// Check if executable
+	return info.Mode()&0111 != 0
 }
