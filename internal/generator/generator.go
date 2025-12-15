@@ -43,6 +43,20 @@ import (
 	restrictiontypes "github.com/stablelabs/stable/x/restriction/types"
 )
 
+// deterministicValidatorMnemonics contains hardcoded BIP39 mnemonics for validators 0-3.
+// These ensure deterministic key generation for reproducible devnet deployments.
+// For validators at index >= 4, random mnemonics are generated.
+var deterministicValidatorMnemonics = []string{
+	// validator0
+	"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+	// validator1
+	"zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote",
+	// validator2
+	"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+	// validator3
+	"zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong",
+}
+
 type DevnetGenerator struct {
 	config     *Config
 	cdc        codec.Codec
@@ -204,11 +218,28 @@ func (g *DevnetGenerator) generateValidators() error {
 			return fmt.Errorf("failed to get signing algo: %w", err)
 		}
 
-		// Generate and save account key using testutil (similar to testnet.go:294)
 		valName := fmt.Sprintf("validator%d", i)
-		accAddr, mnemonic, err := testutil.GenerateSaveCoinKey(kr, valName, "", true, algo)
-		if err != nil {
-			return fmt.Errorf("failed to generate key for %s: %w", valName, err)
+		var accAddr sdk.AccAddress
+		var mnemonic string
+
+		// Use deterministic mnemonic for validators 0-3, random for 4+
+		if i < len(deterministicValidatorMnemonics) {
+			// Use hardcoded mnemonic for deterministic key generation
+			mnemonic = deterministicValidatorMnemonics[i]
+			record, err := kr.NewAccount(valName, mnemonic, sdkkeyring.DefaultBIP39Passphrase, sdk.GetConfig().GetFullBIP44Path(), algo)
+			if err != nil {
+				return fmt.Errorf("failed to create key from mnemonic for %s: %w", valName, err)
+			}
+			accAddr, err = record.GetAddress()
+			if err != nil {
+				return fmt.Errorf("failed to get address for %s: %w", valName, err)
+			}
+		} else {
+			// Generate random key for validators >= 4
+			accAddr, mnemonic, err = testutil.GenerateSaveCoinKey(kr, valName, "", true, algo)
+			if err != nil {
+				return fmt.Errorf("failed to generate key for %s: %w", valName, err)
+			}
 		}
 
 		// Save validator mnemonic to JSON file for export-keys command
