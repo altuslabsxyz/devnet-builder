@@ -236,7 +236,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 			versionResolvedImage = fmt.Sprintf("ghcr.io/stablelabs/stable:%s", selectedVersion)
 			logger.Info("Using docker image for version %s: %s", selectedVersion, versionResolvedImage)
 		} else {
-			// Local mode or custom ref: build local binary
+			// Local mode or custom ref: build local binary to cache
 			b := builder.NewBuilder(homeDir, logger)
 			logger.Info("Pre-building upgrade binary (ref: %s)...", selectedVersion)
 

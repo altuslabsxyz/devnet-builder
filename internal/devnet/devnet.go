@@ -779,13 +779,13 @@ func (d *Devnet) startNode(ctx context.Context, n *node.Node, genesisPath string
 	}
 }
 
-// resolveBinaryPath determines the binary path to use for local mode.
-// For local mode, ALWAYS use ~/.stable-devnet/bin/stabled.
-// This binary must exist and should be built via goreleaser.
+// resolveBinaryPath returns the binary path for local mode.
+// Always uses ~/.stable-devnet/bin/stabled - binary is only replaced during upgrade.
 func (d *Devnet) resolveBinaryPath() string {
-	// Always use the managed binary at ~/.stable-devnet/bin/stabled
 	symlinkMgr := cache.NewSymlinkManager(d.Metadata.HomeDir)
-	return symlinkMgr.SymlinkPath()
+	binaryPath := symlinkMgr.SymlinkPath()
+	d.Logger.Debug("Using binary: %s", binaryPath)
+	return binaryPath
 }
 
 // Stop stops all nodes in the devnet.

@@ -214,19 +214,25 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("devnet already exists at %s\nUse 'devnet-builder clean' to remove it first", homeDir)
 	}
 
-	// Build from source if start version is a custom ref
+	// Build from source for local mode
+	// In local mode, we always need a binary at ~/.stable-devnet/bin/stabled
 	var customBinaryPath string
-	if startIsCustomRef {
+	if startMode == "local" {
 		b := builder.NewBuilder(homeDir, logger)
-		logger.Info("Building binary from source (ref: %s)...", startVersion)
+		ref := startVersion
+		if ref == "" || ref == "latest" {
+			ref = "main" // Default to main branch for local builds
+		}
+		logger.Info("Building binary from source (ref: %s)...", ref)
 		result, err := b.Build(ctx, builder.BuildOptions{
-			Ref:     startVersion,
+			Ref:     ref,
 			Network: startNetwork,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to build from source: %w", err)
 		}
 		customBinaryPath = result.BinaryPath
+		startIsCustomRef = true // Mark as custom ref since we built a binary
 		logger.Success("Binary built: %s (commit: %s)", result.BinaryPath, result.CommitHash)
 	}
 
