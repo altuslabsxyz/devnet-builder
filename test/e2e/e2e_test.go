@@ -23,9 +23,6 @@ import (
 )
 
 const (
-	// Binary path relative to repo root
-	binaryPath = "./build/devnet-builder"
-
 	// Default timeouts
 	deployTimeout  = 10 * time.Minute
 	commandTimeout = 2 * time.Minute
@@ -35,6 +32,34 @@ const (
 	rpcPort    = 26657
 	evmRPCPort = 8545
 )
+
+// getBinaryPath returns the path to the devnet-builder binary.
+// It searches for the binary relative to the repository root by
+// walking up from the current directory until it finds go.mod.
+func getBinaryPath() string {
+	// Check environment variable first
+	if path := os.Getenv("DEVNET_BINARY_PATH"); path != "" {
+		return path
+	}
+
+	// Find repository root by looking for go.mod
+	dir, err := os.Getwd()
+	if err != nil {
+		return "./build/devnet-builder"
+	}
+
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return filepath.Join(dir, "build", "devnet-builder")
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached root, return relative path
+			return "./build/devnet-builder"
+		}
+		dir = parent
+	}
+}
 
 // TestConfig holds test configuration
 type TestConfig struct {
@@ -53,7 +78,7 @@ func DefaultTestConfig() *TestConfig {
 		homeDir = filepath.Join(os.TempDir(), "devnet-e2e-test")
 	}
 	return &TestConfig{
-		BinaryPath: binaryPath,
+		BinaryPath: getBinaryPath(),
 		HomeDir:    homeDir,
 		Validators: 1,
 		Accounts:   0,
