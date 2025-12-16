@@ -91,6 +91,7 @@ type UpgradeConfig struct {
 	Mode          devnet.ExecutionMode // Explicit execution mode (docker/local); empty = use metadata
 	TargetImage   string               // Docker image for upgrade (mutually exclusive with TargetBinary)
 	TargetBinary  string               // Local binary path for upgrade
+	TargetVersion string               // Version string for the upgrade (e.g., "v1.2.0")
 	CachePath     string               // Path to pre-built cached binary (for symlink switch)
 	CommitHash    string               // Commit hash of the cached binary
 	VotingPeriod  time.Duration        // Expedited voting period (default: 60s)

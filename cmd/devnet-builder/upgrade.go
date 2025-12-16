@@ -275,6 +275,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		Mode:          resolvedMode, // T008: Pass resolved mode to UpgradeConfig
 		TargetImage:   targetImage,
 		TargetBinary:  targetBinary,
+		TargetVersion: selectedVersion,
 		VotingPeriod:  vp,
 		HeightBuffer:  heightBuffer,
 		UpgradeHeight: upgradeHeight,
