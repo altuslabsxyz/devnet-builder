@@ -190,14 +190,15 @@ func ExecuteUpgrade(ctx context.Context, cfg *UpgradeConfig, opts *ExecuteOption
 	}
 
 	err = SwitchBinary(ctx, &SwitchOptions{
-		Mode:         switchMode,
-		TargetImage:  cfg.TargetImage,
-		TargetBinary: cfg.TargetBinary,
-		CachePath:    cfg.CachePath,
-		CommitHash:   cfg.CommitHash,
-		HomeDir:      opts.HomeDir,
-		Metadata:     opts.Metadata,
-		Logger:       logger,
+		Mode:          switchMode,
+		TargetImage:   cfg.TargetImage,
+		TargetBinary:  cfg.TargetBinary,
+		TargetVersion: cfg.TargetVersion,
+		CachePath:     cfg.CachePath,
+		CommitHash:    cfg.CommitHash,
+		HomeDir:       opts.HomeDir,
+		Metadata:      opts.Metadata,
+		Logger:        logger,
 	})
 	if err != nil {
 		progress.Stage = StageFailed

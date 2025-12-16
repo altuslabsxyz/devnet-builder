@@ -16,14 +16,15 @@ import (
 
 // SwitchOptions contains options for switching to a new binary.
 type SwitchOptions struct {
-	Mode         devnet.ExecutionMode // "docker" or "local"
-	TargetImage  string               // Docker image for upgrade
-	TargetBinary string               // Local binary path
-	CachePath    string               // Path to cached binary (for symlink switch)
-	CommitHash   string               // Commit hash of the cached binary
-	HomeDir      string               // Base directory for devnet
-	Metadata     *devnet.DevnetMetadata
-	Logger       *output.Logger
+	Mode          devnet.ExecutionMode // "docker" or "local"
+	TargetImage   string               // Docker image for upgrade
+	TargetBinary  string               // Local binary path
+	TargetVersion string               // Version string for the upgrade (e.g., "v1.2.0")
+	CachePath     string               // Path to cached binary (for symlink switch)
+	CommitHash    string               // Commit hash of the cached binary
+	HomeDir       string               // Base directory for devnet
+	Metadata      *devnet.DevnetMetadata
+	Logger        *output.Logger
 }
 
 // SwitchBinary stops nodes and switches to the new binary.
@@ -67,6 +68,10 @@ func SwitchBinary(ctx context.Context, opts *SwitchOptions) error {
 			if len(parts) > 1 {
 				opts.Metadata.StableVersion = parts[len(parts)-1]
 			}
+		}
+		// Update current version if provided
+		if opts.TargetVersion != "" {
+			opts.Metadata.SetCurrentVersion(opts.TargetVersion)
 		}
 		opts.Metadata.Save()
 	}

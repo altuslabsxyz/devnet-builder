@@ -46,6 +46,10 @@ type DevnetMetadata struct {
 	CustomBinaryPath string        `json:"custom_binary_path,omitempty"` // Path to custom-built binary
 	DockerImage      string        `json:"docker_image,omitempty"`       // Docker image used (only for docker mode)
 
+	// Version tracking
+	InitialVersion string `json:"initial_version,omitempty"` // Version from exported genesis (e.g., "1.1.3")
+	CurrentVersion string `json:"current_version,omitempty"` // Current running version after upgrades
+
 	// Validators
 	NumValidators int `json:"num_validators"` // 1-4
 	NumAccounts   int `json:"num_accounts"`   // Additional funded accounts
@@ -243,4 +247,38 @@ func (m *DevnetMetadata) IsProvisioned() bool {
 // CanRun returns true if the devnet can be started.
 func (m *DevnetMetadata) CanRun() bool {
 	return m.ProvisionState.CanRun()
+}
+
+// GetVersionFromGenesis reads the app_version from genesis.json file.
+func GetVersionFromGenesis(genesisPath string) (string, error) {
+	data, err := os.ReadFile(genesisPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read genesis file: %w", err)
+	}
+
+	var genesis struct {
+		AppVersion string `json:"app_version"`
+	}
+	if err := json.Unmarshal(data, &genesis); err != nil {
+		return "", fmt.Errorf("failed to parse genesis: %w", err)
+	}
+
+	return genesis.AppVersion, nil
+}
+
+// SetInitialVersionFromGenesis sets InitialVersion from genesis file.
+func (m *DevnetMetadata) SetInitialVersionFromGenesis() error {
+	genesisPath := filepath.Join(m.DevnetDir(), "genesis.json")
+	version, err := GetVersionFromGenesis(genesisPath)
+	if err != nil {
+		return err
+	}
+	m.InitialVersion = version
+	m.CurrentVersion = version // Initially same as initial
+	return nil
+}
+
+// SetCurrentVersion updates the current running version.
+func (m *DevnetMetadata) SetCurrentVersion(version string) {
+	m.CurrentVersion = version
 }

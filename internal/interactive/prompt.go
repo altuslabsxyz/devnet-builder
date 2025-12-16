@@ -382,3 +382,22 @@ func promptCustomImage() (string, error) {
 
 	return strings.TrimSpace(result), nil
 }
+
+// ConfirmReplaceSelection prompts the user to confirm their replace selection.
+func ConfirmReplaceSelection(version string) (bool, error) {
+	prompt := promptui.Prompt{
+		Label:     "Proceed with binary replacement",
+		IsConfirm: true,
+		Default:   "y",
+	}
+
+	_, err := prompt.Run()
+	if err != nil {
+		if err == promptui.ErrAbort {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -155,7 +156,12 @@ func runNodeStart(cmd *cobra.Command, args []string) error {
 		manager := node.NewDockerManagerWithEVMChainID(provision.GetDockerImage(metadata.StableVersion), evmChainID, logger)
 		startErr = manager.Start(ctx, n, metadata.GenesisPath)
 	case devnet.ModeLocal:
-		manager := node.NewLocalManagerWithEVMChainID(metadata.CustomBinaryPath, evmChainID, logger)
+		// Use custom binary path if set, otherwise use default bin/stabled
+		binaryPath := metadata.CustomBinaryPath
+		if binaryPath == "" {
+			binaryPath = filepath.Join(metadata.HomeDir, "bin", "stabled")
+		}
+		manager := node.NewLocalManagerWithEVMChainID(binaryPath, evmChainID, logger)
 		startErr = manager.Start(ctx, n, metadata.GenesisPath)
 	}
 

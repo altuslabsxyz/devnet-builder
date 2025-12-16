@@ -618,6 +618,11 @@ func Start(ctx context.Context, opts StartOptions) (*Devnet, error) {
 	metadata.IsCustomRef = opts.IsCustomRef
 	metadata.CustomBinaryPath = opts.CustomBinaryPath
 
+	// Read initial version from genesis
+	if err := metadata.SetInitialVersionFromGenesis(); err != nil {
+		logger.Debug("Warning: Failed to read version from genesis: %v", err)
+	}
+
 	// Step 4: Initialize nodes and get node IDs
 	progress.Stage("Initializing nodes")
 

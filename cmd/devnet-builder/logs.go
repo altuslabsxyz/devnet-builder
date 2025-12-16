@@ -26,21 +26,27 @@ func NewLogsCmd() *cobra.Command {
 		Short: "View node logs",
 		Long: `View logs from devnet nodes.
 
-By default, shows logs from all nodes. Optionally specify a node name
-(node0, node1, node2, node3) to view logs from a specific node.
+By default, shows logs from all nodes. Optionally specify a node index
+(0, 1, 2, 3) or name (node0, node1, node2, node3) to view logs from a specific node.
 
 Examples:
   # View all node logs
   devnet-builder logs
 
-  # View logs from node0 only
+  # View logs from node0 only (both formats work)
+  devnet-builder logs 0
   devnet-builder logs node0
 
   # Follow logs (like tail -f)
   devnet-builder logs -f
+  devnet-builder logs 0 -f
 
   # Show last 50 lines
   devnet-builder logs --tail 50
+  devnet-builder logs -n 50
+
+  # Combine options
+  devnet-builder logs 0 --tail 10 -f
 
   # Show logs since 5 minutes ago
   devnet-builder logs --since 5m`,
@@ -50,7 +56,7 @@ Examples:
 
 	cmd.Flags().BoolVarP(&logsFollow, "follow", "f", false,
 		"Follow log output")
-	cmd.Flags().IntVar(&logsTail, "tail", 100,
+	cmd.Flags().IntVarP(&logsTail, "tail", "n", 100,
 		"Number of lines to show")
 	cmd.Flags().StringVar(&logsSince, "since", "",
 		"Show logs since duration (e.g., 5m)")
@@ -77,14 +83,20 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	var targetNodes []*node.Node
 	if len(args) > 0 {
 		nodeName := args[0]
-		// Parse node index
-		if !strings.HasPrefix(nodeName, "node") {
-			return fmt.Errorf("invalid node name: %s (expected node0, node1, node2, or node3)", nodeName)
+		var index int
+		var err error
+
+		// Support both "node0" and "0" formats
+		if strings.HasPrefix(nodeName, "node") {
+			indexStr := strings.TrimPrefix(nodeName, "node")
+			index, err = strconv.Atoi(indexStr)
+		} else {
+			// Try parsing as just a number
+			index, err = strconv.Atoi(nodeName)
 		}
-		indexStr := strings.TrimPrefix(nodeName, "node")
-		index, err := strconv.Atoi(indexStr)
+
 		if err != nil || index < 0 || index >= len(d.Nodes) {
-			return fmt.Errorf("invalid node index: %s", nodeName)
+			return fmt.Errorf("invalid node: %s (expected 0-%d or node0-node%d)", nodeName, len(d.Nodes)-1, len(d.Nodes)-1)
 		}
 		targetNodes = []*node.Node{d.Nodes[index]}
 	} else {
