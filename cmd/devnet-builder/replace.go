@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stablelabs/stable-devnet/internal/builder"
 	"github.com/stablelabs/stable-devnet/internal/devnet"
+	"github.com/stablelabs/stable-devnet/internal/github"
+	"github.com/stablelabs/stable-devnet/internal/interactive"
 	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
@@ -18,6 +20,7 @@ var (
 	replaceVersion       string
 	replaceHealthTimeout time.Duration
 	replaceNoConfirm     bool
+	replaceNoInteractive bool
 )
 
 // ReplaceResult represents the result of a replace operation.
@@ -59,7 +62,10 @@ Examples:
   devnet-builder replace --version abc1234
 
   # Skip confirmation prompt
-  devnet-builder replace --version v1.2.0 -y`,
+  devnet-builder replace --version v1.2.0 -y
+
+  # Non-interactive mode (requires --version)
+  devnet-builder replace --version v1.2.0 --no-interactive`,
 		RunE: runReplace,
 	}
 
@@ -69,8 +75,8 @@ Examples:
 		"Timeout for node health check after restart")
 	cmd.Flags().BoolVarP(&replaceNoConfirm, "yes", "y", false,
 		"Skip confirmation prompt")
-
-	cmd.MarkFlagRequired("version")
+	cmd.Flags().BoolVar(&replaceNoInteractive, "no-interactive", false,
+		"Disable interactive prompts (requires --version)")
 
 	return cmd
 }
@@ -90,8 +96,26 @@ func runReplace(cmd *cobra.Command, args []string) error {
 		return outputReplaceError(fmt.Errorf("failed to load devnet metadata: %w", err))
 	}
 
-	// Show warning and get confirmation
-	if !jsonMode && !replaceNoConfirm {
+	// Interactive mode: if no version specified, show interactive selector
+	if replaceVersion == "" {
+		if replaceNoInteractive || jsonMode {
+			return outputReplaceError(fmt.Errorf("--version is required in non-interactive mode"))
+		}
+
+		// Run interactive version selection
+		selectedVersion, err := runReplaceInteractiveSelection(ctx, metadata.CurrentVersion)
+		if err != nil {
+			if interactive.IsCancellation(err) {
+				output.Info("Operation cancelled.")
+				return nil
+			}
+			return outputReplaceError(err)
+		}
+		replaceVersion = selectedVersion
+	}
+
+	// Show warning and get confirmation (skip if already confirmed in interactive mode or -y flag)
+	if !jsonMode && !replaceNoConfirm && !replaceNoInteractive {
 		output.Warn("This will replace the binary WITHOUT governance upgrade.")
 		output.Warn("Chain state must be compatible with the new version.")
 		fmt.Println()
@@ -288,4 +312,56 @@ func outputReplaceError(err error) error {
 		fmt.Println(string(data))
 	}
 	return err
+}
+
+// runReplaceInteractiveSelection runs the interactive version selection for replace command.
+func runReplaceInteractiveSelection(ctx context.Context, currentVersion string) (string, error) {
+	// Initialize GitHub client
+	client := github.NewClient()
+
+	// Fetch available versions
+	releases, fromCache, err := client.FetchReleasesWithCache(ctx)
+	if err != nil {
+		// Check if it's a warning (stale data)
+		if warning, ok := err.(*github.StaleDataWarning); ok {
+			fmt.Fprintf(os.Stderr, "Warning: %s\n", warning.Message)
+		} else {
+			return "", fmt.Errorf("failed to fetch versions: %w", err)
+		}
+	}
+
+	if len(releases) == 0 {
+		return "", fmt.Errorf("no versions available. Check your network connection or GitHub token")
+	}
+
+	if fromCache {
+		fmt.Println("(Using cached version data)")
+	}
+
+	// Show current version info
+	fmt.Printf("\nCurrent version: %s\n", currentVersion)
+	fmt.Println("Note: Even if you select the same version, the binary will be rebuilt (new commits may exist).")
+	fmt.Println()
+
+	// Select replacement version
+	version, _, err := interactive.SelectVersion("Select replacement binary version", releases, currentVersion)
+	if err != nil {
+		return "", err
+	}
+
+	// Confirm selection
+	fmt.Printf("\nReplace binary configuration:\n")
+	fmt.Printf("  Current version: %s\n", currentVersion)
+	fmt.Printf("  Target version:  %s\n", version)
+	fmt.Println()
+
+	confirmed, err := interactive.ConfirmReplaceSelection(version)
+	if err != nil {
+		return "", err
+	}
+	if !confirmed {
+		return "", &interactive.CancellationError{Message: "Operation cancelled by user"}
+	}
+
+	return version, nil
 }
