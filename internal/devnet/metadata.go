@@ -2,6 +2,7 @@ package devnet
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stablelabs/stable-devnet/internal/helpers"
 )
 
 // ExecutionMode defines how nodes are executed.
@@ -134,42 +136,35 @@ func (m *DevnetMetadata) MetadataPath() string {
 }
 
 // Save persists the metadata to disk.
+// Uses helpers.SaveJSON for consistent file I/O with automatic directory creation.
 func (m *DevnetMetadata) Save() error {
-	// Ensure directory exists
-	if err := os.MkdirAll(m.DevnetDir(), 0755); err != nil {
-		return fmt.Errorf("failed to create devnet directory: %w", err)
+	if err := helpers.SaveJSON(m.MetadataPath(), m, 0644); err != nil {
+		return fmt.Errorf("failed to save metadata: %w", err)
 	}
-
-	data, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal metadata: %w", err)
-	}
-
-	if err := os.WriteFile(m.MetadataPath(), data, 0644); err != nil {
-		return fmt.Errorf("failed to write metadata: %w", err)
-	}
-
 	return nil
 }
 
 // LoadDevnetMetadata loads metadata from the specified home directory.
+// Uses helpers.LoadJSON for consistent file I/O with structured error handling.
 func LoadDevnetMetadata(homeDir string) (*DevnetMetadata, error) {
 	metadataPath := filepath.Join(homeDir, "devnet", "metadata.json")
 
-	data, err := os.ReadFile(metadataPath)
+	metadata, err := helpers.LoadJSON[DevnetMetadata](metadataPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("devnet not found at %s", homeDir)
+		// Preserve backward-compatible error messages
+		var jsonErr *helpers.JSONLoadError
+		if errors.As(err, &jsonErr) {
+			if jsonErr.Reason == "file not found" {
+				return nil, fmt.Errorf("devnet not found at %s", homeDir)
+			}
+			if jsonErr.Reason == "failed to parse JSON in" {
+				return nil, fmt.Errorf("failed to parse metadata: %w", jsonErr.Wrapped)
+			}
 		}
 		return nil, fmt.Errorf("failed to read metadata: %w", err)
 	}
 
-	var metadata DevnetMetadata
-	if err := json.Unmarshal(data, &metadata); err != nil {
-		return nil, fmt.Errorf("failed to parse metadata: %w", err)
-	}
-
-	return &metadata, nil
+	return metadata, nil
 }
 
 // DevnetExists checks if a devnet exists in the specified home directory.

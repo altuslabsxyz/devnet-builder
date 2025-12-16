@@ -125,21 +125,13 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 
 	logger := output.DefaultLogger
 
-	// Check if devnet exists and is running first
-	if !devnet.DevnetExists(homeDir) {
-		if jsonMode {
-			return outputUpgradeError(fmt.Errorf("no devnet found"))
-		}
-		return fmt.Errorf("no devnet found at %s\nStart a devnet first with 'devnet-builder start'", homeDir)
-	}
-
-	// Load devnet metadata
-	metadata, err := devnet.LoadDevnetMetadata(homeDir)
+	// Load devnet metadata using consolidated helper
+	metadata, err := loadMetadataOrFail(logger)
 	if err != nil {
 		if jsonMode {
 			return outputUpgradeError(err)
 		}
-		return fmt.Errorf("failed to load devnet metadata: %w", err)
+		return err
 	}
 
 	if metadata.Status != devnet.StatusRunning {

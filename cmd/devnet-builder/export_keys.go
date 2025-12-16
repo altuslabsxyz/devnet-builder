@@ -40,14 +40,14 @@ Examples:
 }
 
 func runExportKeys(cmd *cobra.Command, args []string) error {
-	// Check if devnet exists
-	if !devnet.DevnetExists(homeDir) {
-		return outputExportKeysError(fmt.Errorf("no devnet found at %s", homeDir))
-	}
-
-	// Validate inputs
+	// Validate inputs first
 	if exportType != "all" && exportType != "validators" && exportType != "accounts" {
 		return outputExportKeysError(fmt.Errorf("invalid type: %s (must be 'validators', 'accounts', or 'all')", exportType))
+	}
+
+	// Check if devnet exists using consolidated helper
+	if _, err := loadMetadataOrFail(nil); err != nil {
+		return outputExportKeysError(err)
 	}
 
 	// Export keys

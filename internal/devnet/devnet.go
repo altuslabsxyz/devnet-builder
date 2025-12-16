@@ -11,6 +11,7 @@ import (
 
 	"github.com/stablelabs/stable-devnet/internal/cache"
 	"github.com/stablelabs/stable-devnet/internal/generator"
+	"github.com/stablelabs/stable-devnet/internal/helpers"
 	"github.com/stablelabs/stable-devnet/internal/node"
 	"github.com/stablelabs/stable-devnet/internal/nodeconfig"
 	"github.com/stablelabs/stable-devnet/internal/output"
@@ -761,36 +762,51 @@ func (d *Devnet) StartNodes(ctx context.Context, genesisPath string) error {
 	return nil
 }
 
-// startNode starts a single node.
+// startNode starts a single node using the factory.
 func (d *Devnet) startNode(ctx context.Context, n *node.Node, genesisPath string) error {
-	evmChainID := node.ExtractEVMChainID(d.Metadata.ChainID)
-
-	switch d.Metadata.ExecutionMode {
-	case ModeDocker:
-		// Use DockerImage from metadata (set during provisioning), fallback to StableVersion
-		dockerImage := d.Metadata.DockerImage
-		if dockerImage == "" {
-			dockerImage = provision.GetDockerImage(d.Metadata.StableVersion)
-		}
-		manager := node.NewDockerManagerWithEVMChainID(dockerImage, evmChainID, d.Logger)
-		return manager.Start(ctx, n, genesisPath)
-	case ModeLocal:
-		// Determine binary path
-		binary := d.resolveBinaryPath()
-		manager := node.NewLocalManagerWithEVMChainID(binary, evmChainID, d.Logger)
-		return manager.Start(ctx, n, genesisPath)
-	default:
-		return fmt.Errorf("unknown execution mode: %s", d.Metadata.ExecutionMode)
+	factory := d.createNodeManagerFactory()
+	manager, err := factory.Create()
+	if err != nil {
+		return fmt.Errorf("failed to create node manager: %w", err)
 	}
+	return manager.Start(ctx, n, genesisPath)
 }
 
 // resolveBinaryPath returns the binary path for local mode.
-// Always uses ~/.stable-devnet/bin/stabled - binary is only replaced during upgrade.
+// Uses CustomBinaryPath if set, otherwise defaults to ~/.stable-devnet/bin/stabled.
 func (d *Devnet) resolveBinaryPath() string {
-	symlinkMgr := cache.NewSymlinkManager(d.Metadata.HomeDir)
-	binaryPath := symlinkMgr.SymlinkPath()
+	binaryPath := helpers.ResolveBinaryPath(d.Metadata.CustomBinaryPath, d.Metadata.HomeDir)
 	d.Logger.Debug("Using binary: %s", binaryPath)
 	return binaryPath
+}
+
+// createNodeManagerFactory creates a NodeManagerFactory from devnet metadata.
+// This is the single point of truth for creating node managers in devnet package.
+func (d *Devnet) createNodeManagerFactory() *node.NodeManagerFactory {
+	// Convert devnet.ExecutionMode to node.ExecutionMode
+	var mode node.ExecutionMode
+	switch d.Metadata.ExecutionMode {
+	case ModeDocker:
+		mode = node.ModeDocker
+	case ModeLocal:
+		mode = node.ModeLocal
+	}
+
+	// Get docker image - use metadata value, fallback to StableVersion
+	dockerImage := d.Metadata.DockerImage
+	if dockerImage == "" {
+		dockerImage = provision.GetDockerImage(d.Metadata.StableVersion)
+	}
+
+	config := node.FactoryConfig{
+		Mode:        mode,
+		BinaryPath:  d.resolveBinaryPath(),
+		DockerImage: dockerImage,
+		EVMChainID:  node.ExtractEVMChainID(d.Metadata.ChainID),
+		Logger:      d.Logger,
+	}
+
+	return node.NewNodeManagerFactory(config)
 }
 
 // Stop stops all nodes in the devnet.
@@ -811,18 +827,14 @@ func (d *Devnet) Stop(ctx context.Context, timeout time.Duration) error {
 	return nil
 }
 
-// stopNode stops a single node.
+// stopNode stops a single node using the factory.
 func (d *Devnet) stopNode(ctx context.Context, n *node.Node, timeout time.Duration) error {
-	switch d.Metadata.ExecutionMode {
-	case ModeDocker:
-		manager := node.NewDockerManager("", d.Logger)
-		return manager.Stop(ctx, n, timeout)
-	case ModeLocal:
-		manager := node.NewLocalManager("", d.Logger)
-		return manager.Stop(ctx, n, timeout)
-	default:
-		return fmt.Errorf("unknown execution mode: %s", d.Metadata.ExecutionMode)
+	factory := d.createNodeManagerFactory()
+	manager, err := factory.Create()
+	if err != nil {
+		return fmt.Errorf("failed to create node manager: %w", err)
 	}
+	return manager.Stop(ctx, n, timeout)
 }
 
 // copyFile copies a file from src to dst.

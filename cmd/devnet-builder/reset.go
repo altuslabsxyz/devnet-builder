@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/devnet"
 	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
@@ -48,13 +47,15 @@ func runReset(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
-	// Check if devnet exists
-	if !devnet.DevnetExists(homeDir) {
+	// First check existence before confirmation prompt
+	loaded, err := loadDevnetOrFail(logger)
+	if err != nil {
 		if jsonMode {
-			return outputResetError(fmt.Errorf("no devnet found"))
+			return outputResetError(err)
 		}
-		return fmt.Errorf("no devnet found at %s", homeDir)
+		return err
 	}
+	d := loaded.Devnet
 
 	// Confirmation prompt (unless --force)
 	if !resetForce && !jsonMode {
@@ -72,15 +73,6 @@ func runReset(cmd *cobra.Command, args []string) error {
 			fmt.Println("Reset cancelled.")
 			return nil
 		}
-	}
-
-	// Load devnet
-	d, err := devnet.LoadDevnetWithNodes(homeDir, logger)
-	if err != nil {
-		if jsonMode {
-			return outputResetError(err)
-		}
-		return fmt.Errorf("failed to load devnet: %w", err)
 	}
 
 	// Perform reset

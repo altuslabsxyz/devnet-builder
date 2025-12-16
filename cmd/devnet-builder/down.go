@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/devnet"
 	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
@@ -45,22 +44,15 @@ func runDown(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
-	// Check if devnet exists
-	if !devnet.DevnetExists(homeDir) {
-		if jsonMode {
-			return outputDownError(fmt.Errorf("no devnet found"))
-		}
-		return fmt.Errorf("no devnet found at %s", homeDir)
-	}
-
-	// Load devnet
-	d, err := devnet.LoadDevnetWithNodes(homeDir, logger)
+	// Load devnet using consolidated helper
+	loaded, err := loadDevnetOrFail(logger)
 	if err != nil {
 		if jsonMode {
 			return outputDownError(err)
 		}
-		return fmt.Errorf("failed to load devnet: %w", err)
+		return err
 	}
+	d := loaded.Devnet
 
 	// Stop nodes
 	if !jsonMode {

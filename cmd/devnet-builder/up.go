@@ -94,15 +94,10 @@ func runUp(cmd *cobra.Command, args []string) error {
 		return outputUpError(fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", upMode))
 	}
 
-	// Check if devnet exists and is provisioned
-	if !devnet.DevnetExists(homeDir) {
-		return outputUpError(fmt.Errorf("devnet not found at %s\nRun 'devnet-builder init' or 'devnet-builder deploy' first", homeDir))
-	}
-
-	// Load metadata to check provision state
-	metadata, err := devnet.LoadDevnetMetadata(homeDir)
+	// Load metadata using consolidated helper
+	metadata, err := loadMetadataOrFail(logger)
 	if err != nil {
-		return outputUpError(fmt.Errorf("failed to load devnet metadata: %w", err))
+		return outputUpError(err)
 	}
 
 	// Check if already running

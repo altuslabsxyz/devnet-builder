@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 	"github.com/stablelabs/stable-devnet/internal/devnet"
 	"github.com/stablelabs/stable-devnet/internal/node"
 	"github.com/stablelabs/stable-devnet/internal/output"
-	"github.com/stablelabs/stable-devnet/internal/provision"
 )
 
 var (
@@ -114,26 +112,18 @@ func runNodeStart(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
-	// Load devnet
-	if !devnet.DevnetExists(homeDir) {
-		return fmt.Errorf("devnet not found at %s", homeDir)
-	}
-
-	metadata, err := devnet.LoadDevnetMetadata(homeDir)
+	// Load devnet using consolidated helper
+	loaded, err := loadDevnetOrFail(logger)
 	if err != nil {
-		return fmt.Errorf("failed to load devnet metadata: %w", err)
+		return err
 	}
+	metadata := loaded.Metadata
+	d := loaded.Devnet
 
 	// Parse node index
 	index, err := parseNodeIndex(args[0], metadata.NumValidators)
 	if err != nil {
 		return err
-	}
-
-	// Load the specific node
-	d, err := devnet.LoadDevnetWithNodes(homeDir, logger)
-	if err != nil {
-		return fmt.Errorf("failed to load devnet: %w", err)
 	}
 
 	n := d.Nodes[index]
@@ -147,24 +137,14 @@ func runNodeStart(cmd *cobra.Command, args []string) error {
 			fmt.Errorf("node%d is already running", index))
 	}
 
-	// Start the node
-	evmChainID := node.ExtractEVMChainID(metadata.ChainID)
-
-	var startErr error
-	switch metadata.ExecutionMode {
-	case devnet.ModeDocker:
-		manager := node.NewDockerManagerWithEVMChainID(provision.GetDockerImage(metadata.StableVersion), evmChainID, logger)
-		startErr = manager.Start(ctx, n, metadata.GenesisPath)
-	case devnet.ModeLocal:
-		// Use custom binary path if set, otherwise use default bin/stabled
-		binaryPath := metadata.CustomBinaryPath
-		if binaryPath == "" {
-			binaryPath = filepath.Join(metadata.HomeDir, "bin", "stabled")
-		}
-		manager := node.NewLocalManagerWithEVMChainID(binaryPath, evmChainID, logger)
-		startErr = manager.Start(ctx, n, metadata.GenesisPath)
+	// Start the node using factory
+	factory := createNodeManagerFactory(metadata, logger)
+	manager, err := factory.Create()
+	if err != nil {
+		return outputNodeResult(index, "start", "error", previousState, "stopped", err)
 	}
 
+	startErr := manager.Start(ctx, n, metadata.GenesisPath)
 	if startErr != nil {
 		return outputNodeResult(index, "start", "error", previousState, "stopped", startErr)
 	}
@@ -180,26 +160,18 @@ func runNodeStop(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
-	// Load devnet
-	if !devnet.DevnetExists(homeDir) {
-		return fmt.Errorf("devnet not found at %s", homeDir)
-	}
-
-	metadata, err := devnet.LoadDevnetMetadata(homeDir)
+	// Load devnet using consolidated helper
+	loaded, err := loadDevnetOrFail(logger)
 	if err != nil {
-		return fmt.Errorf("failed to load devnet metadata: %w", err)
+		return err
 	}
+	metadata := loaded.Metadata
+	d := loaded.Devnet
 
 	// Parse node index
 	index, err := parseNodeIndex(args[0], metadata.NumValidators)
 	if err != nil {
 		return err
-	}
-
-	// Load the specific node
-	d, err := devnet.LoadDevnetWithNodes(homeDir, logger)
-	if err != nil {
-		return fmt.Errorf("failed to load devnet: %w", err)
 	}
 
 	n := d.Nodes[index]
@@ -213,19 +185,15 @@ func runNodeStop(cmd *cobra.Command, args []string) error {
 			fmt.Errorf("node%d is not running", index))
 	}
 
-	// Stop the node
-	var stopErr error
+	// Stop the node using factory
 	timeout := 30 * time.Second
-
-	switch metadata.ExecutionMode {
-	case devnet.ModeDocker:
-		manager := node.NewDockerManager("", logger)
-		stopErr = manager.Stop(ctx, n, timeout)
-	case devnet.ModeLocal:
-		manager := node.NewLocalManager("", logger)
-		stopErr = manager.Stop(ctx, n, timeout)
+	factory := createNodeManagerFactory(metadata, logger)
+	manager, err := factory.Create()
+	if err != nil {
+		return outputNodeResult(index, "stop", "error", previousState, previousState, err)
 	}
 
+	stopErr := manager.Stop(ctx, n, timeout)
 	if stopErr != nil {
 		return outputNodeResult(index, "stop", "error", previousState, previousState, stopErr)
 	}
@@ -237,26 +205,18 @@ func runNodeLogs(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
-	// Load devnet
-	if !devnet.DevnetExists(homeDir) {
-		return fmt.Errorf("devnet not found at %s", homeDir)
-	}
-
-	metadata, err := devnet.LoadDevnetMetadata(homeDir)
+	// Load devnet using consolidated helper
+	loaded, err := loadDevnetOrFail(logger)
 	if err != nil {
-		return fmt.Errorf("failed to load devnet metadata: %w", err)
+		return err
 	}
+	metadata := loaded.Metadata
+	d := loaded.Devnet
 
 	// Parse node index
 	index, err := parseNodeIndex(args[0], metadata.NumValidators)
 	if err != nil {
 		return err
-	}
-
-	// Load the specific node
-	d, err := devnet.LoadDevnetWithNodes(homeDir, logger)
-	if err != nil {
-		return fmt.Errorf("failed to load devnet: %w", err)
 	}
 
 	n := d.Nodes[index]
