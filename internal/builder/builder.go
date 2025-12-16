@@ -119,10 +119,40 @@ type BuildResult struct {
 	CommitHash string // The commit hash that was built
 }
 
-// Build builds a stable binary from the given ref using embedded goreleaser.
+// Build builds a stable binary from the given ref, stores it in cache, and
+// updates the symlink at ~/.stable-devnet/bin/stabled to point to it.
+//
+// This is used by `start` command where the binary should be used immediately.
+// For `upgrade` command, use BuildToCache() which only caches without symlink change.
 func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, error) {
 	if opts.Ref == "" {
 		return nil, fmt.Errorf("ref is required")
+	}
+
+	// Initialize cache and symlink manager
+	binaryCache := cache.NewBinaryCache(b.homeDir, b.logger)
+	if err := binaryCache.Initialize(); err != nil {
+		return nil, fmt.Errorf("failed to initialize binary cache: %w", err)
+	}
+	symlinkMgr := cache.NewSymlinkManager(b.homeDir)
+
+	// Try to resolve commit hash first to check cache
+	commitHash, resolveErr := b.ResolveCommitHash(ctx, opts.Ref)
+	if resolveErr == nil && commitHash != "" {
+		// Check if already cached (fast path - no build needed)
+		if binaryCache.IsCached(commitHash) {
+			b.logger.Info("Using cached binary for %s (commit: %s)", opts.Ref, commitHash[:12])
+			// Update symlink to point to cached binary
+			if err := symlinkMgr.SwitchToCache(binaryCache, commitHash); err != nil {
+				return nil, fmt.Errorf("failed to update symlink: %w", err)
+			}
+			b.logger.Success("Symlink updated: %s -> %s", symlinkMgr.SymlinkPath(), commitHash[:12])
+			return &BuildResult{
+				BinaryPath: symlinkMgr.SymlinkPath(),
+				Ref:        opts.Ref,
+				CommitHash: commitHash,
+			}, nil
+		}
 	}
 
 	// Create build directory
@@ -138,11 +168,25 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, e
 		return nil, fmt.Errorf("failed to clone repository: %w", err)
 	}
 
-	// Get commit hash
+	// Get commit hash from cloned repo (more reliable)
 	commitHash, err := b.getCommitHash(ctx, repoDir)
 	if err != nil {
 		b.logger.Warn("Failed to get commit hash: %v", err)
 		commitHash = opts.Ref
+	}
+
+	// Double-check cache after clone (in case ls-remote failed earlier)
+	if binaryCache.IsCached(commitHash) {
+		b.logger.Info("Using cached binary for %s (commit: %s)", opts.Ref, commitHash[:12])
+		if err := symlinkMgr.SwitchToCache(binaryCache, commitHash); err != nil {
+			return nil, fmt.Errorf("failed to update symlink: %w", err)
+		}
+		b.logger.Success("Symlink updated: %s -> %s", symlinkMgr.SymlinkPath(), commitHash[:12])
+		return &BuildResult{
+			BinaryPath: symlinkMgr.SymlinkPath(),
+			Ref:        opts.Ref,
+			CommitHash: commitHash,
+		}, nil
 	}
 
 	// Determine EVMChainID based on network
@@ -172,24 +216,26 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, e
 		return nil, fmt.Errorf("failed to find built binary: %w", err)
 	}
 
-	// Copy binary to output directory
-	outputDir := opts.OutputDir
-	if outputDir == "" {
-		outputDir = filepath.Join(b.homeDir, "bin")
+	// Store in cache
+	cached := &cache.CachedBinary{
+		CommitHash: commitHash,
+		Ref:        opts.Ref,
+		BuildTime:  time.Now(),
+		Network:    opts.Network,
 	}
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create output directory: %w", err)
-	}
-
-	destPath := filepath.Join(outputDir, BinaryName)
-	if err := copyBinary(binaryPath, destPath); err != nil {
-		return nil, fmt.Errorf("failed to copy binary: %w", err)
+	if err := binaryCache.Store(binaryPath, cached); err != nil {
+		return nil, fmt.Errorf("failed to store binary in cache: %w", err)
 	}
 
-	b.logger.Success("Binary built successfully: %s", destPath)
+	// Update symlink to point to newly cached binary
+	if err := symlinkMgr.SwitchToCache(binaryCache, commitHash); err != nil {
+		return nil, fmt.Errorf("failed to update symlink: %w", err)
+	}
+
+	b.logger.Success("Binary built and active: %s (commit: %s)", symlinkMgr.SymlinkPath(), commitHash[:12])
 
 	return &BuildResult{
-		BinaryPath: destPath,
+		BinaryPath: symlinkMgr.SymlinkPath(),
 		Ref:        opts.Ref,
 		CommitHash: commitHash,
 	}, nil
@@ -364,32 +410,32 @@ func isCommitHash(ref string) bool {
 }
 
 // copyBinary copies a binary file and preserves executable permissions.
-// It handles "text file busy" errors by removing the destination file first,
-// which allows replacing a running binary (the running process keeps its file
-// handle while the new file gets a new inode).
+// It ALWAYS removes any existing file first to ensure a clean replacement.
+// This handles:
+// - "text file busy" errors (running binary)
+// - Stale binaries from previous builds
+// - Symlinks that need to be replaced with regular files
 func copyBinary(src, dst string) error {
 	data, err := os.ReadFile(src)
 	if err != nil {
 		return err
 	}
 
-	// Try to write directly first
-	err = os.WriteFile(dst, data, 0755)
-	if err == nil {
-		return nil
-	}
-
-	// If we get "text file busy" error, remove the file first and retry
-	// This works because Linux allows deleting a file that's in use;
-	// the running process keeps its handle, and we create a new file
-	if os.IsExist(err) || isTextFileBusy(err) {
+	// Always remove existing file/symlink first to ensure clean replacement
+	// This is critical: without this, a stale binary from a different version
+	// could persist and cause upgrade handler mismatches (BINARY UPDATED BEFORE TRIGGER)
+	if _, statErr := os.Lstat(dst); statErr == nil {
 		if removeErr := os.Remove(dst); removeErr != nil {
-			return fmt.Errorf("failed to remove existing binary: %w (original error: %v)", removeErr, err)
+			return fmt.Errorf("failed to remove existing binary at %s: %w", dst, removeErr)
 		}
-		return os.WriteFile(dst, data, 0755)
 	}
 
-	return err
+	// Write new binary
+	if err := os.WriteFile(dst, data, 0755); err != nil {
+		return fmt.Errorf("failed to write binary to %s: %w", dst, err)
+	}
+
+	return nil
 }
 
 // isTextFileBusy checks if the error is a "text file busy" error.
