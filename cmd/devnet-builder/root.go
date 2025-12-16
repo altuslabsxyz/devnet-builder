@@ -169,6 +169,8 @@ Examples:
 	exportKeysCmd.GroupID = GroupAdvanced
 	upgradeCmd := NewUpgradeCmd()
 	upgradeCmd.GroupID = GroupAdvanced
+	replaceCmd := NewReplaceCmd()
+	replaceCmd.GroupID = GroupAdvanced
 	versionsCmd := NewVersionsCmd()
 	versionsCmd.GroupID = GroupAdvanced
 	cacheCmd := NewCacheCmd()
@@ -212,6 +214,7 @@ Examples:
 		resetCmd,
 		exportKeysCmd,
 		upgradeCmd,
+		replaceCmd,
 		versionsCmd,
 		cacheCmd,
 		configCmd,
