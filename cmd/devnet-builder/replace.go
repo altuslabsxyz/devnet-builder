@@ -85,15 +85,10 @@ func runReplace(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
-	// Check if devnet exists
-	if !devnet.DevnetExists(homeDir) {
-		return outputReplaceError(fmt.Errorf("no devnet found at %s", homeDir))
-	}
-
-	// Load devnet metadata
-	metadata, err := devnet.LoadDevnetMetadata(homeDir)
+	// Load devnet metadata using consolidated helper
+	metadata, err := loadMetadataOrFail(logger)
 	if err != nil {
-		return outputReplaceError(fmt.Errorf("failed to load devnet metadata: %w", err))
+		return outputReplaceError(err)
 	}
 
 	// Interactive mode: if no version specified, show interactive selector

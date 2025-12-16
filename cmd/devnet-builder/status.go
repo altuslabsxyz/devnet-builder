@@ -61,22 +61,15 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
-	// Check if devnet exists
-	if !devnet.DevnetExists(homeDir) {
-		if jsonMode {
-			return outputStatusError(fmt.Errorf("no devnet found"))
-		}
-		return fmt.Errorf("no devnet found at %s", homeDir)
-	}
-
-	// Load devnet
-	d, err := devnet.LoadDevnetWithNodes(homeDir, logger)
+	// Load devnet using consolidated helper
+	loaded, err := loadDevnetOrFail(logger)
 	if err != nil {
 		if jsonMode {
 			return outputStatusError(err)
 		}
-		return fmt.Errorf("failed to load devnet: %w", err)
+		return err
 	}
+	d := loaded.Devnet
 
 	// Backward compatibility: if version not in metadata, try to read from genesis
 	if d.Metadata.InitialVersion == "" {

@@ -68,16 +68,12 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
-	// Check if devnet exists
-	if !devnet.DevnetExists(homeDir) {
-		return fmt.Errorf("no devnet found at %s", homeDir)
-	}
-
-	// Load devnet
-	d, err := devnet.LoadDevnetWithNodes(homeDir, logger)
+	// Load devnet using consolidated helper
+	loaded, err := loadDevnetOrFail(logger)
 	if err != nil {
-		return fmt.Errorf("failed to load devnet: %w", err)
+		return err
 	}
+	d := loaded.Devnet
 
 	// Determine which nodes to show logs for
 	var targetNodes []*node.Node

@@ -1,10 +1,11 @@
 package node
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
+
+	"github.com/stablelabs/stable-devnet/internal/helpers"
 )
 
 // NodeStatus represents the current state of a node.
@@ -127,42 +128,35 @@ func (n *Node) GRPCURL() string {
 }
 
 // Save persists the node configuration to disk.
+// Uses helpers.SaveJSON for consistent file I/O with automatic directory creation.
 func (n *Node) Save() error {
-	// Ensure directory exists
-	if err := os.MkdirAll(n.HomeDir, 0755); err != nil {
-		return fmt.Errorf("failed to create node directory: %w", err)
+	if err := helpers.SaveJSON(n.NodeJSONPath(), n, 0644); err != nil {
+		return fmt.Errorf("failed to save node config: %w", err)
 	}
-
-	data, err := json.MarshalIndent(n, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal node config: %w", err)
-	}
-
-	if err := os.WriteFile(n.NodeJSONPath(), data, 0644); err != nil {
-		return fmt.Errorf("failed to write node config: %w", err)
-	}
-
 	return nil
 }
 
 // LoadNode loads a node configuration from disk.
+// Uses helpers.LoadJSON for consistent file I/O with structured error handling.
 func LoadNode(homeDir string) (*Node, error) {
 	nodePath := filepath.Join(homeDir, "node.json")
 
-	data, err := os.ReadFile(nodePath)
+	node, err := helpers.LoadJSON[Node](nodePath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("node not found at %s", homeDir)
+		// Preserve backward-compatible error messages
+		var jsonErr *helpers.JSONLoadError
+		if errors.As(err, &jsonErr) {
+			if jsonErr.Reason == "file not found" {
+				return nil, fmt.Errorf("node not found at %s", homeDir)
+			}
+			if jsonErr.Reason == "failed to parse JSON in" {
+				return nil, fmt.Errorf("failed to parse node config: %w", jsonErr.Wrapped)
+			}
 		}
 		return nil, fmt.Errorf("failed to read node config: %w", err)
 	}
 
-	var node Node
-	if err := json.Unmarshal(data, &node); err != nil {
-		return nil, fmt.Errorf("failed to parse node config: %w", err)
-	}
-
-	return &node, nil
+	return node, nil
 }
 
 // SetRunning marks the node as running with the given process/container info.
