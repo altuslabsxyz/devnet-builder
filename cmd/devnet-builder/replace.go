@@ -316,8 +316,13 @@ func outputReplaceError(err error) error {
 
 // runReplaceInteractiveSelection runs the interactive version selection for replace command.
 func runReplaceInteractiveSelection(ctx context.Context, currentVersion string) (string, error) {
-	// Initialize GitHub client
-	client := github.NewClient()
+	// Initialize GitHub client with token from config
+	clientOpts := []github.ClientOption{}
+	fileCfg := GetLoadedFileConfig()
+	if fileCfg != nil && fileCfg.GitHubToken != nil && *fileCfg.GitHubToken != "" {
+		clientOpts = append(clientOpts, github.WithToken(*fileCfg.GitHubToken))
+	}
+	client := github.NewClient(clientOpts...)
 
 	// Fetch available versions
 	releases, fromCache, err := client.FetchReleasesWithCache(ctx)
