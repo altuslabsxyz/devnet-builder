@@ -5,6 +5,9 @@
 # - Push to any branch
 # - Pull requests to any branch
 # - Manual workflow dispatch
+#
+# Note: This project depends on private stablelabs repositories.
+# Jobs requiring private access will be skipped if GH_PAT secret is not configured.
 
 name: CI
 
@@ -34,11 +37,30 @@ env:
   GOSUMDB: off
 
 jobs:
+  # Check if private repo access is available
+  check-access:
+    name: Check Private Access
+    runs-on: ubuntu-latest
+    outputs:
+      has_private_access: ${{ steps.check.outputs.has_access }}
+    steps:
+      - name: Check GH_PAT secret
+        id: check
+        run: |
+          if [ -n "${{ secrets.GH_PAT }}" ]; then
+            echo "has_access=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_access=false" >> $GITHUB_OUTPUT
+            echo "::warning::GH_PAT secret not configured. Jobs requiring private repo access will be skipped."
+          fi
+
   # Run all tests with race detection
   test:
     name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: check-access
+    if: needs.check-access.outputs.has_private_access == 'true'
 
     steps:
       - name: Checkout code
@@ -66,6 +88,8 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: check-access
+    if: needs.check-access.outputs.has_private_access == 'true'
 
     steps:
       - name: Checkout code
@@ -88,11 +112,32 @@ jobs:
         env:
           GOWORK: off
 
-  # Build verification (ensure code compiles)
-  build:
-    name: Build
+  # Build verification without private access (basic build test)
+  build-public:
+    name: Build (Public)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+
+      - name: Build without private tag
+        run: GOWORK=off go build -o /dev/null ./...
+
+  # Build verification with private access (full build with private tag)
+  build:
+    name: Build (Private)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: check-access
+    if: needs.check-access.outputs.has_private_access == 'true'
 
     steps:
       - name: Checkout code
@@ -111,5 +156,33 @@ jobs:
       - name: Download dependencies
         run: GOWORK=off go mod download
 
-      - name: Build devnet-builder
-        run: GOWORK=off make build
+      - name: Build devnet-builder with private tag
+        run: GOWORK=off go build -tags=private -o build/devnet-builder ./cmd/devnet-builder
+
+  # Summary job for required status checks
+  ci-complete:
+    name: CI Complete
+    runs-on: ubuntu-latest
+    needs: [check-access, build-public, test, lint, build]
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          # Public build must always pass
+          if [ "${{ needs.build-public.result }}" == "failure" ]; then
+            echo "CI failed: public build failed"
+            exit 1
+          fi
+
+          # If no private access, we only require public build to pass
+          if [ "${{ needs.check-access.outputs.has_private_access }}" == "false" ]; then
+            echo "CI passed (public build only - GH_PAT not configured)"
+            exit 0
+          fi
+
+          # With private access, all jobs must pass
+          if [ "${{ needs.test.result }}" == "failure" ] || [ "${{ needs.lint.result }}" == "failure" ] || [ "${{ needs.build.result }}" == "failure" ]; then
+            echo "CI failed"
+            exit 1
+          fi
+          echo "CI passed (full build with private access)"
