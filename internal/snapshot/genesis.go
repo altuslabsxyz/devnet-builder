@@ -132,8 +132,8 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 		logger = output.DefaultLogger
 	}
 
-	if opts.GenesisPath == "" {
-		return nil, fmt.Errorf("GenesisPath is required for snapshot export")
+	if len(opts.GenesisData) == 0 && opts.GenesisPath == "" {
+		return nil, fmt.Errorf("either GenesisData or GenesisPath is required for snapshot export")
 	}
 
 	// Create temporary directory for extraction
@@ -160,12 +160,19 @@ func ExportGenesisFromSnapshot(ctx context.Context, opts ExportOptions) (*Genesi
 		return nil, fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	// Copy source genesis to config directory
+	// Write genesis to config directory (prefer embedded data over file path)
 	configGenesis := filepath.Join(configDir, "genesis.json")
-	if err := copyFile(opts.GenesisPath, configGenesis); err != nil {
-		return nil, fmt.Errorf("failed to copy genesis to config: %w", err)
+	if len(opts.GenesisData) > 0 {
+		if err := os.WriteFile(configGenesis, opts.GenesisData, 0644); err != nil {
+			return nil, fmt.Errorf("failed to write genesis to config: %w", err)
+		}
+		logger.Debug("Wrote embedded genesis to %s", configGenesis)
+	} else {
+		if err := copyFile(opts.GenesisPath, configGenesis); err != nil {
+			return nil, fmt.Errorf("failed to copy genesis to config: %w", err)
+		}
+		logger.Debug("Copied genesis from %s to %s", opts.GenesisPath, configGenesis)
 	}
-	logger.Debug("Copied genesis from %s to %s", opts.GenesisPath, configGenesis)
 
 	// Create minimal client.toml for stabled export to work
 	clientToml := filepath.Join(configDir, "client.toml")
@@ -297,8 +304,14 @@ broadcast-mode = "sync"
 	// Fallback: use genesis directly
 	if !exportSuccess {
 		logger.Warn("Export failed, using genesis directly")
-		if err := copyFile(opts.GenesisPath, opts.DestPath); err != nil {
-			return nil, fmt.Errorf("failed to copy genesis: %w", err)
+		if len(opts.GenesisData) > 0 {
+			if err := os.WriteFile(opts.DestPath, opts.GenesisData, 0644); err != nil {
+				return nil, fmt.Errorf("failed to write genesis: %w", err)
+			}
+		} else {
+			if err := copyFile(opts.GenesisPath, opts.DestPath); err != nil {
+				return nil, fmt.Errorf("failed to copy genesis: %w", err)
+			}
 		}
 	} else {
 		// Copy exported genesis to destination
@@ -309,8 +322,8 @@ broadcast-mode = "sync"
 
 	// Extract metadata
 	var genesis struct {
-		ChainID       string `json:"chain_id"`
-		InitialHeight string `json:"initial_height"`
+		ChainID       string      `json:"chain_id"`
+		InitialHeight json.Number `json:"initial_height"` // json.Number handles both string and number
 	}
 	genesisData, err := os.ReadFile(opts.DestPath)
 	if err != nil {
@@ -368,7 +381,8 @@ type ExportOptions struct {
 	Decompressor string
 	StableBinary string
 	DockerImage  string // Docker image for stabled (e.g., ghcr.io/stablelabs/stable:latest)
-	GenesisPath  string // Path to source genesis.json (required for stabled export)
+	GenesisPath  string // Path to source genesis.json (deprecated, use GenesisData)
+	GenesisData  []byte // Embedded genesis data (preferred over GenesisPath)
 	UseDocker    bool   // If true, try Docker first; if false, use local binary only
 	Logger       *output.Logger
 }
