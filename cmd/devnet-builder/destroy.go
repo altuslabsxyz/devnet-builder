@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/stablelabs/stable-devnet/internal/devnet"
@@ -75,6 +77,16 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 		if !confirmed {
 			fmt.Println("Destroy cancelled.")
 			return nil
+		}
+	}
+
+	// Stop running processes first
+	if devnetExists {
+		if !jsonMode {
+			output.Info("Stopping running processes...")
+		}
+		if err := stopRunningProcesses(homeDir, logger); err != nil {
+			logger.Warn("Failed to stop some processes: %v", err)
 		}
 	}
 
@@ -154,4 +166,68 @@ func destroyWithDocker(dir string) error {
 	}
 
 	return os.RemoveAll(dir)
+}
+
+// stopRunningProcesses stops all running devnet processes before cleanup.
+func stopRunningProcesses(homeDir string, logger *output.Logger) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Try to load devnet and stop gracefully
+	d, err := devnet.LoadDevnetWithNodes(homeDir, logger)
+	if err != nil {
+		// If we can't load, try direct process termination
+		logger.Debug("Could not load devnet config, trying direct process stop: %v", err)
+		return stopLocalProcessesDirect(homeDir, logger)
+	}
+
+	// Stop via devnet (handles both docker and local modes)
+	if err := d.Stop(ctx, 30*time.Second); err != nil {
+		logger.Warn("Graceful stop failed, trying direct process stop: %v", err)
+		return stopLocalProcessesDirect(homeDir, logger)
+	}
+
+	return nil
+}
+
+// stopLocalProcessesDirect stops local processes by reading PID files directly.
+func stopLocalProcessesDirect(homeDir string, logger *output.Logger) error {
+	devnetDir := filepath.Join(homeDir, "devnet")
+
+	// Find all PID files
+	pidFiles, err := filepath.Glob(filepath.Join(devnetDir, "node*", "*.pid"))
+	if err != nil {
+		return err
+	}
+
+	for _, pidFile := range pidFiles {
+		data, err := os.ReadFile(pidFile)
+		if err != nil {
+			continue
+		}
+
+		var pid int
+		if _, err := fmt.Sscanf(string(data), "%d", &pid); err != nil {
+			continue
+		}
+
+		process, err := os.FindProcess(pid)
+		if err != nil {
+			continue
+		}
+
+		logger.Debug("Stopping process %d from PID file %s", pid, pidFile)
+
+		// Send SIGTERM first
+		if err := process.Signal(os.Interrupt); err != nil {
+			// Process might already be dead
+			continue
+		}
+
+		// Wait briefly then force kill if needed
+		time.Sleep(2 * time.Second)
+		process.Signal(os.Kill)
+	}
+
+	return nil
 }

@@ -140,7 +140,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Track if versions are custom refs
 	var exportIsCustomRef bool
-	var startIsCustomRef bool
 	var exportVersion string
 	var startVersion string
 	var dockerImage string
@@ -176,7 +175,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			exportVersion = selection.ExportVersion
 			exportIsCustomRef = selection.ExportIsCustomRef
 			startVersion = selection.StartVersion
-			startIsCustomRef = selection.StartIsCustomRef
 			deployStableVersion = exportVersion
 		} else {
 			exportVersion = deployStableVersion
@@ -200,9 +198,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("devnet already exists at %s\nUse 'devnet-builder destroy' to remove it first", homeDir)
 	}
 
-	// Build from source if start version is a custom ref
+	// Build binary for local mode (all versions need to be built/cached)
 	var customBinaryPath string
-	if startIsCustomRef {
+	if deployMode == "local" {
 		b := builder.NewBuilder(homeDir, logger)
 		logger.Info("Building binary from source (ref: %s)...", startVersion)
 		result, err := b.Build(ctx, builder.BuildOptions{
@@ -242,13 +240,15 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Phase 2: Run (start nodes)
+	// For local mode, we always build/cache binary, so always use custom path
+	useCustomBinary := deployMode == "local" && customBinaryPath != ""
 	runOpts := devnet.RunOptions{
 		HomeDir:          homeDir,
 		Mode:             devnet.ExecutionMode(deployMode),
 		StableVersion:    exportVersion,
 		HealthTimeout:    devnet.HealthCheckTimeout,
 		Logger:           logger,
-		IsCustomRef:      startIsCustomRef,
+		IsCustomRef:      useCustomBinary,
 		CustomBinaryPath: customBinaryPath,
 	}
 

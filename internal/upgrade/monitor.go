@@ -167,54 +167,80 @@ func VerifyChainResumed(ctx context.Context, logger *output.Logger) (int64, erro
 }
 
 // WaitForChainHalt waits for the chain to halt at upgrade height.
+// Cosmos SDK upgrade module halts the chain AT the upgrade height (BeginBlocker),
+// so we must wait until the chain reaches that exact height and then stops.
 func WaitForChainHalt(ctx context.Context, targetHeight int64, logger *output.Logger) error {
 	if logger == nil {
 		logger = output.DefaultLogger
 	}
 
-	timeout := time.NewTimer(2 * time.Minute)
+	timeout := time.NewTimer(UpgradeTimeout)
 	defer timeout.Stop()
 
-	ticker := time.NewTicker(ChainHaltDetectionInterval)
+	ticker := time.NewTicker(BlockPollInterval)
 	defer ticker.Stop()
 
 	rpc := NewRPCClient("localhost", DefaultRPCPort)
 	unchangedCount := 0
 	lastHeight := int64(0)
+	reachedTarget := false
+
+	logger.Debug("Waiting for chain to reach upgrade height %d and halt...", targetHeight)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-timeout.C:
-			return WrapError(StageWaiting, "timeout waiting for chain halt", ErrUpgradeTimeout,
-				"Chain may not have the upgrade handler registered")
+			if reachedTarget {
+				return WrapError(StageWaiting, "timeout waiting for chain halt after reaching upgrade height", ErrUpgradeTimeout,
+					"Chain reached upgrade height but did not halt. Check upgrade handler.")
+			}
+			return WrapError(StageWaiting, "timeout waiting for upgrade height", ErrUpgradeTimeout,
+				fmt.Sprintf("Chain did not reach upgrade height %d in time", targetHeight))
 		case <-ticker.C:
 			height, err := rpc.GetCurrentHeight(ctx)
 			if err != nil {
-				// RPC not responding - likely halted
-				logger.Debug("RPC error, chain may have halted")
-				unchangedCount++
-				if unchangedCount >= ChainHaltThreshold {
-					return nil
+				// RPC not responding - chain may have halted
+				// Only consider this a valid halt if we already reached target height
+				if reachedTarget {
+					unchangedCount++
+					logger.Debug("RPC error after reaching target height (halt count: %d/%d)", unchangedCount, ChainHaltThreshold)
+					if unchangedCount >= ChainHaltThreshold {
+						logger.Debug("Chain halted at upgrade height %d", targetHeight)
+						return nil
+					}
+				} else {
+					logger.Debug("RPC error before reaching target height, retrying...")
 				}
 				continue
 			}
 
-			if height == lastHeight {
-				unchangedCount++
-				if unchangedCount >= ChainHaltThreshold {
-					logger.Debug("Chain halted at height %d", height)
-					return nil
+			// Track progress
+			if height > lastHeight {
+				if height < targetHeight {
+					logger.Debug("Current height: %d, waiting for upgrade height: %d", height, targetHeight)
 				}
-			} else {
 				unchangedCount = 0
 				lastHeight = height
+			} else if height == lastHeight {
+				unchangedCount++
 			}
 
-			if height >= targetHeight {
-				// At or past target, give it time to halt
-				logger.Debug("Reached target height %d, waiting for halt...", height)
+			// Check if we've reached the target height
+			if height >= targetHeight && !reachedTarget {
+				reachedTarget = true
+				logger.Debug("Reached upgrade height %d, waiting for chain to halt...", height)
+				// Reset counter - we need to see the halt happen NOW
+				unchangedCount = 0
+			}
+
+			// Only consider chain halted if:
+			// 1. We've reached the target height
+			// 2. Height hasn't changed for ChainHaltThreshold checks
+			if reachedTarget && unchangedCount >= ChainHaltThreshold {
+				logger.Debug("Chain halted at height %d (target was %d)", lastHeight, targetHeight)
+				return nil
 			}
 		}
 	}
