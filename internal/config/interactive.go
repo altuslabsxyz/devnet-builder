@@ -306,3 +306,126 @@ func handlePromptError(err error) error {
 	}
 	return err
 }
+
+// MissingFieldsError represents an error when required config fields are missing.
+type MissingFieldsError struct {
+	Fields []string
+}
+
+func (e *MissingFieldsError) Error() string {
+	return fmt.Sprintf("missing required configuration: %v", e.Fields)
+}
+
+// RunPartial executes partial interactive configuration flow.
+// Only prompts for fields that are nil in the provided config.
+// Fields that already have values are preserved.
+func (s *InteractiveSetup) RunPartial(cfg *FileConfig) (*FileConfig, error) {
+	if cfg == nil {
+		cfg = &FileConfig{}
+	}
+
+	// Check if any prompts are needed
+	needsPrompt := cfg.BlockchainNetwork == nil || cfg.Network == nil ||
+		cfg.Validators == nil || cfg.Mode == nil
+
+	if needsPrompt && IsInteractive() {
+		fmt.Println()
+		fmt.Println("Some configuration values are missing. Please provide them:")
+		fmt.Println("Press Ctrl+C at any time to cancel.")
+		fmt.Println()
+	}
+
+	// Prompt for blockchain network if not set
+	if cfg.BlockchainNetwork == nil {
+		if !IsInteractive() {
+			return nil, &MissingFieldsError{Fields: s.getMissingFields(cfg)}
+		}
+		blockchain, err := s.promptBlockchainNetwork(cfg)
+		if err != nil {
+			return nil, err
+		}
+		cfg.BlockchainNetwork = &blockchain
+	}
+
+	// Prompt for network source if not set
+	if cfg.Network == nil {
+		if !IsInteractive() {
+			return nil, &MissingFieldsError{Fields: s.getMissingFields(cfg)}
+		}
+		networkSource, err := s.promptNetworkSource(cfg)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Network = &networkSource
+	}
+
+	// Prompt for validators if not set
+	if cfg.Validators == nil {
+		if !IsInteractive() {
+			return nil, &MissingFieldsError{Fields: s.getMissingFields(cfg)}
+		}
+		validators, err := s.promptValidators(cfg)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Validators = &validators
+	}
+
+	// Prompt for mode if not set
+	if cfg.Mode == nil {
+		if !IsInteractive() {
+			return nil, &MissingFieldsError{Fields: s.getMissingFields(cfg)}
+		}
+		mode, err := s.promptMode(cfg)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Mode = &mode
+	}
+
+	// NetworkVersion is optional - use default if not set
+	if cfg.NetworkVersion == nil {
+		defaultVersion := "latest"
+		cfg.NetworkVersion = &defaultVersion
+	}
+
+	return cfg, nil
+}
+
+// getMissingFields returns a list of field names that are nil in the config.
+func (s *InteractiveSetup) getMissingFields(cfg *FileConfig) []string {
+	var missing []string
+	if cfg.BlockchainNetwork == nil {
+		missing = append(missing, "blockchain_network")
+	}
+	if cfg.Network == nil {
+		missing = append(missing, "network")
+	}
+	if cfg.Validators == nil {
+		missing = append(missing, "validators")
+	}
+	if cfg.Mode == nil {
+		missing = append(missing, "mode")
+	}
+	return missing
+}
+
+// CheckRequiredFields validates that all required fields are set in the config.
+// Returns MissingFieldsError if any required fields are nil.
+// This is useful for non-interactive validation before proceeding.
+func (s *InteractiveSetup) CheckRequiredFields(cfg *FileConfig) error {
+	if cfg == nil {
+		return &MissingFieldsError{Fields: []string{"blockchain_network", "network", "validators", "mode"}}
+	}
+
+	missing := s.getMissingFields(cfg)
+	if len(missing) > 0 {
+		return &MissingFieldsError{Fields: missing}
+	}
+	return nil
+}
+
+// HasAllRequiredFields returns true if all required fields are set.
+func (s *InteractiveSetup) HasAllRequiredFields(cfg *FileConfig) bool {
+	return s.CheckRequiredFields(cfg) == nil
+}
