@@ -10,8 +10,8 @@ import (
 	"cosmossdk.io/log"
 
 	"github.com/stablelabs/stable-devnet/internal/cache"
-	"github.com/stablelabs/stable-devnet/internal/generator"
 	"github.com/stablelabs/stable-devnet/internal/helpers"
+	"github.com/stablelabs/stable-devnet/internal/network"
 	"github.com/stablelabs/stable-devnet/internal/node"
 	"github.com/stablelabs/stable-devnet/internal/nodeconfig"
 	"github.com/stablelabs/stable-devnet/internal/output"
@@ -220,8 +220,16 @@ func Provision(ctx context.Context, opts ProvisionOptions) (*ProvisionResult, er
 	// Step 3: Generate validators and modify genesis
 	progress.Stage("Generating validators")
 
-	// Configure generator
-	genConfig := generator.DefaultConfig()
+	// Get network module for generator
+	netModule, err := network.Get(metadata.BlockchainNetwork)
+	if err != nil {
+		metadata.SetProvisionFailed(err)
+		metadata.Save()
+		return nil, fmt.Errorf("failed to get network module: %w", err)
+	}
+
+	// Configure generator using network module defaults
+	genConfig := netModule.DefaultGeneratorConfig()
 	genConfig.NumValidators = opts.NumValidators
 	genConfig.NumAccounts = opts.NumAccounts
 	genConfig.OutputDir = devnetDir
@@ -229,7 +237,12 @@ func Provision(ctx context.Context, opts ProvisionOptions) (*ProvisionResult, er
 
 	// Create generator with a proper logger
 	genLogger := log.NewNopLogger() // Use NopLogger to avoid duplicate output
-	gen := generator.NewDevnetGenerator(genConfig, genLogger)
+	gen, err := netModule.NewGenerator(genConfig, genLogger)
+	if err != nil {
+		metadata.SetProvisionFailed(err)
+		metadata.Save()
+		return nil, fmt.Errorf("failed to create generator: %w", err)
+	}
 
 	// Build devnet from exported genesis - this creates validators, modifies genesis, and saves to node dirs
 	if err := gen.Build(provisionResult.GenesisPath); err != nil {
@@ -601,8 +614,14 @@ func Start(ctx context.Context, opts StartOptions) (*Devnet, error) {
 	// Step 3: Generate validators and modify genesis
 	progress.Stage("Generating validators")
 
-	// Configure generator
-	genConfig := generator.DefaultConfig()
+	// Get network module for generator (use default for backward compatibility)
+	netModule, err := network.Default()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network module: %w", err)
+	}
+
+	// Configure generator using network module defaults
+	genConfig := netModule.DefaultGeneratorConfig()
 	genConfig.NumValidators = opts.NumValidators
 	genConfig.NumAccounts = opts.NumAccounts
 	genConfig.OutputDir = devnetDir
@@ -610,7 +629,10 @@ func Start(ctx context.Context, opts StartOptions) (*Devnet, error) {
 
 	// Create generator with a proper logger
 	genLogger := log.NewNopLogger() // Use NopLogger to avoid duplicate output
-	gen := generator.NewDevnetGenerator(genConfig, genLogger)
+	gen, err := netModule.NewGenerator(genConfig, genLogger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create generator: %w", err)
+	}
 
 	// Build devnet from exported genesis - this creates validators, modifies genesis, and saves to node dirs
 	if err := gen.Build(provisionResult.GenesisPath); err != nil {
