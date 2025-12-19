@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"github.com/stablelabs/stable-devnet/internal/config"
 	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
@@ -13,10 +14,8 @@ import (
 const sampleConfigTemplate = `# devnet-builder configuration file
 # Priority: default < config.toml < environment < CLI flag
 #
-# Place this file at:
-#   - ./config.toml (current directory - highest priority)
-#   - ~/.stable-devnet/config.toml (home directory - fallback)
-# Or specify with: --config /path/to/config.toml
+# This file is located at: ~/.stable-devnet/config.toml
+# Use --config /path/to/config.toml to specify an alternative location
 
 # =============================================================================
 # Global Settings (apply to all commands)
@@ -62,42 +61,65 @@ const sampleConfigTemplate = `# devnet-builder configuration file
 `
 
 var (
-	configInitOutput string
-	configInitForce  bool
+	configInitOutput   string
+	configInitForce    bool
+	configInitTemplate bool
 )
 
 // NewConfigInitCmd creates the config init subcommand.
 func NewConfigInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Generate a sample config.toml file",
-		Long: `Generate a sample config.toml file with all available options.
+		Short: "Initialize or reconfigure config.toml interactively",
+		Long: `Initialize or reconfigure the config.toml file interactively.
 
-The config file will be created in the current directory by default.
-Use --output to specify a different location.
+By default, this runs an interactive setup where you can select your preferred
+settings. If a config already exists, current values are shown as defaults.
+
+Use --template to generate a sample config file with all available options
+instead of running the interactive setup.
 
 Examples:
-  # Generate config.toml in current directory
+  # Interactive configuration (creates/updates ~/.stable-devnet/config.toml)
   devnet-builder config init
 
-  # Generate in home directory
-  devnet-builder config init --output ~/.stable-devnet/config.toml
+  # Generate a template config file
+  devnet-builder config init --template
 
-  # Overwrite existing file
+  # Generate template at custom location
+  devnet-builder config init --template --output /path/to/config.toml
+
+  # Overwrite existing config without prompting (uses defaults)
   devnet-builder config init --force`,
 		RunE: runConfigInit,
 	}
 
-	cmd.Flags().StringVarP(&configInitOutput, "output", "o", "./config.toml",
-		"Output path for config file")
+	cmd.Flags().StringVarP(&configInitOutput, "output", "o", "",
+		"Output path for config file (default: ~/.stable-devnet/config.toml)")
 	cmd.Flags().BoolVarP(&configInitForce, "force", "f", false,
-		"Overwrite existing file")
+		"Overwrite existing config with defaults without prompting")
+	cmd.Flags().BoolVarP(&configInitTemplate, "template", "t", false,
+		"Generate a template config file instead of interactive setup")
 
 	return cmd
 }
 
 func runConfigInit(cmd *cobra.Command, args []string) error {
+	// If --template is specified, generate a sample config file
+	if configInitTemplate {
+		return runConfigInitTemplate()
+	}
+
+	// Otherwise, run interactive configuration
+	return runConfigInitInteractive()
+}
+
+// runConfigInitTemplate generates a sample config.toml file
+func runConfigInitTemplate() error {
 	outputPath := configInitOutput
+	if outputPath == "" {
+		outputPath = filepath.Join(homeDir, "config.toml")
+	}
 
 	// Expand ~ to home directory
 	if len(outputPath) > 0 && outputPath[0] == '~' {
@@ -124,7 +146,48 @@ func runConfigInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
-	output.Success("Created config file: %s", outputPath)
+	output.Success("Created config template: %s", outputPath)
 	output.Info("Edit the file to customize your settings.")
+	return nil
+}
+
+// runConfigInitInteractive runs interactive configuration setup
+func runConfigInitInteractive() error {
+	logger := output.DefaultLogger
+
+	// Check if terminal is interactive
+	if !config.IsInteractive() {
+		if configInitForce {
+			// Non-interactive with --force: use defaults
+			setup := config.NewInteractiveSetup(homeDir)
+			cfg := setup.RunWithDefaults()
+			if err := setup.WriteConfig(cfg); err != nil {
+				return fmt.Errorf("failed to save configuration: %w", err)
+			}
+			logger.Success("Configuration saved to %s", filepath.Join(homeDir, "config.toml"))
+			return nil
+		}
+		return fmt.Errorf("interactive mode requires a terminal\nUse --template to generate a sample config file, or --force to use defaults")
+	}
+
+	setup := config.NewInteractiveSetup(homeDir)
+
+	// Check if config exists and warn user
+	if setup.ConfigExists() && !configInitForce {
+		logger.Info("Existing configuration found. Current values will be shown as defaults.")
+	}
+
+	// Run interactive setup
+	cfg, err := setup.Run()
+	if err != nil {
+		return err
+	}
+
+	// Write config
+	if err := setup.WriteConfig(cfg); err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
+	}
+
+	logger.Success("Configuration saved to %s", filepath.Join(homeDir, "config.toml"))
 	return nil
 }
