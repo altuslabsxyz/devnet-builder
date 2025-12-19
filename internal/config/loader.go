@@ -27,8 +27,10 @@ func NewConfigLoader(homeDir, configPath string, logger *output.Logger) *ConfigL
 
 // findConfigFile searches for config.toml in the following order:
 // 1. Explicit path (--config flag)
-// 2. Current directory (./config.toml)
-// 3. Home directory (~/.stable-devnet/config.toml)
+// 2. Home directory (~/.stable-devnet/config.toml)
+//
+// Note: Current directory (./config.toml) is intentionally NOT checked.
+// Use --config flag to specify a custom config file location.
 // Returns empty string if no config file found (not an error).
 func (l *ConfigLoader) findConfigFile() (string, error) {
 	// 1. Explicit path
@@ -39,12 +41,7 @@ func (l *ConfigLoader) findConfigFile() (string, error) {
 		return l.configPath, nil
 	}
 
-	// 2. Current directory
-	if _, err := os.Stat("./config.toml"); err == nil {
-		return "./config.toml", nil
-	}
-
-	// 3. Home directory
+	// 2. Home directory only
 	homePath := filepath.Join(l.homeDir, "config.toml")
 	if _, err := os.Stat(homePath); err == nil {
 		return homePath, nil
@@ -53,26 +50,20 @@ func (l *ConfigLoader) findConfigFile() (string, error) {
 	return "", nil // No config file found (not an error)
 }
 
-// LoadFileConfig loads and parses config files, merging them in priority order.
-// Priority: explicit path > ./config.toml > ~/.stable-devnet/config.toml
-// All config files are merged, with higher priority values overwriting lower ones.
-// Returns the merged FileConfig and the primary (highest priority) config file path.
+// LoadFileConfig loads and parses config files from homeDir or explicit path.
+// Priority: explicit path (--config) > ~/.stable-devnet/config.toml
+//
+// Note: Current directory (./config.toml) is intentionally NOT checked.
+// Use --config flag to specify a custom config file location.
+// Returns the merged FileConfig and the config file path.
 func (l *ConfigLoader) LoadFileConfig() (*FileConfig, string, error) {
-	// Collect all config files in order of increasing priority
+	// Collect config files in order of increasing priority
 	var configFiles []string
 
-	// 3. Home directory (lowest priority)
+	// 2. Home directory (lower priority)
 	homePath := filepath.Join(l.homeDir, "config.toml")
 	if _, err := os.Stat(homePath); err == nil {
 		configFiles = append(configFiles, homePath)
-	}
-
-	// 2. Current directory
-	if _, err := os.Stat("./config.toml"); err == nil {
-		// Don't add if it's the same as homePath
-		if absPath, _ := filepath.Abs("./config.toml"); absPath != homePath {
-			configFiles = append(configFiles, "./config.toml")
-		}
 	}
 
 	// 1. Explicit path (highest priority)
@@ -110,7 +101,7 @@ func (l *ConfigLoader) LoadFileConfig() (*FileConfig, string, error) {
 
 		var cfg FileConfig
 		if err := toml.Unmarshal(data, &cfg); err != nil {
-			return nil, "", fmt.Errorf("failed to parse config file %s: %w", configFile, err)
+			return nil, "", fmt.Errorf("invalid TOML syntax in %s: %w\nPlease check the file for syntax errors", configFile, err)
 		}
 
 		// Merge: only set values that are not nil in cfg
