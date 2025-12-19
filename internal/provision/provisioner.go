@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/stablelabs/stable-devnet/genesis"
 	"github.com/stablelabs/stable-devnet/internal/output"
 	"github.com/stablelabs/stable-devnet/internal/snapshot"
 )
@@ -24,6 +25,7 @@ const (
 // ProvisionerOptions configures the provisioner.
 type ProvisionerOptions struct {
 	Network     string
+	Blockchain  string // blockchain module (stable, ault)
 	ChainID     string
 	HomeDir     string
 	DockerImage string
@@ -82,10 +84,14 @@ func (p *Provisioner) Provision(ctx context.Context) (*ProvisionResult, error) {
 		return nil, fmt.Errorf("failed to download snapshot: %w", err)
 	}
 
-	// Step 2: Get source genesis path from embedded genesis files
-	sourceGenesisPath := GetGenesisPath(p.opts.Network)
-	if sourceGenesisPath == "" {
-		return nil, fmt.Errorf("no genesis file for network: %s", p.opts.Network)
+	// Step 2: Get embedded genesis data
+	blockchain := p.opts.Blockchain
+	if blockchain == "" {
+		blockchain = "stable" // default blockchain module
+	}
+	genesisData, err := genesis.GetGenesisData(blockchain, p.opts.Network)
+	if err != nil {
+		return nil, fmt.Errorf("no genesis file for blockchain %s, network %s", blockchain, p.opts.Network)
 	}
 
 	// Step 3: Export genesis from snapshot
@@ -97,7 +103,7 @@ func (p *Provisioner) Provision(ctx context.Context) (*ProvisionResult, error) {
 		Network:      p.opts.Network,
 		Decompressor: cache.Decompressor,
 		DockerImage:  p.opts.DockerImage,
-		GenesisPath:  sourceGenesisPath,
+		GenesisData:  genesisData,
 		UseDocker:    p.opts.Mode == ModeDocker,
 		Logger:       p.logger,
 	}
@@ -184,6 +190,7 @@ func GetSnapshotURL(network string) string {
 }
 
 // GetGenesisPath returns the path to the embedded genesis file for the given network.
+// Deprecated: Use genesis.GetGenesisData() instead for embedded genesis support.
 func GetGenesisPath(network string) string {
 	// Get the directory where the binary is located or use relative path
 	// First try relative to working directory
