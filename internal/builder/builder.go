@@ -11,17 +11,21 @@ import (
 	"time"
 
 	"github.com/stablelabs/stable-devnet/internal/cache"
+	"github.com/stablelabs/stable-devnet/internal/network"
 	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 const (
-	// DefaultRepo is the default stable repository.
+	// DefaultRepo is the default stable repository (kept for backward compatibility).
+	// Prefer using NetworkModule.BinarySource() for network-specific repos.
 	DefaultRepo = "https://github.com/stablelabs/stable.git"
 
-	// BinaryName is the name of the built binary.
+	// BinaryName is the default binary name (kept for backward compatibility).
+	// Prefer using NetworkModule.BinaryName() for network-specific binaries.
 	BinaryName = "stabled"
 
-	// EVMChainID constants for different networks
+	// EVMChainID constants for different networks (kept for backward compatibility).
+	// Prefer using NetworkModule.GenesisConfig().EVMChainID for network-specific values.
 	MainnetEVMChainID = "988"
 	TestnetEVMChainID = "2201"
 
@@ -88,21 +92,51 @@ changelog:
 `
 )
 
-// Builder handles building stable binaries from source.
+// Builder handles building binaries from source.
 type Builder struct {
 	homeDir string
 	logger  *output.Logger
+	module  network.NetworkModule
 }
 
-// NewBuilder creates a new Builder.
-func NewBuilder(homeDir string, logger *output.Logger) *Builder {
+// NewBuilder creates a new Builder with optional NetworkModule.
+// If networkModule is nil, defaults to stable network for backward compatibility.
+func NewBuilder(homeDir string, logger *output.Logger, networkModule ...network.NetworkModule) *Builder {
 	if logger == nil {
 		logger = output.DefaultLogger
 	}
-	return &Builder{
+	b := &Builder{
 		homeDir: homeDir,
 		logger:  logger,
 	}
+	// Use provided network module or default to stable
+	if len(networkModule) > 0 && networkModule[0] != nil {
+		b.module = networkModule[0]
+	} else {
+		// Default to stable for backward compatibility
+		mod, _ := network.Get("stable")
+		b.module = mod
+	}
+	return b
+}
+
+// getRepoURL returns the repository URL for the current network module.
+func (b *Builder) getRepoURL() string {
+	if b.module != nil {
+		src := b.module.BinarySource()
+		if src.IsGitHub() {
+			return fmt.Sprintf("https://github.com/%s/%s.git", src.Owner, src.Repo)
+		}
+	}
+	return DefaultRepo
+}
+
+// getBinaryName returns the binary name for the current network module.
+func (b *Builder) getBinaryName() string {
+	if b.module != nil {
+		return b.module.BinaryName()
+	}
+	return BinaryName
 }
 
 // BuildOptions configures the build process.
@@ -162,8 +196,8 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, e
 	}
 
 	// Clone repository
-	b.logger.Info("Cloning stable repository...")
-	repoDir := filepath.Join(buildDir, "stable")
+	b.logger.Info("Cloning %s repository...", b.module.DisplayName())
+	repoDir := filepath.Join(buildDir, b.module.Name())
 	if err := b.cloneRepo(ctx, repoDir, opts.Ref); err != nil {
 		return nil, fmt.Errorf("failed to clone repository: %w", err)
 	}
@@ -241,12 +275,14 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, e
 	}, nil
 }
 
-// cloneRepo clones the stable repository and checks out the given ref.
+// cloneRepo clones the repository and checks out the given ref.
 func (b *Builder) cloneRepo(ctx context.Context, repoDir, ref string) error {
 	// Remove existing directory if exists
 	if err := os.RemoveAll(repoDir); err != nil {
 		return fmt.Errorf("failed to remove existing directory: %w", err)
 	}
+
+	repoURL := b.getRepoURL()
 
 	// Clone with depth 1 for efficiency (if it's a branch/tag)
 	// For commit hashes, we need full history
@@ -254,7 +290,7 @@ func (b *Builder) cloneRepo(ctx context.Context, repoDir, ref string) error {
 	if !isCommitHash(ref) {
 		args = append(args, "--depth", "1", "--branch", ref)
 	}
-	args = append(args, DefaultRepo, repoDir)
+	args = append(args, repoURL, repoDir)
 
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Stdout = b.logger.Writer()
@@ -263,7 +299,7 @@ func (b *Builder) cloneRepo(ctx context.Context, repoDir, ref string) error {
 		// If shallow clone failed (maybe branch doesn't exist), try full clone
 		if !isCommitHash(ref) {
 			b.logger.Debug("Shallow clone failed, trying full clone...")
-			args = []string{"clone", DefaultRepo, repoDir}
+			args = []string{"clone", repoURL, repoDir}
 			cmd = exec.CommandContext(ctx, "git", args...)
 			cmd.Stdout = b.logger.Writer()
 			cmd.Stderr = b.logger.Writer()
@@ -352,6 +388,7 @@ func (b *Builder) readToolchainFromGoMod(repoDir string) string {
 // findBuiltBinary finds the built binary in the goreleaser dist directory.
 func (b *Builder) findBuiltBinary(repoDir string) (string, error) {
 	distDir := filepath.Join(repoDir, "dist")
+	binaryName := b.getBinaryName()
 
 	// Get current OS and arch
 	goos := runtime.GOOS
@@ -359,12 +396,12 @@ func (b *Builder) findBuiltBinary(repoDir string) (string, error) {
 
 	// Try common patterns for goreleaser output
 	patterns := []string{
-		// Format: dist/stabled-devnet_<os>_<arch>/stabled
-		filepath.Join(distDir, fmt.Sprintf("stabled-devnet_%s_%s*", goos, goarch), BinaryName),
-		filepath.Join(distDir, fmt.Sprintf("stabled_%s_%s*", goos, goarch), BinaryName),
-		filepath.Join(distDir, fmt.Sprintf("*_%s_%s*", goos, goarch), BinaryName),
+		// Format: dist/<binary>-devnet_<os>_<arch>/<binary>
+		filepath.Join(distDir, fmt.Sprintf("%s-devnet_%s_%s*", binaryName, goos, goarch), binaryName),
+		filepath.Join(distDir, fmt.Sprintf("%s_%s_%s*", binaryName, goos, goarch), binaryName),
+		filepath.Join(distDir, fmt.Sprintf("*_%s_%s*", goos, goarch), binaryName),
 		// Direct binary output (format: binary)
-		filepath.Join(distDir, BinaryName),
+		filepath.Join(distDir, binaryName),
 	}
 
 	for _, pattern := range patterns {
@@ -383,7 +420,7 @@ func (b *Builder) findBuiltBinary(repoDir string) (string, error) {
 		if err != nil {
 			return nil
 		}
-		if info.Name() == BinaryName && !info.IsDir() {
+		if info.Name() == binaryName && !info.IsDir() {
 			binaryPath = path
 			return filepath.SkipAll
 		}
@@ -448,7 +485,7 @@ func isTextFileBusy(err error) bool {
 
 // IsBinaryBuilt checks if a binary exists for the given ref.
 func (b *Builder) IsBinaryBuilt(ref string) (string, bool) {
-	binaryPath := filepath.Join(b.homeDir, "bin", BinaryName)
+	binaryPath := filepath.Join(b.homeDir, "bin", b.getBinaryName())
 	if _, err := os.Stat(binaryPath); err == nil {
 		return binaryPath, true
 	}
@@ -457,7 +494,7 @@ func (b *Builder) IsBinaryBuilt(ref string) (string, bool) {
 
 // GetBinaryPath returns the path where the binary would be for a given ref.
 func (b *Builder) GetBinaryPath() string {
-	return filepath.Join(b.homeDir, "bin", BinaryName)
+	return filepath.Join(b.homeDir, "bin", b.getBinaryName())
 }
 
 // BuildToCache builds a binary and stores it in the cache.
@@ -485,8 +522,8 @@ func (b *Builder) BuildToCache(ctx context.Context, opts BuildOptions, binaryCac
 	}
 
 	// Clone repository
-	b.logger.Info("Cloning stable repository...")
-	repoDir := filepath.Join(buildDir, "stable")
+	b.logger.Info("Cloning %s repository...", b.module.DisplayName())
+	repoDir := filepath.Join(buildDir, b.module.Name())
 	if err := b.cloneRepo(ctx, repoDir, opts.Ref); err != nil {
 		return nil, fmt.Errorf("failed to clone repository: %w", err)
 	}
@@ -557,7 +594,8 @@ func (b *Builder) ResolveCommitHash(ctx context.Context, ref string) (string, er
 	}
 
 	// Create temp directory for ls-remote
-	cmd := exec.CommandContext(ctx, "git", "ls-remote", DefaultRepo, ref)
+	repoURL := b.getRepoURL()
+	cmd := exec.CommandContext(ctx, "git", "ls-remote", repoURL, ref)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve ref: %w", err)

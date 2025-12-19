@@ -99,6 +99,12 @@ func runLogs(cmd *cobra.Command, args []string) error {
 		targetNodes = d.Nodes
 	}
 
+	// Show network info header
+	if !logsFollow {
+		output.Info("Logs from %s devnet (%s)", d.Metadata.BlockchainNetwork, d.Metadata.ChainID)
+		fmt.Println()
+	}
+
 	// Get logs based on execution mode
 	switch d.Metadata.ExecutionMode {
 	case devnet.ModeDocker:

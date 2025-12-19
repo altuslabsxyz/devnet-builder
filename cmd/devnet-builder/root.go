@@ -177,6 +177,8 @@ Examples:
 	cacheCmd.GroupID = GroupAdvanced
 	configCmd := NewConfigCmd()
 	configCmd.GroupID = GroupAdvanced
+	networksCmd := NewNetworksCmd()
+	networksCmd.GroupID = GroupAdvanced
 
 	// Deprecated commands (old names, hidden from main help)
 	startCmd := NewStartCmd()
@@ -218,6 +220,7 @@ Examples:
 		versionsCmd,
 		cacheCmd,
 		configCmd,
+		networksCmd,
 
 		// Deprecated commands (old names)
 		startCmd,

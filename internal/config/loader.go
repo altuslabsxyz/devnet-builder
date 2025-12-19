@@ -150,6 +150,9 @@ func mergeFileConfig(dst, src *FileConfig) {
 	if src.Network != nil {
 		dst.Network = src.Network
 	}
+	if src.BlockchainNetwork != nil {
+		dst.BlockchainNetwork = src.BlockchainNetwork
+	}
 	if src.Validators != nil {
 		dst.Validators = src.Validators
 	}
@@ -158,6 +161,9 @@ func mergeFileConfig(dst, src *FileConfig) {
 	}
 	if src.StableVersion != nil {
 		dst.StableVersion = src.StableVersion
+	}
+	if src.NetworkVersion != nil {
+		dst.NetworkVersion = src.NetworkVersion
 	}
 	if src.NoCache != nil {
 		dst.NoCache = src.NoCache
@@ -185,18 +191,20 @@ func (l *ConfigLoader) warnUnknownKeys(data []byte) {
 	}
 
 	knownKeys := map[string]bool{
-		"home":           true,
-		"no_color":       true,
-		"verbose":        true,
-		"json":           true,
-		"network":        true,
-		"validators":     true,
-		"mode":           true,
-		"stable_version": true,
-		"no_cache":       true,
-		"accounts":       true,
-		"github_token":   true,
-		"cache_ttl":      true,
+		"home":               true,
+		"no_color":           true,
+		"verbose":            true,
+		"json":               true,
+		"network":            true,
+		"blockchain_network": true,
+		"validators":         true,
+		"mode":               true,
+		"stable_version":     true,
+		"network_version":    true,
+		"no_cache":           true,
+		"accounts":           true,
+		"github_token":       true,
+		"cache_ttl":          true,
 	}
 
 	for key := range raw {

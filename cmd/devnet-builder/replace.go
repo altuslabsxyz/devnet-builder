@@ -136,7 +136,8 @@ func runReplace(cmd *cobra.Command, args []string) error {
 		output.Info("[1/4] Building new binary (ref: %s)...", replaceVersion)
 	}
 
-	b := builder.NewBuilder(homeDir, logger)
+	networkModule, _ := metadata.GetNetworkModule()
+	b := builder.NewBuilder(homeDir, logger, networkModule)
 	buildResult, err := b.Build(ctx, builder.BuildOptions{
 		Ref:     replaceVersion,
 		Network: metadata.NetworkSource,

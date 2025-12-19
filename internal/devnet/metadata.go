@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stablelabs/stable-devnet/internal/helpers"
+	"github.com/stablelabs/stable-devnet/internal/network"
 )
 
 // ExecutionMode defines how nodes are executed.
@@ -38,12 +39,14 @@ type DevnetMetadata struct {
 	Name string `json:"name"` // Human-readable name (default: "devnet")
 
 	// Network Configuration
-	ChainID       string `json:"chain_id"`       // e.g., "stable-devnet-1"
-	NetworkSource string `json:"network_source"` // "mainnet" or "testnet"
+	ChainID           string `json:"chain_id"`                     // e.g., "stable-devnet-1"
+	NetworkSource     string `json:"network_source"`               // "mainnet" or "testnet" (snapshot source)
+	BlockchainNetwork string `json:"blockchain_network,omitempty"` // Network module: "stable", "ault", etc. (default: "stable")
 
 	// Execution
 	ExecutionMode    ExecutionMode `json:"execution_mode"`               // "docker" or "local"
-	StableVersion    string        `json:"stable_version"`               // e.g., "v1.2.3" or "feat/branch"
+	StableVersion    string        `json:"stable_version"`               // e.g., "v1.2.3" or "feat/branch" (deprecated: use NetworkVersion)
+	NetworkVersion   string        `json:"network_version,omitempty"`    // Version for the blockchain network
 	IsCustomRef      bool          `json:"is_custom_ref,omitempty"`      // True if built from custom branch/commit
 	CustomBinaryPath string        `json:"custom_binary_path,omitempty"` // Path to custom-built binary
 	DockerImage      string        `json:"docker_image,omitempty"`       // Docker image used (only for docker mode)
@@ -79,17 +82,18 @@ type DevnetMetadata struct {
 // NewDevnetMetadata creates a new DevnetMetadata with default values.
 func NewDevnetMetadata(homeDir string) *DevnetMetadata {
 	return &DevnetMetadata{
-		ID:            uuid.New().String(),
-		Name:          "devnet",
-		ChainID:       "stable-devnet-1",
-		NetworkSource: "mainnet",
-		ExecutionMode: ModeDocker,
-		StableVersion: "latest",
-		NumValidators: 4,
-		NumAccounts:   0,
-		CreatedAt:     time.Now(),
-		HomeDir:       homeDir,
-		Status:        StatusCreated,
+		ID:                uuid.New().String(),
+		Name:              "devnet",
+		ChainID:           "stable-devnet-1",
+		NetworkSource:     "mainnet",
+		BlockchainNetwork: "stable", // Default for backward compatibility
+		ExecutionMode:     ModeDocker,
+		StableVersion:     "latest",
+		NumValidators:     4,
+		NumAccounts:       0,
+		CreatedAt:         time.Now(),
+		HomeDir:           homeDir,
+		Status:            StatusCreated,
 	}
 }
 
@@ -276,4 +280,23 @@ func (m *DevnetMetadata) SetInitialVersionFromGenesis() error {
 // SetCurrentVersion updates the current running version.
 func (m *DevnetMetadata) SetCurrentVersion(version string) {
 	m.CurrentVersion = version
+}
+
+// GetNetworkModule returns the network module for this devnet.
+// Returns the default (stable) module if BlockchainNetwork is empty.
+func (m *DevnetMetadata) GetNetworkModule() (network.NetworkModule, error) {
+	networkName := m.BlockchainNetwork
+	if networkName == "" {
+		networkName = "stable" // Default for backward compatibility
+	}
+	return network.Get(networkName)
+}
+
+// GetEffectiveVersion returns the effective binary version to use.
+// Prefers NetworkVersion if set, otherwise falls back to StableVersion.
+func (m *DevnetMetadata) GetEffectiveVersion() string {
+	if m.NetworkVersion != "" {
+		return m.NetworkVersion
+	}
+	return m.StableVersion
 }

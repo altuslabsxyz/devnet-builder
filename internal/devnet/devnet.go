@@ -54,15 +54,17 @@ type StartOptions struct {
 
 // ProvisionOptions configures devnet provisioning (without starting nodes).
 type ProvisionOptions struct {
-	HomeDir       string
-	Network       string
-	NumValidators int
-	NumAccounts   int
-	Mode          ExecutionMode
-	StableVersion string
-	DockerImage   string // Docker image to use (only for docker mode)
-	NoCache       bool
-	Logger        *output.Logger
+	HomeDir           string
+	Network           string // Snapshot source: "mainnet" or "testnet"
+	BlockchainNetwork string // Network module: "stable", "ault", etc.
+	NumValidators     int
+	NumAccounts       int
+	Mode              ExecutionMode
+	StableVersion     string
+	NetworkVersion    string // Version for the selected blockchain network
+	DockerImage       string // Docker image to use (only for docker mode)
+	NoCache           bool
+	Logger            *output.Logger
 }
 
 // ProvisionResult contains the result of provisioning.
@@ -154,6 +156,17 @@ func Provision(ctx context.Context, opts ProvisionOptions) (*ProvisionResult, er
 	metadata.NumAccounts = opts.NumAccounts
 	metadata.ExecutionMode = opts.Mode
 	metadata.StableVersion = opts.StableVersion
+
+	// Set blockchain network (network module) - default to "stable" for backward compatibility
+	if opts.BlockchainNetwork != "" {
+		metadata.BlockchainNetwork = opts.BlockchainNetwork
+	} else {
+		metadata.BlockchainNetwork = "stable"
+	}
+	if opts.NetworkVersion != "" {
+		metadata.NetworkVersion = opts.NetworkVersion
+	}
+
 	metadata.SetProvisionStarted()
 
 	if err := metadata.Save(); err != nil {
@@ -792,10 +805,19 @@ func (d *Devnet) createNodeManagerFactory() *node.NodeManagerFactory {
 		mode = node.ModeLocal
 	}
 
-	// Get docker image - use metadata value, fallback to StableVersion
+	// Get docker image - use metadata value, fallback to NetworkModule, then StableVersion
 	dockerImage := d.Metadata.DockerImage
 	if dockerImage == "" {
-		dockerImage = provision.GetDockerImage(d.Metadata.StableVersion)
+		// Try to get from network module
+		if mod, err := d.Metadata.GetNetworkModule(); err == nil && mod != nil {
+			dockerImage = mod.DockerImage()
+			if d.Metadata.StableVersion != "" && d.Metadata.StableVersion != "latest" {
+				dockerImage = mod.DockerImage() + ":" + mod.DockerImageTag(d.Metadata.StableVersion)
+			}
+		} else {
+			// Fallback for backward compatibility
+			dockerImage = provision.GetDockerImage(d.Metadata.StableVersion)
+		}
 	}
 
 	config := node.FactoryConfig{

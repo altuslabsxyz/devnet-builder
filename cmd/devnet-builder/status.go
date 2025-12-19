@@ -15,15 +15,16 @@ import (
 
 // StatusResult represents the JSON output for the status command.
 type StatusResult struct {
-	ChainID        string             `json:"chain_id"`
-	Network        string             `json:"network"`
-	Mode           string             `json:"mode"`
-	DockerImage    string             `json:"docker_image,omitempty"`
-	InitialVersion string             `json:"initial_version,omitempty"`
-	CurrentVersion string             `json:"current_version,omitempty"`
-	CreatedAt      time.Time          `json:"created_at"`
-	Status         string             `json:"status"`
-	Nodes          []NodeStatusResult `json:"nodes"`
+	ChainID           string             `json:"chain_id"`
+	Network           string             `json:"network"`
+	BlockchainNetwork string             `json:"blockchain_network"`
+	Mode              string             `json:"mode"`
+	DockerImage       string             `json:"docker_image,omitempty"`
+	InitialVersion    string             `json:"initial_version,omitempty"`
+	CurrentVersion    string             `json:"current_version,omitempty"`
+	CreatedAt         time.Time          `json:"created_at"`
+	Status            string             `json:"status"`
+	Nodes             []NodeStatusResult `json:"nodes"`
 }
 
 // NodeStatusResult represents a node status in the JSON output.
@@ -114,6 +115,7 @@ func outputStatusText(d *devnet.Devnet, health []*node.NodeHealth, status devnet
 
 	fmt.Printf("Chain ID:     %s\n", d.Metadata.ChainID)
 	fmt.Printf("Network:      %s\n", d.Metadata.NetworkSource)
+	fmt.Printf("Blockchain:   %s\n", d.Metadata.BlockchainNetwork)
 	fmt.Printf("Mode:         %s\n", d.Metadata.ExecutionMode)
 	if d.Metadata.DockerImage != "" {
 		fmt.Printf("Docker Image: %s\n", d.Metadata.DockerImage)
@@ -180,15 +182,16 @@ func formatNodeStatus(h *node.NodeHealth) string {
 
 func outputStatusJSON(d *devnet.Devnet, health []*node.NodeHealth, status devnet.DevnetStatus) error {
 	result := StatusResult{
-		ChainID:        d.Metadata.ChainID,
-		Network:        d.Metadata.NetworkSource,
-		Mode:           string(d.Metadata.ExecutionMode),
-		DockerImage:    d.Metadata.DockerImage,
-		InitialVersion: d.Metadata.InitialVersion,
-		CurrentVersion: d.Metadata.CurrentVersion,
-		CreatedAt:      d.Metadata.CreatedAt,
-		Status:         string(status),
-		Nodes:          make([]NodeStatusResult, len(health)),
+		ChainID:           d.Metadata.ChainID,
+		Network:           d.Metadata.NetworkSource,
+		BlockchainNetwork: d.Metadata.BlockchainNetwork,
+		Mode:              string(d.Metadata.ExecutionMode),
+		DockerImage:       d.Metadata.DockerImage,
+		InitialVersion:    d.Metadata.InitialVersion,
+		CurrentVersion:    d.Metadata.CurrentVersion,
+		CreatedAt:         d.Metadata.CreatedAt,
+		Status:            string(status),
+		Nodes:             make([]NodeStatusResult, len(health)),
 	}
 
 	for i, h := range health {

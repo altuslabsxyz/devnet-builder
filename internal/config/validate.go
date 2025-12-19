@@ -1,12 +1,23 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/stablelabs/stable-devnet/internal/network"
+)
 
 // Validate validates the EffectiveConfig values against allowed ranges and types.
 func (c *EffectiveConfig) Validate() error {
-	// Validate network
+	// Validate network source (mainnet/testnet)
 	if c.Network.Value != "mainnet" && c.Network.Value != "testnet" {
 		return fmt.Errorf("invalid network: %s (must be 'mainnet' or 'testnet')", c.Network.Value)
+	}
+
+	// Validate blockchain network (network module selection)
+	if c.BlockchainNetwork.Value != "" {
+		if !network.Has(c.BlockchainNetwork.Value) {
+			return fmt.Errorf("invalid blockchain_network: %s (available: %v)", c.BlockchainNetwork.Value, network.List())
+		}
 	}
 
 	// Validate validators
@@ -34,12 +45,15 @@ func ValidateFileConfig(cfg *FileConfig) error {
 		return nil
 	}
 
-	// Validate network if set
+	// Validate network source if set
 	if cfg.Network != nil {
 		if *cfg.Network != "mainnet" && *cfg.Network != "testnet" {
 			return fmt.Errorf("invalid network in config file: %s (must be 'mainnet' or 'testnet')", *cfg.Network)
 		}
 	}
+
+	// Note: BlockchainNetwork validation is deferred until modules are registered.
+	// This allows config loading to happen before network module init() calls.
 
 	// Validate validators if set
 	if cfg.Validators != nil {
@@ -62,5 +76,17 @@ func ValidateFileConfig(cfg *FileConfig) error {
 		}
 	}
 
+	return nil
+}
+
+// ValidateBlockchainNetwork validates the blockchain network selection against registered modules.
+// This should be called after network modules have been registered (after init phase).
+func ValidateBlockchainNetwork(networkName string) error {
+	if networkName == "" {
+		return nil // Empty means use default
+	}
+	if !network.Has(networkName) {
+		return fmt.Errorf("invalid blockchain_network: %s (available: %v)", networkName, network.List())
+	}
 	return nil
 }
