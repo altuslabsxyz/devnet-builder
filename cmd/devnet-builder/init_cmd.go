@@ -9,28 +9,31 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stablelabs/stable-devnet/internal/devnet"
+	"github.com/stablelabs/stable-devnet/internal/network"
 	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 var (
-	initNetwork    string
-	initValidators int
-	initAccounts   int
-	initMode       string
-	initNoCache    bool
-	initVersion    string
+	initNetwork           string
+	initBlockchainNetwork string // Network module selection (stable, ault, etc.)
+	initValidators        int
+	initAccounts          int
+	initMode              string
+	initNoCache           bool
+	initVersion           string
 )
 
 // InitJSONResult represents the JSON output for the init command.
 type InitJSONResult struct {
-	Status         string            `json:"status"`
-	ProvisionState string            `json:"provision_state"`
-	ChainID        string            `json:"chain_id,omitempty"`
-	Network        string            `json:"network"`
-	Validators     int               `json:"validators"`
-	ConfigPaths    map[string]string `json:"config_paths,omitempty"`
-	NextCommand    string            `json:"next_command"`
-	Error          string            `json:"error,omitempty"`
+	Status            string            `json:"status"`
+	ProvisionState    string            `json:"provision_state"`
+	ChainID           string            `json:"chain_id,omitempty"`
+	Network           string            `json:"network"`
+	BlockchainNetwork string            `json:"blockchain_network"`
+	Validators        int               `json:"validators"`
+	ConfigPaths       map[string]string `json:"config_paths,omitempty"`
+	NextCommand       string            `json:"next_command"`
+	Error             string            `json:"error,omitempty"`
 }
 
 func NewInitCmd() *cobra.Command {
@@ -77,6 +80,8 @@ Examples:
 		"Skip snapshot cache")
 	cmd.Flags().StringVar(&initVersion, "stable-version", "latest",
 		"Stable repository version for genesis export")
+	cmd.Flags().StringVar(&initBlockchainNetwork, "blockchain", "stable",
+		"Blockchain network module (stable, ault)")
 
 	return cmd
 }
@@ -90,6 +95,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if fileCfg != nil {
 		if !cmd.Flags().Changed("network") && fileCfg.Network != nil {
 			initNetwork = *fileCfg.Network
+		}
+		if !cmd.Flags().Changed("blockchain") && fileCfg.BlockchainNetwork != nil {
+			initBlockchainNetwork = *fileCfg.BlockchainNetwork
 		}
 		if !cmd.Flags().Changed("validators") && fileCfg.Validators != nil {
 			initValidators = *fileCfg.Validators
@@ -129,6 +137,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if initMode != "docker" && initMode != "local" {
 		return outputInitError(fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", initMode))
 	}
+	// Validate blockchain network module exists
+	if !network.Has(initBlockchainNetwork) {
+		available := network.List()
+		return outputInitError(fmt.Errorf("unknown blockchain network: %s (available: %v)", initBlockchainNetwork, available))
+	}
 
 	// Check if devnet already exists
 	if devnet.DevnetExists(homeDir) {
@@ -137,14 +150,15 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Run provision
 	opts := devnet.ProvisionOptions{
-		HomeDir:       homeDir,
-		Network:       initNetwork,
-		NumValidators: initValidators,
-		NumAccounts:   initAccounts,
-		Mode:          devnet.ExecutionMode(initMode),
-		StableVersion: initVersion,
-		NoCache:       initNoCache,
-		Logger:        logger,
+		HomeDir:           homeDir,
+		Network:           initNetwork,
+		BlockchainNetwork: initBlockchainNetwork,
+		NumValidators:     initValidators,
+		NumAccounts:       initAccounts,
+		Mode:              devnet.ExecutionMode(initMode),
+		StableVersion:     initVersion,
+		NoCache:           initNoCache,
+		Logger:            logger,
 	}
 
 	result, err := devnet.Provision(ctx, opts)
@@ -166,6 +180,7 @@ func outputInitText(result *devnet.ProvisionResult) error {
 
 	output.Bold("Chain ID:     %s", result.Metadata.ChainID)
 	output.Info("Network:      %s", result.Metadata.NetworkSource)
+	output.Info("Blockchain:   %s", result.Metadata.BlockchainNetwork)
 	output.Info("Validators:   %d", result.Metadata.NumValidators)
 	fmt.Println()
 
@@ -202,11 +217,12 @@ func outputInitJSON(result *devnet.ProvisionResult) error {
 	devnetDir := filepath.Join(result.Metadata.HomeDir, "devnet")
 
 	jsonResult := InitJSONResult{
-		Status:         "success",
-		ProvisionState: string(result.Metadata.ProvisionState),
-		ChainID:        result.Metadata.ChainID,
-		Network:        result.Metadata.NetworkSource,
-		Validators:     result.Metadata.NumValidators,
+		Status:            "success",
+		ProvisionState:    string(result.Metadata.ProvisionState),
+		ChainID:           result.Metadata.ChainID,
+		Network:           result.Metadata.NetworkSource,
+		BlockchainNetwork: result.Metadata.BlockchainNetwork,
+		Validators:        result.Metadata.NumValidators,
 		ConfigPaths: map[string]string{
 			"config.toml":  filepath.Join(devnetDir, "node0", "config", "config.toml"),
 			"app.toml":     filepath.Join(devnetDir, "node0", "config", "app.toml"),

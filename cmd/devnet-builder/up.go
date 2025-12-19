@@ -22,13 +22,14 @@ var (
 
 // UpJSONResult represents the JSON output for the up command.
 type UpJSONResult struct {
-	Status          string           `json:"status"`
-	ChainID         string           `json:"chain_id,omitempty"`
-	Mode            string           `json:"mode"`
-	SuccessfulNodes []int            `json:"successful_nodes"`
-	FailedNodes     []FailedNodeJSON `json:"failed_nodes,omitempty"`
-	Nodes           []NodeResult     `json:"nodes,omitempty"`
-	Error           string           `json:"error,omitempty"`
+	Status            string           `json:"status"`
+	ChainID           string           `json:"chain_id,omitempty"`
+	BlockchainNetwork string           `json:"blockchain_network,omitempty"`
+	Mode              string           `json:"mode"`
+	SuccessfulNodes   []int            `json:"successful_nodes"`
+	FailedNodes       []FailedNodeJSON `json:"failed_nodes,omitempty"`
+	Nodes             []NodeResult     `json:"nodes,omitempty"`
+	Error             string           `json:"error,omitempty"`
 }
 
 func NewUpCmd() *cobra.Command {
@@ -109,7 +110,8 @@ func runUp(cmd *cobra.Command, args []string) error {
 	var customBinaryPath string
 	var isCustomRef bool
 	if upBinaryRef != "" {
-		b := builder.NewBuilder(homeDir, logger)
+		networkModule, _ := metadata.GetNetworkModule()
+		b := builder.NewBuilder(homeDir, logger, networkModule)
 		logger.Info("Building binary from source (ref: %s)...", upBinaryRef)
 		buildResult, err := b.Build(ctx, builder.BuildOptions{
 			Ref:     upBinaryRef,
@@ -157,6 +159,7 @@ func outputUpText(result *devnet.RunResult) error {
 	fmt.Println()
 	output.Bold("Chain ID:     %s", result.Devnet.Metadata.ChainID)
 	output.Info("Network:      %s", result.Devnet.Metadata.NetworkSource)
+	output.Info("Blockchain:   %s", result.Devnet.Metadata.BlockchainNetwork)
 	output.Info("Mode:         %s", result.Devnet.Metadata.ExecutionMode)
 	output.Info("Validators:   %d", result.Devnet.Metadata.NumValidators)
 	fmt.Println()
@@ -207,11 +210,12 @@ func outputUpTextPartial(result *devnet.RunResult) {
 
 func outputUpJSON(result *devnet.RunResult) error {
 	jsonResult := UpJSONResult{
-		Status:          "success",
-		ChainID:         result.Devnet.Metadata.ChainID,
-		Mode:            string(result.Devnet.Metadata.ExecutionMode),
-		SuccessfulNodes: result.SuccessfulNodes,
-		Nodes:           make([]NodeResult, len(result.Devnet.Nodes)),
+		Status:            "success",
+		ChainID:           result.Devnet.Metadata.ChainID,
+		BlockchainNetwork: result.Devnet.Metadata.BlockchainNetwork,
+		Mode:              string(result.Devnet.Metadata.ExecutionMode),
+		SuccessfulNodes:   result.SuccessfulNodes,
+		Nodes:             make([]NodeResult, len(result.Devnet.Nodes)),
 	}
 
 	if !result.AllHealthy {
@@ -264,6 +268,7 @@ func outputUpJSONWithError(result *devnet.RunResult, err error) error {
 
 	if result.Devnet != nil && result.Devnet.Metadata != nil {
 		jsonResult.ChainID = result.Devnet.Metadata.ChainID
+		jsonResult.BlockchainNetwork = result.Devnet.Metadata.BlockchainNetwork
 		jsonResult.Mode = string(result.Devnet.Metadata.ExecutionMode)
 	}
 

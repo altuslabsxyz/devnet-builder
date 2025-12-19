@@ -15,12 +15,14 @@ type EffectiveConfig struct {
 	JSON    BoolValue
 
 	// Start command settings
-	Network       StringValue
-	Validators    IntValue
-	Mode          StringValue
-	StableVersion StringValue
-	NoCache       BoolValue
-	Accounts      IntValue
+	Network           StringValue // Network source: "mainnet" or "testnet"
+	BlockchainNetwork StringValue // Network module: "stable", "ault", etc.
+	Validators        IntValue
+	Mode              StringValue
+	StableVersion     StringValue // Deprecated: use NetworkVersion for new code
+	NetworkVersion    StringValue // Version for the selected blockchain network
+	NoCache           BoolValue
+	Accounts          IntValue
 
 	// GitHub/Cache settings
 	GitHubToken StringValue
@@ -33,18 +35,20 @@ type EffectiveConfig struct {
 // NewEffectiveConfig creates a new EffectiveConfig with default values.
 func NewEffectiveConfig(defaultHomeDir string) *EffectiveConfig {
 	return &EffectiveConfig{
-		Home:          NewStringValue(defaultHomeDir),
-		NoColor:       NewBoolValue(false),
-		Verbose:       NewBoolValue(false),
-		JSON:          NewBoolValue(false),
-		Network:       NewStringValue("mainnet"),
-		Validators:    NewIntValue(4),
-		Mode:          NewStringValue("docker"),
-		StableVersion: NewStringValue("latest"),
-		NoCache:       NewBoolValue(false),
-		Accounts:      NewIntValue(0),
-		GitHubToken:   NewStringValue(""),
-		CacheTTL:      NewStringValue("1h"),
+		Home:              NewStringValue(defaultHomeDir),
+		NoColor:           NewBoolValue(false),
+		Verbose:           NewBoolValue(false),
+		JSON:              NewBoolValue(false),
+		Network:           NewStringValue("mainnet"),
+		BlockchainNetwork: NewStringValue("stable"), // Default to stable for backward compatibility
+		Validators:        NewIntValue(4),
+		Mode:              NewStringValue("docker"),
+		StableVersion:     NewStringValue("latest"),
+		NetworkVersion:    NewStringValue(""),       // Empty means use network module default
+		NoCache:           NewBoolValue(false),
+		Accounts:          NewIntValue(0),
+		GitHubToken:       NewStringValue(""),
+		CacheTTL:          NewStringValue("1h"),
 	}
 }
 
@@ -57,9 +61,11 @@ func (c *EffectiveConfig) ToTable(w io.Writer) {
 	fmt.Fprintf(tw, "verbose\t%t\t%s\n", c.Verbose.Value, c.Verbose.Source)
 	fmt.Fprintf(tw, "json\t%t\t%s\n", c.JSON.Value, c.JSON.Source)
 	fmt.Fprintf(tw, "network\t%s\t%s\n", c.Network.Value, c.Network.Source)
+	fmt.Fprintf(tw, "blockchain_network\t%s\t%s\n", c.BlockchainNetwork.Value, c.BlockchainNetwork.Source)
 	fmt.Fprintf(tw, "validators\t%d\t%s\n", c.Validators.Value, c.Validators.Source)
 	fmt.Fprintf(tw, "mode\t%s\t%s\n", c.Mode.Value, c.Mode.Source)
 	fmt.Fprintf(tw, "stable_version\t%s\t%s\n", c.StableVersion.Value, c.StableVersion.Source)
+	fmt.Fprintf(tw, "network_version\t%s\t%s\n", c.NetworkVersion.Value, c.NetworkVersion.Source)
 	fmt.Fprintf(tw, "no_cache\t%t\t%s\n", c.NoCache.Value, c.NoCache.Source)
 	fmt.Fprintf(tw, "accounts\t%d\t%s\n", c.Accounts.Value, c.Accounts.Source)
 	fmt.Fprintf(tw, "github_token\t%s\t%s\n", maskToken(c.GitHubToken.Value), c.GitHubToken.Source)

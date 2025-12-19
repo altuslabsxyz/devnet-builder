@@ -223,13 +223,18 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	var versionResolvedImage string
 
 	if selectedVersion != "" && upgradeImage == "" && upgradeBinary == "" {
+		networkModule, _ := metadata.GetNetworkModule()
 		if resolvedMode == devnet.ModeDocker && isStandardVersionTag(selectedVersion) {
 			// Docker mode with standard version tag: resolve to docker image
-			versionResolvedImage = fmt.Sprintf("ghcr.io/stablelabs/stable:%s", selectedVersion)
+			dockerImage := "ghcr.io/stablelabs/stable" // fallback
+			if networkModule != nil {
+				dockerImage = networkModule.DockerImage()
+			}
+			versionResolvedImage = fmt.Sprintf("%s:%s", dockerImage, selectedVersion)
 			logger.Info("Using docker image for version %s: %s", selectedVersion, versionResolvedImage)
 		} else {
 			// Local mode or custom ref: build local binary to cache
-			b := builder.NewBuilder(homeDir, logger)
+			b := builder.NewBuilder(homeDir, logger, networkModule)
 			logger.Info("Pre-building upgrade binary (ref: %s)...", selectedVersion)
 
 			// Build to cache

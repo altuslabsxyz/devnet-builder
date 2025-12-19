@@ -12,31 +12,34 @@ import (
 	"github.com/stablelabs/stable-devnet/internal/devnet"
 	"github.com/stablelabs/stable-devnet/internal/github"
 	"github.com/stablelabs/stable-devnet/internal/interactive"
+	"github.com/stablelabs/stable-devnet/internal/network"
 	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 var (
-	deployNetwork       string
-	deployValidators    int
-	deployMode          string
-	deployStableVersion string
-	deployNoCache       bool
-	deployAccounts      int
-	deployNoInteractive bool
-	deployExportVersion string
-	deployStartVersion  string
-	deployImage         string
+	deployNetwork           string
+	deployBlockchainNetwork string // Network module selection (stable, ault, etc.)
+	deployValidators        int
+	deployMode              string
+	deployStableVersion     string
+	deployNoCache           bool
+	deployAccounts          int
+	deployNoInteractive     bool
+	deployExportVersion     string
+	deployStartVersion      string
+	deployImage             string
 )
 
 // DeployResult represents the JSON output for the deploy command.
 type DeployResult struct {
-	Status      string       `json:"status"`
-	ChainID     string       `json:"chain_id"`
-	Network     string       `json:"network"`
-	Mode        string       `json:"mode"`
-	DockerImage string       `json:"docker_image,omitempty"`
-	Validators  int          `json:"validators"`
-	Nodes       []NodeResult `json:"nodes"`
+	Status            string       `json:"status"`
+	ChainID           string       `json:"chain_id"`
+	Network           string       `json:"network"`            // Snapshot source: mainnet/testnet
+	BlockchainNetwork string       `json:"blockchain_network"` // Network module: stable/ault
+	Mode              string       `json:"mode"`
+	DockerImage       string       `json:"docker_image,omitempty"`
+	Validators        int          `json:"validators"`
+	Nodes             []NodeResult `json:"nodes"`
 }
 
 func NewDeployCmd() *cobra.Command {
@@ -96,6 +99,10 @@ Examples:
 	cmd.Flags().StringVar(&deployImage, "image", "",
 		"Docker image for docker mode (e.g., v1.0.0 or ghcr.io/org/image:tag)")
 
+	// Blockchain network module flag
+	cmd.Flags().StringVar(&deployBlockchainNetwork, "blockchain", "stable",
+		"Blockchain network module (stable, ault)")
+
 	return cmd
 }
 
@@ -109,6 +116,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		// Apply config file values if flags not explicitly set
 		if !cmd.Flags().Changed("network") && fileCfg.Network != nil {
 			deployNetwork = *fileCfg.Network
+		}
+		if !cmd.Flags().Changed("blockchain") && fileCfg.BlockchainNetwork != nil {
+			deployBlockchainNetwork = *fileCfg.BlockchainNetwork
 		}
 		if !cmd.Flags().Changed("validators") && fileCfg.Validators != nil {
 			deployValidators = *fileCfg.Validators
@@ -192,6 +202,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if deployMode != "docker" && deployMode != "local" {
 		return fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", deployMode)
 	}
+	// Validate blockchain network module exists
+	if !network.Has(deployBlockchainNetwork) {
+		available := network.List()
+		return fmt.Errorf("unknown blockchain network: %s (available: %v)", deployBlockchainNetwork, available)
+	}
 
 	// Check if devnet already exists
 	if devnet.DevnetExists(homeDir) {
@@ -201,7 +216,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Build binary for local mode (all versions need to be built/cached)
 	var customBinaryPath string
 	if deployMode == "local" {
-		b := builder.NewBuilder(homeDir, logger)
+		networkModule, _ := network.Get(deployBlockchainNetwork)
+		b := builder.NewBuilder(homeDir, logger, networkModule)
 		logger.Info("Building binary from source (ref: %s)...", startVersion)
 		result, err := b.Build(ctx, builder.BuildOptions{
 			Ref:     startVersion,
@@ -220,15 +236,16 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Phase 1: Provision (create config, generate validators)
 	provisionOpts := devnet.ProvisionOptions{
-		HomeDir:       homeDir,
-		Network:       deployNetwork,
-		NumValidators: deployValidators,
-		NumAccounts:   deployAccounts,
-		Mode:          devnet.ExecutionMode(deployMode),
-		StableVersion: exportVersion,
-		DockerImage:   dockerImage,
-		NoCache:       deployNoCache,
-		Logger:        logger,
+		HomeDir:           homeDir,
+		Network:           deployNetwork,
+		BlockchainNetwork: deployBlockchainNetwork,
+		NumValidators:     deployValidators,
+		NumAccounts:       deployAccounts,
+		Mode:              devnet.ExecutionMode(deployMode),
+		StableVersion:     exportVersion,
+		DockerImage:       dockerImage,
+		NoCache:           deployNoCache,
+		Logger:            logger,
 	}
 
 	_, err := devnet.Provision(ctx, provisionOpts)
@@ -274,13 +291,14 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 func outputDeployJSONFromRunResult(result *devnet.RunResult, err error) error {
 	jsonResult := DeployResult{
-		Status:      "partial",
-		ChainID:     result.Devnet.Metadata.ChainID,
-		Network:     result.Devnet.Metadata.NetworkSource,
-		Mode:        string(result.Devnet.Metadata.ExecutionMode),
-		DockerImage: result.Devnet.Metadata.DockerImage,
-		Validators:  result.Devnet.Metadata.NumValidators,
-		Nodes:       make([]NodeResult, len(result.Devnet.Nodes)),
+		Status:            "partial",
+		ChainID:           result.Devnet.Metadata.ChainID,
+		Network:           result.Devnet.Metadata.NetworkSource,
+		BlockchainNetwork: result.Devnet.Metadata.BlockchainNetwork,
+		Mode:              string(result.Devnet.Metadata.ExecutionMode),
+		DockerImage:       result.Devnet.Metadata.DockerImage,
+		Validators:        result.Devnet.Metadata.NumValidators,
+		Nodes:             make([]NodeResult, len(result.Devnet.Nodes)),
 	}
 
 	for i, n := range result.Devnet.Nodes {
@@ -312,6 +330,7 @@ func outputDeployText(d *devnet.Devnet) error {
 	fmt.Println()
 	output.Bold("Chain ID:     %s", d.Metadata.ChainID)
 	output.Info("Network:      %s", d.Metadata.NetworkSource)
+	output.Info("Blockchain:   %s", d.Metadata.BlockchainNetwork)
 	output.Info("Mode:         %s", d.Metadata.ExecutionMode)
 	if d.Metadata.DockerImage != "" {
 		output.Info("Docker Image: %s", d.Metadata.DockerImage)
@@ -330,13 +349,14 @@ func outputDeployText(d *devnet.Devnet) error {
 
 func outputDeployJSON(d *devnet.Devnet) error {
 	result := DeployResult{
-		Status:      "success",
-		ChainID:     d.Metadata.ChainID,
-		Network:     d.Metadata.NetworkSource,
-		Mode:        string(d.Metadata.ExecutionMode),
-		DockerImage: d.Metadata.DockerImage,
-		Validators:  d.Metadata.NumValidators,
-		Nodes:       make([]NodeResult, len(d.Nodes)),
+		Status:            "success",
+		ChainID:           d.Metadata.ChainID,
+		Network:           d.Metadata.NetworkSource,
+		BlockchainNetwork: d.Metadata.BlockchainNetwork,
+		Mode:              string(d.Metadata.ExecutionMode),
+		DockerImage:       d.Metadata.DockerImage,
+		Validators:        d.Metadata.NumValidators,
+		Nodes:             make([]NodeResult, len(d.Nodes)),
 	}
 
 	for i, n := range d.Nodes {

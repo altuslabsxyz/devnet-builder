@@ -131,7 +131,8 @@ func runRun(cmd *cobra.Command, args []string) error {
 	var customBinaryPath string
 	var isCustomRef bool
 	if runBinaryRef != "" {
-		b := builder.NewBuilder(homeDir, logger)
+		networkModule, _ := metadata.GetNetworkModule()
+		b := builder.NewBuilder(homeDir, logger, networkModule)
 		logger.Info("Building binary from source (ref: %s)...", runBinaryRef)
 		buildResult, err := b.Build(ctx, builder.BuildOptions{
 			Ref:     runBinaryRef,
