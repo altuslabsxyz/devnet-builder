@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"github.com/stablelabs/stable-devnet/internal/config"
 	"github.com/stablelabs/stable-devnet/internal/devnet"
 	"github.com/stablelabs/stable-devnet/internal/network"
 	"github.com/stablelabs/stable-devnet/internal/output"
@@ -89,6 +90,33 @@ Examples:
 func runInit(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
+
+	// Interactive setup: if no config exists and terminal is interactive, prompt for settings
+	setup := config.NewInteractiveSetup(homeDir)
+	if setup.ShouldPrompt() {
+		logger.Info("No configuration found. Starting interactive setup...")
+		cfg, err := setup.Run()
+		if err != nil {
+			return outputInitError(err)
+		}
+		if err := setup.WriteConfig(cfg); err != nil {
+			return outputInitError(fmt.Errorf("failed to save configuration: %w", err))
+		}
+		logger.Success("Configuration saved to %s", filepath.Join(homeDir, "config.toml"))
+		fmt.Println()
+
+		// Reload config after interactive setup
+		reloadFileConfig(homeDir)
+	} else if !setup.ConfigExists() && !config.IsInteractive() {
+		// Non-interactive mode: create config with defaults
+		cfg := setup.RunWithDefaults()
+		if err := setup.WriteConfig(cfg); err != nil {
+			logger.Warn("Could not save default config: %v", err)
+		} else {
+			logger.Debug("Created default configuration at %s", filepath.Join(homeDir, "config.toml"))
+		}
+		reloadFileConfig(homeDir)
+	}
 
 	// Apply config.toml values (priority: default < config.toml < env < flag)
 	fileCfg := GetLoadedFileConfig()

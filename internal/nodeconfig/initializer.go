@@ -2,6 +2,8 @@ package nodeconfig
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
@@ -202,13 +203,15 @@ func readNodeIDFromFile(nodeKeyPath string) (string, error) {
 		return "", fmt.Errorf("failed to decode private key: %w", err)
 	}
 
-	// Create ed25519 private key and get public key address
-	privKey := ed25519.PrivKey(privKeyBytes)
-	pubKey := privKey.PubKey()
+	// Create ed25519 private key and derive public key
+	// Go's ed25519.PrivateKey is 64 bytes (seed + public key)
+	privKey := ed25519.PrivateKey(privKeyBytes)
+	pubKey := privKey.Public().(ed25519.PublicKey)
 
 	// Node ID is the hex-encoded address (first 20 bytes of SHA256 of pubkey)
-	// Note: CometBFT's Address type returns uppercase hex, but stabled uses lowercase
-	nodeID := strings.ToLower(fmt.Sprintf("%x", pubKey.Address()))
+	// This matches CometBFT's address derivation
+	hash := sha256.Sum256(pubKey)
+	nodeID := strings.ToLower(fmt.Sprintf("%x", hash[:20]))
 
 	return nodeID, nil
 }

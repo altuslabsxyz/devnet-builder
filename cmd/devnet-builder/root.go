@@ -262,3 +262,15 @@ func confirmPrompt(message string) (bool, error) {
 func GetLoadedFileConfig() *config.FileConfig {
 	return loadedFileConfig
 }
+
+// reloadFileConfig reloads the configuration from homeDir/config.toml.
+// Used after interactive setup creates a new config file.
+func reloadFileConfig(homeDir string) {
+	loader := config.NewConfigLoader(homeDir, configPath, output.DefaultLogger)
+	fileCfg, _, err := loader.LoadFileConfig()
+	if err != nil {
+		output.DefaultLogger.Warn("Failed to reload config: %v", err)
+		return
+	}
+	loadedFileConfig = fileCfg
+}

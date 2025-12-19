@@ -2,7 +2,11 @@
 // multiple Cosmos SDK networks in devnet-builder.
 package network
 
-import "time"
+import (
+	"time"
+
+	"cosmossdk.io/log"
+)
 
 // NetworkModule defines the interface that all network implementations must satisfy.
 // Each network (Stable, Ault, etc.) implements this interface to provide
@@ -79,6 +83,18 @@ type NetworkModule interface {
 	//   - homeDir: Node home directory path
 	// Returns: Command arguments (e.g., ["start", "--home", homeDir])
 	StartCommand(homeDir string) []string
+
+	// NewGenerator creates a new devnet generator for this network.
+	// Parameters:
+	//   - config: Generator configuration with validator/account counts, balances, etc.
+	//   - logger: Logger for output
+	// Returns: Generator instance, or error if creation fails
+	// Note: This may return ErrPrivateBuildRequired if built without private tag.
+	NewGenerator(config *GeneratorConfig, logger log.Logger) (Generator, error)
+
+	// DefaultGeneratorConfig returns the default generator configuration for this network.
+	// This includes network-specific defaults for denoms, balances, and stake amounts.
+	DefaultGeneratorConfig() *GeneratorConfig
 
 	// Validate checks if the module configuration is valid.
 	// Called during registration and before use.
