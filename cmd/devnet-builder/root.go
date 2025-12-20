@@ -35,7 +35,6 @@ const (
 	GroupMain       = "main"
 	GroupMonitoring = "monitoring"
 	GroupAdvanced   = "advanced"
-	GroupDeprecated = "deprecated"
 )
 
 func NewRootCmd() *cobra.Command {
@@ -136,7 +135,6 @@ Examples:
 	cmd.AddGroup(&cobra.Group{ID: GroupMain, Title: "Main Commands:"})
 	cmd.AddGroup(&cobra.Group{ID: GroupMonitoring, Title: "Monitoring Commands:"})
 	cmd.AddGroup(&cobra.Group{ID: GroupAdvanced, Title: "Advanced Commands:"})
-	cmd.AddGroup(&cobra.Group{ID: GroupDeprecated, Title: "Deprecated Commands (use alternatives):"})
 
 	// Main commands (new Docker Compose-style commands)
 	deployCmd := NewDeployCmd()
@@ -180,18 +178,6 @@ Examples:
 	networksCmd := NewNetworksCmd()
 	networksCmd.GroupID = GroupAdvanced
 
-	// Deprecated commands (old names, hidden from main help)
-	startCmd := NewStartCmd()
-	startCmd.GroupID = GroupDeprecated
-	runCmd := NewRunCmd()
-	runCmd.GroupID = GroupDeprecated
-	stopCmd := NewStopCmd()
-	stopCmd.GroupID = GroupDeprecated
-	provisionCmd := NewProvisionCmd()
-	provisionCmd.GroupID = GroupDeprecated
-	cleanCmd := NewCleanCmd()
-	cleanCmd.GroupID = GroupDeprecated
-
 	// Utility commands (no group - shown separately)
 	versionCmd := NewVersionCmd()
 	completionCmd := NewCompletionCmd()
@@ -221,13 +207,6 @@ Examples:
 		cacheCmd,
 		configCmd,
 		networksCmd,
-
-		// Deprecated commands (old names)
-		startCmd,
-		runCmd,
-		stopCmd,
-		provisionCmd,
-		cleanCmd,
 
 		// Utility commands
 		versionCmd,
