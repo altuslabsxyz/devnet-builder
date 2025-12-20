@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stablelabs/stable-devnet/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 // getCurrentUserID returns the current user's UID:GID for docker --user flag.

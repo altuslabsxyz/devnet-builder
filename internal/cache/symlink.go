@@ -9,23 +9,31 @@ import (
 const (
 	// BinSubdir is the subdirectory name for the binary symlink.
 	BinSubdir = "bin"
-
-	// SymlinkName is the name of the symlink.
-	SymlinkName = "stabled"
 )
 
 // SymlinkManager manages the binary symlink.
 type SymlinkManager struct {
 	homeDir     string
+	binaryName  string // Name of the binary (e.g., "stabled", "aultd")
 	symlinkPath string
 }
 
 // NewSymlinkManager creates a new SymlinkManager.
-func NewSymlinkManager(homeDir string) *SymlinkManager {
+// binaryName should be the network's binary name (e.g., "stabled", "aultd").
+func NewSymlinkManager(homeDir, binaryName string) *SymlinkManager {
+	if binaryName == "" {
+		binaryName = DefaultBinaryName
+	}
 	return &SymlinkManager{
 		homeDir:     homeDir,
-		symlinkPath: filepath.Join(homeDir, BinSubdir, SymlinkName),
+		binaryName:  binaryName,
+		symlinkPath: filepath.Join(homeDir, BinSubdir, binaryName),
 	}
+}
+
+// BinaryName returns the configured binary name.
+func (m *SymlinkManager) BinaryName() string {
+	return m.binaryName
 }
 
 // SymlinkPath returns the full path to the symlink.
@@ -55,7 +63,7 @@ func (m *SymlinkManager) GetCurrent() (*ActiveSymlink, error) {
 	}
 
 	// Extract commit hash from target path
-	// Expected format: ../cache/binaries/{commit_hash}/stabled
+	// Expected format: ../cache/binaries/{commit_hash}/{binaryName}
 	commitHash := extractCommitHashFromPath(target)
 
 	return &ActiveSymlink{
@@ -97,11 +105,11 @@ func (m *SymlinkManager) Switch(targetPath string) error {
 // SwitchToCache switches the symlink to point to a cached binary by commit hash.
 func (m *SymlinkManager) SwitchToCache(cache *BinaryCache, commitHash string) error {
 	// Calculate relative path from bin dir to cache entry
-	// From: ~/.stable-devnet/bin/stabled
-	// To:   ~/.stable-devnet/cache/binaries/{commit}/stabled
-	// Relative: ../cache/binaries/{commit}/stabled
+	// From: ~/.stable-devnet/bin/{binaryName}
+	// To:   ~/.stable-devnet/cache/binaries/{commit}/{binaryName}
+	// Relative: ../cache/binaries/{commit}/{binaryName}
 
-	relativePath := filepath.Join("..", CacheSubdir, commitHash, BinaryName)
+	relativePath := filepath.Join("..", CacheSubdir, commitHash, m.binaryName)
 	return m.Switch(relativePath)
 }
 
@@ -158,8 +166,8 @@ func (m *SymlinkManager) MigrateToSymlink(cache *BinaryCache, commitHash, ref, n
 
 // extractCommitHashFromPath extracts the commit hash from a cache path.
 func extractCommitHashFromPath(path string) string {
-	// Path format: ../cache/binaries/{commit_hash}/stabled
-	// or absolute: /home/user/.stable-devnet/cache/binaries/{commit_hash}/stabled
+	// Path format: ../cache/binaries/{commit_hash}/{binaryName}
+	// or absolute: /home/user/.stable-devnet/cache/binaries/{commit_hash}/{binaryName}
 	dir := filepath.Dir(path)        // ../cache/binaries/{commit_hash}
 	commitHash := filepath.Base(dir) // {commit_hash}
 

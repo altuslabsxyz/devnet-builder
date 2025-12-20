@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 
-	"github.com/stablelabs/stable-devnet/internal/network"
+	"github.com/b-harvest/devnet-builder/internal/network"
 )
 
 // Validate validates the EffectiveConfig values against allowed ranges and types.

@@ -3,7 +3,7 @@ package node
 import (
 	"fmt"
 
-	"github.com/stablelabs/stable-devnet/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 // ExecutionMode defines how nodes are executed.

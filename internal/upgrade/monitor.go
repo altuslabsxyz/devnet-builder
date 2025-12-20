@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/stablelabs/stable-devnet/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 // MonitorOptions contains options for monitoring the upgrade.

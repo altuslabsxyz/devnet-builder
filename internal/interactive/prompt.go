@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/b-harvest/devnet-builder/internal/github"
 	"github.com/manifoldco/promptui"
-	"github.com/stablelabs/stable-devnet/internal/github"
 )
 
 // SelectNetwork prompts the user to select a network.

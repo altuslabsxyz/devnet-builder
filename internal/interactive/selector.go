@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/b-harvest/devnet-builder/internal/github"
 	"github.com/manifoldco/promptui"
-	"github.com/stablelabs/stable-devnet/internal/github"
 )
 
 // Selector handles the interactive selection workflow.

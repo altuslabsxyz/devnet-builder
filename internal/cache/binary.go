@@ -5,15 +5,16 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/stablelabs/stable-devnet/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 const (
 	// CacheSubdir is the subdirectory name for binary cache.
 	CacheSubdir = "cache/binaries"
 
-	// BinaryName is the name of the cached binary file.
-	BinaryName = "stabled"
+	// DefaultBinaryName is the default name of the cached binary file.
+	// This is used when no specific binary name is provided.
+	DefaultBinaryName = "binary"
 
 	// MetadataFile is the name of the metadata JSON file.
 	MetadataFile = "metadata.json"
@@ -21,23 +22,34 @@ const (
 
 // BinaryCache manages cached binary builds.
 type BinaryCache struct {
-	homeDir  string                   // Base directory (~/.stable-devnet)
-	cacheDir string                   // Cache directory path
-	entries  map[string]*CachedBinary // In-memory index of cached binaries
-	logger   *output.Logger
+	homeDir    string                   // Base directory (~/.stable-devnet)
+	cacheDir   string                   // Cache directory path
+	binaryName string                   // Name of the binary file (e.g., "stabled", "aultd")
+	entries    map[string]*CachedBinary // In-memory index of cached binaries
+	logger     *output.Logger
 }
 
 // NewBinaryCache creates a new BinaryCache manager.
-func NewBinaryCache(homeDir string, logger *output.Logger) *BinaryCache {
+// binaryName should be the network's binary name (e.g., "stabled", "aultd").
+func NewBinaryCache(homeDir, binaryName string, logger *output.Logger) *BinaryCache {
 	if logger == nil {
 		logger = output.DefaultLogger
 	}
-	return &BinaryCache{
-		homeDir:  homeDir,
-		cacheDir: filepath.Join(homeDir, CacheSubdir),
-		entries:  make(map[string]*CachedBinary),
-		logger:   logger,
+	if binaryName == "" {
+		binaryName = DefaultBinaryName
 	}
+	return &BinaryCache{
+		homeDir:    homeDir,
+		cacheDir:   filepath.Join(homeDir, CacheSubdir),
+		binaryName: binaryName,
+		entries:    make(map[string]*CachedBinary),
+		logger:     logger,
+	}
+}
+
+// BinaryName returns the configured binary name.
+func (c *BinaryCache) BinaryName() string {
+	return c.binaryName
 }
 
 // Initialize creates the cache directory structure if it doesn't exist.
@@ -76,7 +88,7 @@ func (c *BinaryCache) loadEntries() error {
 			continue
 		}
 
-		binaryPath := filepath.Join(c.cacheDir, commitHash, BinaryName)
+		binaryPath := filepath.Join(c.cacheDir, commitHash, c.binaryName)
 		c.entries[commitHash] = &CachedBinary{
 			CommitHash: metadata.CommitHash,
 			Ref:        metadata.Ref,
@@ -102,7 +114,7 @@ func (c *BinaryCache) GetEntryDir(commitHash string) string {
 
 // GetBinaryPath returns the full path to a cached binary.
 func (c *BinaryCache) GetBinaryPath(commitHash string) string {
-	return filepath.Join(c.cacheDir, commitHash, BinaryName)
+	return filepath.Join(c.cacheDir, commitHash, c.binaryName)
 }
 
 // Lookup returns the cached binary for the given commit hash, or nil if not cached.
@@ -132,7 +144,7 @@ func (c *BinaryCache) Store(sourcePath string, cached *CachedBinary) error {
 	}
 
 	// Copy binary to cache
-	destPath := filepath.Join(entryDir, BinaryName)
+	destPath := filepath.Join(entryDir, c.binaryName)
 	if err := copyFile(sourcePath, destPath); err != nil {
 		return fmt.Errorf("failed to copy binary to cache: %w", err)
 	}

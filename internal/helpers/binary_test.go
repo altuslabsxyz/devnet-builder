@@ -10,46 +10,66 @@ func TestResolveBinaryPath(t *testing.T) {
 		name       string
 		customPath string
 		homeDir    string
+		binaryName string
 		want       string
 	}{
 		{
 			name:       "custom path set",
-			customPath: "/custom/path/to/stabled",
+			customPath: "/custom/path/to/binary",
 			homeDir:    "/home/user/.devnet",
-			want:       "/custom/path/to/stabled",
+			binaryName: "stabled",
+			want:       "/custom/path/to/binary",
 		},
 		{
-			name:       "custom path empty - use default",
+			name:       "custom path empty - use default with stabled",
 			customPath: "",
 			homeDir:    "/home/user/.devnet",
+			binaryName: "stabled",
 			want:       filepath.Join("/home/user/.devnet", "bin", "stabled"),
 		},
 		{
-			name:       "custom path with spaces",
-			customPath: "/path/with spaces/stabled",
+			name:       "custom path empty - use default with aultd",
+			customPath: "",
 			homeDir:    "/home/user/.devnet",
-			want:       "/path/with spaces/stabled",
+			binaryName: "aultd",
+			want:       filepath.Join("/home/user/.devnet", "bin", "aultd"),
+		},
+		{
+			name:       "custom path with spaces",
+			customPath: "/path/with spaces/binary",
+			homeDir:    "/home/user/.devnet",
+			binaryName: "stabled",
+			want:       "/path/with spaces/binary",
 		},
 		{
 			name:       "relative custom path",
-			customPath: "./relative/stabled",
+			customPath: "./relative/binary",
 			homeDir:    "/home/user/.devnet",
-			want:       "./relative/stabled",
+			binaryName: "stabled",
+			want:       "./relative/binary",
 		},
 		{
 			name:       "empty home dir with no custom",
 			customPath: "",
 			homeDir:    "",
+			binaryName: "stabled",
 			want:       filepath.Join("", "bin", "stabled"),
+		},
+		{
+			name:       "empty binary name uses fallback",
+			customPath: "",
+			homeDir:    "/home/user/.devnet",
+			binaryName: "",
+			want:       filepath.Join("/home/user/.devnet", "bin", "binary"),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ResolveBinaryPath(tt.customPath, tt.homeDir)
+			got := ResolveBinaryPath(tt.customPath, tt.homeDir, tt.binaryName)
 			if got != tt.want {
-				t.Errorf("ResolveBinaryPath(%q, %q) = %q, want %q",
-					tt.customPath, tt.homeDir, got, tt.want)
+				t.Errorf("ResolveBinaryPath(%q, %q, %q) = %q, want %q",
+					tt.customPath, tt.homeDir, tt.binaryName, got, tt.want)
 			}
 		})
 	}

@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/stablelabs/stable-devnet/genesis"
-	"github.com/stablelabs/stable-devnet/internal/output"
-	"github.com/stablelabs/stable-devnet/internal/snapshot"
+	"github.com/b-harvest/devnet-builder/genesis"
+	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/snapshot"
 )
 
 // ExecutionMode defines how nodes are executed.

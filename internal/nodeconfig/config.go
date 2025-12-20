@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/stablelabs/stable-devnet/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 // PortConfig defines the port configuration for a node.

@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/stablelabs/stable-devnet/internal/devnet"
-	"github.com/stablelabs/stable-devnet/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/devnet"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 // LoadValidatorKeys exports ETH keys from the devnet keyring for all validators.

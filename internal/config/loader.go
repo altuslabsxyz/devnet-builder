@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/pelletier/go-toml/v2"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 // ConfigLoader is responsible for loading and merging configuration.

@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/stablelabs/stable-devnet/internal/devnet"
-	"github.com/stablelabs/stable-devnet/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/devnet"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 // ExecuteUpgrade performs the complete upgrade process.

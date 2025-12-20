@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/stablelabs/stable-devnet/internal/helpers"
+	"github.com/b-harvest/devnet-builder/internal/helpers"
 )
 
 // NodeStatus represents the current state of a node.
@@ -48,6 +48,10 @@ type Node struct {
 	// Identification
 	Index int    `json:"index"` // 0-3
 	Name  string `json:"name"`  // e.g., "node0", "node1"
+
+	// Network Identity
+	NetworkName string `json:"network_name,omitempty"` // e.g., "stable", "ault"
+	BinaryName  string `json:"binary_name,omitempty"`  // e.g., "stabled", "aultd"
 
 	// Paths
 	HomeDir string `json:"home_dir"` // e.g., ~/.stable-devnet/devnet/node0
@@ -103,13 +107,23 @@ func (n *Node) NodeJSONPath() string {
 }
 
 // PIDFilePath returns the path to the PID file (local mode).
+// Uses the node's BinaryName for dynamic file naming.
 func (n *Node) PIDFilePath() string {
-	return filepath.Join(n.HomeDir, "stabled.pid")
+	binaryName := n.BinaryName
+	if binaryName == "" {
+		binaryName = "stabled" // Default fallback for backward compatibility
+	}
+	return filepath.Join(n.HomeDir, binaryName+".pid")
 }
 
 // LogFilePath returns the path to the log file (local mode).
+// Uses the node's BinaryName for dynamic file naming.
 func (n *Node) LogFilePath() string {
-	return filepath.Join(n.HomeDir, "stabled.log")
+	binaryName := n.BinaryName
+	if binaryName == "" {
+		binaryName = "stabled" // Default fallback for backward compatibility
+	}
+	return filepath.Join(n.HomeDir, binaryName+".log")
 }
 
 // RPCURL returns the RPC endpoint URL.
@@ -188,14 +202,26 @@ func (n *Node) IsRunning() bool {
 }
 
 // ContainerNameForIndex returns the Docker container name for a node index.
+// Deprecated: Use ContainerNameForNetwork instead for multi-network support.
 func ContainerNameForIndex(index int) string {
 	return fmt.Sprintf("stable-devnet-node%d", index)
+}
+
+// ContainerNameForNetwork returns the Docker container name for a node with network name.
+func ContainerNameForNetwork(networkName string, index int) string {
+	if networkName == "" {
+		networkName = "stable"
+	}
+	return fmt.Sprintf("%s-devnet-node%d", networkName, index)
 }
 
 // DockerContainerName returns the Docker container name for this node.
 func (n *Node) DockerContainerName() string {
 	if n.ContainerName != "" {
 		return n.ContainerName
+	}
+	if n.NetworkName != "" {
+		return ContainerNameForNetwork(n.NetworkName, n.Index)
 	}
 	return ContainerNameForIndex(n.Index)
 }

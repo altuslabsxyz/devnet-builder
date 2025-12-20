@@ -36,7 +36,7 @@ func (c *CachedBinary) ToMetadata() *Metadata {
 
 // ActiveSymlink represents the current symlink state.
 type ActiveSymlink struct {
-	Path       string // Absolute path to symlink (~/.stable-devnet/bin/stabled)
+	Path       string // Absolute path to symlink (~/.stable-devnet/bin/{binaryName})
 	Target     string // Path to current active binary in cache
 	CommitHash string // Commit hash of currently active binary
 }

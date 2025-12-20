@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stablelabs/stable-devnet/internal/cache"
-	"github.com/stablelabs/stable-devnet/internal/devnet"
-	"github.com/stablelabs/stable-devnet/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/cache"
+	"github.com/b-harvest/devnet-builder/internal/devnet"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 // SwitchOptions contains options for switching to a new binary.
@@ -23,6 +23,7 @@ type SwitchOptions struct {
 	CachePath     string               // Path to cached binary (for symlink switch)
 	CommitHash    string               // Commit hash of the cached binary
 	HomeDir       string               // Base directory for devnet
+	BinaryName    string               // Binary name (e.g., "stabled", "aultd")
 	Metadata      *devnet.DevnetMetadata
 	Logger        *output.Logger
 }
@@ -197,9 +198,15 @@ func switchLocalBinary(ctx context.Context, opts *SwitchOptions, logger *output.
 	if opts.CachePath != "" && opts.CommitHash != "" {
 		logger.Debug("Switching to cached binary via symlink: %s", opts.CachePath)
 
+		// Get binary name from metadata or use default
+		binaryName := opts.BinaryName
+		if binaryName == "" && opts.Metadata != nil {
+			binaryName = opts.Metadata.GetBinaryName()
+		}
+
 		// Initialize symlink manager
-		symlinkMgr := cache.NewSymlinkManager(opts.HomeDir)
-		binaryCache := cache.NewBinaryCache(opts.HomeDir, logger)
+		symlinkMgr := cache.NewSymlinkManager(opts.HomeDir, binaryName)
+		binaryCache := cache.NewBinaryCache(opts.HomeDir, binaryName, logger)
 		if err := binaryCache.Initialize(); err != nil {
 			return WrapError(StageSwitching, "initialize cache", err, "Check cache directory permissions")
 		}
@@ -287,13 +294,22 @@ func startLocalNodes(ctx context.Context, opts *SwitchOptions) error {
 	for i := 0; i < opts.Metadata.NumValidators; i++ {
 		nodeDir := filepath.Join(devnetDir, fmt.Sprintf("node%d", i))
 
+		// Get binary name from metadata
+		binaryName := opts.BinaryName
+		if binaryName == "" && opts.Metadata != nil {
+			binaryName = opts.Metadata.GetBinaryName()
+		}
+		if binaryName == "" {
+			binaryName = cache.DefaultBinaryName
+		}
+
 		// Determine binary to use (prefer symlink path if available)
 		binary := opts.TargetBinary
 		if opts.CachePath != "" {
 			// Use symlink path
-			binary = filepath.Join(opts.HomeDir, cache.BinSubdir, cache.SymlinkName)
+			binary = filepath.Join(opts.HomeDir, cache.BinSubdir, binaryName)
 		} else if binary == "" {
-			binary = "stabled"
+			binary = binaryName
 		}
 
 		// Calculate ports (matching nodeconfig.GetPortConfigForNode)

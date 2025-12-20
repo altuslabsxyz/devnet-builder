@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 // ProposalOptions contains options for submitting a proposal.

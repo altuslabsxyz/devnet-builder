@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stablelabs/stable-devnet/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 const (

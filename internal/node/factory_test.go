@@ -3,7 +3,7 @@ package node
 import (
 	"testing"
 
-	"github.com/stablelabs/stable-devnet/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 func TestFactoryConfig_Validate(t *testing.T) {
@@ -221,10 +221,10 @@ func TestNodeManagerFactory_IsDocker(t *testing.T) {
 
 func TestDockerManager_CreatedWithCorrectConfig(t *testing.T) {
 	tests := []struct {
-		name       string
-		config     FactoryConfig
-		wantImage  string
-		wantEVMID  string
+		name      string
+		config    FactoryConfig
+		wantImage string
+		wantEVMID string
 	}{
 		{
 			name: "default image when empty",

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stablelabs/stable-devnet/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 // getCurrentUserID returns the current user's UID:GID for docker --user flag.
@@ -262,17 +262,13 @@ broadcast-mode = "sync"
 		}
 	}
 
-	// Try local binary if Docker failed
-	if !exportSuccess {
-		stableBinary := opts.StableBinary
-		if stableBinary == "" {
-			stableBinary = "stabled"
-		}
-
-		if _, err := exec.LookPath(stableBinary); err == nil {
-			logger.Debug("Trying local binary export...")
+	// Try managed binary export (only use our installed binary, not system PATH)
+	if !exportSuccess && opts.StableBinary != "" {
+		binaryPath := opts.StableBinary
+		if _, err := os.Stat(binaryPath); err == nil {
+			logger.Debug("Trying managed binary export...")
 			localArgs := []string{"export", "--home", exportHome}
-			cmd := exec.CommandContext(ctx, stableBinary, localArgs...)
+			cmd := exec.CommandContext(ctx, binaryPath, localArgs...)
 			cmdOutput, err := cmd.Output()
 			if err == nil && len(cmdOutput) > 0 {
 				if err := os.WriteFile(exportPath, cmdOutput, 0644); err == nil {
@@ -281,15 +277,15 @@ broadcast-mode = "sync"
 					}
 					if json.Unmarshal(cmdOutput, &testGenesis) == nil && testGenesis.ChainID != "" {
 						exportSuccess = true
-						logger.Debug("Local binary export successful")
+						logger.Debug("Managed binary export successful")
 					}
 				}
 			} else {
-				logger.Debug("Local binary export failed: %v", err)
+				logger.Debug("Managed binary export failed: %v", err)
 				// Print detailed error for diagnosis
 				if exitErr, ok := err.(*exec.ExitError); ok {
 					logger.PrintCommandError(&output.CommandErrorInfo{
-						Command:  stableBinary,
+						Command:  binaryPath,
 						Args:     localArgs,
 						WorkDir:  exportHome,
 						Stderr:   string(exitErr.Stderr),

@@ -11,12 +11,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/stablelabs/stable-devnet/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 const (
-	// DefaultLocalBinary is the default binary name for local mode.
-	DefaultLocalBinary = "stabled"
+	// DefaultLocalBinary is the fallback binary name when no specific name is provided.
+	// Prefer using network module's BinaryName() for network-specific binaries.
+	DefaultLocalBinary = "binary"
 
 	// LocalStopTimeout is the timeout for gracefully stopping a local process.
 	LocalStopTimeout = 30 * time.Second

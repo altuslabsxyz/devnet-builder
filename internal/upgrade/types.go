@@ -3,8 +3,8 @@ package upgrade
 import (
 	"time"
 
-	"github.com/stablelabs/stable-devnet/internal/devnet"
-	"github.com/stablelabs/stable-devnet/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/devnet"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 // UpgradeStage represents the current stage of the upgrade process.

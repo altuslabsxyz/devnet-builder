@@ -6,11 +6,11 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 // VoteOptions contains options for casting a vote.
