@@ -5,13 +5,24 @@ import (
 	"sync"
 )
 
-// DefaultNetworkName is the name of the default network for backward compatibility.
-const DefaultNetworkName = "stable"
+// DefaultNetworkName is empty - networks are loaded dynamically via plugins.
+const DefaultNetworkName = ""
 
 // Global registry instance
+//
+// Deprecated: Global registry is provided for backward compatibility.
+// New code should use the NetworkRegistry wrapper from internal/di package
+// for dependency injection. This allows for better testability and
+// explicit dependency management.
 var (
 	globalRegistry = newRegistry()
 )
+
+// NewRegistry creates a new registry instance.
+// Use this when you need an independent registry (e.g., for testing).
+func NewRegistry() *registry {
+	return newRegistry()
+}
 
 // registry holds registered network modules.
 type registry struct {

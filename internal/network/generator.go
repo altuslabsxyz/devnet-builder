@@ -74,16 +74,3 @@ type GeneratorFactory interface {
 	NewGenerator(config *GeneratorConfig, logger log.Logger) (Generator, error)
 }
 
-// ErrPrivateBuildRequired is returned when a feature requires private build tag.
-var ErrPrivateBuildRequired = newPrivateBuildError()
-
-// privateBuildError represents an error when private build is required.
-type privateBuildError struct{}
-
-func newPrivateBuildError() error {
-	return &privateBuildError{}
-}
-
-func (e *privateBuildError) Error() string {
-	return "this feature requires building with '-tags=private' and access to private repositories"
-}
