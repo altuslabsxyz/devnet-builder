@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/builder"
+	"github.com/b-harvest/devnet-builder/internal/devnet"
+	"github.com/b-harvest/devnet-builder/internal/github"
+	"github.com/b-harvest/devnet-builder/internal/interactive"
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/builder"
-	"github.com/stablelabs/stable-devnet/internal/devnet"
-	"github.com/stablelabs/stable-devnet/internal/github"
-	"github.com/stablelabs/stable-devnet/internal/interactive"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 var (
@@ -25,12 +25,12 @@ var (
 
 // ReplaceResult represents the result of a replace operation.
 type ReplaceResult struct {
-	Status         string `json:"status"`
+	Status          string `json:"status"`
 	PreviousVersion string `json:"previous_version,omitempty"`
-	NewVersion     string `json:"new_version"`
-	CommitHash     string `json:"commit_hash,omitempty"`
-	BinaryPath     string `json:"binary_path"`
-	Error          string `json:"error,omitempty"`
+	NewVersion      string `json:"new_version"`
+	CommitHash      string `json:"commit_hash,omitempty"`
+	BinaryPath      string `json:"binary_path"`
+	Error           string `json:"error,omitempty"`
 }
 
 func NewReplaceCmd() *cobra.Command {

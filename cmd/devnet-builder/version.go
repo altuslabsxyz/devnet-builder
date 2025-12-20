@@ -4,24 +4,29 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime"
+	"strings"
 
+	"github.com/b-harvest/devnet-builder/internal/network"
 	"github.com/spf13/cobra"
 )
 
 // Version information - set at build time via ldflags
 var (
-	Version   = "dev"
-	GitCommit = "unknown"
-	BuildDate = "unknown"
+	Version       = "dev"
+	GitCommit     = "unknown"
+	BuildDate     = "unknown"
+	BuildNetworks = "all" // Networks included at build time (e.g., "stable", "ault", "stable,ault", or "all")
 )
 
 // VersionInfo contains version details.
 type VersionInfo struct {
-	Version   string `json:"version"`
-	GitCommit string `json:"git_commit"`
-	BuildDate string `json:"build_date"`
-	GoVersion string `json:"go_version"`
-	Platform  string `json:"platform"`
+	Version       string   `json:"version"`
+	GitCommit     string   `json:"git_commit"`
+	BuildDate     string   `json:"build_date"`
+	GoVersion     string   `json:"go_version"`
+	Platform      string   `json:"platform"`
+	BuildNetworks string   `json:"build_networks"`
+	Networks      []string `json:"networks"` // Actual registered networks
 }
 
 func NewVersionCmd() *cobra.Command {
@@ -36,12 +41,17 @@ func NewVersionCmd() *cobra.Command {
 }
 
 func runVersion(cmd *cobra.Command, args []string) error {
+	// Get actual registered networks
+	registeredNetworks := network.List()
+
 	info := VersionInfo{
-		Version:   Version,
-		GitCommit: GitCommit,
-		BuildDate: BuildDate,
-		GoVersion: runtime.Version(),
-		Platform:  fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
+		Version:       Version,
+		GitCommit:     GitCommit,
+		BuildDate:     BuildDate,
+		GoVersion:     runtime.Version(),
+		Platform:      fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
+		BuildNetworks: BuildNetworks,
+		Networks:      registeredNetworks,
 	}
 
 	if jsonMode {
@@ -58,6 +68,7 @@ func runVersion(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Build date: %s\n", info.BuildDate)
 	fmt.Printf("  Go version: %s\n", info.GoVersion)
 	fmt.Printf("  Platform:   %s\n", info.Platform)
+	fmt.Printf("  Networks:   %s\n", strings.Join(registeredNetworks, ", "))
 
 	return nil
 }

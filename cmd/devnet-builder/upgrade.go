@@ -9,15 +9,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/builder"
+	"github.com/b-harvest/devnet-builder/internal/cache"
+	"github.com/b-harvest/devnet-builder/internal/devnet"
+	"github.com/b-harvest/devnet-builder/internal/github"
+	"github.com/b-harvest/devnet-builder/internal/interactive"
+	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/upgrade"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/builder"
-	"github.com/stablelabs/stable-devnet/internal/cache"
-	"github.com/stablelabs/stable-devnet/internal/devnet"
-	"github.com/stablelabs/stable-devnet/internal/github"
-	"github.com/stablelabs/stable-devnet/internal/interactive"
-	"github.com/stablelabs/stable-devnet/internal/output"
-	"github.com/stablelabs/stable-devnet/internal/upgrade"
 )
 
 // Upgrade command flags
@@ -208,8 +208,9 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("upgrade name is required (--name or interactive mode)")
 	}
 
-	// Initialize binary cache
-	binaryCache := cache.NewBinaryCache(homeDir, logger)
+	// Initialize binary cache with network's binary name
+	binaryName := metadata.GetBinaryName()
+	binaryCache := cache.NewBinaryCache(homeDir, binaryName, logger)
 	if err := binaryCache.Initialize(); err != nil {
 		logger.Warn("Failed to initialize binary cache: %v", err)
 		// Continue without cache - will fall back to direct binary copy

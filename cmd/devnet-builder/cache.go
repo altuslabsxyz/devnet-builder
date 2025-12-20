@@ -6,10 +6,10 @@ import (
 	"sort"
 	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/cache"
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/cache"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 // NewCacheCmd creates the cache command group.
@@ -79,7 +79,8 @@ func runCacheList(cmd *cobra.Command, args []string) error {
 	logger := output.DefaultLogger
 
 	// Initialize cache
-	binaryCache := cache.NewBinaryCache(homeDir, logger)
+	// Note: For cache list, we use default binary name since we list all cached entries
+	binaryCache := cache.NewBinaryCache(homeDir, "", logger)
 	if err := binaryCache.Initialize(); err != nil {
 		return fmt.Errorf("failed to initialize cache: %w", err)
 	}
@@ -194,7 +195,8 @@ func runCacheClean(force bool) error {
 	logger := output.DefaultLogger
 
 	// Initialize cache
-	binaryCache := cache.NewBinaryCache(homeDir, logger)
+	// Note: For cache clean, we use default binary name since we clean all cached entries
+	binaryCache := cache.NewBinaryCache(homeDir, "", logger)
 	if err := binaryCache.Initialize(); err != nil {
 		return fmt.Errorf("failed to initialize cache: %w", err)
 	}
@@ -271,13 +273,15 @@ func runCacheInfo(cmd *cobra.Command, args []string) error {
 	logger := output.DefaultLogger
 
 	// Initialize cache
-	binaryCache := cache.NewBinaryCache(homeDir, logger)
+	// Note: For cache info, we use default binary name for general overview
+	binaryCache := cache.NewBinaryCache(homeDir, "", logger)
 	if err := binaryCache.Initialize(); err != nil {
 		return fmt.Errorf("failed to initialize cache: %w", err)
 	}
 
 	// Get symlink info
-	symlinkMgr := cache.NewSymlinkManager(homeDir)
+	// Note: Using default binary name; actual binary name depends on network
+	symlinkMgr := cache.NewSymlinkManager(homeDir, "")
 	symlink, err := symlinkMgr.GetCurrent()
 	if err != nil {
 		logger.Debug("Failed to get symlink info: %v", err)

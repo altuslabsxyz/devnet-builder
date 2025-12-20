@@ -5,10 +5,6 @@ import (
 	"os"
 
 	"github.com/fatih/color"
-
-	// Network modules (init-time registration)
-	_ "github.com/stablelabs/stable-devnet/internal/networks/ault"
-	_ "github.com/stablelabs/stable-devnet/internal/networks/stable"
 )
 
 func main() {

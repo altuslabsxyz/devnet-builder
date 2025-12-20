@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/devnet"
+	"github.com/b-harvest/devnet-builder/internal/node"
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/devnet"
-	"github.com/stablelabs/stable-devnet/internal/node"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 // StatusResult represents the JSON output for the status command.

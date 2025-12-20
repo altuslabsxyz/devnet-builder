@@ -1,11 +1,11 @@
 package main
 
 import (
-	"github.com/stablelabs/stable-devnet/internal/devnet"
-	"github.com/stablelabs/stable-devnet/internal/helpers"
-	"github.com/stablelabs/stable-devnet/internal/node"
-	"github.com/stablelabs/stable-devnet/internal/output"
-	"github.com/stablelabs/stable-devnet/internal/provision"
+	"github.com/b-harvest/devnet-builder/internal/devnet"
+	"github.com/b-harvest/devnet-builder/internal/helpers"
+	"github.com/b-harvest/devnet-builder/internal/node"
+	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/provision"
 )
 
 // LoadedDevnet contains the result of loading a devnet.
@@ -76,9 +76,9 @@ func loadMetadataOrFail(logger *output.Logger) (*devnet.DevnetMetadata, error) {
 }
 
 // resolveBinaryPath returns the binary path for local execution mode.
-// Uses the custom path from metadata if set, otherwise defaults to homeDir/bin/stabled.
+// Uses the custom path from metadata if set, otherwise defaults to homeDir/bin/{binaryName}.
 func resolveBinaryPath(metadata *devnet.DevnetMetadata) string {
-	return helpers.ResolveBinaryPath(metadata.CustomBinaryPath, metadata.HomeDir)
+	return helpers.ResolveBinaryPath(metadata.CustomBinaryPath, metadata.HomeDir, metadata.GetBinaryName())
 }
 
 // createNodeManagerFactory creates a NodeManagerFactory from devnet metadata.

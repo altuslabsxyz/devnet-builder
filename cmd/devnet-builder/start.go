@@ -8,13 +8,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/builder"
+	"github.com/b-harvest/devnet-builder/internal/config"
+	"github.com/b-harvest/devnet-builder/internal/devnet"
+	"github.com/b-harvest/devnet-builder/internal/github"
+	"github.com/b-harvest/devnet-builder/internal/interactive"
+	"github.com/b-harvest/devnet-builder/internal/network"
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/builder"
-	"github.com/stablelabs/stable-devnet/internal/config"
-	"github.com/stablelabs/stable-devnet/internal/devnet"
-	"github.com/stablelabs/stable-devnet/internal/github"
-	"github.com/stablelabs/stable-devnet/internal/interactive"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 var (
@@ -251,10 +252,16 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Build from source for local mode
-	// In local mode, we always need a binary at ~/.stable-devnet/bin/stabled
+	// In local mode, we always need a binary at ~/.stable-devnet/bin/{binaryName}
 	var customBinaryPath string
 	if startMode == "local" {
-		b := builder.NewBuilder(homeDir, logger)
+		// Get network module for building
+		netModule, err := network.Default()
+		if err != nil {
+			return fmt.Errorf("failed to get network module: %w", err)
+		}
+
+		b := builder.NewBuilder(homeDir, logger, netModule)
 		ref := startVersion
 		if ref == "" || ref == "latest" {
 			ref = "main" // Default to main branch for local builds
