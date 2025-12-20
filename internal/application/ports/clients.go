@@ -1,0 +1,194 @@
+package ports
+
+import (
+	"context"
+	"time"
+)
+
+// RPCClient defines operations for interacting with Cosmos RPC.
+type RPCClient interface {
+	// GetBlockHeight returns the current block height.
+	GetBlockHeight(ctx context.Context) (int64, error)
+
+	// GetBlockTime estimates the average block time.
+	GetBlockTime(ctx context.Context, sampleSize int) (time.Duration, error)
+
+	// IsChainRunning checks if the chain is responding.
+	IsChainRunning(ctx context.Context) bool
+
+	// WaitForBlock waits until the chain reaches the specified height.
+	WaitForBlock(ctx context.Context, height int64) error
+
+	// GetProposal retrieves a governance proposal by ID.
+	GetProposal(ctx context.Context, id uint64) (*Proposal, error)
+
+	// GetUpgradePlan retrieves the current upgrade plan.
+	GetUpgradePlan(ctx context.Context) (*UpgradePlan, error)
+}
+
+// Proposal represents a governance proposal.
+type Proposal struct {
+	ID              uint64
+	Title           string
+	Description     string
+	Status          ProposalStatus
+	VotingEndTime   time.Time
+	SubmitTime      time.Time
+	DepositEndTime  time.Time
+	TotalDeposit    string
+	FinalTallyYes   string
+	FinalTallyNo    string
+	FinalTallyAbstain string
+}
+
+// ProposalStatus represents the status of a proposal.
+type ProposalStatus string
+
+const (
+	ProposalStatusPending        ProposalStatus = "PROPOSAL_STATUS_DEPOSIT_PERIOD"
+	ProposalStatusVoting         ProposalStatus = "PROPOSAL_STATUS_VOTING_PERIOD"
+	ProposalStatusPassed         ProposalStatus = "PROPOSAL_STATUS_PASSED"
+	ProposalStatusRejected       ProposalStatus = "PROPOSAL_STATUS_REJECTED"
+	ProposalStatusFailed         ProposalStatus = "PROPOSAL_STATUS_FAILED"
+)
+
+// UpgradePlan represents a scheduled upgrade.
+type UpgradePlan struct {
+	Name   string
+	Height int64
+	Info   string
+	Time   time.Time
+}
+
+// EVMClient defines operations for interacting with EVM RPC.
+type EVMClient interface {
+	// SendTransaction sends a signed transaction.
+	SendTransaction(ctx context.Context, signedTx []byte) (string, error)
+
+	// GetBalance retrieves the balance of an address.
+	GetBalance(ctx context.Context, address string) (string, error)
+
+	// GetNonce retrieves the nonce for an address.
+	GetNonce(ctx context.Context, address string) (uint64, error)
+
+	// WaitForTransaction waits for a transaction to be mined.
+	WaitForTransaction(ctx context.Context, txHash string, timeout time.Duration) (*TxReceipt, error)
+}
+
+// TxReceipt represents a transaction receipt.
+type TxReceipt struct {
+	TxHash      string
+	BlockNumber int64
+	Status      bool
+	GasUsed     uint64
+	Logs        []TxLog
+}
+
+// TxLog represents a log entry from a transaction.
+type TxLog struct {
+	Address string
+	Topics  []string
+	Data    []byte
+}
+
+// SnapshotFetcher defines operations for fetching chain snapshots.
+type SnapshotFetcher interface {
+	// Download downloads a snapshot from the given URL.
+	Download(ctx context.Context, url string, destPath string) error
+
+	// Extract extracts a compressed snapshot.
+	Extract(ctx context.Context, archivePath, destPath string) error
+
+	// GetLatestSnapshotURL retrieves the latest snapshot URL for a network.
+	GetLatestSnapshotURL(ctx context.Context, network string) (string, error)
+}
+
+// GenesisFetcher defines operations for fetching genesis data.
+type GenesisFetcher interface {
+	// ExportFromChain exports genesis from a running chain.
+	ExportFromChain(ctx context.Context, homeDir string) ([]byte, error)
+
+	// FetchFromRPC fetches genesis from an RPC endpoint.
+	FetchFromRPC(ctx context.Context, endpoint string) ([]byte, error)
+
+	// ModifyGenesis applies modifications to a genesis file.
+	ModifyGenesis(genesis []byte, opts GenesisModifyOptions) ([]byte, error)
+}
+
+// GenesisModifyOptions holds options for modifying genesis.
+type GenesisModifyOptions struct {
+	ChainID           string
+	VotingPeriod      time.Duration
+	UnbondingTime     time.Duration
+	InflationRate     string
+	MinGasPrice       string
+	AddValidators     []ValidatorInfo
+	AddAccounts       []AccountInfo
+}
+
+// ValidatorInfo represents validator information for genesis.
+type ValidatorInfo struct {
+	Moniker        string
+	Address        string
+	ConsPubKey     string
+	Tokens         string
+}
+
+// AccountInfo represents account information for genesis.
+type AccountInfo struct {
+	Name    string
+	Address string
+	Balance string
+}
+
+// KeyManager defines operations for managing cryptographic keys.
+type KeyManager interface {
+	// CreateKey creates a new key with the given name.
+	CreateKey(name string) (*KeyInfo, error)
+
+	// GetKey retrieves a key by name.
+	GetKey(name string) (*KeyInfo, error)
+
+	// ListKeys returns all keys.
+	ListKeys() ([]*KeyInfo, error)
+
+	// DeleteKey removes a key.
+	DeleteKey(name string) error
+
+	// Sign signs data with a key.
+	Sign(keyName string, data []byte) ([]byte, error)
+}
+
+// KeyInfo represents key information.
+type KeyInfo struct {
+	Name       string
+	Address    string
+	HexAddress string
+	PubKey     string
+	Mnemonic   string
+}
+
+// Builder defines operations for building binaries from source.
+type Builder interface {
+	// Build builds a binary from source.
+	Build(ctx context.Context, opts BuildOptions) (*BuildResult, error)
+
+	// BuildToCache builds and stores in cache without activating.
+	BuildToCache(ctx context.Context, opts BuildOptions) (*BuildResult, error)
+}
+
+// BuildOptions holds options for building.
+type BuildOptions struct {
+	Ref         string // Git ref (branch, tag, commit)
+	Network     string // Network type for build tags
+	OutputDir   string // Where to place the binary
+	UseCache    bool   // Whether to check cache first
+}
+
+// BuildResult holds the result of a build.
+type BuildResult struct {
+	BinaryPath string
+	Ref        string
+	CommitHash string
+	CachedPath string
+}
