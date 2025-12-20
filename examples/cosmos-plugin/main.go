@@ -1,0 +1,280 @@
+// Example plugin for devnet-builder demonstrating how to create
+// a custom network module for your own Cosmos SDK-based blockchain.
+//
+// To build this plugin:
+//
+//	go build -o devnet-cosmos ./examples/cosmos-plugin
+//
+// To use with devnet-builder:
+//
+//  1. Copy the binary to ~/.devnet-builder/plugins/
+//  2. Run: devnet-builder networks  (should show "cosmos" in the list)
+//  3. Run: devnet-builder --network cosmos generate
+package main
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/b-harvest/devnet-builder/pkg/network"
+	"github.com/b-harvest/devnet-builder/pkg/network/plugin"
+)
+
+func main() {
+	plugin.Serve(&CosmosNetwork{})
+}
+
+// CosmosNetwork implements network.Module for the Cosmos Hub.
+type CosmosNetwork struct{}
+
+// Ensure CosmosNetwork implements network.Module
+var _ network.Module = (*CosmosNetwork)(nil)
+
+// ============================================
+// Identity Methods
+// ============================================
+
+func (n *CosmosNetwork) Name() string {
+	return "cosmos"
+}
+
+func (n *CosmosNetwork) DisplayName() string {
+	return "Cosmos Hub"
+}
+
+func (n *CosmosNetwork) Version() string {
+	return "1.0.0"
+}
+
+// ============================================
+// Binary Configuration
+// ============================================
+
+func (n *CosmosNetwork) BinaryName() string {
+	return "gaiad"
+}
+
+func (n *CosmosNetwork) BinarySource() network.BinarySource {
+	return network.BinarySource{
+		Type:      "github",
+		Owner:     "cosmos",
+		Repo:      "gaia",
+		AssetName: "gaiad-*-linux-amd64",
+	}
+}
+
+func (n *CosmosNetwork) DefaultBinaryVersion() string {
+	return "v18.1.0"
+}
+
+// ============================================
+// Chain Configuration
+// ============================================
+
+func (n *CosmosNetwork) DefaultChainID() string {
+	return "cosmosdevnet-1"
+}
+
+func (n *CosmosNetwork) Bech32Prefix() string {
+	return "cosmos"
+}
+
+func (n *CosmosNetwork) BaseDenom() string {
+	return "uatom"
+}
+
+func (n *CosmosNetwork) GenesisConfig() network.GenesisConfig {
+	return network.GenesisConfig{
+		ChainIDPattern:    "cosmosdevnet-{num}",
+		EVMChainID:        0, // Cosmos Hub doesn't have EVM
+		BaseDenom:         "uatom",
+		DenomExponent:     6,
+		DisplayDenom:      "ATOM",
+		BondDenom:         "uatom",
+		MinSelfDelegation: "1",
+		UnbondingTime:     120 * time.Second, // Short for devnet
+		MaxValidators:     100,
+		MinDeposit:        "10000000uatom",
+		VotingPeriod:      60 * time.Second, // Short for devnet
+		MaxDepositPeriod:  120 * time.Second,
+		CommunityTax:      "0.020000000000000000",
+	}
+}
+
+func (n *CosmosNetwork) DefaultPorts() network.PortConfig {
+	return network.PortConfig{
+		RPC:       26657,
+		P2P:       26656,
+		GRPC:      9090,
+		GRPCWeb:   9091,
+		API:       1317,
+		EVMRPC:    0, // No EVM
+		EVMSocket: 0, // No EVM
+	}
+}
+
+// ============================================
+// Docker Configuration
+// ============================================
+
+func (n *CosmosNetwork) DockerImage() string {
+	return "ghcr.io/cosmos/gaia"
+}
+
+func (n *CosmosNetwork) DockerImageTag(version string) string {
+	return version
+}
+
+func (n *CosmosNetwork) DockerHomeDir() string {
+	return "/home/gaia"
+}
+
+// ============================================
+// Path Configuration
+// ============================================
+
+func (n *CosmosNetwork) DefaultNodeHome() string {
+	return "/root/.gaia"
+}
+
+func (n *CosmosNetwork) PIDFileName() string {
+	return "gaiad.pid"
+}
+
+func (n *CosmosNetwork) LogFileName() string {
+	return "gaiad.log"
+}
+
+func (n *CosmosNetwork) ProcessPattern() string {
+	return "gaiad.*start"
+}
+
+// ============================================
+// Command Generation
+// ============================================
+
+func (n *CosmosNetwork) InitCommand(homeDir, chainID, moniker string) []string {
+	return []string{
+		"init", moniker,
+		"--chain-id", chainID,
+		"--home", homeDir,
+	}
+}
+
+func (n *CosmosNetwork) StartCommand(homeDir string) []string {
+	return []string{
+		"start",
+		"--home", homeDir,
+	}
+}
+
+func (n *CosmosNetwork) ExportCommand(homeDir string) []string {
+	return []string{
+		"export",
+		"--home", homeDir,
+	}
+}
+
+// ============================================
+// Devnet Operations
+// ============================================
+
+func (n *CosmosNetwork) ModifyGenesis(genesis []byte, opts network.GenesisOptions) ([]byte, error) {
+	// This is a simplified example. In a real implementation,
+	// you would parse the genesis JSON, modify parameters, and return.
+	//
+	// For example:
+	// - Reduce unbonding time for faster testing
+	// - Set governance parameters for quick proposals
+	// - Configure staking parameters
+	//
+	// The genesis file is JSON bytes that can be parsed with encoding/json.
+	return genesis, nil
+}
+
+func (n *CosmosNetwork) GenerateDevnet(ctx context.Context, config network.GeneratorConfig, genesisFile string) error {
+	// This is where you implement the devnet generation logic.
+	// Typically this involves:
+	// 1. Creating validator directories
+	// 2. Generating keys for validators
+	// 3. Creating genesis transactions
+	// 4. Collecting genesis transactions
+	// 5. Writing final genesis.json
+	//
+	// For a real implementation, you would use the Cosmos SDK's
+	// key generation and genesis utilities.
+	return fmt.Errorf("GenerateDevnet not implemented for example plugin")
+}
+
+func (n *CosmosNetwork) DefaultGeneratorConfig() network.GeneratorConfig {
+	return network.GeneratorConfig{
+		NumValidators:    4,
+		NumAccounts:      10,
+		AccountBalance:   "100000000000uatom",
+		ValidatorBalance: "1000000000000uatom",
+		ValidatorStake:   "100000000uatom",
+		OutputDir:        "./devnet",
+		ChainID:          "cosmosdevnet-1",
+	}
+}
+
+// ============================================
+// Codec and Keyring
+// ============================================
+
+func (n *CosmosNetwork) GetCodec() ([]byte, error) {
+	// Return network-specific codec configuration.
+	// This is used for serialization of chain-specific types.
+	// For most networks, you can return nil if not using custom types.
+	return nil, nil
+}
+
+// ============================================
+// Validation
+// ============================================
+
+func (n *CosmosNetwork) Validate() error {
+	// Validate the module configuration.
+	// Check that all required values are set correctly.
+	if n.Name() == "" {
+		return fmt.Errorf("network name is required")
+	}
+	if n.BinaryName() == "" {
+		return fmt.Errorf("binary name is required")
+	}
+	return nil
+}
+
+// ============================================
+// Snapshot Configuration
+// ============================================
+
+func (n *CosmosNetwork) SnapshotURL(networkType string) string {
+	// Return snapshot URLs for your network.
+	// These are typically hosted on S3, GCS, or other CDN.
+	switch networkType {
+	case "mainnet":
+		return "https://snapshots.cosmos.directory/cosmoshub-4/latest.tar.lz4"
+	case "testnet":
+		return "https://snapshots.cosmos.directory/theta-testnet-001/latest.tar.lz4"
+	default:
+		return ""
+	}
+}
+
+func (n *CosmosNetwork) RPCEndpoint(networkType string) string {
+	// Return RPC endpoints for your network.
+	switch networkType {
+	case "mainnet":
+		return "https://cosmos-rpc.polkachu.com"
+	case "testnet":
+		return "https://rpc.sentry-01.theta-testnet.polypore.xyz"
+	default:
+		return ""
+	}
+}
+
+func (n *CosmosNetwork) AvailableNetworks() []string {
+	return []string{"mainnet", "testnet"}
+}
