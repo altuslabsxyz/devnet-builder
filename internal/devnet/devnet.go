@@ -42,6 +42,7 @@ type Devnet struct {
 type StartOptions struct {
 	HomeDir          string
 	Network          string
+	Blockchain       string // blockchain module (stable, ault)
 	NumValidators    int
 	NumAccounts      int
 	Mode             ExecutionMode
@@ -197,6 +198,7 @@ func Provision(ctx context.Context, opts ProvisionOptions) (*ProvisionResult, er
 
 	provisioner := provision.NewProvisioner(&provision.ProvisionerOptions{
 		Network:     opts.Network,
+		Blockchain:  opts.BlockchainNetwork,
 		HomeDir:     opts.HomeDir,
 		DockerImage: dockerImage,
 		Mode:        provisionMode,
@@ -593,6 +595,7 @@ func Start(ctx context.Context, opts StartOptions) (*Devnet, error) {
 
 	provisioner := provision.NewProvisioner(&provision.ProvisionerOptions{
 		Network:     opts.Network,
+		Blockchain:  opts.Blockchain,
 		HomeDir:     opts.HomeDir,
 		DockerImage: dockerImage,
 		Mode:        provisionMode,

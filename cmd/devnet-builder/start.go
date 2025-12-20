@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stablelabs/stable-devnet/internal/builder"
+	"github.com/stablelabs/stable-devnet/internal/config"
 	"github.com/stablelabs/stable-devnet/internal/devnet"
 	"github.com/stablelabs/stable-devnet/internal/github"
 	"github.com/stablelabs/stable-devnet/internal/interactive"
@@ -93,9 +94,10 @@ Examples:
 	cmd.Flags().IntVar(&startAccounts, "accounts", 0,
 		"Additional funded accounts")
 
-	// Interactive mode flags
+	// Interactive mode flags (controls version/docker image selection prompts)
+	// Note: Base config prompts (network, validators, mode) are handled by config.toml
 	cmd.Flags().BoolVar(&startNoInteractive, "no-interactive", false,
-		"Disable interactive mode (use flags instead)")
+		"Disable version selection prompts (use --export-version, --start-version, --image instead)")
 	cmd.Flags().StringVar(&startExportVersion, "export-version", "",
 		"Version for genesis export (non-interactive mode)")
 	cmd.Flags().StringVar(&startStartVersion, "start-version", "",
@@ -112,39 +114,73 @@ func runStart(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
-	// Apply config.toml values (priority: default < config.toml < env < flag)
+	// Build effective config from: default < config.toml < env < flag
+	// Start with loaded config.toml values
 	fileCfg := GetLoadedFileConfig()
-	if fileCfg != nil {
-		// Apply config file values if flags not explicitly set
-		if !cmd.Flags().Changed("network") && fileCfg.Network != nil {
-			startNetwork = *fileCfg.Network
-		}
-		if !cmd.Flags().Changed("validators") && fileCfg.Validators != nil {
-			startValidators = *fileCfg.Validators
-		}
-		if !cmd.Flags().Changed("mode") && fileCfg.Mode != nil {
-			startMode = *fileCfg.Mode
-		}
-		if !cmd.Flags().Changed("stable-version") && fileCfg.StableVersion != nil {
-			startStableVersion = *fileCfg.StableVersion
-		}
-		if !cmd.Flags().Changed("no-cache") && fileCfg.NoCache != nil {
-			startNoCache = *fileCfg.NoCache
-		}
-		if !cmd.Flags().Changed("accounts") && fileCfg.Accounts != nil {
-			startAccounts = *fileCfg.Accounts
-		}
+	if fileCfg == nil {
+		fileCfg = &config.FileConfig{}
 	}
 
-	// Apply environment variable defaults (override config.toml, but not explicit flags)
+	// Apply flag values (flags override config.toml)
+	if cmd.Flags().Changed("network") {
+		fileCfg.Network = &startNetwork
+	}
+	if cmd.Flags().Changed("validators") {
+		fileCfg.Validators = &startValidators
+	}
+	if cmd.Flags().Changed("mode") {
+		fileCfg.Mode = &startMode
+	}
+	if cmd.Flags().Changed("stable-version") {
+		fileCfg.StableVersion = &startStableVersion
+	}
+	if cmd.Flags().Changed("no-cache") {
+		fileCfg.NoCache = &startNoCache
+	}
+	if cmd.Flags().Changed("accounts") {
+		fileCfg.Accounts = &startAccounts
+	}
+
+	// Apply environment variables (env overrides config.toml but not flags)
 	if network := os.Getenv("STABLE_DEVNET_NETWORK"); network != "" && !cmd.Flags().Changed("network") {
-		startNetwork = network
+		fileCfg.Network = &network
 	}
 	if mode := os.Getenv("STABLE_DEVNET_MODE"); mode != "" && !cmd.Flags().Changed("mode") {
-		startMode = mode
+		fileCfg.Mode = &mode
 	}
 	if version := os.Getenv("STABLE_VERSION"); version != "" && !cmd.Flags().Changed("stable-version") {
-		startStableVersion = version
+		fileCfg.StableVersion = &version
+	}
+
+	// For deprecated start command, default blockchain to "stable" if not set
+	if fileCfg.BlockchainNetwork == nil {
+		defaultBlockchain := "stable"
+		fileCfg.BlockchainNetwork = &defaultBlockchain
+	}
+
+	// Run partial interactive setup for missing values
+	setup := config.NewInteractiveSetup(homeDir)
+	effectiveCfg, err := setup.RunPartial(fileCfg)
+	if err != nil {
+		// Check if it's a missing fields error for better messaging
+		if mfErr, ok := err.(*config.MissingFieldsError); ok {
+			return fmt.Errorf("missing required configuration: %v\nRun 'devnet-builder config init' to create a configuration file", mfErr.Fields)
+		}
+		return err
+	}
+
+	// Extract values from effective config
+	startNetwork = *effectiveCfg.Network
+	startValidators = *effectiveCfg.Validators
+	startMode = *effectiveCfg.Mode
+	if effectiveCfg.StableVersion != nil {
+		startStableVersion = *effectiveCfg.StableVersion
+	}
+	if effectiveCfg.NoCache != nil {
+		startNoCache = *effectiveCfg.NoCache
+	}
+	if effectiveCfg.Accounts != nil {
+		startAccounts = *effectiveCfg.Accounts
 	}
 
 	// Track if versions are custom refs
@@ -253,7 +289,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 		Logger:        logger,
 	}
 
-	_, err := devnet.Provision(ctx, provisionOpts)
+	_, err = devnet.Provision(ctx, provisionOpts)
 	if err != nil {
 		if jsonMode {
 			return outputStartError(err)

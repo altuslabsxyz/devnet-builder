@@ -91,68 +91,71 @@ func runInit(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
-	// Interactive setup: if no config exists and terminal is interactive, prompt for settings
-	setup := config.NewInteractiveSetup(homeDir)
-	if setup.ShouldPrompt() {
-		logger.Info("No configuration found. Starting interactive setup...")
-		cfg, err := setup.Run()
-		if err != nil {
-			return outputInitError(err)
-		}
-		if err := setup.WriteConfig(cfg); err != nil {
-			return outputInitError(fmt.Errorf("failed to save configuration: %w", err))
-		}
-		logger.Success("Configuration saved to %s", filepath.Join(homeDir, "config.toml"))
-		fmt.Println()
-
-		// Reload config after interactive setup
-		reloadFileConfig(homeDir)
-	} else if !setup.ConfigExists() && !config.IsInteractive() {
-		// Non-interactive mode: create config with defaults
-		cfg := setup.RunWithDefaults()
-		if err := setup.WriteConfig(cfg); err != nil {
-			logger.Warn("Could not save default config: %v", err)
-		} else {
-			logger.Debug("Created default configuration at %s", filepath.Join(homeDir, "config.toml"))
-		}
-		reloadFileConfig(homeDir)
-	}
-
-	// Apply config.toml values (priority: default < config.toml < env < flag)
+	// Build effective config from: default < config.toml < env < flag
+	// Start with loaded config.toml values
 	fileCfg := GetLoadedFileConfig()
-	if fileCfg != nil {
-		if !cmd.Flags().Changed("network") && fileCfg.Network != nil {
-			initNetwork = *fileCfg.Network
-		}
-		if !cmd.Flags().Changed("blockchain") && fileCfg.BlockchainNetwork != nil {
-			initBlockchainNetwork = *fileCfg.BlockchainNetwork
-		}
-		if !cmd.Flags().Changed("validators") && fileCfg.Validators != nil {
-			initValidators = *fileCfg.Validators
-		}
-		if !cmd.Flags().Changed("mode") && fileCfg.Mode != nil {
-			initMode = *fileCfg.Mode
-		}
-		if !cmd.Flags().Changed("stable-version") && fileCfg.StableVersion != nil {
-			initVersion = *fileCfg.StableVersion
-		}
-		if !cmd.Flags().Changed("no-cache") && fileCfg.NoCache != nil {
-			initNoCache = *fileCfg.NoCache
-		}
-		if !cmd.Flags().Changed("accounts") && fileCfg.Accounts != nil {
-			initAccounts = *fileCfg.Accounts
-		}
+	if fileCfg == nil {
+		fileCfg = &config.FileConfig{}
 	}
 
-	// Apply environment variables
+	// Apply flag values (flags override config.toml)
+	if cmd.Flags().Changed("network") {
+		fileCfg.Network = &initNetwork
+	}
+	if cmd.Flags().Changed("blockchain") {
+		fileCfg.BlockchainNetwork = &initBlockchainNetwork
+	}
+	if cmd.Flags().Changed("validators") {
+		fileCfg.Validators = &initValidators
+	}
+	if cmd.Flags().Changed("mode") {
+		fileCfg.Mode = &initMode
+	}
+	if cmd.Flags().Changed("stable-version") {
+		fileCfg.StableVersion = &initVersion
+	}
+	if cmd.Flags().Changed("no-cache") {
+		fileCfg.NoCache = &initNoCache
+	}
+	if cmd.Flags().Changed("accounts") {
+		fileCfg.Accounts = &initAccounts
+	}
+
+	// Apply environment variables (env overrides config.toml but not flags)
 	if network := os.Getenv("STABLE_DEVNET_NETWORK"); network != "" && !cmd.Flags().Changed("network") {
-		initNetwork = network
+		fileCfg.Network = &network
 	}
 	if mode := os.Getenv("STABLE_DEVNET_MODE"); mode != "" && !cmd.Flags().Changed("mode") {
-		initMode = mode
+		fileCfg.Mode = &mode
 	}
 	if version := os.Getenv("STABLE_VERSION"); version != "" && !cmd.Flags().Changed("stable-version") {
-		initVersion = version
+		fileCfg.StableVersion = &version
+	}
+
+	// Run partial interactive setup for missing values
+	setup := config.NewInteractiveSetup(homeDir)
+	effectiveCfg, err := setup.RunPartial(fileCfg)
+	if err != nil {
+		// Check if it's a missing fields error for better messaging
+		if mfErr, ok := err.(*config.MissingFieldsError); ok {
+			return outputInitError(fmt.Errorf("missing required configuration: %v\nRun 'devnet-builder config init' to create a configuration file", mfErr.Fields))
+		}
+		return outputInitError(err)
+	}
+
+	// Extract values from effective config
+	initNetwork = *effectiveCfg.Network
+	initBlockchainNetwork = *effectiveCfg.BlockchainNetwork
+	initValidators = *effectiveCfg.Validators
+	initMode = *effectiveCfg.Mode
+	if effectiveCfg.StableVersion != nil {
+		initVersion = *effectiveCfg.StableVersion
+	}
+	if effectiveCfg.NoCache != nil {
+		initNoCache = *effectiveCfg.NoCache
+	}
+	if effectiveCfg.Accounts != nil {
+		initAccounts = *effectiveCfg.Accounts
 	}
 
 	// Validate inputs
