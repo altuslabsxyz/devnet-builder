@@ -9,9 +9,9 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/helpers"
+	"github.com/b-harvest/devnet-builder/internal/network"
 	"github.com/google/uuid"
-	"github.com/stablelabs/stable-devnet/internal/helpers"
-	"github.com/stablelabs/stable-devnet/internal/network"
 )
 
 // ExecutionMode defines how nodes are executed.
@@ -299,4 +299,14 @@ func (m *DevnetMetadata) GetEffectiveVersion() string {
 		return m.NetworkVersion
 	}
 	return m.StableVersion
+}
+
+// GetBinaryName returns the binary name for the network module.
+// Falls back to "binary" if network module cannot be loaded.
+func (m *DevnetMetadata) GetBinaryName() string {
+	mod, err := m.GetNetworkModule()
+	if err != nil || mod == nil {
+		return "binary" // Generic fallback
+	}
+	return mod.BinaryName()
 }
