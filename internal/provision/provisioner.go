@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/b-harvest/devnet-builder/genesis"
+	"github.com/b-harvest/devnet-builder/internal/network"
 	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/b-harvest/devnet-builder/internal/snapshot"
 )
@@ -24,14 +25,15 @@ const (
 
 // ProvisionerOptions configures the provisioner.
 type ProvisionerOptions struct {
-	Network     string
-	Blockchain  string // blockchain module (stable, ault)
-	ChainID     string
-	HomeDir     string
-	DockerImage string
-	Mode        ExecutionMode
-	NoCache     bool
-	Logger      *output.Logger
+	Network       string
+	Blockchain    string // blockchain module (stable, ault)
+	ChainID       string
+	HomeDir       string
+	DockerImage   string
+	Mode          ExecutionMode
+	NoCache       bool
+	Logger        *output.Logger
+	NetworkModule network.SnapshotProvider // Optional: network module for snapshot/RPC config
 }
 
 // ProvisionResult contains the result of provisioning.
@@ -136,7 +138,16 @@ func (p *Provisioner) Provision(ctx context.Context) (*ProvisionResult, error) {
 func (p *Provisioner) DownloadSnapshot(ctx context.Context) (*snapshot.SnapshotCache, error) {
 	p.logger.Debug("Downloading snapshot...")
 
-	snapshotURL := GetSnapshotURL(p.opts.Network)
+	// Use network module if available, otherwise fall back to legacy GetSnapshotURL
+	var snapshotURL string
+	if p.opts.NetworkModule != nil {
+		snapshotURL = p.opts.NetworkModule.SnapshotURL(p.opts.Network)
+		p.logger.Debug("Using network module snapshot URL: %s", snapshotURL)
+	} else {
+		snapshotURL = GetSnapshotURL(p.opts.Network)
+		p.logger.Debug("Using legacy snapshot URL: %s", snapshotURL)
+	}
+
 	if snapshotURL == "" {
 		return nil, fmt.Errorf("no snapshot URL for network: %s", p.opts.Network)
 	}
@@ -178,6 +189,8 @@ func GetDockerImage(stableVersion string) string {
 }
 
 // GetSnapshotURL returns the snapshot download URL for the given network.
+// Deprecated: Use network.SnapshotProvider.SnapshotURL() instead for network-specific snapshots.
+// This function is kept for backward compatibility and only supports the stable network.
 func GetSnapshotURL(network string) string {
 	switch network {
 	case "mainnet":
@@ -209,6 +222,8 @@ func GetGenesisPath(network string) string {
 }
 
 // GetRPCEndpoint returns the RPC endpoint for the given network.
+// Deprecated: Use network.SnapshotProvider.RPCEndpoint() instead for network-specific RPC endpoints.
+// This function is kept for backward compatibility and only supports the stable network.
 func GetRPCEndpoint(network string) string {
 	switch network {
 	case "mainnet":
