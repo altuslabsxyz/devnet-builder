@@ -175,7 +175,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if devnet already exists
-	if devnet.DevnetExists(homeDir) {
+	svc := getDefaultService()
+	if svc.DevnetExists() {
 		return outputInitError(fmt.Errorf("devnet already exists at %s\nUse 'devnet-builder destroy' to remove it first", homeDir))
 	}
 

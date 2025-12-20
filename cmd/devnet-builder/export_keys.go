@@ -40,18 +40,20 @@ Examples:
 }
 
 func runExportKeys(cmd *cobra.Command, args []string) error {
+	svc := getDefaultService()
+
 	// Validate inputs first
 	if exportType != "all" && exportType != "validators" && exportType != "accounts" {
 		return outputExportKeysError(fmt.Errorf("invalid type: %s (must be 'validators', 'accounts', or 'all')", exportType))
 	}
 
-	// Check if devnet exists using consolidated helper
-	if _, err := loadMetadataOrFail(nil); err != nil {
-		return outputExportKeysError(err)
+	// Check if devnet exists
+	if !svc.DevnetExists() {
+		return outputExportKeysError(fmt.Errorf("no devnet found at %s", homeDir))
 	}
 
-	// Export keys
-	export, err := devnet.ExportKeys(homeDir, exportType)
+	// Export keys using service
+	export, err := svc.ExportKeys(exportType)
 	if err != nil {
 		return outputExportKeysError(err)
 	}

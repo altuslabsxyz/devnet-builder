@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/devnet"
-	"github.com/b-harvest/devnet-builder/internal/node"
+	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -110,198 +110,168 @@ func parseNodeIndex(arg string, numValidators int) (int, error) {
 
 func runNodeStart(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	logger := output.DefaultLogger
+	svc := getDefaultService()
 
-	// Load devnet using consolidated helper
-	loaded, err := loadDevnetOrFail(logger)
+	// Check if devnet exists
+	if !svc.DevnetExists() {
+		return fmt.Errorf("no devnet found at %s", homeDir)
+	}
+
+	// Get number of validators for validation
+	numValidators, err := svc.GetNumValidators()
 	if err != nil {
 		return err
 	}
-	metadata := loaded.Metadata
-	d := loaded.Devnet
 
 	// Parse node index
-	index, err := parseNodeIndex(args[0], metadata.NumValidators)
+	index, err := parseNodeIndex(args[0], numValidators)
 	if err != nil {
 		return err
 	}
 
-	n := d.Nodes[index]
-
-	// Check current state
-	health := node.CheckNodeHealth(ctx, n)
-	previousState := string(health.Status)
-
-	if health.Status == node.NodeStatusRunning || health.Status == node.NodeStatusSyncing {
-		return outputNodeResult(index, "start", "skipped", previousState, previousState,
-			fmt.Errorf("node%d is already running", index))
+	// Start the node
+	result, err := svc.StartNode(ctx, index)
+	if err != nil && result == nil {
+		return err
 	}
 
-	// Start the node using factory
-	factory := createNodeManagerFactory(metadata, logger)
-	manager, err := factory.Create()
-	if err != nil {
-		return outputNodeResult(index, "start", "error", previousState, "stopped", err)
-	}
-
-	startErr := manager.Start(ctx, n, metadata.GenesisPath)
-	if startErr != nil {
-		return outputNodeResult(index, "start", "error", previousState, "stopped", startErr)
-	}
-
-	// Wait a bit and check if it started
-	time.Sleep(2 * time.Second)
-	newHealth := node.CheckNodeHealth(ctx, n)
-
-	return outputNodeResult(index, "start", "success", previousState, string(newHealth.Status), nil)
+	return outputNodeActionResult(result, err)
 }
 
 func runNodeStop(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	logger := output.DefaultLogger
+	svc := getDefaultService()
 
-	// Load devnet using consolidated helper
-	loaded, err := loadDevnetOrFail(logger)
+	// Check if devnet exists
+	if !svc.DevnetExists() {
+		return fmt.Errorf("no devnet found at %s", homeDir)
+	}
+
+	// Get number of validators for validation
+	numValidators, err := svc.GetNumValidators()
 	if err != nil {
 		return err
 	}
-	metadata := loaded.Metadata
-	d := loaded.Devnet
 
 	// Parse node index
-	index, err := parseNodeIndex(args[0], metadata.NumValidators)
+	index, err := parseNodeIndex(args[0], numValidators)
 	if err != nil {
 		return err
 	}
 
-	n := d.Nodes[index]
-
-	// Check current state
-	health := node.CheckNodeHealth(ctx, n)
-	previousState := string(health.Status)
-
-	if health.Status == node.NodeStatusStopped || health.Status == node.NodeStatusError {
-		return outputNodeResult(index, "stop", "skipped", previousState, previousState,
-			fmt.Errorf("node%d is not running", index))
-	}
-
-	// Stop the node using factory
+	// Stop the node
 	timeout := 30 * time.Second
-	factory := createNodeManagerFactory(metadata, logger)
-	manager, err := factory.Create()
-	if err != nil {
-		return outputNodeResult(index, "stop", "error", previousState, previousState, err)
+	result, err := svc.StopNode(ctx, index, timeout)
+	if err != nil && result == nil {
+		return err
 	}
 
-	stopErr := manager.Stop(ctx, n, timeout)
-	if stopErr != nil {
-		return outputNodeResult(index, "stop", "error", previousState, previousState, stopErr)
-	}
-
-	return outputNodeResult(index, "stop", "success", previousState, "stopped", nil)
+	return outputNodeActionResult(result, err)
 }
 
 func runNodeLogs(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	logger := output.DefaultLogger
+	svc := getDefaultService()
 
-	// Load devnet using consolidated helper
-	loaded, err := loadDevnetOrFail(logger)
+	// Check if devnet exists
+	if !svc.DevnetExists() {
+		return fmt.Errorf("no devnet found at %s", homeDir)
+	}
+
+	// Get number of validators for validation
+	numValidators, err := svc.GetNumValidators()
 	if err != nil {
 		return err
 	}
-	metadata := loaded.Metadata
-	d := loaded.Devnet
 
 	// Parse node index
-	index, err := parseNodeIndex(args[0], metadata.NumValidators)
+	index, err := parseNodeIndex(args[0], numValidators)
 	if err != nil {
 		return err
 	}
 
-	n := d.Nodes[index]
+	// Get execution mode info
+	modeInfo, err := svc.GetExecutionModeInfo(ctx, index)
+	if err != nil {
+		return err
+	}
 
 	// Handle logs based on execution mode
-	switch metadata.ExecutionMode {
-	case devnet.ModeDocker:
+	if modeInfo.Mode == "docker" {
 		if nodeLogFollow {
-			return node.FollowDockerLogs(ctx, n.DockerContainerName())
+			return followDockerLogsForNode(ctx, modeInfo.ContainerName)
 		}
 		// Get last N lines from docker logs
-		lines, err := node.GetDockerLogs(ctx, n.DockerContainerName(), nodeLogLines)
+		result, err := svc.GetNodeLogs(ctx, index, nodeLogLines, "")
 		if err != nil {
 			return fmt.Errorf("failed to get docker logs: %w", err)
 		}
-		for _, line := range lines {
+		for _, line := range result.Lines {
 			fmt.Println(line)
 		}
 		return nil
-
-	case devnet.ModeLocal:
-		logPath := n.LogFilePath()
-		// Check if log file exists
-		if _, err := os.Stat(logPath); os.IsNotExist(err) {
-			return fmt.Errorf("log file not found: %s", logPath)
-		}
-		if nodeLogFollow {
-			return node.FollowLocalLogs(ctx, logPath)
-		}
-		// Print last N lines
-		lines, err := output.ReadLastLines(logPath, nodeLogLines)
-		if err != nil {
-			return fmt.Errorf("failed to read logs: %w", err)
-		}
-		for _, line := range lines {
-			fmt.Println(line)
-		}
-		return nil
-
-	default:
-		return fmt.Errorf("unknown execution mode: %s", metadata.ExecutionMode)
-	}
-}
-
-func followNodeLogs(ctx context.Context, metadata *devnet.DevnetMetadata, n *node.Node, logPath string) error {
-	switch metadata.ExecutionMode {
-	case devnet.ModeDocker:
-		// For Docker, use docker logs -f
-		return node.FollowDockerLogs(ctx, n.DockerContainerName())
-	case devnet.ModeLocal:
-		// For local mode, tail -f the log file
-		return node.FollowLocalLogs(ctx, logPath)
-	default:
-		return fmt.Errorf("unknown execution mode: %s", metadata.ExecutionMode)
-	}
-}
-
-func outputNodeResult(index int, action, status, prevState, currState string, err error) error {
-	result := NodeActionResult{
-		Node:          index,
-		Action:        action,
-		Status:        status,
-		PreviousState: prevState,
-		CurrentState:  currState,
 	}
 
+	// Local mode
+	logPath := modeInfo.LogPath
+	// Check if log file exists
+	if _, err := os.Stat(logPath); os.IsNotExist(err) {
+		return fmt.Errorf("log file not found: %s", logPath)
+	}
+	if nodeLogFollow {
+		return followLocalLogsForNode(ctx, logPath)
+	}
+	// Print last N lines
+	result, err := svc.GetNodeLogs(ctx, index, nodeLogLines, "")
 	if err != nil {
-		result.Error = err.Error()
+		return fmt.Errorf("failed to read logs: %w", err)
+	}
+	for _, line := range result.Lines {
+		fmt.Println(line)
+	}
+	return nil
+}
+
+func followDockerLogsForNode(ctx context.Context, containerName string) error {
+	cmd := exec.CommandContext(ctx, "docker", "logs", "-f", containerName)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func followLocalLogsForNode(ctx context.Context, logPath string) error {
+	cmd := exec.CommandContext(ctx, "tail", "-f", logPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func outputNodeActionResult(result *dto.NodeActionOutput, originalErr error) error {
+	actionResult := NodeActionResult{
+		Node:          result.NodeIndex,
+		Action:        result.Action,
+		Status:        result.Status,
+		PreviousState: result.PreviousState,
+		CurrentState:  result.CurrentState,
+		Error:         result.Error,
 	}
 
 	if jsonMode {
-		data, _ := json.MarshalIndent(result, "", "  ")
+		data, _ := json.MarshalIndent(actionResult, "", "  ")
 		fmt.Println(string(data))
 	} else {
-		if status == "success" {
-			output.Success("node%d %s: %s -> %s", index, action, prevState, currState)
-		} else if status == "skipped" {
-			output.Info("node%d %s: skipped (%s)", index, action, result.Error)
+		if result.Status == "success" {
+			output.Success("node%d %s: %s -> %s", result.NodeIndex, result.Action, result.PreviousState, result.CurrentState)
+		} else if result.Status == "skipped" {
+			output.Info("node%d %s: skipped (%s)", result.NodeIndex, result.Action, result.Error)
 		} else {
-			output.Warn("node%d %s failed: %s", index, action, result.Error)
+			output.Warn("node%d %s failed: %s", result.NodeIndex, result.Action, result.Error)
 		}
 	}
 
-	if err != nil {
-		return err
+	// Return original error only if there was an actual error (not skipped)
+	if result.Status == "error" {
+		return originalErr
 	}
 	return nil
 }

@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/b-harvest/devnet-builder/internal/devnet"
-	"github.com/b-harvest/devnet-builder/internal/node"
 	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -66,83 +64,95 @@ Examples:
 
 func runLogs(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	logger := output.DefaultLogger
+	svc := getDefaultService()
 
-	// Load devnet using consolidated helper
-	loaded, err := loadDevnetOrFail(logger)
+	// Check if devnet exists
+	if !svc.DevnetExists() {
+		return fmt.Errorf("no devnet found at %s", homeDir)
+	}
+
+	// Get number of validators
+	numValidators, err := svc.GetNumValidators()
 	if err != nil {
 		return err
 	}
-	d := loaded.Devnet
 
 	// Determine which nodes to show logs for
-	var targetNodes []*node.Node
+	var targetIndices []int
 	if len(args) > 0 {
 		nodeName := args[0]
 		var index int
-		var err error
 
 		// Support both "node0" and "0" formats
 		if strings.HasPrefix(nodeName, "node") {
 			indexStr := strings.TrimPrefix(nodeName, "node")
 			index, err = strconv.Atoi(indexStr)
 		} else {
-			// Try parsing as just a number
 			index, err = strconv.Atoi(nodeName)
 		}
 
-		if err != nil || index < 0 || index >= len(d.Nodes) {
-			return fmt.Errorf("invalid node: %s (expected 0-%d or node0-node%d)", nodeName, len(d.Nodes)-1, len(d.Nodes)-1)
+		if err != nil || index < 0 || index >= numValidators {
+			return fmt.Errorf("invalid node: %s (expected 0-%d or node0-node%d)", nodeName, numValidators-1, numValidators-1)
 		}
-		targetNodes = []*node.Node{d.Nodes[index]}
+		targetIndices = []int{index}
 	} else {
-		targetNodes = d.Nodes
+		// All nodes
+		for i := 0; i < numValidators; i++ {
+			targetIndices = append(targetIndices, i)
+		}
 	}
 
 	// Show network info header
 	if !logsFollow {
-		output.Info("Logs from %s devnet (%s)", d.Metadata.BlockchainNetwork, d.Metadata.ChainID)
+		network, _ := svc.GetBlockchainNetwork()
+		chainID, _ := svc.GetChainID()
+		output.Info("Logs from %s devnet (%s)", network, chainID)
 		fmt.Println()
 	}
 
 	// Get logs based on execution mode
-	switch d.Metadata.ExecutionMode {
-	case devnet.ModeDocker:
-		return showDockerLogs(ctx, targetNodes, d.Logger)
-	case devnet.ModeLocal:
-		return showLocalLogs(ctx, targetNodes, d.Logger)
-	default:
-		return fmt.Errorf("unknown execution mode: %s", d.Metadata.ExecutionMode)
+	isDocker, err := svc.IsDockerMode()
+	if err != nil {
+		return err
 	}
+
+	if isDocker {
+		return showDockerLogsWithService(ctx, svc, targetIndices)
+	}
+	return showLocalLogsWithService(ctx, svc, targetIndices)
 }
 
-func showDockerLogs(ctx context.Context, nodes []*node.Node, logger *output.Logger) error {
-	manager := node.NewDockerManager("", logger)
+func showDockerLogsWithService(ctx context.Context, svc *DevnetService, nodeIndices []int) error {
+	manager := svc.GetDockerManager()
 
 	if logsFollow {
-		// For follow mode with multiple nodes, we need to use docker-compose or interleave
-		// For simplicity, if following multiple nodes, just follow the first one
-		if len(nodes) > 1 {
+		// For follow mode with multiple nodes, we need to interleave
+		if len(nodeIndices) > 1 {
 			output.Warn("Follow mode with multiple nodes - showing all nodes, press Ctrl+C to stop")
 		}
 
 		// Start follow processes for each node
-		for _, n := range nodes {
+		for _, idx := range nodeIndices {
+			n, err := svc.GetNode(idx)
+			if err != nil {
+				return err
+			}
+
 			cmd, err := manager.FollowLogs(ctx, n, logsTail)
 			if err != nil {
-				return fmt.Errorf("failed to follow logs for %s: %w", n.Name, err)
+				return fmt.Errorf("failed to follow logs for node%d: %w", idx, err)
 			}
 
 			// Prefix each line with node name
-			cmd.Stdout = &prefixWriter{prefix: fmt.Sprintf("[%s] ", n.Name), writer: os.Stdout}
-			cmd.Stderr = &prefixWriter{prefix: fmt.Sprintf("[%s] ", n.Name), writer: os.Stderr}
+			cmd.Stdout = &prefixWriter{prefix: fmt.Sprintf("[node%d] ", idx), writer: os.Stdout}
+			cmd.Stderr = &prefixWriter{prefix: fmt.Sprintf("[node%d] ", idx), writer: os.Stderr}
 
 			if err := cmd.Start(); err != nil {
-				return fmt.Errorf("failed to start log follow for %s: %w", n.Name, err)
+				return fmt.Errorf("failed to start log follow for node%d: %w", idx, err)
 			}
 
 			// Only follow first node in single-process mode
-			if len(nodes) == 1 {
+			if len(nodeIndices) == 1 {
 				return cmd.Wait()
 			}
 		}
@@ -152,18 +162,17 @@ func showDockerLogs(ctx context.Context, nodes []*node.Node, logger *output.Logg
 	}
 
 	// Non-follow mode - get logs from each node
-	for _, n := range nodes {
-		logs, err := manager.GetLogs(ctx, n, logsTail, logsSince)
+	for _, idx := range nodeIndices {
+		result, err := svc.GetNodeLogs(ctx, idx, logsTail, logsSince)
 		if err != nil {
-			logger.Warn("Failed to get logs for %s: %v", n.Name, err)
+			output.Warn("Failed to get logs for node%d: %v", idx, err)
 			continue
 		}
 
 		// Print logs with node prefix
-		lines := strings.Split(logs, "\n")
-		for _, line := range lines {
+		for _, line := range result.Lines {
 			if line != "" {
-				fmt.Printf("[%s] %s\n", n.Name, line)
+				fmt.Printf("[node%d] %s\n", idx, line)
 			}
 		}
 	}
@@ -171,14 +180,16 @@ func showDockerLogs(ctx context.Context, nodes []*node.Node, logger *output.Logg
 	return nil
 }
 
-func showLocalLogs(ctx context.Context, nodes []*node.Node, logger *output.Logger) error {
-	manager := node.NewLocalManager("", logger)
-
+func showLocalLogsWithService(ctx context.Context, svc *DevnetService, nodeIndices []int) error {
 	if logsFollow {
 		// Use tail -f for local logs
-		for _, n := range nodes {
-			logPath := n.LogFilePath()
+		for _, idx := range nodeIndices {
+			modeInfo, err := svc.GetExecutionModeInfo(ctx, idx)
+			if err != nil {
+				return err
+			}
 
+			logPath := modeInfo.LogPath
 			var args []string
 			if logsTail > 0 {
 				args = []string{"-n", fmt.Sprintf("%d", logsTail), "-f", logPath}
@@ -187,14 +198,14 @@ func showLocalLogs(ctx context.Context, nodes []*node.Node, logger *output.Logge
 			}
 
 			cmd := exec.CommandContext(ctx, "tail", args...)
-			cmd.Stdout = &prefixWriter{prefix: fmt.Sprintf("[%s] ", n.Name), writer: os.Stdout}
-			cmd.Stderr = &prefixWriter{prefix: fmt.Sprintf("[%s] ", n.Name), writer: os.Stderr}
+			cmd.Stdout = &prefixWriter{prefix: fmt.Sprintf("[node%d] ", idx), writer: os.Stdout}
+			cmd.Stderr = &prefixWriter{prefix: fmt.Sprintf("[node%d] ", idx), writer: os.Stderr}
 
 			if err := cmd.Start(); err != nil {
-				return fmt.Errorf("failed to follow logs for %s: %w", n.Name, err)
+				return fmt.Errorf("failed to follow logs for node%d: %w", idx, err)
 			}
 
-			if len(nodes) == 1 {
+			if len(nodeIndices) == 1 {
 				return cmd.Wait()
 			}
 		}
@@ -204,17 +215,16 @@ func showLocalLogs(ctx context.Context, nodes []*node.Node, logger *output.Logge
 	}
 
 	// Non-follow mode
-	for _, n := range nodes {
-		logs, err := manager.GetLogs(ctx, n, logsTail)
+	for _, idx := range nodeIndices {
+		result, err := svc.GetNodeLogs(ctx, idx, logsTail, "")
 		if err != nil {
-			logger.Warn("Failed to get logs for %s: %v", n.Name, err)
+			output.Warn("Failed to get logs for node%d: %v", idx, err)
 			continue
 		}
 
-		lines := strings.Split(logs, "\n")
-		for _, line := range lines {
+		for _, line := range result.Lines {
 			if line != "" {
-				fmt.Printf("[%s] %s\n", n.Name, line)
+				fmt.Printf("[node%d] %s\n", idx, line)
 			}
 		}
 	}

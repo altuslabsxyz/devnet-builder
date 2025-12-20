@@ -42,28 +42,27 @@ Examples:
 
 func runDown(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	logger := output.DefaultLogger
+	svc := getDefaultService()
 
-	// Load devnet using consolidated helper
-	loaded, err := loadDevnetOrFail(logger)
-	if err != nil {
+	// Check if devnet exists
+	if !svc.DevnetExists() {
 		if jsonMode {
-			return outputDownError(err)
+			return outputDownError(fmt.Errorf("no devnet found"))
 		}
-		return err
+		return fmt.Errorf("no devnet found at %s", homeDir)
 	}
-	d := loaded.Devnet
 
 	// Stop nodes
 	if !jsonMode {
 		output.Info("Stopping devnet nodes...")
 	}
 
-	if err := d.Stop(ctx, downTimeout); err != nil {
+	_, err := svc.Stop(ctx, downTimeout)
+	if err != nil {
 		if jsonMode {
 			return outputDownError(err)
 		}
-		return fmt.Errorf("failed to stop devnet: %w", err)
+		return err
 	}
 
 	if jsonMode {
