@@ -10,34 +10,61 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stablelabs/stable-devnet/internal/cache"
-	"github.com/stablelabs/stable-devnet/internal/network"
-	"github.com/stablelabs/stable-devnet/internal/output"
+	"github.com/b-harvest/devnet-builder/internal/cache"
+	"github.com/b-harvest/devnet-builder/internal/network"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 const (
-	// DefaultRepo is the default stable repository (kept for backward compatibility).
-	// Prefer using NetworkModule.BinarySource() for network-specific repos.
-	DefaultRepo = "https://github.com/stablelabs/stable.git"
+	// DefaultBinaryName is the fallback binary name when no network module is available.
+	DefaultBinaryName = "binary"
+)
 
-	// BinaryName is the default binary name (kept for backward compatibility).
-	// Prefer using NetworkModule.BinaryName() for network-specific binaries.
-	BinaryName = "stabled"
+// GoreleaserConfig contains network-specific goreleaser configuration.
+type GoreleaserConfig struct {
+	ProjectName string
+	BinaryName  string
+	MainPath    string
+	Toolchain   string
+	LDFlags     []string
+	Tags        []string
+}
 
-	// EVMChainID constants for different networks (kept for backward compatibility).
-	// Prefer using NetworkModule.GenesisConfig().EVMChainID for network-specific values.
-	MainnetEVMChainID = "988"
-	TestnetEVMChainID = "2201"
+// DefaultGoreleaserConfig returns a default goreleaser configuration.
+func DefaultGoreleaserConfig(binaryName, toolchain string) *GoreleaserConfig {
+	return &GoreleaserConfig{
+		ProjectName: binaryName,
+		BinaryName:  binaryName,
+		MainPath:    fmt.Sprintf("./cmd/%s", binaryName),
+		Toolchain:   toolchain,
+		LDFlags: []string{
+			"-X github.com/cosmos/cosmos-sdk/version.Version={{ .Version }}",
+			"-X github.com/cosmos/cosmos-sdk/version.Commit={{ .Commit }}",
+			"-w -s",
+		},
+		Tags: []string{
+			"netgo",
+			"ledger",
+		},
+	}
+}
 
-	// DevnetGoreleaserConfigTemplate is a goreleaser config template for devnet builds.
-	// This config mirrors the production build flags from stable's .goreleaser.yml
-	// but targets only the current OS/arch for local development.
-	// Format args: %s = GOTOOLCHAIN version, %s = EVMChainID
-	DevnetGoreleaserConfigTemplate = `# Devnet-builder goreleaser config (auto-generated)
-# Mirrors production build flags for local development builds
+// GenerateGoreleaserConfig generates a goreleaser config file content.
+func GenerateGoreleaserConfig(cfg *GoreleaserConfig) string {
+	ldflags := ""
+	for _, ldf := range cfg.LDFlags {
+		ldflags += fmt.Sprintf("\n      - %s", ldf)
+	}
+
+	tags := ""
+	for _, tag := range cfg.Tags {
+		tags += fmt.Sprintf("\n      - %s", tag)
+	}
+
+	return fmt.Sprintf(`# Devnet-builder goreleaser config (auto-generated)
 version: 2
 
-project_name: stabled
+project_name: %s
 
 env:
   - CGO_ENABLED=1
@@ -51,9 +78,9 @@ before:
     - go mod download
 
 builds:
-  - id: stabled-devnet
-    main: ./cmd/stabled
-    binary: stabled
+  - id: %s-devnet
+    main: %s
+    binary: %s
     env:
       - CGO_ENABLED=1
       - CGO_CFLAGS=-O3 -g0 -DNDEBUG
@@ -61,19 +88,8 @@ builds:
     flags:
       - -mod=readonly
       - -trimpath
-    ldflags:
-      - -X github.com/cosmos/cosmos-sdk/version.Name=stable
-      - -X github.com/cosmos/cosmos-sdk/version.AppName=stabled
-      - -X github.com/cosmos/cosmos-sdk/version.Version={{ .Version }}
-      - -X github.com/cosmos/cosmos-sdk/version.Commit={{ .Commit }}
-      - -X github.com/cosmos/cosmos-sdk/version.BuildTags=netgo,ledger,osusergo,no_dynamic_precompiles
-      - -X github.com/stablelabs/stable/app/config.EVMChainID=%s
-      - -w -s
-    tags:
-      - netgo
-      - ledger
-      - osusergo
-      - no_dynamic_precompiles
+    ldflags:%s
+    tags:%s
 
 archives:
   - id: devnet
@@ -89,8 +105,8 @@ snapshot:
 
 changelog:
   disable: true
-`
-)
+`, cfg.ProjectName, cfg.Toolchain, cfg.BinaryName, cfg.MainPath, cfg.BinaryName, ldflags, tags)
+}
 
 // Builder handles building binaries from source.
 type Builder struct {
@@ -99,36 +115,32 @@ type Builder struct {
 	module  network.NetworkModule
 }
 
-// NewBuilder creates a new Builder with optional NetworkModule.
-// If networkModule is nil, defaults to stable network for backward compatibility.
-func NewBuilder(homeDir string, logger *output.Logger, networkModule ...network.NetworkModule) *Builder {
+// NewBuilder creates a new Builder with the specified NetworkModule.
+// A NetworkModule is required for building - use network plugins to provide one.
+func NewBuilder(homeDir string, logger *output.Logger, networkModule network.NetworkModule) *Builder {
 	if logger == nil {
 		logger = output.DefaultLogger
 	}
-	b := &Builder{
+	return &Builder{
 		homeDir: homeDir,
 		logger:  logger,
+		module:  networkModule,
 	}
-	// Use provided network module or default to stable
-	if len(networkModule) > 0 && networkModule[0] != nil {
-		b.module = networkModule[0]
-	} else {
-		// Default to stable for backward compatibility
-		mod, _ := network.Get("stable")
-		b.module = mod
-	}
-	return b
 }
 
 // getRepoURL returns the repository URL for the current network module.
-func (b *Builder) getRepoURL() string {
-	if b.module != nil {
-		src := b.module.BinarySource()
-		if src.IsGitHub() {
-			return fmt.Sprintf("https://github.com/%s/%s.git", src.Owner, src.Repo)
-		}
+func (b *Builder) getRepoURL() (string, error) {
+	if b.module == nil {
+		return "", fmt.Errorf("no network module configured - use a network plugin")
 	}
-	return DefaultRepo
+	src := b.module.BinarySource()
+	if src.IsGitHub() {
+		return fmt.Sprintf("https://github.com/%s/%s.git", src.Owner, src.Repo), nil
+	}
+	if src.LocalPath != "" {
+		return src.LocalPath, nil
+	}
+	return "", fmt.Errorf("network module %s has no valid binary source", b.module.Name())
 }
 
 // getBinaryName returns the binary name for the current network module.
@@ -136,7 +148,7 @@ func (b *Builder) getBinaryName() string {
 	if b.module != nil {
 		return b.module.BinaryName()
 	}
-	return BinaryName
+	return DefaultBinaryName
 }
 
 // BuildOptions configures the build process.
@@ -153,8 +165,8 @@ type BuildResult struct {
 	CommitHash string // The commit hash that was built
 }
 
-// Build builds a stable binary from the given ref, stores it in cache, and
-// updates the symlink at ~/.stable-devnet/bin/stabled to point to it.
+// Build builds a binary from the given ref, stores it in cache, and
+// updates the symlink at ~/.stable-devnet/bin/{binaryName} to point to it.
 //
 // This is used by `start` command where the binary should be used immediately.
 // For `upgrade` command, use BuildToCache() which only caches without symlink change.
@@ -163,12 +175,13 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, e
 		return nil, fmt.Errorf("ref is required")
 	}
 
-	// Initialize cache and symlink manager
-	binaryCache := cache.NewBinaryCache(b.homeDir, b.logger)
+	// Initialize cache and symlink manager with network's binary name
+	binaryName := b.getBinaryName()
+	binaryCache := cache.NewBinaryCache(b.homeDir, binaryName, b.logger)
 	if err := binaryCache.Initialize(); err != nil {
 		return nil, fmt.Errorf("failed to initialize binary cache: %w", err)
 	}
-	symlinkMgr := cache.NewSymlinkManager(b.homeDir)
+	symlinkMgr := cache.NewSymlinkManager(b.homeDir, binaryName)
 
 	// Try to resolve commit hash first to check cache
 	commitHash, resolveErr := b.ResolveCommitHash(ctx, opts.Ref)
@@ -223,20 +236,15 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, e
 		}, nil
 	}
 
-	// Determine EVMChainID based on network
-	evmChainID := MainnetEVMChainID
-	if opts.Network == "testnet" {
-		evmChainID = TestnetEVMChainID
-	}
-
 	// Read toolchain version from go.mod and create devnet-specific goreleaser config
 	toolchain := b.readToolchainFromGoMod(repoDir)
-	configContent := fmt.Sprintf(DevnetGoreleaserConfigTemplate, toolchain, evmChainID)
+	cfg := DefaultGoreleaserConfig(binaryName, toolchain)
+	configContent := GenerateGoreleaserConfig(cfg)
 	configPath := filepath.Join(repoDir, ".goreleaser.devnet.yaml")
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
 		return nil, fmt.Errorf("failed to create goreleaser config: %w", err)
 	}
-	b.logger.Info("Using EVMChainID: %s (network: %s)", evmChainID, opts.Network)
+	b.logger.Info("Building %s for network: %s", binaryName, b.module.DisplayName())
 
 	// Build using embedded goreleaser
 	b.logger.Info("Building binary with goreleaser (ref: %s)...", opts.Ref)
@@ -282,7 +290,10 @@ func (b *Builder) cloneRepo(ctx context.Context, repoDir, ref string) error {
 		return fmt.Errorf("failed to remove existing directory: %w", err)
 	}
 
-	repoURL := b.getRepoURL()
+	repoURL, err := b.getRepoURL()
+	if err != nil {
+		return fmt.Errorf("failed to get repository URL: %w", err)
+	}
 
 	// Clone with depth 1 for efficiency (if it's a branch/tag)
 	// For commit hashes, we need full history
@@ -541,20 +552,16 @@ func (b *Builder) BuildToCache(ctx context.Context, opts BuildOptions, binaryCac
 		return binaryCache.Lookup(commitHash), nil
 	}
 
-	// Determine EVMChainID based on network
-	evmChainID := MainnetEVMChainID
-	if opts.Network == "testnet" {
-		evmChainID = TestnetEVMChainID
-	}
-
 	// Read toolchain version from go.mod and create devnet-specific goreleaser config
 	toolchain := b.readToolchainFromGoMod(repoDir)
-	configContent := fmt.Sprintf(DevnetGoreleaserConfigTemplate, toolchain, evmChainID)
+	binaryName := b.getBinaryName()
+	cfg := DefaultGoreleaserConfig(binaryName, toolchain)
+	configContent := GenerateGoreleaserConfig(cfg)
 	configPath := filepath.Join(repoDir, ".goreleaser.devnet.yaml")
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
 		return nil, fmt.Errorf("failed to create goreleaser config: %w", err)
 	}
-	b.logger.Info("Using EVMChainID: %s (network: %s)", evmChainID, opts.Network)
+	b.logger.Info("Building %s for network: %s", binaryName, b.module.DisplayName())
 
 	// Build using embedded goreleaser
 	b.logger.Info("Building binary with goreleaser (ref: %s)...", opts.Ref)
@@ -594,7 +601,10 @@ func (b *Builder) ResolveCommitHash(ctx context.Context, ref string) (string, er
 	}
 
 	// Create temp directory for ls-remote
-	repoURL := b.getRepoURL()
+	repoURL, err := b.getRepoURL()
+	if err != nil {
+		return "", fmt.Errorf("failed to get repository URL: %w", err)
+	}
 	cmd := exec.CommandContext(ctx, "git", "ls-remote", repoURL, ref)
 	output, err := cmd.Output()
 	if err != nil {
