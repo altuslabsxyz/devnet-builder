@@ -202,6 +202,19 @@ func (s *GRPCServer) Validate(ctx context.Context, req *Empty) (*ErrorResponse, 
 	return &ErrorResponse{}, nil
 }
 
+// Snapshot methods
+func (s *GRPCServer) SnapshotURL(ctx context.Context, req *StringRequest) (*StringResponse, error) {
+	return &StringResponse{Value: s.impl.SnapshotURL(req.Value)}, nil
+}
+
+func (s *GRPCServer) RPCEndpoint(ctx context.Context, req *StringRequest) (*StringResponse, error) {
+	return &StringResponse{Value: s.impl.RPCEndpoint(req.Value)}, nil
+}
+
+func (s *GRPCServer) AvailableNetworks(ctx context.Context, req *Empty) (*StringListResponse, error) {
+	return &StringListResponse{Values: s.impl.AvailableNetworks()}, nil
+}
+
 // Helper to convert Duration
 func durationToSeconds(d time.Duration) int64 {
 	return int64(d.Seconds())

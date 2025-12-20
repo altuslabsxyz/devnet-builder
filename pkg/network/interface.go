@@ -173,6 +173,28 @@ type Module interface {
 	// Validate checks if the module configuration is valid.
 	// Called during registration and before use.
 	Validate() error
+
+	// ============================================
+	// Snapshot Configuration
+	// ============================================
+
+	// SnapshotURL returns the snapshot download URL for the given network type.
+	// Parameters:
+	//   - networkType: Type of network ("mainnet", "testnet", etc.)
+	// Returns: Full URL to the snapshot archive, or empty string if not available
+	// Example: "https://stable-mainnet-data.s3.amazonaws.com/snapshots/stable_pruned.tar.zst"
+	SnapshotURL(networkType string) string
+
+	// RPCEndpoint returns the RPC endpoint for the given network type.
+	// Parameters:
+	//   - networkType: Type of network ("mainnet", "testnet", etc.)
+	// Returns: Full URL to the RPC endpoint, or empty string if not available
+	// Example: "https://cosmos-rpc.stable.xyz"
+	RPCEndpoint(networkType string) string
+
+	// AvailableNetworks returns a list of supported network types.
+	// Returns: Slice of network type strings (e.g., ["mainnet", "testnet"])
+	AvailableNetworks() []string
 }
 
 // BinarySource defines how to acquire the network binary.

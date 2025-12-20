@@ -162,6 +162,28 @@ type Validator interface {
 	Validate() error
 }
 
+// SnapshotProvider provides network-specific snapshot and RPC configuration.
+// This allows each network module to define its own snapshot URLs and RPC endpoints.
+type SnapshotProvider interface {
+	// SnapshotURL returns the snapshot download URL for the given network type.
+	// Parameters:
+	//   - networkType: Type of network ("mainnet", "testnet", etc.)
+	// Returns: Full URL to the snapshot archive, or empty string if not available
+	// Example: "https://stable-mainnet-data.s3.amazonaws.com/snapshots/stable_pruned.tar.zst"
+	SnapshotURL(networkType string) string
+
+	// RPCEndpoint returns the RPC endpoint for the given network type.
+	// Parameters:
+	//   - networkType: Type of network ("mainnet", "testnet", etc.)
+	// Returns: Full URL to the RPC endpoint, or empty string if not available
+	// Example: "https://cosmos-rpc.stable.xyz"
+	RPCEndpoint(networkType string) string
+
+	// AvailableNetworks returns a list of supported network types.
+	// Returns: Slice of network type strings (e.g., ["mainnet", "testnet"])
+	AvailableNetworks() []string
+}
+
 // =============================================================================
 // NetworkModule: Composite interface for full network module functionality
 // =============================================================================
@@ -181,6 +203,7 @@ type NetworkModule interface {
 	GenesisModifier
 	DevnetGenerator
 	Validator
+	SnapshotProvider
 }
 
 // =============================================================================

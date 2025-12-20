@@ -49,6 +49,11 @@ service NetworkModule {
 
     // Validation
     rpc Validate(Empty) returns (ErrorResponse);
+
+    // Snapshot
+    rpc SnapshotURL(StringRequest) returns (StringResponse);
+    rpc RPCEndpoint(StringRequest) returns (StringResponse);
+    rpc AvailableNetworks(Empty) returns (StringListResponse);
 }
 
 message Empty {}

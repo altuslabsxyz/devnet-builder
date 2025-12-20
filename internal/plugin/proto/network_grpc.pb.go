@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v5.27.2
-// source: network.proto
+// source: internal/plugin/proto/network.proto
 
 package proto
 
@@ -45,6 +45,9 @@ const (
 	NetworkModule_GenerateDevnet_FullMethodName         = "/network.NetworkModule/GenerateDevnet"
 	NetworkModule_GetCodec_FullMethodName               = "/network.NetworkModule/GetCodec"
 	NetworkModule_Validate_FullMethodName               = "/network.NetworkModule/Validate"
+	NetworkModule_SnapshotURL_FullMethodName            = "/network.NetworkModule/SnapshotURL"
+	NetworkModule_RPCEndpoint_FullMethodName            = "/network.NetworkModule/RPCEndpoint"
+	NetworkModule_AvailableNetworks_FullMethodName      = "/network.NetworkModule/AvailableNetworks"
 )
 
 // NetworkModuleClient is the client API for NetworkModule service.
@@ -88,6 +91,10 @@ type NetworkModuleClient interface {
 	GetCodec(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*BytesResponse, error)
 	// Validation
 	Validate(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ErrorResponse, error)
+	// Snapshot
+	SnapshotURL(ctx context.Context, in *StringRequest, opts ...grpc.CallOption) (*StringResponse, error)
+	RPCEndpoint(ctx context.Context, in *StringRequest, opts ...grpc.CallOption) (*StringResponse, error)
+	AvailableNetworks(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StringListResponse, error)
 }
 
 type networkModuleClient struct {
@@ -358,6 +365,36 @@ func (c *networkModuleClient) Validate(ctx context.Context, in *Empty, opts ...g
 	return out, nil
 }
 
+func (c *networkModuleClient) SnapshotURL(ctx context.Context, in *StringRequest, opts ...grpc.CallOption) (*StringResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StringResponse)
+	err := c.cc.Invoke(ctx, NetworkModule_SnapshotURL_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *networkModuleClient) RPCEndpoint(ctx context.Context, in *StringRequest, opts ...grpc.CallOption) (*StringResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StringResponse)
+	err := c.cc.Invoke(ctx, NetworkModule_RPCEndpoint_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *networkModuleClient) AvailableNetworks(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StringListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StringListResponse)
+	err := c.cc.Invoke(ctx, NetworkModule_AvailableNetworks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NetworkModuleServer is the server API for NetworkModule service.
 // All implementations must embed UnimplementedNetworkModuleServer
 // for forward compatibility.
@@ -399,6 +436,10 @@ type NetworkModuleServer interface {
 	GetCodec(context.Context, *Empty) (*BytesResponse, error)
 	// Validation
 	Validate(context.Context, *Empty) (*ErrorResponse, error)
+	// Snapshot
+	SnapshotURL(context.Context, *StringRequest) (*StringResponse, error)
+	RPCEndpoint(context.Context, *StringRequest) (*StringResponse, error)
+	AvailableNetworks(context.Context, *Empty) (*StringListResponse, error)
 	mustEmbedUnimplementedNetworkModuleServer()
 }
 
@@ -486,6 +527,15 @@ func (UnimplementedNetworkModuleServer) GetCodec(context.Context, *Empty) (*Byte
 }
 func (UnimplementedNetworkModuleServer) Validate(context.Context, *Empty) (*ErrorResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Validate not implemented")
+}
+func (UnimplementedNetworkModuleServer) SnapshotURL(context.Context, *StringRequest) (*StringResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SnapshotURL not implemented")
+}
+func (UnimplementedNetworkModuleServer) RPCEndpoint(context.Context, *StringRequest) (*StringResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RPCEndpoint not implemented")
+}
+func (UnimplementedNetworkModuleServer) AvailableNetworks(context.Context, *Empty) (*StringListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AvailableNetworks not implemented")
 }
 func (UnimplementedNetworkModuleServer) mustEmbedUnimplementedNetworkModuleServer() {}
 func (UnimplementedNetworkModuleServer) testEmbeddedByValue()                       {}
@@ -976,6 +1026,60 @@ func _NetworkModule_Validate_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NetworkModule_SnapshotURL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StringRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkModuleServer).SnapshotURL(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkModule_SnapshotURL_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkModuleServer).SnapshotURL(ctx, req.(*StringRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NetworkModule_RPCEndpoint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StringRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkModuleServer).RPCEndpoint(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkModule_RPCEndpoint_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkModuleServer).RPCEndpoint(ctx, req.(*StringRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NetworkModule_AvailableNetworks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkModuleServer).AvailableNetworks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkModule_AvailableNetworks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkModuleServer).AvailableNetworks(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NetworkModule_ServiceDesc is the grpc.ServiceDesc for NetworkModule service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1087,7 +1191,19 @@ var NetworkModule_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "Validate",
 			Handler:    _NetworkModule_Validate_Handler,
 		},
+		{
+			MethodName: "SnapshotURL",
+			Handler:    _NetworkModule_SnapshotURL_Handler,
+		},
+		{
+			MethodName: "RPCEndpoint",
+			Handler:    _NetworkModule_RPCEndpoint_Handler,
+		},
+		{
+			MethodName: "AvailableNetworks",
+			Handler:    _NetworkModule_AvailableNetworks_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "network.proto",
+	Metadata: "internal/plugin/proto/network.proto",
 }

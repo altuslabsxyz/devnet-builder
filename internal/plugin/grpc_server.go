@@ -42,6 +42,10 @@ type NetworkModule interface {
 	GenerateDevnet(ctx context.Context, config GeneratorConfig, genesisFile string) error
 	GetCodec() ([]byte, error)
 	Validate() error
+	// Snapshot methods
+	SnapshotURL(networkType string) string
+	RPCEndpoint(networkType string) string
+	AvailableNetworks() []string
 }
 
 // BinarySource defines how to acquire the network binary.
@@ -280,4 +284,17 @@ func (s *GRPCServer) Validate(ctx context.Context, req *pb.Empty) (*pb.ErrorResp
 		return &pb.ErrorResponse{Error: err.Error()}, nil
 	}
 	return &pb.ErrorResponse{}, nil
+}
+
+// Snapshot methods
+func (s *GRPCServer) SnapshotURL(ctx context.Context, req *pb.StringRequest) (*pb.StringResponse, error) {
+	return &pb.StringResponse{Value: s.Impl.SnapshotURL(req.Value)}, nil
+}
+
+func (s *GRPCServer) RPCEndpoint(ctx context.Context, req *pb.StringRequest) (*pb.StringResponse, error) {
+	return &pb.StringResponse{Value: s.Impl.RPCEndpoint(req.Value)}, nil
+}
+
+func (s *GRPCServer) AvailableNetworks(ctx context.Context, req *pb.Empty) (*pb.StringListResponse, error) {
+	return &pb.StringListResponse{Values: s.Impl.AvailableNetworks()}, nil
 }

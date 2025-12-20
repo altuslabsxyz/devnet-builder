@@ -314,3 +314,29 @@ func (c *GRPCClient) Validate() error {
 	}
 	return nil
 }
+
+// Snapshot methods
+
+func (c *GRPCClient) SnapshotURL(networkType string) string {
+	resp, err := c.client.SnapshotURL(context.Background(), &StringRequest{Value: networkType})
+	if err != nil {
+		return ""
+	}
+	return resp.Value
+}
+
+func (c *GRPCClient) RPCEndpoint(networkType string) string {
+	resp, err := c.client.RPCEndpoint(context.Background(), &StringRequest{Value: networkType})
+	if err != nil {
+		return ""
+	}
+	return resp.Value
+}
+
+func (c *GRPCClient) AvailableNetworks() []string {
+	resp, err := c.client.AvailableNetworks(context.Background(), &Empty{})
+	if err != nil {
+		return nil
+	}
+	return resp.Values
+}
