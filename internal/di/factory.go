@@ -7,22 +7,29 @@ import (
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	infrabuilder "github.com/b-harvest/devnet-builder/internal/infrastructure/builder"
 	infracache "github.com/b-harvest/devnet-builder/internal/infrastructure/cache"
+	infraevm "github.com/b-harvest/devnet-builder/internal/infrastructure/evm"
 	infragenesis "github.com/b-harvest/devnet-builder/internal/infrastructure/genesis"
+	infragithub "github.com/b-harvest/devnet-builder/internal/infrastructure/github"
+	infrainteractive "github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
+	infrakeyring "github.com/b-harvest/devnet-builder/internal/infrastructure/keyring"
 	infranode "github.com/b-harvest/devnet-builder/internal/infrastructure/node"
 	infrapersistence "github.com/b-harvest/devnet-builder/internal/infrastructure/persistence"
 	infraprocess "github.com/b-harvest/devnet-builder/internal/infrastructure/process"
 	infrarpc "github.com/b-harvest/devnet-builder/internal/infrastructure/rpc"
 	infrasnapshot "github.com/b-harvest/devnet-builder/internal/infrastructure/snapshot"
-	"github.com/b-harvest/devnet-builder/internal/network"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 // InfrastructureFactory creates infrastructure implementations.
 type InfrastructureFactory struct {
-	homeDir    string
-	logger     *output.Logger
-	module     network.NetworkModule
-	dockerMode bool
+	homeDir     string
+	logger      *output.Logger
+	module      network.NetworkModule
+	dockerMode  bool
+	githubToken string
+	githubOwner string
+	githubRepo  string
 }
 
 // NewInfrastructureFactory creates a new infrastructure factory.
@@ -42,6 +49,14 @@ func (f *InfrastructureFactory) WithNetworkModule(module network.NetworkModule) 
 // WithDockerMode sets whether to use Docker execution.
 func (f *InfrastructureFactory) WithDockerMode(useDocker bool) *InfrastructureFactory {
 	f.dockerMode = useDocker
+	return f
+}
+
+// WithGitHubConfig sets GitHub configuration.
+func (f *InfrastructureFactory) WithGitHubConfig(token, owner, repo string) *InfrastructureFactory {
+	f.githubToken = token
+	f.githubOwner = owner
+	f.githubRepo = repo
 	return f
 }
 
@@ -105,7 +120,33 @@ func (f *InfrastructureFactory) CreateGenesisFetcher() ports.GenesisFetcher {
 
 // CreateNodeManagerFactory creates a NodeManagerFactory.
 func (f *InfrastructureFactory) CreateNodeManagerFactory() *infranode.NodeManagerFactory {
-	return infranode.NewNodeManagerFactory(f.logger)
+	mode := infranode.ModeLocal
+	if f.dockerMode {
+		mode = infranode.ModeDocker
+	}
+	config := infranode.FactoryConfig{
+		Mode:   mode,
+		Logger: f.logger,
+	}
+	return infranode.NewNodeManagerFactory(config)
+}
+
+// CreateGitHubClient creates a GitHubClient implementation.
+func (f *InfrastructureFactory) CreateGitHubClient() ports.GitHubClient {
+	owner := f.githubOwner
+	repo := f.githubRepo
+	if owner == "" {
+		owner = "stablelabs"
+	}
+	if repo == "" {
+		repo = "stable"
+	}
+	return infragithub.NewAdapter(f.githubToken, owner, repo, f.homeDir)
+}
+
+// CreateInteractiveSelector creates an InteractiveSelector implementation.
+func (f *InfrastructureFactory) CreateInteractiveSelector() ports.InteractiveSelector {
+	return infrainteractive.NewAdapter()
 }
 
 // CreateHealthChecker creates a HealthChecker implementation.
@@ -113,6 +154,20 @@ func (f *InfrastructureFactory) CreateHealthChecker(rpcPort int) ports.HealthChe
 	return &healthCheckerAdapter{
 		factory: f,
 	}
+}
+
+// CreateEVMClient creates an EVMClient implementation.
+func (f *InfrastructureFactory) CreateEVMClient(evmRPCURL string) *infraevm.Client {
+	return infraevm.NewClient(evmRPCURL)
+}
+
+// CreateValidatorKeyLoader creates a ValidatorKeyLoader implementation.
+func (f *InfrastructureFactory) CreateValidatorKeyLoader() ports.ValidatorKeyLoader {
+	dockerImage := ""
+	if f.module != nil {
+		dockerImage = f.module.DockerImage()
+	}
+	return infrakeyring.NewValidatorKeyLoader(dockerImage)
 }
 
 // healthCheckerAdapter adapts RPCClient to HealthChecker interface.
@@ -186,6 +241,16 @@ func (f *InfrastructureFactory) WireContainer(opts ...Option) (*Container, error
 	rpcClient := f.CreateRPCClient("localhost", 26657)
 	healthChecker := f.CreateHealthChecker(26657)
 
+	// Default EVM client (node0 EVM port)
+	evmClient := f.CreateEVMClient("http://localhost:8545")
+
+	// Validator key loader
+	validatorKeyLoader := f.CreateValidatorKeyLoader()
+
+	// GitHub and Interactive adapters
+	githubClient := f.CreateGitHubClient()
+	interactiveSelector := f.CreateInteractiveSelector()
+
 	// Create container with all dependencies
 	allOpts := []Option{
 		WithLogger(f.logger),
@@ -194,10 +259,14 @@ func (f *InfrastructureFactory) WireContainer(opts ...Option) (*Container, error
 		WithExecutor(executor),
 		WithBinaryCache(binaryCache),
 		WithRPCClient(rpcClient),
+		WithEVMClient(evmClient),
 		WithSnapshotFetcher(snapshotFetcher),
 		WithGenesisFetcher(genesisFetcher),
 		WithHealthChecker(healthChecker),
 		WithBuilder(builder),
+		WithValidatorKeyLoader(validatorKeyLoader),
+		WithGitHubClient(githubClient),
+		WithInteractiveSelector(interactiveSelector),
 	}
 
 	// Add network module adapter if available

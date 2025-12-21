@@ -11,9 +11,9 @@ import (
 	appdevnet "github.com/b-harvest/devnet-builder/internal/application/devnet"
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	"github.com/b-harvest/devnet-builder/internal/application/upgrade"
-	"github.com/b-harvest/devnet-builder/internal/network"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/b-harvest/devnet-builder/internal/output"
-	"github.com/b-harvest/devnet-builder/internal/plugin"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/plugin"
 )
 
 // Container holds all application dependencies.
@@ -31,18 +31,21 @@ type Container struct {
 	pluginMgr  *plugin.PluginManager
 
 	// Infrastructure implementations (injected)
-	devnetRepo    ports.DevnetRepository
-	nodeRepo      ports.NodeRepository
-	binaryCache   ports.BinaryCache
-	executor      ports.ProcessExecutor
-	rpcClient     ports.RPCClient
-	evmClient     ports.EVMClient
-	snapshotSvc   ports.SnapshotFetcher
-	genesisSvc    ports.GenesisFetcher
-	keyManager    ports.KeyManager
-	healthChecker ports.HealthChecker
-	builder       ports.Builder
-	networkModule ports.NetworkModule
+	devnetRepo          ports.DevnetRepository
+	nodeRepo            ports.NodeRepository
+	binaryCache         ports.BinaryCache
+	executor            ports.ProcessExecutor
+	rpcClient           ports.RPCClient
+	evmClient           ports.EVMClient
+	snapshotSvc         ports.SnapshotFetcher
+	genesisSvc          ports.GenesisFetcher
+	keyManager          ports.KeyManager
+	validatorKeyLoader  ports.ValidatorKeyLoader
+	healthChecker       ports.HealthChecker
+	builder             ports.Builder
+	networkModule       ports.NetworkModule
+	githubClient        ports.GitHubClient
+	interactiveSelector ports.InteractiveSelector
 
 	// Lazy-initialized UseCases
 	provisionUC      *appdevnet.ProvisionUseCase
@@ -199,6 +202,13 @@ func WithHealthChecker(hc ports.HealthChecker) Option {
 	}
 }
 
+// WithValidatorKeyLoader sets the validator key loader.
+func WithValidatorKeyLoader(loader ports.ValidatorKeyLoader) Option {
+	return func(c *Container) {
+		c.validatorKeyLoader = loader
+	}
+}
+
 // WithBuilder sets the builder.
 func WithBuilder(builder ports.Builder) Option {
 	return func(c *Container) {
@@ -210,6 +220,20 @@ func WithBuilder(builder ports.Builder) Option {
 func WithNetworkModule(nm ports.NetworkModule) Option {
 	return func(c *Container) {
 		c.networkModule = nm
+	}
+}
+
+// WithGitHubClient sets the GitHub client.
+func WithGitHubClient(client ports.GitHubClient) Option {
+	return func(c *Container) {
+		c.githubClient = client
+	}
+}
+
+// WithInteractiveSelector sets the interactive selector.
+func WithInteractiveSelector(selector ports.InteractiveSelector) Option {
+	return func(c *Container) {
+		c.interactiveSelector = selector
 	}
 }
 
@@ -297,6 +321,41 @@ func (c *Container) NetworkModule() ports.NetworkModule {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.networkModule
+}
+
+// GitHubClient returns the GitHub client.
+func (c *Container) GitHubClient() ports.GitHubClient {
+	return c.githubClient
+}
+
+// InteractiveSelector returns the interactive selector.
+func (c *Container) InteractiveSelector() ports.InteractiveSelector {
+	return c.interactiveSelector
+}
+
+// BinaryCache returns the binary cache.
+func (c *Container) BinaryCache() ports.BinaryCache {
+	return c.binaryCache
+}
+
+// Builder returns the builder.
+func (c *Container) Builder() ports.Builder {
+	return c.builder
+}
+
+// ValidatorKeyLoader returns the validator key loader.
+func (c *Container) ValidatorKeyLoader() ports.ValidatorKeyLoader {
+	return c.validatorKeyLoader
+}
+
+// EVMClient returns the EVM client.
+func (c *Container) EVMClient() ports.EVMClient {
+	return c.evmClient
+}
+
+// RPCClient returns the RPC client.
+func (c *Container) RPCClient() ports.RPCClient {
+	return c.rpcClient
 }
 
 // ProvisionUseCase returns the provision use case (lazy init).
@@ -407,8 +466,7 @@ func (c *Container) ProposeUseCase() *upgrade.ProposeUseCase {
 		c.proposeUC = upgrade.NewProposeUseCase(
 			c.devnetRepo,
 			c.rpcClient,
-			c.evmClient,
-			c.keyManager,
+			c.validatorKeyLoader,
 			c.LoggerPort(),
 		)
 	}
@@ -424,8 +482,7 @@ func (c *Container) VoteUseCase() *upgrade.VoteUseCase {
 		c.voteUC = upgrade.NewVoteUseCase(
 			c.devnetRepo,
 			c.rpcClient,
-			c.evmClient,
-			c.keyManager,
+			c.validatorKeyLoader,
 			c.LoggerPort(),
 		)
 	}
