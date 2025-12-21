@@ -101,6 +101,22 @@ type NodeRepository interface {
 	Delete(ctx context.Context, homeDir string, index int) error
 }
 
+// CachedBinaryInfo contains detailed information about a cached binary.
+type CachedBinaryInfo struct {
+	Ref        string
+	CommitHash string
+	Path       string
+	Size       int64
+	BuildTime  time.Time
+	Network    string
+}
+
+// CacheStats contains cache statistics.
+type CacheStats struct {
+	TotalEntries int
+	TotalSize    int64
+}
+
 // BinaryCache defines operations for caching built binaries.
 type BinaryCache interface {
 	// Store saves a binary to the cache.
@@ -115,12 +131,39 @@ type BinaryCache interface {
 	// List returns all cached binary refs.
 	List() []string
 
+	// ListDetailed returns detailed information about all cached binaries.
+	ListDetailed() []CachedBinaryInfo
+
+	// Stats returns cache statistics.
+	Stats() CacheStats
+
 	// Remove deletes a cached binary.
 	Remove(ref string) error
+
+	// Clean removes all cached binaries.
+	Clean() error
 
 	// SetActive sets the active binary version.
 	SetActive(ref string) error
 
 	// GetActive returns the currently active binary path.
 	GetActive() (string, error)
+
+	// CacheDir returns the cache directory path.
+	CacheDir() string
+
+	// SymlinkPath returns the symlink path.
+	SymlinkPath() string
+
+	// SymlinkInfo returns information about the current symlink.
+	SymlinkInfo() (*SymlinkInfo, error)
+}
+
+// SymlinkInfo contains information about the active binary symlink.
+type SymlinkInfo struct {
+	Path       string
+	Target     string
+	CommitHash string
+	Exists     bool
+	IsRegular  bool // true if it's a regular file instead of symlink
 }

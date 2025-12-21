@@ -65,14 +65,47 @@ type EVMClient interface {
 	// SendTransaction sends a signed transaction.
 	SendTransaction(ctx context.Context, signedTx []byte) (string, error)
 
+	// SendRawTransaction sends a pre-built and signed transaction.
+	SendRawTransaction(ctx context.Context, tx *EVMTransaction) (string, error)
+
 	// GetBalance retrieves the balance of an address.
 	GetBalance(ctx context.Context, address string) (string, error)
 
 	// GetNonce retrieves the nonce for an address.
 	GetNonce(ctx context.Context, address string) (uint64, error)
 
+	// GetChainID returns the chain ID.
+	GetChainID(ctx context.Context) (int64, error)
+
+	// SuggestGasPrice returns a suggested gas price.
+	SuggestGasPrice(ctx context.Context) (string, error)
+
+	// EstimateGas estimates gas for a transaction.
+	EstimateGas(ctx context.Context, msg *EVMCallMsg) (uint64, error)
+
 	// WaitForTransaction waits for a transaction to be mined.
 	WaitForTransaction(ctx context.Context, txHash string, timeout time.Duration) (*TxReceipt, error)
+
+	// Close closes the client connection.
+	Close() error
+}
+
+// EVMTransaction represents an EVM transaction to be sent.
+type EVMTransaction struct {
+	To       string
+	Value    string
+	GasLimit uint64
+	GasPrice string
+	Data     []byte
+	Nonce    uint64
+}
+
+// EVMCallMsg represents a call message for gas estimation.
+type EVMCallMsg struct {
+	From     string
+	To       string
+	GasPrice string
+	Data     []byte
 }
 
 // TxReceipt represents a transaction receipt.
@@ -166,6 +199,30 @@ type KeyInfo struct {
 	HexAddress string
 	PubKey     string
 	Mnemonic   string
+}
+
+// ValidatorKeyLoader defines operations for loading validator keys from the devnet.
+type ValidatorKeyLoader interface {
+	// LoadValidatorKeys loads all validator keys from the devnet.
+	LoadValidatorKeys(ctx context.Context, opts ValidatorKeyOptions) ([]ValidatorKey, error)
+}
+
+// ValidatorKeyOptions holds options for loading validator keys.
+type ValidatorKeyOptions struct {
+	HomeDir       string
+	NumValidators int
+	ExecutionMode ExecutionMode
+	Version       string // For docker mode, the image version
+	BinaryName    string // Name of the chain binary
+}
+
+// ValidatorKey represents a validator's keys for governance operations.
+type ValidatorKey struct {
+	Index         int
+	Name          string
+	Bech32Address string
+	HexAddress    string
+	PrivateKey    string // EVM private key (hex, no 0x prefix)
 }
 
 // Builder defines operations for building binaries from source.

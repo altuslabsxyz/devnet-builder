@@ -29,6 +29,8 @@ type CacheBinary struct {
 	CommitHash string
 	IsActive   bool
 	Size       int64
+	BuildTime  string // RFC3339 formatted time
+	Network    string
 }
 
 // CacheListOutput contains the list of cached binaries.
