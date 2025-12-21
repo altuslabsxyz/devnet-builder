@@ -250,13 +250,13 @@ func (l *Loader) Discover() ([]string, error) {
 			}
 
 			name := entry.Name()
-			// Plugin binaries should be named devnet-<network>
-			if !strings.HasPrefix(name, "devnet-") {
+			// Plugin binaries should be named <network>-plugin
+			if !strings.HasSuffix(name, "-plugin") {
 				continue
 			}
 
 			// Extract network name
-			networkName := strings.TrimPrefix(name, "devnet-")
+			networkName := strings.TrimSuffix(name, "-plugin")
 			if seen[networkName] {
 				continue
 			}
@@ -304,11 +304,11 @@ func (l *Loader) DiscoverWithInfo() ([]PluginInfo, error) {
 			}
 
 			name := entry.Name()
-			if !strings.HasPrefix(name, "devnet-") {
+			if !strings.HasSuffix(name, "-plugin") {
 				continue
 			}
 
-			networkName := strings.TrimPrefix(name, "devnet-")
+			networkName := strings.TrimSuffix(name, "-plugin")
 			if seen[networkName] {
 				continue
 			}
@@ -665,7 +665,7 @@ func (l *Loader) Reload(name string) (*PluginClient, error) {
 
 // findPluginLocked finds the plugin binary path (caller must hold lock).
 func (l *Loader) findPluginLocked(name string) (string, error) {
-	binaryName := "devnet-" + name
+	binaryName := name + "-plugin"
 
 	for _, dir := range l.pluginDirs {
 		path := filepath.Join(dir, binaryName)
