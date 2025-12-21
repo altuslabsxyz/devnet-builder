@@ -45,7 +45,10 @@ Examples:
 
 func runDestroy(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	svc := getDefaultService()
+	svc, err := getCleanService()
+	if err != nil {
+		return outputDestroyError(fmt.Errorf("failed to initialize service: %w", err))
+	}
 
 	// Check if devnet exists
 	if !svc.DevnetExists() && !destroyCache {

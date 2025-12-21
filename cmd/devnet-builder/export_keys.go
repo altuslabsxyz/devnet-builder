@@ -1,10 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
-	"github.com/b-harvest/devnet-builder/internal/devnet"
+	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	"github.com/spf13/cobra"
 )
 
@@ -40,7 +41,11 @@ Examples:
 }
 
 func runExportKeys(cmd *cobra.Command, args []string) error {
-	svc := getDefaultService()
+	ctx := context.Background()
+	svc, err := getCleanService()
+	if err != nil {
+		return outputExportKeysError(fmt.Errorf("failed to initialize service: %w", err))
+	}
 
 	// Validate inputs first
 	if exportType != "all" && exportType != "validators" && exportType != "accounts" {
@@ -53,19 +58,19 @@ func runExportKeys(cmd *cobra.Command, args []string) error {
 	}
 
 	// Export keys using service
-	export, err := svc.ExportKeys(exportType)
+	export, err := svc.ExportKeys(ctx, exportType)
 	if err != nil {
 		return outputExportKeysError(err)
 	}
 
 	// Output as JSON only
-	return outputExportKeysJSON(export)
+	return outputExportKeysJSONClean(export)
 }
 
-func outputExportKeysJSON(export *devnet.KeyExport) error {
+func outputExportKeysJSONClean(export *dto.ExportKeysOutput) error {
 	data, err := json.MarshalIndent(export, "", "  ")
 	if err != nil {
-		return err
+		return outputExportKeysError(err)
 	}
 	fmt.Println(string(data))
 	return nil

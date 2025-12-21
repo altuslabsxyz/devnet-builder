@@ -69,6 +69,7 @@ type TestConfig struct {
 	Accounts   int
 	Network    string
 	Mode       string
+	Blockchain string
 }
 
 // DefaultTestConfig returns default test configuration
@@ -84,6 +85,7 @@ func DefaultTestConfig() *TestConfig {
 		Accounts:   0,
 		Network:    "mainnet",
 		Mode:       "docker",
+		Blockchain: "stable",
 	}
 }
 
@@ -312,6 +314,7 @@ func TestUS001_DeployDockerMainnet(t *testing.T) {
 		"deploy",
 		"--mode", "docker",
 		"--network", "mainnet",
+		"--blockchain", "stable",
 		"--validators", "1",
 		"--no-interactive",
 	)
@@ -370,7 +373,7 @@ func TestUS002_DeploySingleValidator(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), deployTimeout)
 	defer cancel()
 
-	_, _, err := runner.Run(ctx, "deploy", "--validators", "1", "--no-interactive")
+	_, _, err := runner.Run(ctx, "deploy", "--blockchain", "stable", "--validators", "1", "--no-interactive")
 	if err != nil {
 		t.Fatalf("Deploy failed: %v", err)
 	}
@@ -401,6 +404,7 @@ func TestUS003_DeployWithAccounts(t *testing.T) {
 
 	_, _, err := runner.Run(ctx,
 		"deploy",
+		"--blockchain", "stable",
 		"--validators", "1",
 		"--accounts", "3",
 		"--no-interactive",
@@ -449,7 +453,7 @@ func TestUS004_Status(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), deployTimeout)
 	defer cancel()
 
-	_, _, err := runner.Run(ctx, "deploy", "--validators", "1", "--no-interactive")
+	_, _, err := runner.Run(ctx, "deploy", "--blockchain", "stable", "--validators", "1", "--no-interactive")
 	if err != nil {
 		t.Fatalf("Deploy failed: %v", err)
 	}
@@ -499,7 +503,7 @@ func TestUS005_DownUp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), deployTimeout)
 	defer cancel()
 
-	_, _, err := runner.Run(ctx, "deploy", "--validators", "1", "--no-interactive")
+	_, _, err := runner.Run(ctx, "deploy", "--blockchain", "stable", "--validators", "1", "--no-interactive")
 	if err != nil {
 		t.Fatalf("Deploy failed: %v", err)
 	}
@@ -556,7 +560,7 @@ func TestUS006_Destroy(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), deployTimeout)
 	defer cancel()
 
-	_, _, err := runner.Run(ctx, "deploy", "--validators", "1", "--no-interactive")
+	_, _, err := runner.Run(ctx, "deploy", "--blockchain", "stable", "--validators", "1", "--no-interactive")
 	if err != nil {
 		t.Fatalf("Deploy failed: %v", err)
 	}
@@ -610,6 +614,7 @@ func TestUS010_ExportKeys(t *testing.T) {
 
 	_, _, err := runner.Run(ctx,
 		"deploy",
+		"--blockchain", "stable",
 		"--validators", "1",
 		"--accounts", "2",
 		"--no-interactive",
@@ -669,7 +674,7 @@ func TestUS011_NodeControl(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), deployTimeout)
 	defer cancel()
 
-	_, _, err := runner.Run(ctx, "deploy", "--validators", "2", "--no-interactive")
+	_, _, err := runner.Run(ctx, "deploy", "--blockchain", "stable", "--validators", "2", "--no-interactive")
 	if err != nil {
 		t.Fatalf("Deploy failed: %v", err)
 	}
@@ -725,7 +730,7 @@ func TestUS012_Reset(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), deployTimeout)
 	defer cancel()
 
-	_, _, err := runner.Run(ctx, "deploy", "--validators", "1", "--no-interactive")
+	_, _, err := runner.Run(ctx, "deploy", "--blockchain", "stable", "--validators", "1", "--no-interactive")
 	if err != nil {
 		t.Fatalf("Deploy failed: %v", err)
 	}
@@ -788,6 +793,7 @@ func TestUS014_DeployTestnet(t *testing.T) {
 	_, _, err := runner.Run(ctx,
 		"deploy",
 		"--network", "testnet",
+		"--blockchain", "stable",
 		"--validators", "1",
 		"--no-interactive",
 	)
@@ -832,7 +838,7 @@ func TestUS019_ErrorExistingDevnet(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), deployTimeout)
 	defer cancel()
 
-	_, _, err := runner.Run(ctx, "deploy", "--validators", "1", "--no-interactive")
+	_, _, err := runner.Run(ctx, "deploy", "--blockchain", "stable", "--validators", "1", "--no-interactive")
 	if err != nil {
 		t.Fatalf("First deploy failed: %v", err)
 	}
@@ -842,7 +848,7 @@ func TestUS019_ErrorExistingDevnet(t *testing.T) {
 	}
 
 	// Try to deploy again - should fail
-	_, _, err = runner.RunWithTimeout(commandTimeout, "deploy", "--validators", "1", "--no-interactive")
+	_, _, err = runner.RunWithTimeout(commandTimeout, "deploy", "--blockchain", "stable", "--validators", "1", "--no-interactive")
 	if err == nil {
 		t.Error("Second deploy should fail when devnet exists")
 	}
@@ -896,7 +902,7 @@ func BenchmarkDeploy(b *testing.B) {
 
 		b.StartTimer()
 		ctx, cancel := context.WithTimeout(context.Background(), deployTimeout)
-		runner.Run(ctx, "deploy", "--validators", "1", "--no-interactive")
+		runner.Run(ctx, "deploy", "--blockchain", "stable", "--validators", "1", "--no-interactive")
 		cancel()
 		b.StopTimer()
 

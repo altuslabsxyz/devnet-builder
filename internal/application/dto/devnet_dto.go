@@ -12,15 +12,17 @@ import (
 // ProvisionInput contains the input for provisioning a devnet.
 type ProvisionInput struct {
 	HomeDir           string
-	NetworkName       string
+	Network           string // mainnet/testnet (snapshot source)
+	BlockchainNetwork string // stable/ault (network module)
 	NetworkVersion    string
 	NumValidators     int
 	NumAccounts       int
-	ExecutionMode     ports.ExecutionMode
+	Mode              string // docker/local
 	SnapshotURL       string
 	DockerImage       string
 	StableVersion     string
 	NoCache           bool
+	CustomBinaryPath  string // For local mode with custom binary
 }
 
 // ProvisionOutput contains the result of provisioning.

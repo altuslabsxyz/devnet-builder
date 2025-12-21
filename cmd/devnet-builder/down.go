@@ -42,7 +42,10 @@ Examples:
 
 func runDown(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	svc := getDefaultService()
+	svc, err := getCleanService()
+	if err != nil {
+		return outputDownError(fmt.Errorf("failed to initialize service: %w", err))
+	}
 
 	// Check if devnet exists
 	if !svc.DevnetExists() {
@@ -57,7 +60,7 @@ func runDown(cmd *cobra.Command, args []string) error {
 		output.Info("Stopping devnet nodes...")
 	}
 
-	_, err := svc.Stop(ctx, downTimeout)
+	_, err = svc.Stop(ctx, downTimeout)
 	if err != nil {
 		if jsonMode {
 			return outputDownError(err)

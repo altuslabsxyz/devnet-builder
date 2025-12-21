@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	"github.com/b-harvest/devnet-builder/internal/builder"
 	"github.com/b-harvest/devnet-builder/internal/config"
-	"github.com/b-harvest/devnet-builder/internal/devnet"
 	"github.com/b-harvest/devnet-builder/internal/github"
 	"github.com/b-harvest/devnet-builder/internal/interactive"
 	"github.com/b-harvest/devnet-builder/internal/network"
@@ -143,14 +143,14 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Apply environment variables (env overrides config.toml but not flags)
-	if network := os.Getenv("STABLE_DEVNET_NETWORK"); network != "" && !cmd.Flags().Changed("network") {
-		fileCfg.Network = &network
+	if networkEnv := os.Getenv("STABLE_DEVNET_NETWORK"); networkEnv != "" && !cmd.Flags().Changed("network") {
+		fileCfg.Network = &networkEnv
 	}
-	if mode := os.Getenv("STABLE_DEVNET_MODE"); mode != "" && !cmd.Flags().Changed("mode") {
-		fileCfg.Mode = &mode
+	if modeEnv := os.Getenv("STABLE_DEVNET_MODE"); modeEnv != "" && !cmd.Flags().Changed("mode") {
+		fileCfg.Mode = &modeEnv
 	}
-	if version := os.Getenv("STABLE_VERSION"); version != "" && !cmd.Flags().Changed("stable-version") {
-		fileCfg.StableVersion = &version
+	if versionEnv := os.Getenv("STABLE_VERSION"); versionEnv != "" && !cmd.Flags().Changed("stable-version") {
+		fileCfg.StableVersion = &versionEnv
 	}
 
 	// Run partial interactive setup for missing base config values
@@ -180,7 +180,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Track if versions are custom refs
-	var exportIsCustomRef bool
 	var exportVersion string
 	var startVersion string
 	var dockerImage string
@@ -215,7 +214,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			}
 			deployNetwork = selection.Network
 			exportVersion = selection.ExportVersion
-			exportIsCustomRef = selection.ExportIsCustomRef
 			startVersion = selection.StartVersion
 			deployStableVersion = exportVersion
 		} else {
@@ -241,7 +239,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if devnet already exists
-	svc := getDefaultService()
+	svc, err := getCleanService()
+	if err != nil {
+		return fmt.Errorf("failed to initialize service: %w", err)
+	}
 	if svc.DevnetExists() {
 		return fmt.Errorf("devnet already exists at %s\nUse 'devnet-builder destroy' to remove it first", homeDir)
 	}
@@ -263,145 +264,112 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		logger.Success("Binary built: %s (commit: %s)", result.BinaryPath, result.CommitHash)
 	}
 
-	// Store start version info in metadata for reference
-	_ = startVersion
-	_ = exportIsCustomRef
-
-	// Phase 1: Provision (create config, generate validators)
-	provisionOpts := devnet.ProvisionOptions{
+	// Phase 1: Provision using CleanDevnetService
+	provisionInput := dto.ProvisionInput{
 		HomeDir:           homeDir,
 		Network:           deployNetwork,
 		BlockchainNetwork: deployBlockchainNetwork,
 		NumValidators:     deployValidators,
 		NumAccounts:       deployAccounts,
-		Mode:              devnet.ExecutionMode(deployMode),
+		Mode:              deployMode,
 		StableVersion:     exportVersion,
 		DockerImage:       dockerImage,
 		NoCache:           deployNoCache,
-		Logger:            logger,
+		CustomBinaryPath:  customBinaryPath,
 	}
 
-	_, err = devnet.Provision(ctx, provisionOpts)
+	_, err = svc.Provision(ctx, provisionInput)
 	if err != nil {
 		if jsonMode {
-			return outputDeployError(err)
+			return outputDeployErrorClean(err)
 		}
 		return err
 	}
 
-	// Phase 2: Run (start nodes)
-	// For local mode, we always build/cache binary, so always use custom path
-	useCustomBinary := deployMode == "local" && customBinaryPath != ""
-	runOpts := devnet.RunOptions{
-		HomeDir:          homeDir,
-		Mode:             devnet.ExecutionMode(deployMode),
-		StableVersion:    exportVersion,
-		HealthTimeout:    devnet.HealthCheckTimeout,
-		Logger:           logger,
-		IsCustomRef:      useCustomBinary,
-		CustomBinaryPath: customBinaryPath,
-	}
-
-	runResult, err := devnet.Run(ctx, runOpts)
+	// Phase 2: Run using CleanDevnetService
+	runResult, err := svc.Start(ctx, 5*time.Minute)
 	if err != nil {
-		if runResult != nil && runResult.Devnet != nil {
-			if jsonMode {
-				return outputDeployJSONFromRunResult(runResult, err)
-			}
-		}
 		if jsonMode {
-			return outputDeployError(err)
+			return outputDeployErrorClean(err)
 		}
 		return err
 	}
+
+	// Get devnet info for output
+	devnetInfo, _ := svc.LoadDevnetInfo(ctx)
 
 	// Output result
 	if jsonMode {
-		return outputDeployJSON(runResult.Devnet)
+		return outputDeployJSONClean(runResult, devnetInfo)
 	}
-	return outputDeployText(runResult.Devnet)
+	return outputDeployTextClean(runResult, devnetInfo)
 }
 
-func outputDeployJSONFromRunResult(result *devnet.RunResult, err error) error {
-	jsonResult := DeployResult{
-		Status:            "partial",
-		ChainID:           result.Devnet.Metadata.ChainID,
-		Network:           result.Devnet.Metadata.NetworkSource,
-		BlockchainNetwork: result.Devnet.Metadata.BlockchainNetwork,
-		Mode:              string(result.Devnet.Metadata.ExecutionMode),
-		DockerImage:       result.Devnet.Metadata.DockerImage,
-		Validators:        result.Devnet.Metadata.NumValidators,
-		Nodes:             make([]NodeResult, len(result.Devnet.Nodes)),
+func outputDeployTextClean(result *dto.RunOutput, devnetInfo *dto.DevnetInfo) error {
+	fmt.Println()
+	output.Bold("Chain ID:     %s", devnetInfo.ChainID)
+	output.Info("Network:      %s", devnetInfo.NetworkSource)
+	output.Info("Blockchain:   %s", devnetInfo.BlockchainNetwork)
+	output.Info("Mode:         %s", devnetInfo.ExecutionMode)
+	if devnetInfo.DockerImage != "" {
+		output.Info("Docker Image: %s", devnetInfo.DockerImage)
+	}
+	output.Info("Validators:   %d", devnetInfo.NumValidators)
+	fmt.Println()
+	output.Bold("Endpoints:")
+
+	for _, n := range devnetInfo.Nodes {
+		status := "running"
+		for _, ns := range result.Nodes {
+			if ns.Index == n.Index && !ns.IsRunning {
+				status = "failed"
+				break
+			}
+		}
+		if status == "running" {
+			fmt.Printf("  Node %d: %s (RPC) | %s (EVM)\n",
+				n.Index, n.RPCURL, n.EVMURL)
+		} else {
+			fmt.Printf("  Node %d: [FAILED]\n", n.Index)
+		}
 	}
 
-	for i, n := range result.Devnet.Nodes {
+	return nil
+}
+
+func outputDeployJSONClean(result *dto.RunOutput, devnetInfo *dto.DevnetInfo) error {
+	jsonResult := DeployResult{
+		Status:            "success",
+		ChainID:           devnetInfo.ChainID,
+		Network:           devnetInfo.NetworkSource,
+		BlockchainNetwork: devnetInfo.BlockchainNetwork,
+		Mode:              devnetInfo.ExecutionMode,
+		DockerImage:       devnetInfo.DockerImage,
+		Validators:        devnetInfo.NumValidators,
+		Nodes:             make([]NodeResult, len(devnetInfo.Nodes)),
+	}
+
+	if !result.AllRunning {
+		jsonResult.Status = "partial"
+	}
+
+	for i, n := range devnetInfo.Nodes {
 		status := "running"
-		for _, fn := range result.FailedNodes {
-			if fn.Index == n.Index {
+		for _, ns := range result.Nodes {
+			if ns.Index == n.Index && !ns.IsRunning {
 				status = "failed"
 				break
 			}
 		}
 		jsonResult.Nodes[i] = NodeResult{
 			Index:  n.Index,
-			RPC:    n.RPCURL(),
-			EVMRPC: n.EVMRPCURL(),
+			RPC:    n.RPCURL,
+			EVMRPC: n.EVMURL,
 			Status: status,
 		}
 	}
 
-	data, jsonErr := json.MarshalIndent(jsonResult, "", "  ")
-	if jsonErr != nil {
-		return jsonErr
-	}
-
-	fmt.Println(string(data))
-	return err
-}
-
-func outputDeployText(d *devnet.Devnet) error {
-	fmt.Println()
-	output.Bold("Chain ID:     %s", d.Metadata.ChainID)
-	output.Info("Network:      %s", d.Metadata.NetworkSource)
-	output.Info("Blockchain:   %s", d.Metadata.BlockchainNetwork)
-	output.Info("Mode:         %s", d.Metadata.ExecutionMode)
-	if d.Metadata.DockerImage != "" {
-		output.Info("Docker Image: %s", d.Metadata.DockerImage)
-	}
-	output.Info("Validators:   %d", d.Metadata.NumValidators)
-	fmt.Println()
-	output.Bold("Endpoints:")
-
-	for _, n := range d.Nodes {
-		fmt.Printf("  Node %d: %s (RPC) | %s (EVM)\n",
-			n.Index, n.RPCURL(), n.EVMRPCURL())
-	}
-
-	return nil
-}
-
-func outputDeployJSON(d *devnet.Devnet) error {
-	result := DeployResult{
-		Status:            "success",
-		ChainID:           d.Metadata.ChainID,
-		Network:           d.Metadata.NetworkSource,
-		BlockchainNetwork: d.Metadata.BlockchainNetwork,
-		Mode:              string(d.Metadata.ExecutionMode),
-		DockerImage:       d.Metadata.DockerImage,
-		Validators:        d.Metadata.NumValidators,
-		Nodes:             make([]NodeResult, len(d.Nodes)),
-	}
-
-	for i, n := range d.Nodes {
-		result.Nodes[i] = NodeResult{
-			Index:  n.Index,
-			RPC:    n.RPCURL(),
-			EVMRPC: n.EVMRPCURL(),
-			Status: string(n.Status),
-		}
-	}
-
-	data, err := json.MarshalIndent(result, "", "  ")
+	data, err := json.MarshalIndent(jsonResult, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -410,7 +378,7 @@ func outputDeployJSON(d *devnet.Devnet) error {
 	return nil
 }
 
-func outputDeployError(err error) error {
+func outputDeployErrorClean(err error) error {
 	result := map[string]interface{}{
 		"error":   true,
 		"code":    getErrorCode(err),

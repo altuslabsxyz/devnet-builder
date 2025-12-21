@@ -60,7 +60,10 @@ Examples:
 
 func runStatus(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	svc := getDefaultService()
+	svc, err := getCleanService()
+	if err != nil {
+		return outputStatusError(fmt.Errorf("failed to initialize service: %w", err))
+	}
 
 	// Get status using service
 	status, err := svc.GetStatus(ctx)

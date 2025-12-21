@@ -110,7 +110,10 @@ func parseNodeIndex(arg string, numValidators int) (int, error) {
 
 func runNodeStart(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	svc := getDefaultService()
+	svc, err := getCleanService()
+	if err != nil {
+		return fmt.Errorf("failed to initialize service: %w", err)
+	}
 
 	// Check if devnet exists
 	if !svc.DevnetExists() {
@@ -118,7 +121,7 @@ func runNodeStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get number of validators for validation
-	numValidators, err := svc.GetNumValidators()
+	numValidators, err := svc.GetNumValidators(ctx)
 	if err != nil {
 		return err
 	}
@@ -140,7 +143,10 @@ func runNodeStart(cmd *cobra.Command, args []string) error {
 
 func runNodeStop(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	svc := getDefaultService()
+	svc, err := getCleanService()
+	if err != nil {
+		return fmt.Errorf("failed to initialize service: %w", err)
+	}
 
 	// Check if devnet exists
 	if !svc.DevnetExists() {
@@ -148,7 +154,7 @@ func runNodeStop(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get number of validators for validation
-	numValidators, err := svc.GetNumValidators()
+	numValidators, err := svc.GetNumValidators(ctx)
 	if err != nil {
 		return err
 	}
@@ -171,7 +177,10 @@ func runNodeStop(cmd *cobra.Command, args []string) error {
 
 func runNodeLogs(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	svc := getDefaultService()
+	svc, err := getCleanService()
+	if err != nil {
+		return fmt.Errorf("failed to initialize service: %w", err)
+	}
 
 	// Check if devnet exists
 	if !svc.DevnetExists() {
@@ -179,7 +188,7 @@ func runNodeLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get number of validators for validation
-	numValidators, err := svc.GetNumValidators()
+	numValidators, err := svc.GetNumValidators(ctx)
 	if err != nil {
 		return err
 	}

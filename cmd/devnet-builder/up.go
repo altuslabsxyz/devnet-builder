@@ -7,8 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/builder"
-	"github.com/b-harvest/devnet-builder/internal/devnet"
+	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -75,7 +74,6 @@ Examples:
 
 func runUp(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	logger := output.DefaultLogger
 
 	// Apply config.toml values
 	fileCfg := GetLoadedFileConfig()
@@ -92,161 +90,120 @@ func runUp(cmd *cobra.Command, args []string) error {
 
 	// Validate mode if specified
 	if upMode != "" && upMode != "docker" && upMode != "local" {
-		return outputUpError(fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", upMode))
+		return outputUpErrorClean(fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", upMode))
 	}
 
-	// Load metadata using consolidated helper
-	metadata, err := loadMetadataOrFail(logger)
+	// Initialize clean service
+	svc, err := getCleanService()
 	if err != nil {
-		return outputUpError(err)
+		return outputUpErrorClean(fmt.Errorf("failed to initialize service: %w", err))
+	}
+
+	// Check if devnet exists
+	if !svc.DevnetExists() {
+		return outputUpErrorClean(fmt.Errorf("no devnet found at %s\nRun 'devnet-builder init' or 'devnet-builder deploy' first", homeDir))
+	}
+
+	// Load devnet info to check status
+	devnetInfo, err := svc.LoadDevnetInfo(ctx)
+	if err != nil {
+		return outputUpErrorClean(fmt.Errorf("failed to load devnet: %w", err))
 	}
 
 	// Check if already running
-	if metadata.IsRunning() {
-		return outputUpError(fmt.Errorf("devnet is already running\nUse 'devnet-builder down' first"))
+	if devnetInfo.Status == "running" {
+		return outputUpErrorClean(fmt.Errorf("devnet is already running\nUse 'devnet-builder down' first"))
 	}
 
-	// Build custom binary if binary-ref is specified
-	var customBinaryPath string
-	var isCustomRef bool
-	if upBinaryRef != "" {
-		networkModule, _ := metadata.GetNetworkModule()
-		b := builder.NewBuilder(homeDir, logger, networkModule)
-		logger.Info("Building binary from source (ref: %s)...", upBinaryRef)
-		buildResult, err := b.Build(ctx, builder.BuildOptions{
-			Ref:     upBinaryRef,
-			Network: metadata.NetworkSource,
-		})
-		if err != nil {
-			return outputUpError(fmt.Errorf("failed to build from source: %w", err))
-		}
-		customBinaryPath = buildResult.BinaryPath
-		isCustomRef = true
-		logger.Success("Binary built: %s (commit: %s)", buildResult.BinaryPath, buildResult.CommitHash)
+	// Start nodes using CleanDevnetService
+	if !jsonMode {
+		output.Info("Starting devnet nodes...")
 	}
 
-	// Prepare run options
-	opts := devnet.RunOptions{
-		HomeDir:          homeDir,
-		Mode:             devnet.ExecutionMode(upMode),
-		StableVersion:    upStableVersion,
-		BinaryRef:        upBinaryRef,
-		HealthTimeout:    upHealthTimeout,
-		Logger:           logger,
-		IsCustomRef:      isCustomRef,
-		CustomBinaryPath: customBinaryPath,
-	}
-
-	result, err := devnet.Run(ctx, opts)
+	result, err := svc.Start(ctx, upHealthTimeout)
 	if err != nil {
-		if result != nil {
-			if jsonMode {
-				return outputUpJSONWithError(result, err)
-			}
-			outputUpTextPartial(result)
-		}
-		return err
+		return outputUpErrorClean(err)
 	}
+
+	// Reload devnet info for output
+	devnetInfo, _ = svc.LoadDevnetInfo(ctx)
 
 	// Output result
 	if jsonMode {
-		return outputUpJSON(result)
+		return outputUpJSONClean(result, devnetInfo)
 	}
-	return outputUpText(result)
+	return outputUpTextClean(result, devnetInfo)
 }
 
-func outputUpText(result *devnet.RunResult) error {
+func outputUpTextClean(result *dto.RunOutput, devnetInfo *dto.DevnetInfo) error {
 	fmt.Println()
-	output.Bold("Chain ID:     %s", result.Devnet.Metadata.ChainID)
-	output.Info("Network:      %s", result.Devnet.Metadata.NetworkSource)
-	output.Info("Blockchain:   %s", result.Devnet.Metadata.BlockchainNetwork)
-	output.Info("Mode:         %s", result.Devnet.Metadata.ExecutionMode)
-	output.Info("Validators:   %d", result.Devnet.Metadata.NumValidators)
+	output.Bold("Chain ID:     %s", devnetInfo.ChainID)
+	output.Info("Network:      %s", devnetInfo.NetworkSource)
+	output.Info("Blockchain:   %s", devnetInfo.BlockchainNetwork)
+	output.Info("Mode:         %s", devnetInfo.ExecutionMode)
+	output.Info("Validators:   %d", devnetInfo.NumValidators)
 	fmt.Println()
 
 	output.Bold("Endpoints:")
-	for _, n := range result.Devnet.Nodes {
+	for _, n := range devnetInfo.Nodes {
 		status := "running"
-		for _, fn := range result.FailedNodes {
-			if fn.Index == n.Index {
+		for _, ns := range result.Nodes {
+			if ns.Index == n.Index && !ns.IsRunning {
 				status = "failed"
 				break
 			}
 		}
 		if status == "running" {
 			fmt.Printf("  Node %d: %s (RPC) | %s (EVM)\n",
-				n.Index, n.RPCURL(), n.EVMRPCURL())
+				n.Index, n.RPCURL, n.EVMURL)
 		} else {
 			fmt.Printf("  Node %d: [FAILED]\n", n.Index)
 		}
 	}
 	fmt.Println()
 
-	if len(result.FailedNodes) > 0 {
-		output.Warn("Some nodes failed to start:")
-		for _, fn := range result.FailedNodes {
-			fmt.Printf("  Node %d: %s\n", fn.Index, fn.Error)
-			if fn.LogPath != "" {
-				fmt.Printf("    Log: %s\n", fn.LogPath)
-			}
-		}
+	if !result.AllRunning {
+		output.Warn("Some nodes failed to start")
 		fmt.Println()
 	}
 
 	return nil
 }
 
-func outputUpTextPartial(result *devnet.RunResult) {
-	if len(result.SuccessfulNodes) > 0 {
-		output.Info("Successfully started nodes: %v", result.SuccessfulNodes)
-	}
-	if len(result.FailedNodes) > 0 {
-		output.Warn("Failed nodes:")
-		for _, fn := range result.FailedNodes {
-			fmt.Printf("  Node %d: %s\n", fn.Index, fn.Error)
+func outputUpJSONClean(result *dto.RunOutput, devnetInfo *dto.DevnetInfo) error {
+	successfulNodes := make([]int, 0)
+	for _, ns := range result.Nodes {
+		if ns.IsRunning {
+			successfulNodes = append(successfulNodes, ns.Index)
 		}
 	}
-}
 
-func outputUpJSON(result *devnet.RunResult) error {
 	jsonResult := UpJSONResult{
 		Status:            "success",
-		ChainID:           result.Devnet.Metadata.ChainID,
-		BlockchainNetwork: result.Devnet.Metadata.BlockchainNetwork,
-		Mode:              string(result.Devnet.Metadata.ExecutionMode),
-		SuccessfulNodes:   result.SuccessfulNodes,
-		Nodes:             make([]NodeResult, len(result.Devnet.Nodes)),
+		ChainID:           devnetInfo.ChainID,
+		BlockchainNetwork: devnetInfo.BlockchainNetwork,
+		Mode:              devnetInfo.ExecutionMode,
+		SuccessfulNodes:   successfulNodes,
+		Nodes:             make([]NodeResult, len(devnetInfo.Nodes)),
 	}
 
-	if !result.AllHealthy {
+	if !result.AllRunning {
 		jsonResult.Status = "partial"
 	}
 
-	for i, n := range result.Devnet.Nodes {
+	for i, n := range devnetInfo.Nodes {
 		status := "running"
-		for _, fn := range result.FailedNodes {
-			if fn.Index == n.Index {
+		for _, ns := range result.Nodes {
+			if ns.Index == n.Index && !ns.IsRunning {
 				status = "failed"
 				break
 			}
 		}
 		jsonResult.Nodes[i] = NodeResult{
 			Index:  n.Index,
-			RPC:    n.RPCURL(),
-			EVMRPC: n.EVMRPCURL(),
+			RPC:    n.RPCURL,
+			EVMRPC: n.EVMURL,
 			Status: status,
-		}
-	}
-
-	if len(result.FailedNodes) > 0 {
-		jsonResult.FailedNodes = make([]FailedNodeJSON, len(result.FailedNodes))
-		for i, fn := range result.FailedNodes {
-			jsonResult.FailedNodes[i] = FailedNodeJSON{
-				Index:   fn.Index,
-				Error:   fn.Error,
-				LogPath: fn.LogPath,
-				LogTail: fn.LogTail,
-			}
 		}
 	}
 
@@ -259,37 +216,7 @@ func outputUpJSON(result *devnet.RunResult) error {
 	return nil
 }
 
-func outputUpJSONWithError(result *devnet.RunResult, err error) error {
-	jsonResult := UpJSONResult{
-		Status:          "error",
-		SuccessfulNodes: result.SuccessfulNodes,
-		Error:           err.Error(),
-	}
-
-	if result.Devnet != nil && result.Devnet.Metadata != nil {
-		jsonResult.ChainID = result.Devnet.Metadata.ChainID
-		jsonResult.BlockchainNetwork = result.Devnet.Metadata.BlockchainNetwork
-		jsonResult.Mode = string(result.Devnet.Metadata.ExecutionMode)
-	}
-
-	if len(result.FailedNodes) > 0 {
-		jsonResult.FailedNodes = make([]FailedNodeJSON, len(result.FailedNodes))
-		for i, fn := range result.FailedNodes {
-			jsonResult.FailedNodes[i] = FailedNodeJSON{
-				Index:   fn.Index,
-				Error:   fn.Error,
-				LogPath: fn.LogPath,
-				LogTail: fn.LogTail,
-			}
-		}
-	}
-
-	data, _ := json.MarshalIndent(jsonResult, "", "  ")
-	fmt.Println(string(data))
-	return err
-}
-
-func outputUpError(err error) error {
+func outputUpErrorClean(err error) error {
 	if jsonMode {
 		jsonResult := UpJSONResult{
 			Status: "error",

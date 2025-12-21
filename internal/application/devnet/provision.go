@@ -48,17 +48,27 @@ func (uc *ProvisionUseCase) Execute(ctx context.Context, input dto.ProvisionInpu
 		return nil, fmt.Errorf("devnet already exists at %s", input.HomeDir)
 	}
 
+	// Determine execution mode
+	var execMode ports.ExecutionMode
+	if input.Mode == "docker" {
+		execMode = ports.ModeDocker
+	} else {
+		execMode = ports.ModeLocal
+	}
+
 	// Create metadata
 	metadata := &ports.DevnetMetadata{
-		HomeDir:         input.HomeDir,
-		NetworkName:     input.NetworkName,
-		NetworkVersion:  input.NetworkVersion,
-		NumValidators:   input.NumValidators,
-		NumAccounts:     input.NumAccounts,
-		ExecutionMode:   input.ExecutionMode,
-		Status:          ports.StateCreated,
-		DockerImage:     input.DockerImage,
-		CreatedAt:       time.Now(),
+		HomeDir:           input.HomeDir,
+		NetworkName:       input.Network,
+		BlockchainNetwork: input.BlockchainNetwork,
+		NetworkVersion:    input.NetworkVersion,
+		NumValidators:     input.NumValidators,
+		NumAccounts:       input.NumAccounts,
+		ExecutionMode:     execMode,
+		Status:            ports.StateCreated,
+		DockerImage:       input.DockerImage,
+		CustomBinaryPath:  input.CustomBinaryPath,
+		CreatedAt:         time.Now(),
 	}
 
 	// Download snapshot if URL provided

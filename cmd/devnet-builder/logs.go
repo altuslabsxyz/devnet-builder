@@ -64,7 +64,10 @@ Examples:
 
 func runLogs(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	svc := getDefaultService()
+	svc, err := getCleanService()
+	if err != nil {
+		return fmt.Errorf("failed to initialize service: %w", err)
+	}
 
 	// Check if devnet exists
 	if !svc.DevnetExists() {
@@ -72,7 +75,7 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get number of validators
-	numValidators, err := svc.GetNumValidators()
+	numValidators, err := svc.GetNumValidators(ctx)
 	if err != nil {
 		return err
 	}
@@ -104,27 +107,25 @@ func runLogs(cmd *cobra.Command, args []string) error {
 
 	// Show network info header
 	if !logsFollow {
-		network, _ := svc.GetBlockchainNetwork()
-		chainID, _ := svc.GetChainID()
+		network, _ := svc.GetBlockchainNetwork(ctx)
+		chainID, _ := svc.GetChainID(ctx)
 		output.Info("Logs from %s devnet (%s)", network, chainID)
 		fmt.Println()
 	}
 
 	// Get logs based on execution mode
-	isDocker, err := svc.IsDockerMode()
+	isDocker, err := svc.IsDockerMode(ctx)
 	if err != nil {
 		return err
 	}
 
 	if isDocker {
-		return showDockerLogsWithService(ctx, svc, targetIndices)
+		return showDockerLogsWithCleanService(ctx, svc, targetIndices)
 	}
-	return showLocalLogsWithService(ctx, svc, targetIndices)
+	return showLocalLogsWithCleanService(ctx, svc, targetIndices)
 }
 
-func showDockerLogsWithService(ctx context.Context, svc *DevnetService, nodeIndices []int) error {
-	manager := svc.GetDockerManager()
-
+func showDockerLogsWithCleanService(ctx context.Context, svc *CleanDevnetService, nodeIndices []int) error {
 	if logsFollow {
 		// For follow mode with multiple nodes, we need to interleave
 		if len(nodeIndices) > 1 {
@@ -133,17 +134,13 @@ func showDockerLogsWithService(ctx context.Context, svc *DevnetService, nodeIndi
 
 		// Start follow processes for each node
 		for _, idx := range nodeIndices {
-			n, err := svc.GetNode(idx)
+			modeInfo, err := svc.GetExecutionModeInfo(ctx, idx)
 			if err != nil {
 				return err
 			}
 
-			cmd, err := manager.FollowLogs(ctx, n, logsTail)
-			if err != nil {
-				return fmt.Errorf("failed to follow logs for node%d: %w", idx, err)
-			}
-
-			// Prefix each line with node name
+			// Use docker logs -f for following
+			cmd := exec.CommandContext(ctx, "docker", "logs", "-f", "--tail", fmt.Sprintf("%d", logsTail), modeInfo.ContainerName)
 			cmd.Stdout = &prefixWriter{prefix: fmt.Sprintf("[node%d] ", idx), writer: os.Stdout}
 			cmd.Stderr = &prefixWriter{prefix: fmt.Sprintf("[node%d] ", idx), writer: os.Stderr}
 
@@ -180,7 +177,7 @@ func showDockerLogsWithService(ctx context.Context, svc *DevnetService, nodeIndi
 	return nil
 }
 
-func showLocalLogsWithService(ctx context.Context, svc *DevnetService, nodeIndices []int) error {
+func showLocalLogsWithCleanService(ctx context.Context, svc *CleanDevnetService, nodeIndices []int) error {
 	if logsFollow {
 		// Use tail -f for local logs
 		for _, idx := range nodeIndices {

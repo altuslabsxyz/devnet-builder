@@ -265,6 +265,40 @@ func (c *Container) Config() *Config {
 	return c.config
 }
 
+// DevnetRepository returns the devnet repository.
+func (c *Container) DevnetRepository() ports.DevnetRepository {
+	return c.devnetRepo
+}
+
+// NodeRepository returns the node repository.
+func (c *Container) NodeRepository() ports.NodeRepository {
+	return c.nodeRepo
+}
+
+// SetNetworkModule sets the network module at runtime.
+func (c *Container) SetNetworkModule(module ports.NetworkModule) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.networkModule = module
+}
+
+// Executor returns the process executor.
+func (c *Container) Executor() ports.ProcessExecutor {
+	return c.executor
+}
+
+// HealthChecker returns the health checker.
+func (c *Container) HealthChecker() ports.HealthChecker {
+	return c.healthChecker
+}
+
+// NetworkModule returns the network module.
+func (c *Container) NetworkModule() ports.NetworkModule {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.networkModule
+}
+
 // ProvisionUseCase returns the provision use case (lazy init).
 func (c *Container) ProvisionUseCase() *appdevnet.ProvisionUseCase {
 	c.mu.Lock()

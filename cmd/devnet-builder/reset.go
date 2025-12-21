@@ -45,7 +45,10 @@ Examples:
 
 func runReset(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	svc := getDefaultService()
+	svc, err := getCleanService()
+	if err != nil {
+		return outputResetError(fmt.Errorf("failed to initialize service: %w", err))
+	}
 
 	// Check if devnet exists
 	if !svc.DevnetExists() {
