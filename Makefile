@@ -42,7 +42,7 @@ $(BUILDDIR)/:
 # Build devnet-builder (plugin-only mode)
 # No built-in networks; networks are loaded as plugins at runtime
 build: $(BUILDDIR)/
-	@echo "Building devnet-builder (plugin mode)..."
+	@echo "Building devnet-builder ..."
 	@echo "  Version:    $(VERSION)"
 	@echo "  Git commit: $(GIT_COMMIT)"
 	@echo "  Build date: $(BUILD_DATE)"
@@ -83,7 +83,7 @@ build-ault: $(BUILDDIR)/
 
 # Install to GOPATH/bin (plugin-only mode)
 install:
-	@echo "Installing devnet-builder (plugin mode)..."
+	@echo "Installing devnet-builder ..."
 	@go install -ldflags "$(LDFLAGS)" ./cmd/devnet-builder
 	@echo "Install complete"
 
@@ -303,7 +303,7 @@ help:
 	@echo "  build-private   - Build with private networks (stable, ault)"
 	@echo "  build-stable    - Build with stable network only"
 	@echo "  build-ault      - Build with ault network only"
-	@echo "  install         - Install to GOPATH/bin (plugin mode)"
+	@echo "  install         - Install to GOPATH/bin "
 	@echo "  install-private - Install with private networks"
 	@echo ""
 	@echo "Plugin Targets:"
