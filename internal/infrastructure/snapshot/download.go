@@ -1,3 +1,4 @@
+// Package snapshot provides snapshot fetching and extraction implementations.
 package snapshot
 
 import (
@@ -55,7 +56,7 @@ func Download(ctx context.Context, opts DownloadOptions) (*SnapshotCache, error)
 	}
 
 	// Determine decompressor and file extension
-	decompressor, extension := detectDecompressor(opts.URL)
+	decompressor, extension := DetectDecompressor(opts.URL)
 
 	// Set destination path if not provided
 	destPath := opts.DestPath
@@ -201,8 +202,8 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// detectDecompressor determines the decompressor and extension from URL.
-func detectDecompressor(url string) (decompressor string, extension string) {
+// DetectDecompressor determines the decompressor and extension from URL.
+func DetectDecompressor(url string) (decompressor string, extension string) {
 	if strings.HasSuffix(url, ".tar.zst") || strings.HasSuffix(url, ".zst") {
 		return "zstd", ".tar.zst"
 	}

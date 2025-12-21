@@ -10,11 +10,10 @@ import (
 	"strings"
 
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	legacysnapshot "github.com/b-harvest/devnet-builder/internal/snapshot"
 	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
-// FetcherAdapter adapts the legacy snapshot functions to ports.SnapshotFetcher.
+// FetcherAdapter implements ports.SnapshotFetcher.
 type FetcherAdapter struct {
 	homeDir string
 	logger  *output.Logger
@@ -33,7 +32,7 @@ func NewFetcherAdapter(homeDir string, logger *output.Logger) *FetcherAdapter {
 
 // Download downloads a snapshot from the given URL.
 func (f *FetcherAdapter) Download(ctx context.Context, url string, destPath string) error {
-	opts := legacysnapshot.DownloadOptions{
+	opts := DownloadOptions{
 		URL:      url,
 		DestPath: destPath,
 		HomeDir:  f.homeDir,
@@ -41,7 +40,7 @@ func (f *FetcherAdapter) Download(ctx context.Context, url string, destPath stri
 		Logger:   f.logger,
 	}
 
-	_, err := legacysnapshot.Download(ctx, opts)
+	_, err := Download(ctx, opts)
 	if err != nil {
 		return &SnapshotError{
 			Operation: "download",
@@ -55,7 +54,7 @@ func (f *FetcherAdapter) Download(ctx context.Context, url string, destPath stri
 // Extract extracts a compressed snapshot.
 func (f *FetcherAdapter) Extract(ctx context.Context, archivePath, destPath string) error {
 	// Detect decompressor from file extension
-	decompressor := detectDecompressor(archivePath)
+	decompressor := detectDecompressorFromPath(archivePath)
 
 	// Ensure destination directory exists
 	if err := os.MkdirAll(destPath, 0755); err != nil {
@@ -85,11 +84,11 @@ func (f *FetcherAdapter) Extract(ctx context.Context, archivePath, destPath stri
 		}
 	}
 
-	output, err := cmd.CombinedOutput()
+	cmdOutput, err := cmd.CombinedOutput()
 	if err != nil {
 		return &SnapshotError{
 			Operation: "extract",
-			Message:   fmt.Sprintf("extraction failed: %v\nOutput: %s", err, string(output)),
+			Message:   fmt.Sprintf("extraction failed: %v\nOutput: %s", err, string(cmdOutput)),
 		}
 	}
 
@@ -98,10 +97,8 @@ func (f *FetcherAdapter) Extract(ctx context.Context, archivePath, destPath stri
 
 // GetLatestSnapshotURL retrieves the latest snapshot URL for a network.
 func (f *FetcherAdapter) GetLatestSnapshotURL(ctx context.Context, network string) (string, error) {
-	// This would typically fetch from a registry or API
-	// For now, we'll check if there's a cached snapshot URL
-
-	cache, err := legacysnapshot.GetValidCache(f.homeDir, network)
+	// Check if there's a cached snapshot URL
+	cache, err := GetValidCache(f.homeDir, network)
 	if err != nil || cache == nil {
 		return "", &SnapshotError{
 			Operation: "get_latest_url",
@@ -112,8 +109,8 @@ func (f *FetcherAdapter) GetLatestSnapshotURL(ctx context.Context, network strin
 	return cache.SourceURL, nil
 }
 
-// detectDecompressor determines the decompressor from file path.
-func detectDecompressor(path string) string {
+// detectDecompressorFromPath determines the decompressor from file path.
+func detectDecompressorFromPath(path string) string {
 	lower := strings.ToLower(path)
 	if strings.HasSuffix(lower, ".tar.zst") || strings.HasSuffix(lower, ".zst") {
 		return "zstd"
@@ -130,8 +127,8 @@ func detectDecompressor(path string) string {
 	return "zstd" // Default
 }
 
-// SnapshotPath returns the standard snapshot path for a network.
-func SnapshotPath(homeDir, network, extension string) string {
+// StandardSnapshotPath returns the standard snapshot path for a network.
+func StandardSnapshotPath(homeDir, network, extension string) string {
 	return filepath.Join(homeDir, "snapshots", network, "snapshot"+extension)
 }
 
