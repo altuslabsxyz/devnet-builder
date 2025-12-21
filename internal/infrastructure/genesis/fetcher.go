@@ -5,22 +5,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	legacysnapshot "github.com/b-harvest/devnet-builder/internal/snapshot"
 	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
-// FetcherAdapter adapts the legacy snapshot genesis functions to ports.GenesisFetcher.
+// FetcherAdapter implements ports.GenesisFetcher.
 type FetcherAdapter struct {
-	homeDir      string
-	binaryPath   string
-	dockerImage  string
-	useDocker    bool
-	logger       *output.Logger
+	homeDir     string
+	binaryPath  string
+	dockerImage string
+	useDocker   bool
+	logger      *output.Logger
 }
 
 // NewFetcherAdapter creates a new FetcherAdapter.
@@ -87,10 +90,18 @@ func (f *FetcherAdapter) exportFromDocker(ctx context.Context, homeDir string) (
 
 // FetchFromRPC fetches genesis from an RPC endpoint.
 func (f *FetcherAdapter) FetchFromRPC(ctx context.Context, endpoint string) ([]byte, error) {
-	destPath := fmt.Sprintf("%s/tmp/genesis-%d.json", f.homeDir, time.Now().UnixNano())
+	destPath := filepath.Join(f.homeDir, "tmp", fmt.Sprintf("genesis-%d.json", time.Now().UnixNano()))
 
-	_, err := legacysnapshot.FetchGenesisFromRPC(ctx, endpoint, destPath, f.logger)
-	if err != nil {
+	// Ensure tmp directory exists
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return nil, &GenesisError{
+			Operation: "fetch_rpc",
+			Message:   fmt.Sprintf("failed to create tmp directory: %v", err),
+		}
+	}
+
+	// Fetch genesis from RPC
+	if err := f.fetchGenesisFromRPC(ctx, endpoint, destPath); err != nil {
 		return nil, &GenesisError{
 			Operation: "fetch_rpc",
 			Message:   err.Error(),
@@ -109,6 +120,63 @@ func (f *FetcherAdapter) FetchFromRPC(ctx context.Context, endpoint string) ([]b
 	os.Remove(destPath)
 
 	return data, nil
+}
+
+// fetchGenesisFromRPC fetches genesis from an RPC endpoint and saves to destPath.
+func (f *FetcherAdapter) fetchGenesisFromRPC(ctx context.Context, rpcEndpoint, destPath string) error {
+	// Construct genesis endpoint URL
+	genesisURL := strings.TrimSuffix(rpcEndpoint, "/") + "/genesis"
+
+	f.logger.Debug("Fetching genesis from %s", genesisURL)
+
+	// Create HTTP client
+	client := &http.Client{
+		Timeout: 5 * time.Minute,
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, genesisURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to fetch genesis: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to fetch genesis: status %d", resp.StatusCode)
+	}
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read genesis response: %w", err)
+	}
+
+	// Parse the RPC response
+	var rpcResponse struct {
+		Result struct {
+			Genesis json.RawMessage `json:"genesis"`
+		} `json:"result"`
+	}
+
+	if err := json.Unmarshal(body, &rpcResponse); err != nil {
+		return fmt.Errorf("failed to parse RPC response: %w", err)
+	}
+
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// Write genesis file
+	if err := os.WriteFile(destPath, rpcResponse.Result.Genesis, 0644); err != nil {
+		return fmt.Errorf("failed to write genesis file: %w", err)
+	}
+
+	return nil
 }
 
 // ModifyGenesis applies modifications to a genesis file.
