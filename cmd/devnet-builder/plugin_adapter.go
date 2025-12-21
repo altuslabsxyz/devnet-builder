@@ -56,6 +56,7 @@ func (a *pluginAdapter) BinarySource() internalNetwork.BinarySource {
 		Owner:     src.Owner,
 		Repo:      src.Repo,
 		LocalPath: src.LocalPath,
+		BuildTags: src.BuildTags,
 	}
 }
 
@@ -168,9 +169,21 @@ func (a *pluginAdapter) DefaultPorts() internalNetwork.PortConfig {
 // ============================================
 
 func (a *pluginAdapter) ModifyGenesis(genesis []byte, opts internalNetwork.GenesisOptions) ([]byte, error) {
+	// Convert validators from internal to pkg types
+	validators := make([]pkgNetwork.ValidatorInfo, len(opts.Validators))
+	for i, v := range opts.Validators {
+		validators[i] = pkgNetwork.ValidatorInfo{
+			Moniker:         v.Moniker,
+			ConsPubKey:      v.ConsPubKey,
+			OperatorAddress: v.OperatorAddress,
+			SelfDelegation:  v.SelfDelegation,
+		}
+	}
+
 	pkgOpts := pkgNetwork.GenesisOptions{
 		ChainID:       opts.ChainID,
 		NumValidators: opts.NumValidators,
+		Validators:    validators,
 	}
 	return a.module.ModifyGenesis(genesis, pkgOpts)
 }

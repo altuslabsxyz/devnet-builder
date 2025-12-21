@@ -16,7 +16,6 @@ func main() {
 
 	// Load plugins from ~/.devnet-builder/plugins/
 	loader := plugin.NewLoader()
-	defer loader.Close()
 
 	// Discover and load all plugins
 	plugins, _ := loader.LoadAll()
@@ -30,7 +29,12 @@ func main() {
 
 	// Initialize root command
 	rootCmd := NewRootCmd()
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+
+	// Always close plugins before exit (os.Exit skips defers)
+	loader.Close()
+
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
