@@ -7,21 +7,20 @@ import (
 	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	legacynode "github.com/b-harvest/devnet-builder/internal/node"
 	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
 // LocalNodeManager implements NodeManager for local process execution.
 type LocalNodeManager struct {
-	node       *legacynode.Node
-	manager    *legacynode.LocalManager
-	logger     *output.Logger
+	node        *Node
+	manager     *LocalManager
+	logger      *output.Logger
 	genesisPath string
 }
 
 // NewLocalNodeManager creates a new LocalNodeManager.
 func NewLocalNodeManager(
-	node *legacynode.Node,
+	node *Node,
 	binaryPath string,
 	evmChainID string,
 	genesisPath string,
@@ -33,7 +32,7 @@ func NewLocalNodeManager(
 
 	return &LocalNodeManager{
 		node:        node,
-		manager:     legacynode.NewLocalManagerWithEVMChainID(binaryPath, evmChainID, logger),
+		manager:     NewLocalManagerWithEVMChainID(binaryPath, evmChainID, logger),
 		logger:      logger,
 		genesisPath: genesisPath,
 	}
@@ -117,15 +116,15 @@ var _ ports.NodeManager = (*LocalNodeManager)(nil)
 
 // DockerNodeManager implements NodeManager for Docker container execution.
 type DockerNodeManager struct {
-	node        *legacynode.Node
-	manager     *legacynode.DockerManager
+	node        *Node
+	manager     *DockerManager
 	logger      *output.Logger
 	genesisPath string
 }
 
 // NewDockerNodeManager creates a new DockerNodeManager.
 func NewDockerNodeManager(
-	node *legacynode.Node,
+	node *Node,
 	image string,
 	evmChainID string,
 	genesisPath string,
@@ -137,7 +136,7 @@ func NewDockerNodeManager(
 
 	return &DockerNodeManager{
 		node:        node,
-		manager:     legacynode.NewDockerManagerWithEVMChainID(image, evmChainID, logger),
+		manager:     NewDockerManagerWithEVMChainID(image, evmChainID, logger),
 		logger:      logger,
 		genesisPath: genesisPath,
 	}
@@ -218,31 +217,3 @@ func (m *DockerNodeManager) LogPath() string {
 
 // Ensure DockerNodeManager implements NodeManager.
 var _ ports.NodeManager = (*DockerNodeManager)(nil)
-
-// NodeManagerFactory creates NodeManager instances based on execution mode.
-type NodeManagerFactory struct {
-	logger *output.Logger
-}
-
-// NewNodeManagerFactory creates a new NodeManagerFactory.
-func NewNodeManagerFactory(logger *output.Logger) *NodeManagerFactory {
-	return &NodeManagerFactory{
-		logger: logger,
-	}
-}
-
-// CreateManager creates a NodeManager for the given node and execution mode.
-func (f *NodeManagerFactory) CreateManager(
-	node *legacynode.Node,
-	mode ports.ExecutionMode,
-	binaryOrImage string,
-	evmChainID string,
-	genesisPath string,
-) ports.NodeManager {
-	switch mode {
-	case ports.ModeDocker:
-		return NewDockerNodeManager(node, binaryOrImage, evmChainID, genesisPath, f.logger)
-	default:
-		return NewLocalNodeManager(node, binaryOrImage, evmChainID, genesisPath, f.logger)
-	}
-}

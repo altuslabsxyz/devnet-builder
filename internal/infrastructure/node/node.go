@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/b-harvest/devnet-builder/internal/helpers"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/helpers"
 )
 
 // NodeStatus represents the current state of a node.
