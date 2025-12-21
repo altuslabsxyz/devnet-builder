@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	pb "github.com/b-harvest/devnet-builder/internal/plugin/proto"
+	pb "github.com/b-harvest/devnet-builder/pkg/network/plugin"
 )
 
 // GRPCServer is the gRPC server that plugins use to implement NetworkModule.
