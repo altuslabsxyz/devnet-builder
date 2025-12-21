@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/b-harvest/devnet-builder/internal/github"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
 	"github.com/manifoldco/promptui"
 )
 
