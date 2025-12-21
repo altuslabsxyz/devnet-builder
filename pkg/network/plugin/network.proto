@@ -85,6 +85,7 @@ message BinarySourceResponse {
     string repo = 3;
     string local_path = 4;
     string asset_name = 5;
+    repeated string build_tags = 6;
 }
 
 message PortConfigResponse {
@@ -129,10 +130,18 @@ message InitCommandRequest {
     string moniker = 3;
 }
 
+message ValidatorInfo {
+    string moniker = 1;
+    string cons_pub_key = 2;
+    string operator_address = 3;
+    string self_delegation = 4;
+}
+
 message ModifyGenesisRequest {
     bytes genesis = 1;
     string chain_id = 2;
     int32 num_validators = 3;
+    repeated ValidatorInfo validators = 4;
 }
 
 message GenerateDevnetRequest {

@@ -209,6 +209,9 @@ type BinarySource struct {
 
 	// Local source configuration
 	LocalPath string `json:"local_path,omitempty"` // Path to local binary
+
+	// Build configuration
+	BuildTags []string `json:"build_tags,omitempty"` // Go build tags (e.g., ["no_dynamic_precompiles"])
 }
 
 // IsGitHub returns true if this is a GitHub source.
@@ -253,10 +256,19 @@ type GenesisConfig struct {
 	CommunityTax string `json:"community_tax"`
 }
 
+// ValidatorInfo represents validator information for genesis injection.
+type ValidatorInfo struct {
+	Moniker         string `json:"moniker"`
+	ConsPubKey      string `json:"cons_pub_key"`      // Base64 encoded Ed25519 pubkey
+	OperatorAddress string `json:"operator_address"`  // Bech32 valoper address
+	SelfDelegation  string `json:"self_delegation"`   // Amount of tokens delegated
+}
+
 // GenesisOptions contains user-provided overrides for genesis modification.
 type GenesisOptions struct {
-	ChainID       string `json:"chain_id,omitempty"`
-	NumValidators int    `json:"num_validators,omitempty"`
+	ChainID       string          `json:"chain_id,omitempty"`
+	NumValidators int             `json:"num_validators,omitempty"`
+	Validators    []ValidatorInfo `json:"validators,omitempty"`
 }
 
 // GeneratorConfig contains configuration for devnet generation.

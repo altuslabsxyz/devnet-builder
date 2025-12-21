@@ -44,6 +44,7 @@ func (s *GRPCServer) BinarySource(ctx context.Context, req *Empty) (*BinarySourc
 		Repo:      src.Repo,
 		LocalPath: src.LocalPath,
 		AssetName: src.AssetName,
+		BuildTags: src.BuildTags,
 	}, nil
 }
 
@@ -158,9 +159,21 @@ func (s *GRPCServer) ProcessPattern(ctx context.Context, req *Empty) (*StringRes
 
 // Operation methods
 func (s *GRPCServer) ModifyGenesis(ctx context.Context, req *ModifyGenesisRequest) (*BytesResponse, error) {
+	// Convert validators from protobuf to network types
+	validators := make([]network.ValidatorInfo, len(req.Validators))
+	for i, v := range req.Validators {
+		validators[i] = network.ValidatorInfo{
+			Moniker:         v.Moniker,
+			ConsPubKey:      v.ConsPubKey,
+			OperatorAddress: v.OperatorAddress,
+			SelfDelegation:  v.SelfDelegation,
+		}
+	}
+
 	opts := network.GenesisOptions{
 		ChainID:       req.ChainId,
 		NumValidators: int(req.NumValidators),
+		Validators:    validators,
 	}
 	result, err := s.impl.ModifyGenesis(req.Genesis, opts)
 	if err != nil {

@@ -73,6 +73,7 @@ func (c *GRPCClient) BinarySource() network.BinarySource {
 		Repo:      resp.Repo,
 		LocalPath: resp.LocalPath,
 		AssetName: resp.AssetName,
+		BuildTags: resp.BuildTags,
 	}
 }
 
@@ -259,10 +260,22 @@ func (c *GRPCClient) ExportCommand(homeDir string) []string {
 // Operation methods
 
 func (c *GRPCClient) ModifyGenesis(genesis []byte, opts network.GenesisOptions) ([]byte, error) {
+	// Convert validators to protobuf format
+	validators := make([]*ValidatorInfo, len(opts.Validators))
+	for i, v := range opts.Validators {
+		validators[i] = &ValidatorInfo{
+			Moniker:         v.Moniker,
+			ConsPubKey:      v.ConsPubKey,
+			OperatorAddress: v.OperatorAddress,
+			SelfDelegation:  v.SelfDelegation,
+		}
+	}
+
 	resp, err := c.client.ModifyGenesis(context.Background(), &ModifyGenesisRequest{
 		Genesis:       genesis,
 		ChainId:       opts.ChainID,
 		NumValidators: int32(opts.NumValidators),
+		Validators:    validators,
 	})
 	if err != nil {
 		return nil, err
