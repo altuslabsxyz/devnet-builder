@@ -8,27 +8,26 @@ import (
 	"path/filepath"
 
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	legacycache "github.com/b-harvest/devnet-builder/internal/cache"
 	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
-// BinaryCacheAdapter adapts the legacy cache.BinaryCache to ports.BinaryCache.
+// BinaryCacheAdapter implements ports.BinaryCache.
 type BinaryCacheAdapter struct {
 	homeDir    string
 	binaryName string
-	cache      *legacycache.BinaryCache
-	symlink    *legacycache.SymlinkManager
+	cache      *BinaryCache
+	symlink    *SymlinkManager
 	activeRef  string // Currently active ref
 }
 
 // NewBinaryCacheAdapter creates a new BinaryCacheAdapter.
 func NewBinaryCacheAdapter(homeDir, binaryName string, logger *output.Logger) (*BinaryCacheAdapter, error) {
-	cache := legacycache.NewBinaryCache(homeDir, binaryName, logger)
+	cache := NewBinaryCache(homeDir, binaryName, logger)
 	if err := cache.Initialize(); err != nil {
 		return nil, fmt.Errorf("failed to initialize cache: %w", err)
 	}
 
-	symlink := legacycache.NewSymlinkManager(homeDir, binaryName)
+	symlink := NewSymlinkManager(homeDir, binaryName)
 
 	return &BinaryCacheAdapter{
 		homeDir:    homeDir,
@@ -40,7 +39,7 @@ func NewBinaryCacheAdapter(homeDir, binaryName string, logger *output.Logger) (*
 
 // Store saves a binary to the cache.
 func (a *BinaryCacheAdapter) Store(ctx context.Context, ref string, binaryPath string) (string, error) {
-	cached := &legacycache.CachedBinary{
+	cached := &CachedBinary{
 		CommitHash: ref,
 		Ref:        ref,
 	}
@@ -120,6 +119,86 @@ func (a *BinaryCacheAdapter) GetActive() (string, error) {
 	}
 
 	return target, nil
+}
+
+// ListDetailed returns detailed information about all cached binaries.
+func (a *BinaryCacheAdapter) ListDetailed() []ports.CachedBinaryInfo {
+	entries := a.cache.List()
+	result := make([]ports.CachedBinaryInfo, len(entries))
+	for i, entry := range entries {
+		result[i] = ports.CachedBinaryInfo{
+			Ref:        entry.Ref,
+			CommitHash: entry.CommitHash,
+			Path:       entry.BinaryPath,
+			Size:       entry.Size,
+			BuildTime:  entry.BuildTime,
+			Network:    entry.Network,
+		}
+	}
+	return result
+}
+
+// Stats returns cache statistics.
+func (a *BinaryCacheAdapter) Stats() ports.CacheStats {
+	cacheStats := a.cache.Stats()
+	return ports.CacheStats{
+		TotalEntries: cacheStats.TotalEntries,
+		TotalSize:    cacheStats.TotalSize,
+	}
+}
+
+// Clean removes all cached binaries.
+func (a *BinaryCacheAdapter) Clean() error {
+	return a.cache.Clean()
+}
+
+// CacheDir returns the cache directory path.
+func (a *BinaryCacheAdapter) CacheDir() string {
+	return a.cache.CacheDir()
+}
+
+// SymlinkPath returns the symlink path.
+func (a *BinaryCacheAdapter) SymlinkPath() string {
+	return filepath.Join(a.homeDir, "bin", a.binaryName)
+}
+
+// SymlinkInfo returns information about the current symlink.
+func (a *BinaryCacheAdapter) SymlinkInfo() (*ports.SymlinkInfo, error) {
+	binPath := a.SymlinkPath()
+	info := &ports.SymlinkInfo{
+		Path: binPath,
+	}
+
+	// Check if path exists
+	fileInfo, err := os.Lstat(binPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			info.Exists = false
+			return info, nil
+		}
+		return nil, fmt.Errorf("failed to stat symlink: %w", err)
+	}
+
+	info.Exists = true
+
+	// Check if it's a symlink or regular file
+	if fileInfo.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(binPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read symlink: %w", err)
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(binPath), target)
+		}
+		info.Target = target
+		// Extract commit hash from path (cache/binaries/<hash>/binary)
+		dir := filepath.Dir(target)
+		info.CommitHash = filepath.Base(dir)
+	} else {
+		info.IsRegular = true
+	}
+
+	return info, nil
 }
 
 // Ensure BinaryCacheAdapter implements ports.BinaryCache.

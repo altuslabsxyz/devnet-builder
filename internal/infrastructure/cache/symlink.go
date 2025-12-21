@@ -6,11 +6,6 @@ import (
 	"path/filepath"
 )
 
-const (
-	// BinSubdir is the subdirectory name for the binary symlink.
-	BinSubdir = "bin"
-)
-
 // SymlinkManager manages the binary symlink.
 type SymlinkManager struct {
 	homeDir     string
