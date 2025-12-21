@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/cache"
-	"github.com/b-harvest/devnet-builder/internal/network"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/cache"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/b-harvest/devnet-builder/internal/output"
 )
 

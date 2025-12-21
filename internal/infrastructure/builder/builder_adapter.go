@@ -6,18 +6,17 @@ import (
 	"fmt"
 
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	legacybuilder "github.com/b-harvest/devnet-builder/internal/builder"
-	legacycache "github.com/b-harvest/devnet-builder/internal/cache"
-	"github.com/b-harvest/devnet-builder/internal/network"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/cache"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
-// BuilderAdapter adapts the legacy builder.Builder to ports.Builder interface.
+// BuilderAdapter implements ports.Builder.
 type BuilderAdapter struct {
 	homeDir string
 	logger  *output.Logger
 	module  network.NetworkModule
-	builder *legacybuilder.Builder
+	builder *Builder
 }
 
 // NewBuilderAdapter creates a new BuilderAdapter.
@@ -26,9 +25,9 @@ func NewBuilderAdapter(homeDir string, logger *output.Logger, module network.Net
 		logger = output.DefaultLogger
 	}
 
-	var b *legacybuilder.Builder
+	var b *Builder
 	if module != nil {
-		b = legacybuilder.NewBuilder(homeDir, logger, module)
+		b = NewBuilder(homeDir, logger, module)
 	}
 
 	return &BuilderAdapter{
@@ -48,12 +47,12 @@ func (a *BuilderAdapter) Build(ctx context.Context, opts ports.BuildOptions) (*p
 		}
 	}
 
-	legacyOpts := legacybuilder.BuildOptions{
+	builderOpts := BuildOptions{
 		Ref:     opts.Ref,
 		Network: opts.Network,
 	}
 
-	result, err := a.builder.Build(ctx, legacyOpts)
+	result, err := a.builder.Build(ctx, builderOpts)
 	if err != nil {
 		return nil, &BuilderError{
 			Operation: "build",
@@ -78,7 +77,7 @@ func (a *BuilderAdapter) BuildToCache(ctx context.Context, opts ports.BuildOptio
 	}
 
 	binaryName := a.module.BinaryName()
-	binaryCache := legacycache.NewBinaryCache(a.homeDir, binaryName, a.logger)
+	binaryCache := cache.NewBinaryCache(a.homeDir, binaryName, a.logger)
 	if err := binaryCache.Initialize(); err != nil {
 		return nil, &BuilderError{
 			Operation: "build_to_cache",
@@ -86,12 +85,12 @@ func (a *BuilderAdapter) BuildToCache(ctx context.Context, opts ports.BuildOptio
 		}
 	}
 
-	legacyOpts := legacybuilder.BuildOptions{
+	builderOpts := BuildOptions{
 		Ref:     opts.Ref,
 		Network: opts.Network,
 	}
 
-	cached, err := a.builder.BuildToCache(ctx, legacyOpts, binaryCache)
+	cached, err := a.builder.BuildToCache(ctx, builderOpts, binaryCache)
 	if err != nil {
 		return nil, &BuilderError{
 			Operation: "build_to_cache",
