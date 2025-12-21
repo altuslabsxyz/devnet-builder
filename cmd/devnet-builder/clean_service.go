@@ -737,3 +737,67 @@ func (e *NodeNotFoundError) Error() string {
 func getCleanService() (*CleanDevnetService, error) {
 	return NewCleanDevnetService(homeDir, output.DefaultLogger)
 }
+
+// LoadMetadata returns the raw metadata for advanced operations.
+func (s *CleanDevnetService) LoadMetadata(ctx context.Context) (*ports.DevnetMetadata, error) {
+	repo := s.container.DevnetRepository()
+	return repo.Load(ctx, s.homeDir)
+}
+
+// SaveMetadata saves updated metadata.
+func (s *CleanDevnetService) SaveMetadata(ctx context.Context, metadata *ports.DevnetMetadata) error {
+	repo := s.container.DevnetRepository()
+	return repo.Save(ctx, metadata)
+}
+
+// IsRunning returns true if the devnet is in running state.
+func (s *CleanDevnetService) IsRunning(ctx context.Context) (bool, error) {
+	metadata, err := s.LoadMetadata(ctx)
+	if err != nil {
+		return false, err
+	}
+	return metadata.Status == ports.StateRunning, nil
+}
+
+// GetCurrentVersion returns the current binary version.
+func (s *CleanDevnetService) GetCurrentVersion(ctx context.Context) (string, error) {
+	metadata, err := s.LoadMetadata(ctx)
+	if err != nil {
+		return "", err
+	}
+	return metadata.CurrentVersion, nil
+}
+
+// SetCurrentVersion updates the current binary version.
+func (s *CleanDevnetService) SetCurrentVersion(ctx context.Context, version string) error {
+	metadata, err := s.LoadMetadata(ctx)
+	if err != nil {
+		return err
+	}
+	metadata.CurrentVersion = version
+	return s.SaveMetadata(ctx, metadata)
+}
+
+// GetExecutionMode returns the execution mode (docker/local).
+func (s *CleanDevnetService) GetExecutionMode(ctx context.Context) (ports.ExecutionMode, error) {
+	metadata, err := s.LoadMetadata(ctx)
+	if err != nil {
+		return "", err
+	}
+	return metadata.ExecutionMode, nil
+}
+
+// GetNetworkSource returns the network source (mainnet/testnet).
+func (s *CleanDevnetService) GetNetworkSource(ctx context.Context) (string, error) {
+	metadata, err := s.LoadMetadata(ctx)
+	if err != nil {
+		return "", err
+	}
+	return metadata.NetworkName, nil
+}
+
+// StopAll stops all nodes with given timeout.
+func (s *CleanDevnetService) StopAll(ctx context.Context, timeout time.Duration) error {
+	_, err := s.Stop(ctx, timeout)
+	return err
+}

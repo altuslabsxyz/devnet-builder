@@ -7,7 +7,7 @@ import (
 	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
-	internalNetwork "github.com/b-harvest/devnet-builder/internal/network"
+	internalNetwork "github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	pkgNetwork "github.com/b-harvest/devnet-builder/pkg/network"
 )
 

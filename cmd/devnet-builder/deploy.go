@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/dto"
-	"github.com/b-harvest/devnet-builder/internal/builder"
 	"github.com/b-harvest/devnet-builder/internal/config"
-	"github.com/b-harvest/devnet-builder/internal/github"
-	"github.com/b-harvest/devnet-builder/internal/interactive"
-	"github.com/b-harvest/devnet-builder/internal/network"
+	"github.com/b-harvest/devnet-builder/internal/di"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -250,18 +250,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Build binary for local mode (all versions need to be built/cached)
 	var customBinaryPath string
 	if deployMode == "local" {
-		networkModule, _ := network.Get(deployBlockchainNetwork)
-		b := builder.NewBuilder(homeDir, logger, networkModule)
-		logger.Info("Building binary from source (ref: %s)...", startVersion)
-		result, err := b.Build(ctx, builder.BuildOptions{
-			Ref:     startVersion,
-			Network: deployNetwork,
-		})
+		buildResult, err := buildBinaryForDeploy(ctx, deployBlockchainNetwork, startVersion, deployNetwork, logger)
 		if err != nil {
 			return fmt.Errorf("failed to build from source: %w", err)
 		}
-		customBinaryPath = result.BinaryPath
-		logger.Success("Binary built: %s (commit: %s)", result.BinaryPath, result.CommitHash)
+		customBinaryPath = buildResult.BinaryPath
+		logger.Success("Binary built: %s (commit: %s)", buildResult.BinaryPath, buildResult.CommitHash)
 	}
 
 	// Phase 1: Provision using CleanDevnetService
@@ -488,4 +482,34 @@ func runDeployDockerImageSelection(ctx context.Context) (*DockerImageSelectionRe
 		IsCustom:  isCustom,
 		FromCache: fromCache,
 	}, nil
+}
+
+// buildBinaryForDeploy builds a binary using DI container and BuildUseCase.
+// This replaces direct usage of the legacy builder package.
+func buildBinaryForDeploy(ctx context.Context, blockchainNetwork, ref, networkType string, logger *output.Logger) (*dto.BuildOutput, error) {
+	// Get network module
+	networkModule, err := network.Get(blockchainNetwork)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network module: %w", err)
+	}
+
+	// Create DI factory with network module
+	factory := di.NewInfrastructureFactory(homeDir, logger).
+		WithNetworkModule(networkModule)
+
+	// Wire container
+	container, err := factory.WireContainer()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize: %w", err)
+	}
+
+	logger.Info("Building binary from source (ref: %s)...", ref)
+
+	// Execute BuildUseCase
+	return container.BuildUseCase().Execute(ctx, dto.BuildInput{
+		Ref:      ref,
+		Network:  networkType,
+		UseCache: true,  // Check cache first
+		ToCache:  true,  // Store in cache for reuse
+	})
 }

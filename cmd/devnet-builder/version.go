@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/b-harvest/devnet-builder/internal/network"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/spf13/cobra"
 )
 

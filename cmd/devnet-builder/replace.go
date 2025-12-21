@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/builder"
-	"github.com/b-harvest/devnet-builder/internal/devnet"
-	"github.com/b-harvest/devnet-builder/internal/github"
-	"github.com/b-harvest/devnet-builder/internal/interactive"
+	"github.com/b-harvest/devnet-builder/internal/application/dto"
+	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/b-harvest/devnet-builder/internal/di"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -85,8 +87,19 @@ func runReplace(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	logger := output.DefaultLogger
 
-	// Load devnet metadata using consolidated helper
-	metadata, err := loadMetadataOrFail(logger)
+	// Initialize CleanDevnetService
+	svc, err := getCleanService()
+	if err != nil {
+		return outputReplaceError(fmt.Errorf("failed to initialize service: %w", err))
+	}
+
+	// Check if devnet exists
+	if !svc.DevnetExists() {
+		return outputReplaceError(fmt.Errorf("no devnet found at %s", homeDir))
+	}
+
+	// Load devnet metadata
+	metadata, err := svc.LoadMetadata(ctx)
 	if err != nil {
 		return outputReplaceError(err)
 	}
@@ -136,14 +149,16 @@ func runReplace(cmd *cobra.Command, args []string) error {
 		output.Info("[1/4] Building new binary (ref: %s)...", replaceVersion)
 	}
 
-	networkModule, _ := metadata.GetNetworkModule()
-	b := builder.NewBuilder(homeDir, logger, networkModule)
-	buildResult, err := b.Build(ctx, builder.BuildOptions{
-		Ref:     replaceVersion,
-		Network: metadata.NetworkSource,
-	})
+	// Build using DI container
+	buildResult, err := buildBinaryForReplace(ctx, metadata.BlockchainNetwork, replaceVersion, metadata.NetworkName, logger)
 	if err != nil {
 		return outputReplaceError(fmt.Errorf("failed to build binary: %w", err))
+	}
+
+	// Get network module for binary name (needed later for file operations)
+	networkModule, err := network.Get(metadata.BlockchainNetwork)
+	if err != nil {
+		return outputReplaceError(fmt.Errorf("failed to get network module: %w", err))
 	}
 
 	if !jsonMode {
@@ -155,13 +170,8 @@ func runReplace(cmd *cobra.Command, args []string) error {
 		output.Info("[2/4] Stopping nodes...")
 	}
 
-	d, err := devnet.LoadDevnetWithNodes(homeDir, logger)
-	if err != nil {
-		return outputReplaceError(fmt.Errorf("failed to load devnet: %w", err))
-	}
-
-	if d.Metadata.IsRunning() {
-		if err := d.Stop(ctx, 30*time.Second); err != nil {
+	if metadata.Status == ports.StateRunning {
+		if err := svc.StopAll(ctx, 30*time.Second); err != nil {
 			return outputReplaceError(fmt.Errorf("failed to stop nodes: %w", err))
 		}
 	}
@@ -176,7 +186,8 @@ func runReplace(cmd *cobra.Command, args []string) error {
 	}
 
 	binDir := filepath.Join(homeDir, "bin")
-	targetPath := filepath.Join(binDir, "stabled")
+	binaryName := networkModule.BinaryName()
+	targetPath := filepath.Join(binDir, binaryName)
 
 	// Ensure bin directory exists
 	if err := os.MkdirAll(binDir, 0755); err != nil {
@@ -198,8 +209,7 @@ func runReplace(cmd *cobra.Command, args []string) error {
 	}
 
 	// Update metadata with new version
-	metadata.SetCurrentVersion(replaceVersion)
-	if err := metadata.Save(); err != nil {
+	if err := svc.SetCurrentVersion(ctx, replaceVersion); err != nil {
 		logger.Warn("Failed to update metadata version: %v", err)
 	}
 
@@ -208,20 +218,7 @@ func runReplace(cmd *cobra.Command, args []string) error {
 		output.Info("[4/4] Restarting nodes...")
 	}
 
-	// Reload devnet for restart
-	d, err = devnet.LoadDevnetWithNodes(homeDir, logger)
-	if err != nil {
-		return outputReplaceError(fmt.Errorf("failed to reload devnet: %w", err))
-	}
-
-	runOpts := devnet.RunOptions{
-		HomeDir:       homeDir,
-		Mode:          metadata.ExecutionMode,
-		HealthTimeout: replaceHealthTimeout,
-		Logger:        logger,
-	}
-
-	runResult, err := devnet.Run(ctx, runOpts)
+	runResult, err := svc.Start(ctx, replaceHealthTimeout)
 	if err != nil {
 		return outputReplaceError(fmt.Errorf("failed to restart nodes: %w", err))
 	}
@@ -235,7 +232,7 @@ func runReplace(cmd *cobra.Command, args []string) error {
 		BinaryPath:      targetPath,
 	}
 
-	if !runResult.AllHealthy {
+	if !runResult.AllRunning {
 		result.Status = "partial"
 	}
 
@@ -243,7 +240,7 @@ func runReplace(cmd *cobra.Command, args []string) error {
 		return outputReplaceJSON(result)
 	}
 
-	return outputReplaceText(result, runResult)
+	return outputReplaceTextClean(result, runResult)
 }
 
 func copyFile(src, dst string) error {
@@ -254,7 +251,7 @@ func copyFile(src, dst string) error {
 	return os.WriteFile(dst, data, 0755)
 }
 
-func outputReplaceText(result ReplaceResult, runResult *devnet.RunResult) error {
+func outputReplaceTextClean(result ReplaceResult, runResult *dto.RunOutput) error {
 	fmt.Println()
 	output.Success("Binary replacement completed!")
 	fmt.Println()
@@ -272,15 +269,26 @@ func outputReplaceText(result ReplaceResult, runResult *devnet.RunResult) error 
 	fmt.Println()
 
 	if runResult != nil {
-		if len(runResult.FailedNodes) > 0 {
+		// Count failed nodes
+		var failedNodes []int
+		var successfulNodes []int
+		for _, ns := range runResult.Nodes {
+			if !ns.IsRunning {
+				failedNodes = append(failedNodes, ns.Index)
+			} else {
+				successfulNodes = append(successfulNodes, ns.Index)
+			}
+		}
+
+		if len(failedNodes) > 0 {
 			output.Warn("Some nodes failed to restart:")
-			for _, fn := range runResult.FailedNodes {
-				fmt.Printf("  Node %d: %s\n", fn.Index, fn.Error)
+			for _, idx := range failedNodes {
+				fmt.Printf("  Node %d: failed to start\n", idx)
 			}
 			fmt.Println()
 		}
 
-		output.Info("Successful nodes: %v", runResult.SuccessfulNodes)
+		output.Info("Successful nodes: %v", successfulNodes)
 	}
 
 	output.Info("Use 'devnet-builder status' to verify chain health")
@@ -365,4 +373,32 @@ func runReplaceInteractiveSelection(ctx context.Context, currentVersion string) 
 	}
 
 	return version, nil
+}
+
+// buildBinaryForReplace builds a binary using DI container and BuildUseCase.
+// This replaces direct usage of the legacy builder package.
+func buildBinaryForReplace(ctx context.Context, blockchainNetwork, ref, networkType string, logger *output.Logger) (*dto.BuildOutput, error) {
+	// Get network module
+	networkModule, err := network.Get(blockchainNetwork)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network module: %w", err)
+	}
+
+	// Create DI factory with network module
+	factory := di.NewInfrastructureFactory(homeDir, logger).
+		WithNetworkModule(networkModule)
+
+	// Wire container
+	container, err := factory.WireContainer()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize: %w", err)
+	}
+
+	// Execute BuildUseCase
+	return container.BuildUseCase().Execute(ctx, dto.BuildInput{
+		Ref:      ref,
+		Network:  networkType,
+		UseCache: true,  // Check cache first
+		ToCache:  true,  // Store in cache for reuse
+	})
 }

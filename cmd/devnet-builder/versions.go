@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/github"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
 	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
 )
