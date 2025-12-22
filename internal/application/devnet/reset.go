@@ -3,6 +3,7 @@ package devnet
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
@@ -44,6 +45,7 @@ func (uc *ResetUseCase) Execute(ctx context.Context, input dto.ResetInput) (*dto
 		uc.logger.Info("Stopping running nodes...")
 		_, err := uc.stopUC.Execute(ctx, dto.StopInput{
 			HomeDir: input.HomeDir,
+			Timeout: 5 * time.Second, // Short timeout for reset
 			Force:   true,
 		})
 		if err != nil {
@@ -134,13 +136,14 @@ func (uc *DestroyUseCase) Execute(ctx context.Context, input dto.DestroyInput) (
 		return nil, fmt.Errorf("no devnet found at %s", input.HomeDir)
 	}
 
-	// Stop nodes if running
+	// Stop nodes if running (use short timeout for destroy - we're deleting anyway)
 	metadata, err := uc.devnetRepo.Load(ctx, input.HomeDir)
 	stoppedNodes := 0
 	if err == nil && metadata.Status == ports.StateRunning {
 		uc.logger.Info("Stopping running nodes...")
 		result, err := uc.stopUC.Execute(ctx, dto.StopInput{
 			HomeDir: input.HomeDir,
+			Timeout: 3 * time.Second, // Short timeout - force kill quickly
 			Force:   true,
 		})
 		if err != nil {

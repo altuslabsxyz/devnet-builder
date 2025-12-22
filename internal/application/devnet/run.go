@@ -3,6 +3,7 @@ package devnet
 import (
 	"context"
 	"fmt"
+	"syscall"
 	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/dto"
@@ -117,13 +118,38 @@ func (uc *RunUseCase) Execute(ctx context.Context, input dto.RunInput) (*dto.Run
 }
 
 func (uc *RunUseCase) buildStartCommand(node *ports.NodeMetadata, metadata *ports.DevnetMetadata) ports.Command {
-	args := uc.networkModule.StartCommand(node.HomeDir)
+	// Use custom binary path if available
+	binary := metadata.CustomBinaryPath
+	if binary == "" && uc.networkModule != nil {
+		binary = uc.networkModule.BinaryName()
+	}
+	if binary == "" {
+		binary = "stabled" // fallback
+	}
+
+	// Build start command args
+	var args []string
+	if uc.networkModule != nil {
+		args = uc.networkModule.StartCommand(node.HomeDir)
+	} else {
+		// Fallback: standard cosmos start command
+		args = []string{"start", "--home", node.HomeDir}
+	}
+
+	// Determine log and PID file names
+	logFileName := "node.log"
+	pidFileName := "node.pid"
+	if uc.networkModule != nil {
+		logFileName = uc.networkModule.LogFileName()
+		pidFileName = uc.networkModule.PIDFileName()
+	}
+
 	return ports.Command{
-		Binary:  uc.networkModule.BinaryName(),
+		Binary:  binary,
 		Args:    args,
 		WorkDir: node.HomeDir,
-		LogPath: fmt.Sprintf("%s/%s", node.HomeDir, uc.networkModule.LogFileName()),
-		PIDPath: fmt.Sprintf("%s/%s", node.HomeDir, uc.networkModule.PIDFileName()),
+		LogPath: fmt.Sprintf("%s/%s", node.HomeDir, logFileName),
+		PIDPath: fmt.Sprintf("%s/%s", node.HomeDir, pidFileName),
 	}
 }
 
@@ -195,23 +221,27 @@ func (uc *StopUseCase) Execute(ctx context.Context, input dto.StopInput) (*dto.S
 		return nil, fmt.Errorf("failed to load nodes: %w", err)
 	}
 
+	uc.logger.Debug("Loaded %d nodes from %s", len(nodes), input.HomeDir)
+
 	// Stop each node
 	stoppedCount := 0
 	var warnings []string
 
 	for _, node := range nodes {
 		if node.PID == nil {
+			uc.logger.Debug("Node %d has no PID, skipping", node.Index)
 			continue
 		}
 
 		uc.logger.Debug("Stopping node %d (PID: %d)...", node.Index, *node.PID)
 
-		// Create a handle for the process
-		handle := &pidHandle{pid: *node.PID}
-		if err := uc.executor.Stop(ctx, handle, input.Timeout); err != nil {
+		// Kill the process directly using syscall
+		if err := killProcess(*node.PID, input.Timeout); err != nil {
 			if input.Force {
-				if err := uc.executor.Kill(handle); err != nil {
+				// Force kill with SIGKILL
+				if err := forceKillProcess(*node.PID); err != nil {
 					warnings = append(warnings, fmt.Sprintf("failed to kill node %d: %v", node.Index, err))
+					continue
 				}
 			} else {
 				warnings = append(warnings, fmt.Sprintf("failed to stop node %d: %v", node.Index, err))
@@ -241,12 +271,41 @@ func (uc *StopUseCase) Execute(ctx context.Context, input dto.StopInput) (*dto.S
 	}, nil
 }
 
-// pidHandle is a simple ProcessHandle implementation for stopping by PID.
-type pidHandle struct {
-	pid int
+// killProcess sends SIGTERM and waits for process to exit gracefully.
+func killProcess(pid int, timeout time.Duration) error {
+	// Send SIGTERM for graceful shutdown
+	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		// Process might already be dead
+		if err == syscall.ESRCH {
+			return nil
+		}
+		return fmt.Errorf("failed to send SIGTERM: %w", err)
+	}
+
+	// Wait for process to exit
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		// Check if process is still running
+		if err := syscall.Kill(pid, 0); err != nil {
+			// Process is dead
+			if err == syscall.ESRCH {
+				return nil
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return fmt.Errorf("process %d did not exit within timeout", pid)
 }
 
-func (h *pidHandle) PID() int        { return h.pid }
-func (h *pidHandle) IsRunning() bool { return false }
-func (h *pidHandle) Wait() error     { return nil }
-func (h *pidHandle) Kill() error     { return nil }
+// forceKillProcess sends SIGKILL to immediately terminate a process.
+func forceKillProcess(pid int) error {
+	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
+		// Process might already be dead
+		if err == syscall.ESRCH {
+			return nil
+		}
+		return fmt.Errorf("failed to send SIGKILL: %w", err)
+	}
+	return nil
+}

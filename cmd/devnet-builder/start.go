@@ -31,9 +31,9 @@ type UpJSONResult struct {
 	Error             string           `json:"error,omitempty"`
 }
 
-func NewUpCmd() *cobra.Command {
+func NewStartCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "up",
+		Use:   "start",
 		Short: "Start nodes from existing configuration",
 		Long: `Start nodes from a previously initialized devnet configuration.
 
@@ -42,22 +42,22 @@ has been run first. It allows you to restart nodes after stopping them.
 
 Workflow:
   1. devnet-builder init    # Create config (or deploy)
-  2. devnet-builder down    # Stop nodes
-  3. devnet-builder up      # Start nodes again
+  2. devnet-builder stop    # Stop nodes
+  3. devnet-builder start   # Start nodes again
 
 Examples:
   # Start nodes with default settings
-  devnet-builder up
+  devnet-builder start
 
   # Start with local binary mode
-  devnet-builder up --mode local
+  devnet-builder start --mode local
 
   # Start with specific binary from cache
-  devnet-builder up --binary-ref v1.2.3
+  devnet-builder start --binary-ref v1.2.3
 
   # Start with custom health timeout
-  devnet-builder up --health-timeout 10m`,
-		RunE: runUp,
+  devnet-builder start --health-timeout 10m`,
+		RunE: runStart,
 	}
 
 	cmd.Flags().StringVarP(&upMode, "mode", "m", "",
@@ -72,7 +72,7 @@ Examples:
 	return cmd
 }
 
-func runUp(cmd *cobra.Command, args []string) error {
+func runStart(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	// Apply config.toml values
@@ -112,7 +112,7 @@ func runUp(cmd *cobra.Command, args []string) error {
 
 	// Check if already running
 	if devnetInfo.Status == "running" {
-		return outputUpErrorClean(fmt.Errorf("devnet is already running\nUse 'devnet-builder down' first"))
+		return outputUpErrorClean(fmt.Errorf("devnet is already running\nUse 'devnet-builder stop' first"))
 	}
 
 	// Start nodes using CleanDevnetService

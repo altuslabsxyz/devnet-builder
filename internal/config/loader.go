@@ -27,7 +27,7 @@ func NewConfigLoader(homeDir, configPath string, logger *output.Logger) *ConfigL
 
 // findConfigFile searches for config.toml in the following order:
 // 1. Explicit path (--config flag)
-// 2. Home directory (~/.stable-devnet/config.toml)
+// 2. Home directory (~/.devnet-builder/config.toml)
 //
 // Note: Current directory (./config.toml) is intentionally NOT checked.
 // Use --config flag to specify a custom config file location.
@@ -51,7 +51,7 @@ func (l *ConfigLoader) findConfigFile() (string, error) {
 }
 
 // LoadFileConfig loads and parses config files from homeDir or explicit path.
-// Priority: explicit path (--config) > ~/.stable-devnet/config.toml
+// Priority: explicit path (--config) > ~/.devnet-builder/config.toml
 //
 // Note: Current directory (./config.toml) is intentionally NOT checked.
 // Use --config flag to specify a custom config file location.

@@ -25,9 +25,9 @@ var (
 func DefaultHomeDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return ".stable-devnet"
+		return ".devnet-builder"
 	}
-	return filepath.Join(home, ".stable-devnet")
+	return filepath.Join(home, ".devnet-builder")
 }
 
 // Command group IDs for organized help output.
@@ -45,7 +45,7 @@ func NewRootCmd() *cobra.Command {
 
 It consolidates multiple shell scripts into a single binary for easier devnet management:
   - Start a fully functional multi-validator devnet with a single command
-  - Manage devnet lifecycle (up, down, destroy)
+  - Manage devnet lifecycle (start, stop, destroy)
   - Monitor devnet status and view node logs
   - Export validator and account keys
   - Build with specific stable repository versions
@@ -64,7 +64,7 @@ Examples:
   devnet-builder logs -f
 
   # Stop the devnet
-  devnet-builder down`,
+  devnet-builder stop`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Load config file
 			loader := config.NewConfigLoader(homeDir, configPath, output.DefaultLogger)
@@ -136,13 +136,13 @@ Examples:
 	cmd.AddGroup(&cobra.Group{ID: GroupMonitoring, Title: "Monitoring Commands:"})
 	cmd.AddGroup(&cobra.Group{ID: GroupAdvanced, Title: "Advanced Commands:"})
 
-	// Main commands (new Docker Compose-style commands)
+	// Main commands
 	deployCmd := NewDeployCmd()
 	deployCmd.GroupID = GroupMain
-	upCmd := NewUpCmd()
-	upCmd.GroupID = GroupMain
-	downCmd := NewDownCmd()
-	downCmd.GroupID = GroupMain
+	startCmd := NewStartCmd()
+	startCmd.GroupID = GroupMain
+	stopCmd := NewStopCmd()
+	stopCmd.GroupID = GroupMain
 	initCmd := NewInitCmd()
 	initCmd.GroupID = GroupMain
 	destroyCmd := NewDestroyCmd()
@@ -184,10 +184,10 @@ Examples:
 
 	// Add subcommands
 	cmd.AddCommand(
-		// Main commands (new)
+		// Main commands
 		deployCmd,
-		upCmd,
-		downCmd,
+		startCmd,
+		stopCmd,
 		initCmd,
 		destroyCmd,
 

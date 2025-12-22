@@ -46,7 +46,7 @@ func NewInitCmd() *cobra.Command {
 This allows you to:
 1. Modify config files (config.toml, app.toml) before starting
 2. Adjust genesis parameters
-3. Start nodes separately using 'devnet-builder up'
+3. Start nodes separately using 'devnet-builder start'
 
 The init command performs:
 - Download snapshot from network
@@ -65,7 +65,7 @@ Examples:
   devnet-builder init --validators 2
 
   # After initializing, modify config then run:
-  devnet-builder up`,
+  devnet-builder start`,
 		RunE: runInit,
 	}
 
@@ -243,7 +243,7 @@ func outputInitTextClean(result *dto.ProvisionOutput, devnetInfo *dto.DevnetInfo
 	fmt.Println()
 
 	output.Bold("Next step:")
-	fmt.Println("  Run 'devnet-builder up' to start the nodes")
+	fmt.Println("  Run 'devnet-builder start' to start the nodes")
 	fmt.Println()
 
 	return nil
@@ -264,7 +264,7 @@ func outputInitJSONClean(result *dto.ProvisionOutput, devnetInfo *dto.DevnetInfo
 			"app.toml":     filepath.Join(devnetDir, "node0", "config", "app.toml"),
 			"genesis.json": result.GenesisPath,
 		},
-		NextCommand: "devnet-builder up",
+		NextCommand: "devnet-builder start",
 	}
 
 	data, err := json.MarshalIndent(jsonResult, "", "  ")

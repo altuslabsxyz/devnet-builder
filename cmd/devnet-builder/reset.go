@@ -97,7 +97,7 @@ func runReset(cmd *cobra.Command, args []string) error {
 	if resetHard {
 		fmt.Println("Run 'devnet-builder deploy' to provision a new devnet.")
 	} else {
-		fmt.Println("Run 'devnet-builder up' to restart the devnet with fresh chain data.")
+		fmt.Println("Run 'devnet-builder start' to restart the devnet with fresh chain data.")
 	}
 
 	return nil

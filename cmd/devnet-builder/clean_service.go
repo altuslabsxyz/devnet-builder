@@ -16,6 +16,7 @@ import (
 	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	"github.com/b-harvest/devnet-builder/internal/di"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
@@ -28,22 +29,53 @@ type CleanDevnetService struct {
 	logger    *output.Logger
 }
 
+// CleanServiceConfig holds configuration for creating a CleanDevnetService.
+type CleanServiceConfig struct {
+	HomeDir       string
+	Logger        *output.Logger
+	NetworkModule network.NetworkModule
+	DockerMode    bool
+	Options       []di.Option
+}
+
 // NewCleanDevnetService creates a new CleanDevnetService with DI Container.
 func NewCleanDevnetService(homeDir string, logger *output.Logger, opts ...di.Option) (*CleanDevnetService, error) {
+	return NewCleanDevnetServiceWithConfig(CleanServiceConfig{
+		HomeDir: homeDir,
+		Logger:  logger,
+		Options: opts,
+	})
+}
+
+// NewCleanDevnetServiceWithConfig creates a CleanDevnetService with full configuration.
+func NewCleanDevnetServiceWithConfig(cfg CleanServiceConfig) (*CleanDevnetService, error) {
+	logger := cfg.Logger
 	if logger == nil {
 		logger = output.DefaultLogger
 	}
 
-	// Create infrastructure factory and wire container
-	factory := di.NewInfrastructureFactory(homeDir, logger)
-	container, err := factory.WireContainer(opts...)
+	// Create infrastructure factory
+	factory := di.NewInfrastructureFactory(cfg.HomeDir, logger)
+
+	// Apply network module if provided
+	if cfg.NetworkModule != nil {
+		factory = factory.WithNetworkModule(cfg.NetworkModule)
+	}
+
+	// Apply docker mode if specified
+	if cfg.DockerMode {
+		factory = factory.WithDockerMode(true)
+	}
+
+	// Wire container with options
+	container, err := factory.WireContainer(cfg.Options...)
 	if err != nil {
 		return nil, err
 	}
 
 	return &CleanDevnetService{
 		container: container,
-		homeDir:   homeDir,
+		homeDir:   cfg.HomeDir,
 		logger:    logger,
 	}, nil
 }
@@ -169,6 +201,8 @@ func (s *CleanDevnetService) GetStatus(ctx context.Context) (*dto.StatusOutput, 
 			HomeDir: n.HomeDir,
 			NodeID:  n.NodeID,
 			Ports:   n.Ports,
+			RPCURL:  fmt.Sprintf("http://localhost:%d", n.Ports.RPC),
+			EVMURL:  fmt.Sprintf("http://localhost:%d", n.Ports.EVM),
 		}
 	}
 
@@ -248,6 +282,8 @@ func (s *CleanDevnetService) LoadDevnetInfo(ctx context.Context) (*dto.DevnetInf
 			HomeDir: n.HomeDir,
 			NodeID:  n.NodeID,
 			Ports:   n.Ports,
+			RPCURL:  fmt.Sprintf("http://localhost:%d", n.Ports.RPC),
+			EVMURL:  fmt.Sprintf("http://localhost:%d", n.Ports.EVM),
 		}
 	}
 
@@ -328,7 +364,15 @@ func (s *CleanDevnetService) GetNodeLogPath(ctx context.Context, nodeIndex int) 
 		return "", err
 	}
 	// Construct log path from node home directory
-	return node.HomeDir + "/stable.log", nil
+	return node.HomeDir + "/" + s.getLogFileName(), nil
+}
+
+// getLogFileName returns the log file name from the network module or fallback.
+func (s *CleanDevnetService) getLogFileName() string {
+	if nm := s.container.NetworkModule(); nm != nil {
+		return nm.LogFileName()
+	}
+	return "node.log" // fallback to match RunUseCase
 }
 
 // GetNodeLogs returns log lines for a specific node.
@@ -339,7 +383,7 @@ func (s *CleanDevnetService) GetNodeLogs(ctx context.Context, nodeIndex, lines i
 		return nil, err
 	}
 
-	logPath := node.HomeDir + "/stable.log"
+	logPath := node.HomeDir + "/" + s.getLogFileName()
 	logLines, err := readLogLines(logPath, lines)
 	if err != nil {
 		return nil, err
@@ -374,7 +418,7 @@ func (s *CleanDevnetService) GetExecutionModeInfo(ctx context.Context, nodeIndex
 		Mode:          string(metadata.ExecutionMode),
 		DockerImage:   metadata.DockerImage,
 		ContainerName: containerName,
-		LogPath:       node.HomeDir + "/stable.log",
+		LogPath:       node.HomeDir + "/" + s.getLogFileName(),
 	}, nil
 }
 
@@ -665,6 +709,8 @@ func (s *CleanDevnetService) GetNode(ctx context.Context, nodeIndex int) (*dto.N
 		HomeDir: node.HomeDir,
 		NodeID:  node.NodeID,
 		Ports:   node.Ports,
+		RPCURL:  fmt.Sprintf("http://localhost:%d", node.Ports.RPC),
+		EVMURL:  fmt.Sprintf("http://localhost:%d", node.Ports.EVM),
 	}, nil
 }
 
@@ -734,8 +780,42 @@ func (e *NodeNotFoundError) Error() string {
 
 // getCleanService returns a CleanDevnetService instance using global homeDir.
 // This is the new Clean Architecture service factory that replaces getDefaultService.
+// It automatically loads the network module if devnet exists with stored blockchain network.
 func getCleanService() (*CleanDevnetService, error) {
+	// Try to load network module from existing devnet metadata
+	var networkModule network.NetworkModule
+
+	// Check if devnet exists and load its metadata to get blockchain network
+	metadataPath := filepath.Join(homeDir, "devnet", "metadata.json")
+	if data, err := os.ReadFile(metadataPath); err == nil {
+		var meta struct {
+			BlockchainNetwork string `json:"blockchain_network"`
+		}
+		if json.Unmarshal(data, &meta) == nil && meta.BlockchainNetwork != "" {
+			if module, err := network.Get(meta.BlockchainNetwork); err == nil {
+				networkModule = module
+			}
+		}
+	}
+
+	if networkModule != nil {
+		return getCleanServiceWithConfig(CleanServiceConfig{
+			NetworkModule: networkModule,
+		})
+	}
 	return NewCleanDevnetService(homeDir, output.DefaultLogger)
+}
+
+// getCleanServiceWithConfig returns a CleanDevnetService with full configuration.
+// Use this when you need to specify network module, docker mode, etc.
+func getCleanServiceWithConfig(cfg CleanServiceConfig) (*CleanDevnetService, error) {
+	if cfg.HomeDir == "" {
+		cfg.HomeDir = homeDir
+	}
+	if cfg.Logger == nil {
+		cfg.Logger = output.DefaultLogger
+	}
+	return NewCleanDevnetServiceWithConfig(cfg)
 }
 
 // LoadMetadata returns the raw metadata for advanced operations.

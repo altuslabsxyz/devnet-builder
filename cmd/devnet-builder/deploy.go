@@ -192,11 +192,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if deployMode == "docker" {
 		resolvedImage, err := resolveDeployDockerImage(ctx, cmd, isInteractive)
 		if err != nil {
-			if interactive.IsCancellation(err) {
-				fmt.Println("Operation cancelled.")
-				return nil
-			}
-			return err
+			return wrapInteractiveError(cmd, err, "failed to resolve docker image")
 		}
 		dockerImage = resolvedImage
 		exportVersion = deployStableVersion
@@ -206,11 +202,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		if isInteractive {
 			selection, err := runDeployInteractiveSelection(ctx, cmd)
 			if err != nil {
-				if interactive.IsCancellation(err) {
-					fmt.Println("Operation cancelled.")
-					return nil
-				}
-				return err
+				return wrapInteractiveError(cmd, err, "failed to fetch versions")
 			}
 			deployNetwork = selection.Network
 			exportVersion = selection.ExportVersion
@@ -238,8 +230,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unknown blockchain network: %s (available: %v)", deployBlockchainNetwork, available)
 	}
 
+	// Get network module for DI container
+	networkModule, err := network.Get(deployBlockchainNetwork)
+	if err != nil {
+		return fmt.Errorf("failed to get network module: %w", err)
+	}
+
 	// Check if devnet already exists
-	svc, err := getCleanService()
+	svc, err := getCleanServiceWithConfig(CleanServiceConfig{
+		NetworkModule: networkModule,
+		DockerMode:    deployMode == "docker",
+	})
 	if err != nil {
 		return fmt.Errorf("failed to initialize service: %w", err)
 	}
@@ -399,9 +400,12 @@ func runDeployInteractiveSelection(ctx context.Context, cmd *cobra.Command) (*in
 	clientOpts := []github.ClientOption{
 		github.WithCache(cacheManager),
 	}
-	if fileCfg != nil && fileCfg.GitHubToken != nil && *fileCfg.GitHubToken != "" {
-		clientOpts = append(clientOpts, github.WithToken(*fileCfg.GitHubToken))
+
+	// Resolve GitHub token from keychain, environment, or config file
+	if token, found := resolveGitHubToken(fileCfg); found {
+		clientOpts = append(clientOpts, github.WithToken(token))
 	}
+
 	client := github.NewClient(clientOpts...)
 
 	selector := interactive.NewSelector(client)
@@ -450,9 +454,12 @@ func runDeployDockerImageSelection(ctx context.Context) (*DockerImageSelectionRe
 	clientOpts := []github.ClientOption{
 		github.WithCache(cacheManager),
 	}
-	if fileCfg != nil && fileCfg.GitHubToken != nil && *fileCfg.GitHubToken != "" {
-		clientOpts = append(clientOpts, github.WithToken(*fileCfg.GitHubToken))
+
+	// Resolve GitHub token from keychain, environment, or config file
+	if token, found := resolveGitHubToken(fileCfg); found {
+		clientOpts = append(clientOpts, github.WithToken(token))
 	}
+
 	client := github.NewClient(clientOpts...)
 
 	versions, fromCache, err := client.GetImageVersionsWithCache(ctx, DefaultDockerPackage)

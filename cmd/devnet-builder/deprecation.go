@@ -13,9 +13,9 @@ const DeprecationWarningFormat = "WARNING: '%s' is deprecated. Use '%s' instead.
 
 // CommandMapping maps old command names to their new equivalents.
 var CommandMapping = map[string]string{
-	"start":     "deploy",
-	"run":       "up",
-	"stop":      "down",
+	"run":       "start",
+	"up":        "start",
+	"down":      "stop",
 	"provision": "init",
 	"clean":     "destroy",
 }
