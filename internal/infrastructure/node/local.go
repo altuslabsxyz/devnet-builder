@@ -350,7 +350,7 @@ func splitLines(content string) []string {
 }
 
 // IsLocalBinaryAvailable checks if the local binary is available at the given path.
-// For local mode, the binary must be an absolute path (e.g., ~/.stable-devnet/bin/stabled).
+// For local mode, the binary must be an absolute path (e.g., ~/.devnet-builder/bin/stabled).
 func IsLocalBinaryAvailable(binaryPath string) bool {
 	if binaryPath == "" {
 		return false

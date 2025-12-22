@@ -67,8 +67,49 @@ func (f *FetcherAdapter) ExportFromChain(ctx context.Context, nodeHomeDir string
 }
 
 func (f *FetcherAdapter) exportFromBinary(ctx context.Context, homeDir string) ([]byte, error) {
+	f.logger.Debug("Exporting genesis using binary: %s export --home %s", f.binaryPath, homeDir)
+
 	cmd := exec.CommandContext(ctx, f.binaryPath, "export", "--home", homeDir)
-	return cmd.Output()
+
+	// Capture both stdout and stderr
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Include the actual error output in the error message
+		return nil, fmt.Errorf("genesis export failed: %w\nOutput: %s", err, string(output))
+	}
+
+	// The export command writes genesis to stdout
+	// But CombinedOutput includes stderr too, which might have warnings
+	// We need to extract just the JSON part
+	return extractGenesisJSON(output)
+}
+
+// extractGenesisJSON extracts valid JSON from command output.
+// The export command might include warnings/logs before the actual JSON.
+func extractGenesisJSON(output []byte) ([]byte, error) {
+	// Find the start of JSON (first '{')
+	jsonStart := -1
+	for i, b := range output {
+		if b == '{' {
+			jsonStart = i
+			break
+		}
+	}
+
+	if jsonStart == -1 {
+		return nil, fmt.Errorf("no JSON found in export output: %s", string(output))
+	}
+
+	// Find the matching closing brace
+	jsonData := output[jsonStart:]
+
+	// Validate it's valid JSON
+	var js json.RawMessage
+	if err := json.Unmarshal(jsonData, &js); err != nil {
+		return nil, fmt.Errorf("invalid JSON in export output: %w", err)
+	}
+
+	return jsonData, nil
 }
 
 func (f *FetcherAdapter) exportFromDocker(ctx context.Context, homeDir string) ([]byte, error) {
@@ -84,8 +125,17 @@ func (f *FetcherAdapter) exportFromDocker(ctx context.Context, homeDir string) (
 		"export", "--home", "/data",
 	}
 
+	f.logger.Debug("Exporting genesis using docker: docker %v", args)
+
 	cmd := exec.CommandContext(ctx, "docker", args...)
-	return cmd.Output()
+
+	// Capture both stdout and stderr
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("genesis export failed: %w\nOutput: %s", err, string(output))
+	}
+
+	return extractGenesisJSON(output)
 }
 
 // FetchFromRPC fetches genesis from an RPC endpoint.

@@ -105,13 +105,8 @@ func ValidateModule(m NetworkModule) error {
 		}
 	}
 
-	// Validate DefaultChainID
-	if m.DefaultChainID() == "" {
-		return &ModuleValidationError{
-			ModuleName: name,
-			Reason:     "default chain ID cannot be empty",
-		}
-	}
+	// DefaultChainID can be empty - it means "preserve original genesis chain-id"
+	// This allows using snapshots with matching chain-id from mainnet/testnet
 
 	// Validate Bech32Prefix
 	if m.Bech32Prefix() == "" {

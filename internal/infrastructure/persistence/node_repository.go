@@ -25,7 +25,7 @@ func NewNodeFileRepository() *NodeFileRepository {
 
 // nodeDir returns the node directory path.
 func (r *NodeFileRepository) nodeDir(homeDir string, index int) string {
-	return filepath.Join(homeDir, "nodes", fmt.Sprintf("node%d", index))
+	return filepath.Join(homeDir, "devnet", fmt.Sprintf("node%d", index))
 }
 
 // metadataPath returns the path to the node metadata file.
@@ -35,17 +35,19 @@ func (r *NodeFileRepository) metadataPath(homeDir string, index int) string {
 
 // nodesBaseDir returns the base nodes directory.
 func (r *NodeFileRepository) nodesBaseDir(homeDir string) string {
-	return filepath.Join(homeDir, "nodes")
+	return filepath.Join(homeDir, "devnet")
 }
 
 // Save persists a node's metadata to storage.
+// Note: node.HomeDir should be the full path to the node directory
+// (e.g., ~/.devnet-builder/devnet/node0)
 func (r *NodeFileRepository) Save(ctx context.Context, node *ports.NodeMetadata) error {
 	if node == nil {
 		return fmt.Errorf("node metadata is nil")
 	}
 
-	dir := r.nodeDir(node.HomeDir, node.Index)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	// node.HomeDir is already the full path to the node directory
+	if err := os.MkdirAll(node.HomeDir, 0755); err != nil {
 		return fmt.Errorf("failed to create node directory: %w", err)
 	}
 
@@ -55,7 +57,8 @@ func (r *NodeFileRepository) Save(ctx context.Context, node *ports.NodeMetadata)
 		return fmt.Errorf("failed to marshal node metadata: %w", err)
 	}
 
-	path := r.metadataPath(node.HomeDir, node.Index)
+	// Write node.json directly to the node's home directory
+	path := filepath.Join(node.HomeDir, r.metadataFilename)
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("failed to write node metadata: %w", err)
 	}

@@ -166,7 +166,7 @@ type BuildResult struct {
 }
 
 // Build builds a binary from the given ref, stores it in cache, and
-// updates the symlink at ~/.stable-devnet/bin/{binaryName} to point to it.
+// updates the symlink at ~/.devnet-builder/bin/{binaryName} to point to it.
 //
 // This is used by `start` command where the binary should be used immediately.
 // For `upgrade` command, use BuildToCache() which only caches without symlink change.
@@ -183,14 +183,18 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, e
 	}
 	symlinkMgr := cache.NewSymlinkManager(b.homeDir, binaryName)
 
+	// Get build tags from plugin for cache key calculation
+	src := b.module.BinarySource()
+	buildTags := src.BuildTags
+
 	// Try to resolve commit hash first to check cache
 	commitHash, resolveErr := b.ResolveCommitHash(ctx, opts.Ref)
 	if resolveErr == nil && commitHash != "" {
-		// Check if already cached (fast path - no build needed)
-		if binaryCache.IsCached(commitHash) {
-			b.logger.Info("Using cached binary for %s (commit: %s)", opts.Ref, commitHash[:12])
+		// Check if already cached with matching build tags (fast path - no build needed)
+		if binaryCache.IsCachedWithTags(commitHash, buildTags) {
+			b.logger.Info("Using cached binary for %s (commit: %s, tags: %v)", opts.Ref, commitHash[:12], buildTags)
 			// Update symlink to point to cached binary
-			if err := symlinkMgr.SwitchToCache(binaryCache, commitHash); err != nil {
+			if err := symlinkMgr.SwitchToCacheWithTags(binaryCache, commitHash, buildTags); err != nil {
 				return nil, fmt.Errorf("failed to update symlink: %w", err)
 			}
 			b.logger.Success("Symlink updated: %s -> %s", symlinkMgr.SymlinkPath(), commitHash[:12])
@@ -222,10 +226,10 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, e
 		commitHash = opts.Ref
 	}
 
-	// Double-check cache after clone (in case ls-remote failed earlier)
-	if binaryCache.IsCached(commitHash) {
-		b.logger.Info("Using cached binary for %s (commit: %s)", opts.Ref, commitHash[:12])
-		if err := symlinkMgr.SwitchToCache(binaryCache, commitHash); err != nil {
+	// Double-check cache after clone with build tags (in case ls-remote failed earlier)
+	if binaryCache.IsCachedWithTags(commitHash, buildTags) {
+		b.logger.Info("Using cached binary for %s (commit: %s, tags: %v)", opts.Ref, commitHash[:12], buildTags)
+		if err := symlinkMgr.SwitchToCacheWithTags(binaryCache, commitHash, buildTags); err != nil {
 			return nil, fmt.Errorf("failed to update symlink: %w", err)
 		}
 		b.logger.Success("Symlink updated: %s -> %s", symlinkMgr.SymlinkPath(), commitHash[:12])
@@ -239,6 +243,13 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, e
 	// Read toolchain version from go.mod and create devnet-specific goreleaser config
 	toolchain := b.readToolchainFromGoMod(repoDir)
 	cfg := DefaultGoreleaserConfig(binaryName, toolchain)
+
+	// Append network-specific build tags from the plugin
+	if len(buildTags) > 0 {
+		cfg.Tags = append(cfg.Tags, buildTags...)
+		b.logger.Debug("Using build tags: %v", cfg.Tags)
+	}
+
 	configContent := GenerateGoreleaserConfig(cfg)
 	configPath := filepath.Join(repoDir, ".goreleaser.devnet.yaml")
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
@@ -258,19 +269,20 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, e
 		return nil, fmt.Errorf("failed to find built binary: %w", err)
 	}
 
-	// Store in cache
+	// Store in cache with build tags
 	cached := &cache.CachedBinary{
 		CommitHash: commitHash,
 		Ref:        opts.Ref,
 		BuildTime:  time.Now(),
 		Network:    opts.Network,
+		BuildTags:  buildTags,
 	}
 	if err := binaryCache.Store(binaryPath, cached); err != nil {
 		return nil, fmt.Errorf("failed to store binary in cache: %w", err)
 	}
 
-	// Update symlink to point to newly cached binary
-	if err := symlinkMgr.SwitchToCache(binaryCache, commitHash); err != nil {
+	// Update symlink to point to newly cached binary using cache key with build tags
+	if err := symlinkMgr.SwitchToCacheWithTags(binaryCache, commitHash, buildTags); err != nil {
 		return nil, fmt.Errorf("failed to update symlink: %w", err)
 	}
 
@@ -516,13 +528,17 @@ func (b *Builder) BuildToCache(ctx context.Context, opts BuildOptions, binaryCac
 		return nil, fmt.Errorf("ref is required")
 	}
 
+	// Get build tags from plugin for cache key calculation
+	src := b.module.BinarySource()
+	buildTags := src.BuildTags
+
 	// Try to resolve commit hash first to check cache without cloning
 	commitHash, resolveErr := b.ResolveCommitHash(ctx, opts.Ref)
 	if resolveErr == nil && commitHash != "" {
-		// Check if already cached (fast path - no clone needed)
-		if binaryCache.IsCached(commitHash) {
-			b.logger.Success("Using cached binary for commit %s", commitHash[:12])
-			return binaryCache.Lookup(commitHash), nil
+		// Check if already cached with matching build tags (fast path - no clone needed)
+		if binaryCache.IsCachedWithTags(commitHash, buildTags) {
+			b.logger.Success("Using cached binary for commit %s (tags: %v)", commitHash[:12], buildTags)
+			return binaryCache.LookupWithTags(commitHash, buildTags), nil
 		}
 	}
 
@@ -546,16 +562,23 @@ func (b *Builder) BuildToCache(ctx context.Context, opts BuildOptions, binaryCac
 		commitHash = opts.Ref
 	}
 
-	// Check if already cached (double-check after clone in case ls-remote failed)
-	if binaryCache.IsCached(commitHash) {
-		b.logger.Success("Using cached binary for commit %s", commitHash[:12])
-		return binaryCache.Lookup(commitHash), nil
+	// Check if already cached with build tags (double-check after clone in case ls-remote failed)
+	if binaryCache.IsCachedWithTags(commitHash, buildTags) {
+		b.logger.Success("Using cached binary for commit %s (tags: %v)", commitHash[:12], buildTags)
+		return binaryCache.LookupWithTags(commitHash, buildTags), nil
 	}
 
 	// Read toolchain version from go.mod and create devnet-specific goreleaser config
 	toolchain := b.readToolchainFromGoMod(repoDir)
 	binaryName := b.getBinaryName()
 	cfg := DefaultGoreleaserConfig(binaryName, toolchain)
+
+	// Append network-specific build tags from the plugin
+	if len(buildTags) > 0 {
+		cfg.Tags = append(cfg.Tags, buildTags...)
+		b.logger.Debug("Using build tags: %v", cfg.Tags)
+	}
+
 	configContent := GenerateGoreleaserConfig(cfg)
 	configPath := filepath.Join(repoDir, ".goreleaser.devnet.yaml")
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
@@ -575,19 +598,21 @@ func (b *Builder) BuildToCache(ctx context.Context, opts BuildOptions, binaryCac
 		return nil, fmt.Errorf("failed to find built binary: %w", err)
 	}
 
-	// Store in cache
+	// Store in cache with build tags
 	cached := &cache.CachedBinary{
 		CommitHash: commitHash,
 		Ref:        opts.Ref,
 		BuildTime:  time.Now(),
 		Network:    opts.Network,
+		BuildTags:  buildTags,
 	}
 
 	if err := binaryCache.Store(binaryPath, cached); err != nil {
 		return nil, fmt.Errorf("failed to store binary in cache: %w", err)
 	}
 
-	b.logger.Success("Binary built and cached: %s (commit: %s)", binaryCache.GetBinaryPath(commitHash), commitHash[:12])
+	cacheKey := cache.MakeCacheKey(commitHash, buildTags)
+	b.logger.Success("Binary built and cached: %s (commit: %s)", binaryCache.GetBinaryPath(cacheKey), commitHash[:12])
 
 	return cached, nil
 }

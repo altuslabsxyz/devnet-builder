@@ -277,45 +277,6 @@ func (c *Client) FetchReleasesWithCache(ctx context.Context) ([]GitHubRelease, b
 	return releases, false, nil
 }
 
-// RateLimitError indicates the API rate limit was exceeded.
-type RateLimitError struct {
-	Limit     int
-	Remaining int
-	Reset     time.Time
-}
-
-func (e *RateLimitError) Error() string {
-	return fmt.Sprintf("GitHub API rate limit exceeded. Reset at %s", e.Reset.Format(time.RFC1123))
-}
-
-// AuthenticationError indicates authentication failed.
-type AuthenticationError struct {
-	Message string
-}
-
-func (e *AuthenticationError) Error() string {
-	return e.Message
-}
-
-// NotFoundError indicates the resource was not found (404).
-// This often happens when accessing private repos without proper authentication.
-type NotFoundError struct {
-	Message string
-}
-
-func (e *NotFoundError) Error() string {
-	return e.Message
-}
-
-// StaleDataWarning indicates stale cached data is being used.
-type StaleDataWarning struct {
-	Message string
-}
-
-func (e *StaleDataWarning) Error() string {
-	return e.Message
-}
-
 // FetchContainerVersions fetches container package versions from GHCR.
 func (c *Client) FetchContainerVersions(ctx context.Context, packageName string) ([]ContainerVersion, *RateLimitInfo, error) {
 	url := fmt.Sprintf("%s/orgs/%s/packages/container/%s/versions?per_page=%d&state=active",

@@ -54,7 +54,7 @@ type Node struct {
 	BinaryName  string `json:"binary_name,omitempty"`  // e.g., "stabled", "aultd"
 
 	// Paths
-	HomeDir string `json:"home_dir"` // e.g., ~/.stable-devnet/devnet/node0
+	HomeDir string `json:"home_dir"` // e.g., ~/.devnet-builder/devnet/node0
 
 	// Network Ports
 	Ports NodePorts `json:"ports"`

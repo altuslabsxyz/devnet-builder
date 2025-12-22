@@ -33,6 +33,10 @@ type BinarySource struct {
 	// Returns: Asset filename (e.g., "stabled_v1.0.0_linux_amd64.tar.gz")
 	// If nil, a default naming pattern is used.
 	AssetNameFunc func(version, goos, goarch string) string
+
+	// BuildTags contains Go build tags required when building from source.
+	// Example: ["no_dynamic_precompiles"] for disabling dynamic EVM precompiles.
+	BuildTags []string
 }
 
 // GetMaxRetries returns the configured max retries, defaulting to 3 if not set.

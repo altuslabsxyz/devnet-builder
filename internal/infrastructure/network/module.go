@@ -247,11 +247,30 @@ type GenesisOptions struct {
 	// NumValidators is the number of validators to create (default: 1)
 	NumValidators int
 
+	// Validators are the validators to add to genesis (with keys already generated)
+	Validators []GenesisValidatorInfo
+
 	// GovParams overrides governance parameters
 	GovParams *GovParamsOverride
 
 	// StakingParams overrides staking parameters
 	StakingParams *StakingParamsOverride
+}
+
+// GenesisValidatorInfo contains validator info for genesis modification.
+// This is used when validators are pre-generated and need to be injected into genesis.
+type GenesisValidatorInfo struct {
+	// Moniker is the validator's display name
+	Moniker string
+
+	// ConsPubKey is the base64-encoded Ed25519 consensus public key
+	ConsPubKey string
+
+	// OperatorAddress is the bech32-encoded valoper address
+	OperatorAddress string
+
+	// SelfDelegation is the amount of tokens to self-delegate
+	SelfDelegation string
 }
 
 // GenesisAccount represents an account to add to genesis.
