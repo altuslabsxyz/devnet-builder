@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	"github.com/b-harvest/devnet-builder/internal/output"
 )
 
@@ -50,7 +51,7 @@ func NewNodeInitializer(mode ExecutionMode, dockerImage string, logger *output.L
 }
 
 // NewNodeInitializerWithBinary creates a new NodeInitializer with a specific binary path.
-// For local mode, this should be the managed binary at ~/.stable-devnet/bin/stabled.
+// For local mode, this should be the managed binary at ~/.devnet-builder/bin/stabled.
 func NewNodeInitializerWithBinary(mode ExecutionMode, dockerImage, binaryPath string, logger *output.Logger) *NodeInitializer {
 	if logger == nil {
 		logger = output.DefaultLogger
@@ -297,4 +298,87 @@ func getExitCode(err error) int {
 		return exitErr.ExitCode()
 	}
 	return -1
+}
+
+// CreateAccountKey creates a new secp256k1 account key for transaction signing.
+// Keys are stored in the specified keyringDir with the test backend.
+// This is required for validators to sign governance transactions (proposals, votes).
+func (i *NodeInitializer) CreateAccountKey(ctx context.Context, keyringDir, keyName string) (*ports.AccountKeyInfo, error) {
+	i.logger.Debug("Creating account key %s in %s", keyName, keyringDir)
+
+	// Ensure keyring directory exists
+	if err := os.MkdirAll(keyringDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create keyring directory: %w", err)
+	}
+
+	// Determine binary path
+	binaryPath := i.binaryPath
+	if binaryPath == "" {
+		binaryPath = "stabled"
+	}
+
+	// Create the key using stabled keys add
+	// Use --output json to get structured output
+	args := []string{
+		"keys", "add", keyName,
+		"--keyring-backend", "test",
+		"--home", keyringDir,
+		"--output", "json",
+	}
+
+	cmd := exec.CommandContext(ctx, binaryPath, args...)
+	cmdOutput, err := cmd.CombinedOutput()
+	if err != nil {
+		// Check if key already exists
+		if strings.Contains(string(cmdOutput), "already exists") {
+			// Key exists, get its info
+			return i.GetAccountKey(ctx, keyringDir, keyName)
+		}
+		i.logger.PrintCommandError(&output.CommandErrorInfo{
+			Command:  binaryPath,
+			Args:     args,
+			WorkDir:  keyringDir,
+			Stderr:   string(cmdOutput),
+			ExitCode: getExitCode(err),
+			Error:    err,
+		})
+		return nil, fmt.Errorf("failed to create account key: %w", err)
+	}
+
+	// Parse the JSON output
+	var result ports.AccountKeyInfo
+	if err := json.Unmarshal(cmdOutput, &result); err != nil {
+		// Try to get key info if output parsing fails
+		return i.GetAccountKey(ctx, keyringDir, keyName)
+	}
+
+	return &result, nil
+}
+
+// GetAccountKey retrieves information about an existing account key.
+func (i *NodeInitializer) GetAccountKey(ctx context.Context, keyringDir, keyName string) (*ports.AccountKeyInfo, error) {
+	binaryPath := i.binaryPath
+	if binaryPath == "" {
+		binaryPath = "stabled"
+	}
+
+	args := []string{
+		"keys", "show", keyName,
+		"--keyring-backend", "test",
+		"--home", keyringDir,
+		"--output", "json",
+	}
+
+	cmd := exec.CommandContext(ctx, binaryPath, args...)
+	cmdOutput, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get account key: %w", err)
+	}
+
+	var result ports.AccountKeyInfo
+	if err := json.Unmarshal(cmdOutput, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse key info: %w", err)
+	}
+
+	return &result, nil
 }
