@@ -109,6 +109,7 @@ type NodeHealthStatus struct {
 	BlockHeight int64
 	PeerCount   int
 	CatchingUp  bool
+	AppVersion  string // Application version from /abci_info
 	Error       string
 }
 

@@ -66,6 +66,7 @@ func (uc *HealthUseCase) Execute(ctx context.Context, input dto.HealthInput) (*d
 			IsRunning:   status.IsRunning,
 			BlockHeight: status.BlockHeight,
 			CatchingUp:  status.CatchingUp,
+			AppVersion:  status.AppVersion,
 		}
 		if status.Error != nil {
 			output.Nodes[i].Error = status.Error.Error()

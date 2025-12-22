@@ -378,5 +378,43 @@ func (c *CosmosRPCClient) restURL() string {
 	return c.baseURL
 }
 
+// GetAppVersion returns the application version from /abci_info.
+// This is set by the application during InitChain and can be updated via upgrades.
+func (c *CosmosRPCClient) GetAppVersion(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/abci_info", nil)
+	if err != nil {
+		return "", &RPCError{Operation: "abci_info", Message: err.Error()}
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", &RPCError{Operation: "abci_info", Message: err.Error()}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", &RPCError{Operation: "abci_info", Message: fmt.Sprintf("HTTP %d", resp.StatusCode)}
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", &RPCError{Operation: "abci_info", Message: err.Error()}
+	}
+
+	var abciInfo struct {
+		Result struct {
+			Response struct {
+				Version string `json:"version"`
+			} `json:"response"`
+		} `json:"result"`
+	}
+
+	if err := json.Unmarshal(body, &abciInfo); err != nil {
+		return "", &RPCError{Operation: "abci_info", Message: "failed to parse response"}
+	}
+
+	return abciInfo.Result.Response.Version, nil
+}
+
 // Ensure CosmosRPCClient implements RPCClient.
 var _ ports.RPCClient = (*CosmosRPCClient)(nil)

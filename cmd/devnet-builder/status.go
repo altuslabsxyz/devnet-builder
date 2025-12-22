@@ -34,6 +34,7 @@ type NodeStatusResult struct {
 	BlockHeight int64  `json:"block_height"`
 	PeerCount   int    `json:"peer_count"`
 	CatchingUp  bool   `json:"catching_up"`
+	AppVersion  string `json:"app_version,omitempty"`
 	Error       string `json:"error,omitempty"`
 }
 
@@ -129,8 +130,14 @@ func outputStatusText(status *dto.StatusOutput) error {
 		peersStr := fmt.Sprintf("peers=%d", h.PeerCount)
 		catchingUpStr := fmt.Sprintf("catching_up=%v", h.CatchingUp)
 
-		fmt.Printf("  Node %d [%s]  %s  %s  %s\n",
-			h.Index, nodeStatus, heightStr, peersStr, catchingUpStr)
+		// Format app version
+		versionStr := "Not Upgraded yet"
+		if h.AppVersion != "" {
+			versionStr = h.AppVersion
+		}
+
+		fmt.Printf("  Node %d [%s]  %s  %s  %s  version=%s\n",
+			h.Index, nodeStatus, heightStr, peersStr, catchingUpStr, versionStr)
 
 		if h.Error != "" {
 			fmt.Printf("         Error: %s\n", color.RedString(h.Error))
@@ -178,6 +185,7 @@ func outputStatusJSON(status *dto.StatusOutput) error {
 			BlockHeight: h.BlockHeight,
 			PeerCount:   h.PeerCount,
 			CatchingUp:  h.CatchingUp,
+			AppVersion:  h.AppVersion,
 			Error:       h.Error,
 		}
 	}
