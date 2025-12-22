@@ -80,20 +80,44 @@ func (a *BinaryCacheAdapter) Remove(ref string) error {
 }
 
 // SetActive sets the active binary version.
+// The ref can be:
+// - A full cache key (49 chars: {commitHash}-{tagsHash})
+// - A commit hash (40 chars) - will search for matching cache entry
 func (a *BinaryCacheAdapter) SetActive(ref string) error {
-	if !a.cache.IsCached(ref) {
-		return &CacheError{
-			Operation: "set_active",
-			Message:   fmt.Sprintf("ref %s not found in cache", ref),
+	// Determine the cache key to use
+	var cacheKey string
+
+	// First, try as a full cache key
+	if a.cache.IsCached(ref) {
+		cacheKey = ref
+	} else {
+		// Search for a cache entry matching the commit hash prefix
+		cacheKey = a.findCacheKeyByCommit(ref)
+		if cacheKey == "" {
+			return &CacheError{
+				Operation: "set_active",
+				Message:   fmt.Sprintf("ref %s not found in cache", ref),
+			}
 		}
 	}
 
-	if err := a.symlink.SwitchToCache(a.cache, ref); err != nil {
+	if err := a.symlink.SwitchToCache(a.cache, cacheKey); err != nil {
 		return fmt.Errorf("failed to switch symlink: %w", err)
 	}
 
-	a.activeRef = ref
+	a.activeRef = cacheKey
 	return nil
+}
+
+// findCacheKeyByCommit finds a cache key that matches the given commit hash.
+func (a *BinaryCacheAdapter) findCacheKeyByCommit(commitHash string) string {
+	entries := a.cache.List()
+	for _, entry := range entries {
+		if entry.CommitHash == commitHash {
+			return entry.CacheKey()
+		}
+	}
+	return ""
 }
 
 // GetActive returns the currently active binary path.

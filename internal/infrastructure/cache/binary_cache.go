@@ -25,10 +25,10 @@ const (
 
 // BinaryCache manages cached binary builds.
 type BinaryCache struct {
-	homeDir    string                   // Base directory (~/.stable-devnet)
+	homeDir    string                   // Base directory (~/.devnet-builder)
 	cacheDir   string                   // Cache directory path
 	binaryName string                   // Name of the binary file (e.g., "stabled", "aultd")
-	entries    map[string]*CachedBinary // In-memory index of cached binaries
+	entries    map[string]*CachedBinary // In-memory index of cached binaries, keyed by cache key
 	logger     *output.Logger
 }
 
@@ -78,26 +78,31 @@ func (c *BinaryCache) loadEntries() error {
 			continue
 		}
 
-		commitHash := entry.Name()
-		if !isValidCommitHash(commitHash) {
+		cacheKey := entry.Name()
+		// Accept both old format (commit hash only) and new format (commit-taghash)
+		if !isValidCacheKey(cacheKey) && !isValidCommitHash(cacheKey) {
 			continue
 		}
 
 		// Try to load metadata
-		metadataPath := filepath.Join(c.cacheDir, commitHash, MetadataFile)
+		metadataPath := filepath.Join(c.cacheDir, cacheKey, MetadataFile)
 		metadata, err := ReadMetadata(metadataPath)
 		if err != nil {
-			c.logger.Debug("Skipping cache entry %s: %v", commitHash, err)
+			c.logger.Debug("Skipping cache entry %s: %v", cacheKey, err)
 			continue
 		}
 
-		binaryPath := filepath.Join(c.cacheDir, commitHash, c.binaryName)
-		c.entries[commitHash] = &CachedBinary{
+		// Compute the correct cache key from metadata
+		actualCacheKey := MakeCacheKey(metadata.CommitHash, metadata.BuildTags)
+
+		binaryPath := filepath.Join(c.cacheDir, cacheKey, c.binaryName)
+		c.entries[actualCacheKey] = &CachedBinary{
 			CommitHash: metadata.CommitHash,
 			Ref:        metadata.Ref,
 			BuildTime:  metadata.BuildTime,
 			Size:       metadata.Size,
 			Network:    metadata.Network,
+			BuildTags:  metadata.BuildTags,
 			BinaryPath: binaryPath,
 		}
 	}
@@ -110,38 +115,58 @@ func (c *BinaryCache) CacheDir() string {
 	return c.cacheDir
 }
 
-// GetEntryDir returns the directory path for a specific commit hash.
-func (c *BinaryCache) GetEntryDir(commitHash string) string {
-	return filepath.Join(c.cacheDir, commitHash)
+// GetEntryDir returns the directory path for a specific cache key.
+func (c *BinaryCache) GetEntryDir(cacheKey string) string {
+	return filepath.Join(c.cacheDir, cacheKey)
 }
 
-// GetBinaryPath returns the full path to a cached binary.
-func (c *BinaryCache) GetBinaryPath(commitHash string) string {
-	return filepath.Join(c.cacheDir, commitHash, c.binaryName)
+// GetBinaryPath returns the full path to a cached binary by cache key.
+func (c *BinaryCache) GetBinaryPath(cacheKey string) string {
+	return filepath.Join(c.cacheDir, cacheKey, c.binaryName)
 }
 
-// Lookup returns the cached binary for the given commit hash, or nil if not cached.
-func (c *BinaryCache) Lookup(commitHash string) *CachedBinary {
-	return c.entries[commitHash]
+// GetBinaryPathWithTags returns the full path to a cached binary by commit hash and build tags.
+func (c *BinaryCache) GetBinaryPathWithTags(commitHash string, buildTags []string) string {
+	cacheKey := MakeCacheKey(commitHash, buildTags)
+	return c.GetBinaryPath(cacheKey)
 }
 
-// IsCached checks if a binary for the given commit hash exists in cache.
-func (c *BinaryCache) IsCached(commitHash string) bool {
-	entry := c.entries[commitHash]
+// Lookup returns the cached binary for the given cache key, or nil if not cached.
+func (c *BinaryCache) Lookup(cacheKey string) *CachedBinary {
+	return c.entries[cacheKey]
+}
+
+// LookupWithTags returns the cached binary for the given commit hash and build tags.
+func (c *BinaryCache) LookupWithTags(commitHash string, buildTags []string) *CachedBinary {
+	cacheKey := MakeCacheKey(commitHash, buildTags)
+	return c.entries[cacheKey]
+}
+
+// IsCached checks if a binary for the given cache key exists in cache.
+func (c *BinaryCache) IsCached(cacheKey string) bool {
+	entry := c.entries[cacheKey]
 	if entry == nil {
 		return false
 	}
 	// Also verify the binary file actually exists
-	return c.Validate(commitHash) == nil
+	return c.ValidateKey(cacheKey) == nil
+}
+
+// IsCachedWithTags checks if a binary for the given commit hash and build tags exists in cache.
+func (c *BinaryCache) IsCachedWithTags(commitHash string, buildTags []string) bool {
+	cacheKey := MakeCacheKey(commitHash, buildTags)
+	return c.IsCached(cacheKey)
 }
 
 // Store saves a binary to the cache with its metadata.
+// The cache key is computed from CommitHash and BuildTags.
 func (c *BinaryCache) Store(sourcePath string, cached *CachedBinary) error {
 	if cached.CommitHash == "" {
 		return fmt.Errorf("commit hash is required")
 	}
 
-	entryDir := c.GetEntryDir(cached.CommitHash)
+	cacheKey := cached.CacheKey()
+	entryDir := c.GetEntryDir(cacheKey)
 	if err := os.MkdirAll(entryDir, 0755); err != nil {
 		return fmt.Errorf("failed to create cache entry directory: %w", err)
 	}
@@ -171,15 +196,15 @@ func (c *BinaryCache) Store(sourcePath string, cached *CachedBinary) error {
 		return fmt.Errorf("failed to write metadata: %w", err)
 	}
 
-	// Update in-memory index
-	c.entries[cached.CommitHash] = cached
+	// Update in-memory index using cache key
+	c.entries[cacheKey] = cached
 
 	return nil
 }
 
-// Validate checks if a cached binary exists and is executable.
-func (c *BinaryCache) Validate(commitHash string) error {
-	binaryPath := c.GetBinaryPath(commitHash)
+// ValidateKey checks if a cached binary exists and is executable by cache key.
+func (c *BinaryCache) ValidateKey(cacheKey string) error {
+	binaryPath := c.GetBinaryPath(cacheKey)
 
 	info, err := os.Stat(binaryPath)
 	if err != nil {
@@ -197,14 +222,26 @@ func (c *BinaryCache) Validate(commitHash string) error {
 	return nil
 }
 
-// Remove deletes a cached binary entry.
-func (c *BinaryCache) Remove(commitHash string) error {
-	entryDir := c.GetEntryDir(commitHash)
+// ValidateWithTags checks if a cached binary exists and is executable by commit hash and build tags.
+func (c *BinaryCache) ValidateWithTags(commitHash string, buildTags []string) error {
+	cacheKey := MakeCacheKey(commitHash, buildTags)
+	return c.ValidateKey(cacheKey)
+}
+
+// Remove deletes a cached binary entry by cache key.
+func (c *BinaryCache) Remove(cacheKey string) error {
+	entryDir := c.GetEntryDir(cacheKey)
 	if err := os.RemoveAll(entryDir); err != nil {
 		return fmt.Errorf("failed to remove cache entry: %w", err)
 	}
-	delete(c.entries, commitHash)
+	delete(c.entries, cacheKey)
 	return nil
+}
+
+// RemoveWithTags deletes a cached binary entry by commit hash and build tags.
+func (c *BinaryCache) RemoveWithTags(commitHash string, buildTags []string) error {
+	cacheKey := MakeCacheKey(commitHash, buildTags)
+	return c.Remove(cacheKey)
 }
 
 // List returns all cached binaries.
@@ -242,6 +279,31 @@ func isValidCommitHash(s string) bool {
 		return false
 	}
 	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+// isValidCacheKey checks if a string is a valid cache key format.
+// Format: {commitHash}-{tagsHash} where commitHash is 40 hex chars and tagsHash is 8 hex chars.
+func isValidCacheKey(s string) bool {
+	// Must be 49 characters: 40 (commit) + 1 (-) + 8 (tags hash)
+	if len(s) != 49 {
+		return false
+	}
+	// Check for dash separator at position 40
+	if s[40] != '-' {
+		return false
+	}
+	// Validate commit hash part
+	if !isValidCommitHash(s[:40]) {
+		return false
+	}
+	// Validate tags hash part (8 hex chars)
+	tagsHash := s[41:]
+	for _, c := range tagsHash {
 		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
 			return false
 		}

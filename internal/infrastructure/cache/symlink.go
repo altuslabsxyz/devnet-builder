@@ -97,15 +97,21 @@ func (m *SymlinkManager) Switch(targetPath string) error {
 	return nil
 }
 
-// SwitchToCache switches the symlink to point to a cached binary by commit hash.
-func (m *SymlinkManager) SwitchToCache(cache *BinaryCache, commitHash string) error {
+// SwitchToCache switches the symlink to point to a cached binary by cache key.
+func (m *SymlinkManager) SwitchToCache(cache *BinaryCache, cacheKey string) error {
 	// Calculate relative path from bin dir to cache entry
-	// From: ~/.stable-devnet/bin/{binaryName}
-	// To:   ~/.stable-devnet/cache/binaries/{commit}/{binaryName}
-	// Relative: ../cache/binaries/{commit}/{binaryName}
+	// From: ~/.devnet-builder/bin/{binaryName}
+	// To:   ~/.devnet-builder/cache/binaries/{cacheKey}/{binaryName}
+	// Relative: ../cache/binaries/{cacheKey}/{binaryName}
 
-	relativePath := filepath.Join("..", CacheSubdir, commitHash, m.binaryName)
+	relativePath := filepath.Join("..", CacheSubdir, cacheKey, m.binaryName)
 	return m.Switch(relativePath)
+}
+
+// SwitchToCacheWithTags switches the symlink to point to a cached binary by commit hash and build tags.
+func (m *SymlinkManager) SwitchToCacheWithTags(cache *BinaryCache, commitHash string, buildTags []string) error {
+	cacheKey := MakeCacheKey(commitHash, buildTags)
+	return m.SwitchToCache(cache, cacheKey)
 }
 
 // IsSymlink checks if the binary path is a symlink.
@@ -128,15 +134,15 @@ func (m *SymlinkManager) IsRegularFile() bool {
 
 // MigrateToSymlink converts a regular binary file to a cached entry and creates a symlink.
 // This is used for backward compatibility with devnets that have a direct binary.
-func (m *SymlinkManager) MigrateToSymlink(cache *BinaryCache, commitHash, ref, network string) error {
+func (m *SymlinkManager) MigrateToSymlink(cache *BinaryCache, commitHash, ref, network string, buildTags []string) error {
 	if !m.IsRegularFile() {
 		return fmt.Errorf("no regular file to migrate at %s", m.symlinkPath)
 	}
 
-	// Check if already cached
-	if cache.IsCached(commitHash) {
+	// Check if already cached with same build tags
+	if cache.IsCachedWithTags(commitHash, buildTags) {
 		// Just create symlink, binary already in cache
-		return m.SwitchToCache(cache, commitHash)
+		return m.SwitchToCacheWithTags(cache, commitHash, buildTags)
 	}
 
 	// Store current binary in cache
@@ -144,6 +150,7 @@ func (m *SymlinkManager) MigrateToSymlink(cache *BinaryCache, commitHash, ref, n
 		CommitHash: commitHash,
 		Ref:        ref,
 		Network:    network,
+		BuildTags:  buildTags,
 	}
 
 	if err := cache.Store(m.symlinkPath, cached); err != nil {
@@ -156,18 +163,25 @@ func (m *SymlinkManager) MigrateToSymlink(cache *BinaryCache, commitHash, ref, n
 	}
 
 	// Create symlink
-	return m.SwitchToCache(cache, commitHash)
+	return m.SwitchToCacheWithTags(cache, commitHash, buildTags)
 }
 
 // extractCommitHashFromPath extracts the commit hash from a cache path.
 func extractCommitHashFromPath(path string) string {
-	// Path format: ../cache/binaries/{commit_hash}/{binaryName}
-	// or absolute: /home/user/.stable-devnet/cache/binaries/{commit_hash}/{binaryName}
-	dir := filepath.Dir(path)        // ../cache/binaries/{commit_hash}
-	commitHash := filepath.Base(dir) // {commit_hash}
+	// Path format: ../cache/binaries/{cacheKey}/{binaryName}
+	// or absolute: /home/user/.devnet-builder/cache/binaries/{cacheKey}/{binaryName}
+	// cacheKey format: {commitHash}-{tagsHash} (49 chars) or just {commitHash} (40 chars, legacy)
+	dir := filepath.Dir(path)      // ../cache/binaries/{cacheKey}
+	cacheKey := filepath.Base(dir) // {cacheKey}
 
-	if isValidCommitHash(commitHash) {
-		return commitHash
+	// Handle new format: commitHash-tagsHash
+	if isValidCacheKey(cacheKey) {
+		return cacheKey[:40] // Extract just the commit hash part
+	}
+
+	// Handle legacy format: just commitHash
+	if isValidCommitHash(cacheKey) {
+		return cacheKey
 	}
 	return ""
 }

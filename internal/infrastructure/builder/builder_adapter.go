@@ -67,7 +67,8 @@ func (a *BuilderAdapter) Build(ctx context.Context, opts ports.BuildOptions) (*p
 	}, nil
 }
 
-// BuildToCache builds and stores in cache without activating.
+// BuildToCache builds and stores in cache WITHOUT updating the symlink.
+// The symlink should only be updated after the upgrade is complete.
 func (a *BuilderAdapter) BuildToCache(ctx context.Context, opts ports.BuildOptions) (*ports.BuildResult, error) {
 	if a.builder == nil {
 		return nil, &BuilderError{
@@ -98,11 +99,16 @@ func (a *BuilderAdapter) BuildToCache(ctx context.Context, opts ports.BuildOptio
 		}
 	}
 
+	// NOTE: Do NOT update symlink here - that should only happen after upgrade completes
+	// The cached binary path is returned so the upgrade flow can use it directly
+
+	cacheKey := cache.MakeCacheKey(cached.CommitHash, cached.BuildTags)
+	cachedPath := binaryCache.GetBinaryPath(cacheKey)
 	return &ports.BuildResult{
-		BinaryPath: cached.BinaryPath,
+		BinaryPath: cachedPath, // Return cached path, not symlink path
 		Ref:        cached.Ref,
 		CommitHash: cached.CommitHash,
-		CachedPath: binaryCache.GetBinaryPath(cached.CommitHash),
+		CachedPath: cachedPath,
 	}, nil
 }
 
