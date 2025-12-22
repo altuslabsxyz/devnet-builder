@@ -39,6 +39,7 @@ type Container struct {
 	evmClient           ports.EVMClient
 	snapshotSvc         ports.SnapshotFetcher
 	genesisSvc          ports.GenesisFetcher
+	nodeInitializer     ports.NodeInitializer
 	keyManager          ports.KeyManager
 	validatorKeyLoader  ports.ValidatorKeyLoader
 	healthChecker       ports.HealthChecker
@@ -185,6 +186,13 @@ func WithSnapshotFetcher(svc ports.SnapshotFetcher) Option {
 func WithGenesisFetcher(svc ports.GenesisFetcher) Option {
 	return func(c *Container) {
 		c.genesisSvc = svc
+	}
+}
+
+// WithNodeInitializer sets the node initializer.
+func WithNodeInitializer(ni ports.NodeInitializer) Option {
+	return func(c *Container) {
+		c.nodeInitializer = ni
 	}
 }
 
@@ -369,11 +377,17 @@ func (c *Container) ProvisionUseCase() *appdevnet.ProvisionUseCase {
 			c.nodeRepo,
 			c.snapshotSvc,
 			c.genesisSvc,
+			c.nodeInitializer,
 			c.networkModule,
 			c.LoggerPort(),
 		)
 	}
 	return c.provisionUC
+}
+
+// NodeInitializer returns the node initializer.
+func (c *Container) NodeInitializer() ports.NodeInitializer {
+	return c.nodeInitializer
 }
 
 // RunUseCase returns the run use case (lazy init).
@@ -428,6 +442,9 @@ func (c *Container) HealthUseCase() *appdevnet.HealthUseCase {
 
 // ResetUseCase returns the reset use case (lazy init).
 func (c *Container) ResetUseCase() *appdevnet.ResetUseCase {
+	// Get StopUseCase first without holding the lock to avoid deadlock
+	stopUC := c.StopUseCase()
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -435,7 +452,7 @@ func (c *Container) ResetUseCase() *appdevnet.ResetUseCase {
 		c.resetUC = appdevnet.NewResetUseCase(
 			c.devnetRepo,
 			c.nodeRepo,
-			c.StopUseCase(),
+			stopUC,
 			c.LoggerPort(),
 		)
 	}
@@ -444,13 +461,16 @@ func (c *Container) ResetUseCase() *appdevnet.ResetUseCase {
 
 // DestroyUseCase returns the destroy use case (lazy init).
 func (c *Container) DestroyUseCase() *appdevnet.DestroyUseCase {
+	// Get StopUseCase first without holding the lock to avoid deadlock
+	stopUC := c.StopUseCase()
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if c.destroyUC == nil {
 		c.destroyUC = appdevnet.NewDestroyUseCase(
 			c.devnetRepo,
-			c.StopUseCase(),
+			stopUC,
 			c.LoggerPort(),
 		)
 	}
@@ -508,14 +528,19 @@ func (c *Container) SwitchBinaryUseCase() *upgrade.SwitchBinaryUseCase {
 
 // ExecuteUpgradeUseCase returns the execute upgrade use case (lazy init).
 func (c *Container) ExecuteUpgradeUseCase() *upgrade.ExecuteUpgradeUseCase {
+	// Get dependencies first without holding the lock to avoid deadlock
+	proposeUC := c.ProposeUseCase()
+	voteUC := c.VoteUseCase()
+	switchUC := c.SwitchBinaryUseCase()
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if c.executeUpgradeUC == nil {
 		c.executeUpgradeUC = upgrade.NewExecuteUpgradeUseCase(
-			c.ProposeUseCase(),
-			c.VoteUseCase(),
-			c.SwitchBinaryUseCase(),
+			proposeUC,
+			voteUC,
+			switchUC,
 			c.rpcClient,
 			c.LoggerPort(),
 		)

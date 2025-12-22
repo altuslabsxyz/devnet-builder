@@ -24,6 +24,10 @@ type RPCClient interface {
 
 	// GetUpgradePlan retrieves the current upgrade plan.
 	GetUpgradePlan(ctx context.Context) (*UpgradePlan, error)
+
+	// GetAppVersion returns the application version from /abci_info.
+	// Returns empty string if the version is not set or cannot be retrieved.
+	GetAppVersion(ctx context.Context) (string, error)
 }
 
 // Proposal represents a governance proposal.
@@ -148,9 +152,33 @@ type GenesisFetcher interface {
 	ModifyGenesis(genesis []byte, opts GenesisModifyOptions) ([]byte, error)
 }
 
+// AccountKeyInfo contains information about an account key.
+type AccountKeyInfo struct {
+	Name    string
+	Address string
+	PubKey  string
+}
+
+// NodeInitializer defines operations for initializing blockchain nodes.
+type NodeInitializer interface {
+	// Initialize runs the chain init command for a node.
+	Initialize(ctx context.Context, nodeDir, moniker, chainID string) error
+
+	// GetNodeID retrieves the node ID from an initialized node.
+	GetNodeID(ctx context.Context, nodeDir string) (string, error)
+
+	// CreateAccountKey creates a secp256k1 account key for transaction signing.
+	// Keys are stored in keyringDir with the test backend.
+	CreateAccountKey(ctx context.Context, keyringDir, keyName string) (*AccountKeyInfo, error)
+
+	// GetAccountKey retrieves information about an existing account key.
+	GetAccountKey(ctx context.Context, keyringDir, keyName string) (*AccountKeyInfo, error)
+}
+
 // GenesisModifyOptions holds options for modifying genesis.
 type GenesisModifyOptions struct {
 	ChainID           string
+	NumValidators     int           // Number of validators to configure for
 	VotingPeriod      time.Duration
 	UnbondingTime     time.Duration
 	InflationRate     string
@@ -161,10 +189,10 @@ type GenesisModifyOptions struct {
 
 // ValidatorInfo represents validator information for genesis.
 type ValidatorInfo struct {
-	Moniker        string
-	Address        string
-	ConsPubKey     string
-	Tokens         string
+	Moniker         string
+	ConsPubKey      string // Base64 encoded Ed25519 consensus pubkey
+	OperatorAddress string // Bech32 valoper address
+	SelfDelegation  string // Amount of tokens to self-delegate
 }
 
 // AccountInfo represents account information for genesis.

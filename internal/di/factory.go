@@ -13,6 +13,7 @@ import (
 	infrainteractive "github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
 	infrakeyring "github.com/b-harvest/devnet-builder/internal/infrastructure/keyring"
 	infranode "github.com/b-harvest/devnet-builder/internal/infrastructure/node"
+	infranodeconfig "github.com/b-harvest/devnet-builder/internal/infrastructure/nodeconfig"
 	infrapersistence "github.com/b-harvest/devnet-builder/internal/infrastructure/persistence"
 	infraprocess "github.com/b-harvest/devnet-builder/internal/infrastructure/process"
 	infrarpc "github.com/b-harvest/devnet-builder/internal/infrastructure/rpc"
@@ -118,6 +119,46 @@ func (f *InfrastructureFactory) CreateGenesisFetcher() ports.GenesisFetcher {
 	return infragenesis.NewFetcherAdapter(f.homeDir, binaryPath, dockerImage, f.dockerMode, f.logger)
 }
 
+// CreateNodeInitializer creates a NodeInitializer implementation.
+func (f *InfrastructureFactory) CreateNodeInitializer() ports.NodeInitializer {
+	mode := infranodeconfig.ModeLocal
+	dockerImage := ""
+	binaryPath := ""
+
+	if f.dockerMode {
+		mode = infranodeconfig.ModeDocker
+	}
+	if f.module != nil {
+		dockerImage = f.module.DockerImage()
+		binaryPath = f.homeDir + "/bin/" + f.module.BinaryName()
+	}
+
+	return &nodeInitializerAdapter{
+		inner: infranodeconfig.NewNodeInitializerWithBinary(mode, dockerImage, binaryPath, f.logger),
+	}
+}
+
+// nodeInitializerAdapter adapts infranodeconfig.NodeInitializer to ports.NodeInitializer.
+type nodeInitializerAdapter struct {
+	inner *infranodeconfig.NodeInitializer
+}
+
+func (a *nodeInitializerAdapter) Initialize(ctx context.Context, nodeDir, moniker, chainID string) error {
+	return a.inner.Initialize(ctx, nodeDir, moniker, chainID)
+}
+
+func (a *nodeInitializerAdapter) GetNodeID(ctx context.Context, nodeDir string) (string, error) {
+	return a.inner.GetNodeID(ctx, nodeDir)
+}
+
+func (a *nodeInitializerAdapter) CreateAccountKey(ctx context.Context, keyringDir, keyName string) (*ports.AccountKeyInfo, error) {
+	return a.inner.CreateAccountKey(ctx, keyringDir, keyName)
+}
+
+func (a *nodeInitializerAdapter) GetAccountKey(ctx context.Context, keyringDir, keyName string) (*ports.AccountKeyInfo, error) {
+	return a.inner.GetAccountKey(ctx, keyringDir, keyName)
+}
+
 // CreateNodeManagerFactory creates a NodeManagerFactory.
 func (f *InfrastructureFactory) CreateNodeManagerFactory() *infranode.NodeManagerFactory {
 	mode := infranode.ModeLocal
@@ -194,10 +235,14 @@ func (h *healthCheckerAdapter) CheckNode(ctx context.Context, rpcEndpoint string
 		status = ports.NodeStatusRunning
 	}
 
+	// Get app version from /abci_info
+	appVersion, _ := client.GetAppVersion(ctx) // Ignore error, empty string if not available
+
 	return &ports.HealthStatus{
 		IsRunning:   isRunning,
 		Status:      status,
 		BlockHeight: height,
+		AppVersion:  appVersion,
 	}, nil
 }
 
@@ -230,6 +275,7 @@ func (f *InfrastructureFactory) WireContainer(opts ...Option) (*Container, error
 	executor := f.CreateProcessExecutor()
 	snapshotFetcher := f.CreateSnapshotFetcher()
 	genesisFetcher := f.CreateGenesisFetcher()
+	nodeInitializer := f.CreateNodeInitializer()
 	builder := f.CreateBuilder()
 
 	binaryCache, err := f.CreateBinaryCache()
@@ -262,6 +308,7 @@ func (f *InfrastructureFactory) WireContainer(opts ...Option) (*Container, error
 		WithEVMClient(evmClient),
 		WithSnapshotFetcher(snapshotFetcher),
 		WithGenesisFetcher(genesisFetcher),
+		WithNodeInitializer(nodeInitializer),
 		WithHealthChecker(healthChecker),
 		WithBuilder(builder),
 		WithValidatorKeyLoader(validatorKeyLoader),
@@ -356,12 +403,15 @@ func (a *networkModuleAdapter) DockerHomeDir() string {
 func (a *networkModuleAdapter) DefaultPorts() ports.PortConfig {
 	np := a.module.DefaultPorts()
 	return ports.PortConfig{
-		RPC:   np.RPC,
-		P2P:   np.P2P,
-		GRPC:  np.GRPC,
-		API:   np.API,
-		EVM:   np.EVMRPC,
-		EVMWS: np.EVMWS,
+		RPC:     np.RPC,
+		P2P:     np.P2P,
+		GRPC:    np.GRPC,
+		GRPCWeb: np.GRPCWeb,
+		API:     np.API,
+		EVM:     np.EVMRPC,
+		EVMWS:   np.EVMWS,
+		PProf:   6060, // Default pprof port
+		Rosetta: 8080, // Default Rosetta API port
 	}
 }
 
@@ -375,4 +425,39 @@ func (a *networkModuleAdapter) RPCEndpoint(networkType string) string {
 
 func (a *networkModuleAdapter) AvailableNetworks() []string {
 	return a.module.AvailableNetworks()
+}
+
+func (a *networkModuleAdapter) ModifyGenesis(genesis []byte, opts ports.GenesisModifyOptions) ([]byte, error) {
+	// Convert ports.ValidatorInfo to network.GenesisValidatorInfo
+	validators := make([]network.GenesisValidatorInfo, len(opts.AddValidators))
+	for i, v := range opts.AddValidators {
+		validators[i] = network.GenesisValidatorInfo{
+			Moniker:         v.Moniker,
+			ConsPubKey:      v.ConsPubKey,
+			OperatorAddress: v.OperatorAddress,
+			SelfDelegation:  v.SelfDelegation,
+		}
+	}
+
+	// Convert ports.GenesisModifyOptions to network.GenesisOptions
+	networkOpts := network.GenesisOptions{
+		ChainID:       opts.ChainID,
+		NumValidators: opts.NumValidators,
+		Validators:    validators,
+	}
+	return a.module.ModifyGenesis(genesis, networkOpts)
+}
+
+func (a *networkModuleAdapter) GenesisConfig() ports.GenesisConfig {
+	cfg := a.module.GenesisConfig()
+	return ports.GenesisConfig{
+		ChainID:          a.module.DefaultChainID(),
+		UnbondingTime:    cfg.UnbondingTime,
+		VotingPeriod:     cfg.VotingPeriod,
+		MaxDepositPeriod: cfg.MaxDepositPeriod,
+		MinDeposit:       cfg.MinDeposit,
+		MaxValidators:    cfg.MaxValidators,
+		BaseDenom:        cfg.BaseDenom,
+		BondDenom:        cfg.BondDenom,
+	}
 }

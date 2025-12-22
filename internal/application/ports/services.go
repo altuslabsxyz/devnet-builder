@@ -32,6 +32,7 @@ type HealthStatus struct {
 	Status      NodeStatus
 	BlockHeight int64
 	CatchingUp  bool
+	AppVersion  string // Application version (e.g., "v0.1.0" or empty if not upgraded)
 	LastChecked time.Time
 	Error       error
 }
@@ -47,8 +48,43 @@ const (
 	NodeStatusUnknown  NodeStatus = "unknown"
 )
 
+// GenesisModifier defines operations for modifying genesis files.
+// This interface is implemented by network modules (plugins) to apply
+// network-specific modifications to genesis files for devnet usage.
+type GenesisModifier interface {
+	// ModifyGenesis applies network-specific modifications to genesis.
+	// This includes adjusting parameters like unbonding_time, voting_period,
+	// and other devnet-friendly settings.
+	// Parameters:
+	//   - genesis: Raw genesis JSON bytes fetched from RPC
+	//   - opts: Modification options (chainID, numValidators, etc.)
+	// Returns: Modified genesis bytes suitable for devnet, or error
+	ModifyGenesis(genesis []byte, opts GenesisModifyOptions) ([]byte, error)
+}
+
+// GenesisConfigProvider provides genesis configuration parameters.
+// This interface exposes network-specific genesis defaults.
+type GenesisConfigProvider interface {
+	// GenesisConfig returns network-specific genesis parameters.
+	// These are the default values used for devnet creation.
+	GenesisConfig() GenesisConfig
+}
+
+// GenesisConfig contains network-specific genesis parameters for devnet.
+type GenesisConfig struct {
+	ChainID          string        // Default chain ID for devnet
+	UnbondingTime    time.Duration // Unbonding period (devnet: ~60s)
+	VotingPeriod     time.Duration // Governance voting period (devnet: ~60s)
+	MaxDepositPeriod time.Duration // Max deposit period for proposals
+	MinDeposit       string        // Minimum proposal deposit
+	MaxValidators    uint32        // Maximum active validators
+	BaseDenom        string        // Base denomination (e.g., "astable")
+	BondDenom        string        // Staking denomination
+}
+
 // NetworkModule defines the interface for blockchain network modules.
 // This is a simplified version focusing on what UseCases need.
+// It composes GenesisModifier and GenesisConfigProvider for genesis operations.
 type NetworkModule interface {
 	// Identity
 	Name() string
@@ -81,6 +117,10 @@ type NetworkModule interface {
 
 	// Ports
 	DefaultPorts() PortConfig
+
+	// Genesis - delegates to plugin for network-specific modifications
+	GenesisModifier
+	GenesisConfigProvider
 
 	// Snapshot - Network-specific snapshot and RPC configuration
 	SnapshotURL(networkType string) string
