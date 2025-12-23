@@ -26,16 +26,19 @@ const (
 
 // CosmosRPCClient implements RPCClient for Cosmos chains.
 type CosmosRPCClient struct {
-	baseURL      string
-	client       *http.Client
-	pollInterval time.Duration
-	waitTimeout  time.Duration
+	baseURL       string // RPC URL (port 26657)
+	restBaseURL   string // REST API URL (port 1317)
+	client        *http.Client
+	pollInterval  time.Duration
+	waitTimeout   time.Duration
 }
 
 // NewCosmosRPCClient creates a new CosmosRPCClient.
+// It uses the standard REST API port (1317) for REST endpoints.
 func NewCosmosRPCClient(host string, port int) *CosmosRPCClient {
 	return &CosmosRPCClient{
-		baseURL: fmt.Sprintf("http://%s:%d", host, port),
+		baseURL:     fmt.Sprintf("http://%s:%d", host, port),
+		restBaseURL: fmt.Sprintf("http://%s:%d", host, 1317), // Default REST port
 		client: &http.Client{
 			Timeout: DefaultTimeout,
 		},
@@ -45,9 +48,31 @@ func NewCosmosRPCClient(host string, port int) *CosmosRPCClient {
 }
 
 // NewCosmosRPCClientWithURL creates a new CosmosRPCClient with a full URL.
+// It derives the REST URL from the RPC URL by using port 1317.
 func NewCosmosRPCClientWithURL(url string) *CosmosRPCClient {
+	// Extract host from URL and construct REST URL with port 1317
+	restURL := "http://localhost:1317" // Default fallback
+	if len(url) > 7 { // http://
+		// Try to parse and replace port
+		// Format: http://host:port
+		hostStart := 7
+		if url[:8] == "https://" {
+			hostStart = 8
+		}
+		hostEnd := len(url)
+		for i := hostStart; i < len(url); i++ {
+			if url[i] == ':' {
+				hostEnd = i
+				break
+			}
+		}
+		if hostEnd > hostStart {
+			restURL = fmt.Sprintf("http://%s:1317", url[hostStart:hostEnd])
+		}
+	}
 	return &CosmosRPCClient{
-		baseURL: url,
+		baseURL:     url,
+		restBaseURL: restURL,
 		client: &http.Client{
 			Timeout: DefaultTimeout,
 		},
@@ -375,7 +400,7 @@ func (c *CosmosRPCClient) GetUpgradePlan(ctx context.Context) (*ports.UpgradePla
 
 // restURL returns the REST API base URL (same as RPC port for simplicity).
 func (c *CosmosRPCClient) restURL() string {
-	return c.baseURL
+	return c.restBaseURL
 }
 
 // GetAppVersion returns the application version from /abci_info.

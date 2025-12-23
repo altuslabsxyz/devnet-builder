@@ -99,7 +99,10 @@ func (e *LocalExecutor) Start(ctx context.Context, cmd ports.Command) (ports.Pro
 	}
 
 	// Build exec command
-	execCmd := exec.CommandContext(ctx, cmd.Binary, cmd.Args...)
+	// Note: Using exec.Command instead of exec.CommandContext because we want
+	// daemon processes to persist after the CLI command completes. CommandContext
+	// would kill the process when the context is cancelled.
+	execCmd := exec.Command(cmd.Binary, cmd.Args...)
 	if cmd.WorkDir != "" {
 		execCmd.Dir = cmd.WorkDir
 	}
@@ -153,37 +156,71 @@ func (e *LocalExecutor) Start(ctx context.Context, cmd ports.Command) (ports.Pro
 
 // Stop gracefully stops a process with timeout.
 func (e *LocalExecutor) Stop(ctx context.Context, handle ports.ProcessHandle, timeout time.Duration) error {
-	lh, ok := handle.(*localHandle)
-	if !ok {
-		return &ExecutionError{
-			Operation: "stop",
-			Message:   "invalid handle type",
+	// Try native localHandle first (has done channel for proper waiting)
+	if lh, ok := handle.(*localHandle); ok {
+		if lh.process == nil {
+			return nil
+		}
+
+		// Send SIGTERM for graceful shutdown
+		if err := lh.process.Signal(syscall.SIGTERM); err != nil {
+			// Process might already be dead
+			return nil
+		}
+
+		// Wait for process to exit with timeout
+		select {
+		case <-lh.done:
+			return nil
+		case <-time.After(timeout):
+			// Force kill
+			lh.process.Signal(syscall.SIGKILL)
+			<-lh.done
+			return nil
+		case <-ctx.Done():
+			lh.process.Signal(syscall.SIGKILL)
+			return ctx.Err()
 		}
 	}
 
-	if lh.process == nil {
+	// Fallback: PID-based stopping for any ProcessHandle implementation
+	pid := handle.PID()
+	if pid <= 0 {
 		return nil
 	}
 
-	// Send SIGTERM for graceful shutdown
-	if err := lh.process.Signal(syscall.SIGTERM); err != nil {
-		// Process might already be dead
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return nil // Process not found
+	}
+
+	// Check if process is running
+	if err := process.Signal(syscall.Signal(0)); err != nil {
+		return nil // Already dead
+	}
+
+	// Send SIGTERM
+	if err := process.Signal(syscall.SIGTERM); err != nil {
 		return nil
 	}
 
-	// Wait for process to exit with timeout
-	select {
-	case <-lh.done:
-		return nil
-	case <-time.After(timeout):
-		// Force kill
-		lh.process.Signal(syscall.SIGKILL)
-		<-lh.done
-		return nil
-	case <-ctx.Done():
-		lh.process.Signal(syscall.SIGKILL)
-		return ctx.Err()
+	// Poll for termination with timeout
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if err := process.Signal(syscall.Signal(0)); err != nil {
+			return nil // Process terminated
+		}
+		select {
+		case <-ctx.Done():
+			process.Signal(syscall.SIGKILL)
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
+
+	// Force kill after timeout
+	process.Signal(syscall.SIGKILL)
+	return nil
 }
 
 // Kill forcefully terminates a process.
