@@ -23,6 +23,8 @@ type ProvisionInput struct {
 	StableVersion     string
 	NoCache           bool
 	CustomBinaryPath  string // For local mode with custom binary
+	UseSnapshot       bool   // If true, export genesis from snapshot state instead of RPC genesis
+	BinaryPath        string // Path to binary for state export (required when UseSnapshot=true)
 }
 
 // ProvisionOutput contains the result of provisioning.

@@ -13,6 +13,7 @@ import (
 
 	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/tomlutil"
 )
 
 // ProvisionUseCase handles devnet provisioning.
@@ -21,6 +22,7 @@ type ProvisionUseCase struct {
 	nodeRepo        ports.NodeRepository
 	snapshotSvc     ports.SnapshotFetcher
 	genesisSvc      ports.GenesisFetcher
+	stateExportSvc  ports.StateExportService
 	nodeInitializer ports.NodeInitializer
 	networkModule   ports.NetworkModule
 	logger          ports.Logger
@@ -32,6 +34,7 @@ func NewProvisionUseCase(
 	nodeRepo ports.NodeRepository,
 	snapshotSvc ports.SnapshotFetcher,
 	genesisSvc ports.GenesisFetcher,
+	stateExportSvc ports.StateExportService,
 	nodeInitializer ports.NodeInitializer,
 	networkModule ports.NetworkModule,
 	logger ports.Logger,
@@ -41,6 +44,7 @@ func NewProvisionUseCase(
 		nodeRepo:        nodeRepo,
 		snapshotSvc:     snapshotSvc,
 		genesisSvc:      genesisSvc,
+		stateExportSvc:  stateExportSvc,
 		nodeInitializer: nodeInitializer,
 		networkModule:   networkModule,
 		logger:          logger,
@@ -91,9 +95,21 @@ func (uc *ProvisionUseCase) Execute(ctx context.Context, input dto.ProvisionInpu
 	}
 
 	uc.logger.Info("Fetching genesis from RPC %s...", rpcEndpoint)
-	genesis, err := uc.genesisSvc.FetchFromRPC(ctx, rpcEndpoint)
+	rpcGenesis, err := uc.genesisSvc.FetchFromRPC(ctx, rpcEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch genesis from RPC: %w", err)
+	}
+
+	// Use snapshot-based export if requested
+	var genesis []byte
+	if input.UseSnapshot && uc.stateExportSvc != nil {
+		uc.logger.Info("Exporting genesis from snapshot state...")
+		genesis, err = uc.exportGenesisFromSnapshot(ctx, input, rpcGenesis)
+		if err != nil {
+			return nil, fmt.Errorf("failed to export genesis from snapshot: %w", err)
+		}
+	} else {
+		genesis = rpcGenesis
 	}
 
 	// Determine chain ID to use
@@ -123,6 +139,12 @@ func (uc *ProvisionUseCase) Execute(ctx context.Context, input dto.ProvisionInpu
 		return nil, fmt.Errorf("failed to initialize nodes: %w", err)
 	}
 
+	// Step 2.5: Configure nodes with network-specific settings (config.toml, app.toml)
+	uc.logger.Info("Configuring node settings...")
+	if err := uc.configureNodes(ctx, nodes, chainIDToUse, input.NumValidators); err != nil {
+		return nil, fmt.Errorf("failed to configure nodes: %w", err)
+	}
+
 	// Step 3: Build validator info combining consensus and account keys
 	uc.logger.Info("Building validator info...")
 	validators, err := uc.buildValidatorInfo(nodes, accountKeys, uc.networkModule.Bech32Prefix())
@@ -133,15 +155,30 @@ func (uc *ProvisionUseCase) Execute(ctx context.Context, input dto.ProvisionInpu
 	// Step 4: Modify genesis with validators
 	uc.logger.Info("Modifying genesis for devnet (chainID: %s)...", chainIDToUse)
 	if uc.networkModule != nil {
-		modifiedGenesis, err := uc.networkModule.ModifyGenesis(genesis, ports.GenesisModifyOptions{
+		opts := ports.GenesisModifyOptions{
 			ChainID:       chainIDToUse,
 			NumValidators: input.NumValidators,
 			AddValidators: validators,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to modify genesis: %w", err)
 		}
-		genesis = modifiedGenesis
+
+		// Check genesis size - gRPC has 4MB default limit
+		const grpcSizeLimit = 4 * 1024 * 1024 // 4MB
+		if len(genesis) > grpcSizeLimit {
+			// Use file-based modification for large genesis (e.g., exported mainnet ~90MB)
+			uc.logger.Info("Using file-based genesis modification (size: %.1f MB)", float64(len(genesis))/(1024*1024))
+			modifiedGenesis, err := uc.modifyGenesisViaFile(ctx, genesis, opts, input.HomeDir)
+			if err != nil {
+				return nil, fmt.Errorf("failed to modify genesis via file: %w", err)
+			}
+			genesis = modifiedGenesis
+		} else {
+			// Use standard in-memory modification for small genesis
+			modifiedGenesis, err := uc.networkModule.ModifyGenesis(genesis, opts)
+			if err != nil {
+				return nil, fmt.Errorf("failed to modify genesis: %w", err)
+			}
+			genesis = modifiedGenesis
+		}
 		uc.logger.Debug("Genesis modified with %d validators", len(validators))
 	}
 
@@ -518,4 +555,212 @@ func convertToValoperAddress(accountAddr, bech32Prefix string) (string, error) {
 	}
 
 	return valoperAddr, nil
+}
+
+// configureNodes configures each node's config.toml and app.toml using the plugin.
+// This gets config overrides from the plugin and merges them with the init'd configs.
+func (uc *ProvisionUseCase) configureNodes(ctx context.Context, nodes []*ports.NodeMetadata, chainID string, numValidators int) error {
+	if uc.networkModule == nil {
+		uc.logger.Debug("No network module available, skipping node configuration")
+		return nil
+	}
+
+	// Build persistent peers string: node_id@127.0.0.1:p2p_port,...
+	persistentPeers := uc.buildPersistentPeers(nodes)
+	uc.logger.Debug("Built persistent peers: %s", persistentPeers)
+
+	for _, node := range nodes {
+		opts := ports.NodeConfigOptions{
+			ChainID:         chainID,
+			Ports:           node.Ports,
+			PersistentPeers: persistentPeers,
+			NumValidators:   numValidators,
+			IsValidator:     true, // All nodes are validators in devnet
+			Moniker:         node.Name,
+		}
+
+		// Get config overrides from plugin
+		configOverride, appOverride, err := uc.networkModule.GetConfigOverrides(node.Index, opts)
+		if err != nil {
+			return fmt.Errorf("failed to get config overrides for node %d: %w", node.Index, err)
+		}
+
+		uc.logger.Debug("Node %d config overrides: config=%d bytes, app=%d bytes", node.Index, len(configOverride), len(appOverride))
+
+		// Merge config.toml if there are overrides
+		if len(configOverride) > 0 {
+			configPath := filepath.Join(node.HomeDir, "config", "config.toml")
+			if err := uc.mergeConfig(configPath, configOverride); err != nil {
+				return fmt.Errorf("failed to merge config.toml for node %d: %w", node.Index, err)
+			}
+			uc.logger.Debug("Merged config.toml for node %d", node.Index)
+		}
+
+		// Merge app.toml if there are overrides
+		if len(appOverride) > 0 {
+			appPath := filepath.Join(node.HomeDir, "config", "app.toml")
+			if err := uc.mergeConfig(appPath, appOverride); err != nil {
+				return fmt.Errorf("failed to merge app.toml for node %d: %w", node.Index, err)
+			}
+			uc.logger.Debug("Merged app.toml for node %d", node.Index)
+		}
+	}
+
+	uc.logger.Debug("All nodes configured successfully")
+	return nil
+}
+
+// mergeConfig reads a config file, merges with overrides, and writes back.
+func (uc *ProvisionUseCase) mergeConfig(filePath string, override []byte) error {
+	base, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read config: %w", err)
+	}
+
+	merged, err := tomlutil.MergeTOML(base, override)
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(filePath, merged, 0644); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	return nil
+}
+
+// buildPersistentPeers builds the persistent peers string from node metadata.
+// Format: node_id@127.0.0.1:p2p_port,node_id@127.0.0.1:p2p_port,...
+func (uc *ProvisionUseCase) buildPersistentPeers(nodes []*ports.NodeMetadata) string {
+	var peers []string
+	for _, node := range nodes {
+		if node.NodeID != "" {
+			peer := fmt.Sprintf("%s@127.0.0.1:%d", node.NodeID, node.Ports.P2P)
+			peers = append(peers, peer)
+		}
+	}
+
+	result := ""
+	for i, peer := range peers {
+		if i > 0 {
+			result += ","
+		}
+		result += peer
+	}
+	return result
+}
+
+// exportGenesisFromSnapshot exports genesis from snapshot state.
+// Flow:
+// 1. Get snapshot URL from plugin
+// 2. Download snapshot (with 30-minute caching)
+// 3. Extract snapshot to temp directory
+// 4. Export genesis from snapshot state
+// 5. Return exported genesis
+func (uc *ProvisionUseCase) exportGenesisFromSnapshot(ctx context.Context, input dto.ProvisionInput, rpcGenesis []byte) ([]byte, error) {
+	// Validate binary path
+	if input.BinaryPath == "" {
+		return nil, fmt.Errorf("binary path is required for snapshot-based export")
+	}
+
+	// Get snapshot URL from plugin
+	snapshotURL := input.SnapshotURL
+	if snapshotURL == "" && uc.networkModule != nil {
+		snapshotURL = uc.networkModule.SnapshotURL(input.Network)
+	}
+	if snapshotURL == "" {
+		return nil, fmt.Errorf("no snapshot URL available for network: %s", input.Network)
+	}
+
+	// Step 1: Download snapshot with caching
+	// Cached snapshots are stored in ~/.devnet-builder/snapshots/<network>/
+	// Cache expires after 30 minutes by default
+	uc.logger.Info("Downloading snapshot from %s...", snapshotURL)
+	snapshotPath, fromCache, err := uc.snapshotSvc.DownloadWithCache(ctx, snapshotURL, input.Network, input.NoCache)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download snapshot: %w", err)
+	}
+	if fromCache {
+		uc.logger.Success("Using cached snapshot")
+	}
+
+	// Create temp directory for extraction and export
+	// The snapshot file itself stays in the cache directory
+	exportDir := filepath.Join(input.HomeDir, "tmp", "state-export")
+	if err := os.MkdirAll(exportDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create export directory: %w", err)
+	}
+	defer os.RemoveAll(exportDir) // Clean up extracted data after export
+
+	// Step 2: Extract snapshot to temp directory
+	uc.logger.Info("Extracting snapshot...")
+	if err := uc.snapshotSvc.Extract(ctx, snapshotPath, exportDir); err != nil {
+		return nil, fmt.Errorf("failed to extract snapshot: %w", err)
+	}
+
+	// Step 3: Export genesis from snapshot state
+	uc.logger.Info("Exporting genesis from snapshot state...")
+	exportOpts := ports.StateExportOptions{
+		HomeDir:    exportDir,
+		BinaryPath: input.BinaryPath,
+		RpcGenesis: rpcGenesis,
+		ExportOpts: uc.stateExportSvc.DefaultExportOptions(),
+	}
+
+	genesis, err := uc.stateExportSvc.ExportFromSnapshot(ctx, exportOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to export genesis: %w", err)
+	}
+
+	uc.logger.Success("Genesis exported from snapshot (%d bytes)", len(genesis))
+	return genesis, nil
+}
+
+// modifyGenesisViaFile modifies genesis using file-based approach.
+// This is used when genesis exceeds gRPC message size limits (4MB default).
+// The method:
+// 1. Writes genesis to a temp file
+// 2. Calls plugin's ModifyGenesisFile with file paths
+// 3. Reads the modified genesis from output file
+func (uc *ProvisionUseCase) modifyGenesisViaFile(ctx context.Context, genesis []byte, opts ports.GenesisModifyOptions, homeDir string) ([]byte, error) {
+	// Check if network module supports file-based modification
+	fileModifier, ok := uc.networkModule.(ports.FileBasedGenesisModifier)
+	if !ok {
+		// Fallback: try standard modification anyway (may fail with gRPC limit)
+		uc.logger.Warn("Network module doesn't support file-based genesis modification, falling back to standard method")
+		return uc.networkModule.ModifyGenesis(genesis, opts)
+	}
+
+	// Create temp directory for genesis files
+	tmpDir := filepath.Join(homeDir, "tmp", "genesis-modify")
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create temp directory: %w", err)
+	}
+
+	// Write input genesis
+	inputPath := filepath.Join(tmpDir, "genesis_input.json")
+	if err := os.WriteFile(inputPath, genesis, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write input genesis: %w", err)
+	}
+
+	// Define output path
+	outputPath := filepath.Join(tmpDir, "genesis_output.json")
+
+	// Call file-based modification via plugin
+	outputSize, err := fileModifier.ModifyGenesisFile(inputPath, outputPath, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to modify genesis via file: %w", err)
+	}
+	uc.logger.Debug("Genesis modified via file (output size: %d bytes)", outputSize)
+
+	// Read modified genesis
+	modifiedGenesis, err := os.ReadFile(outputPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read modified genesis: %w", err)
+	}
+
+	// Cleanup temp files
+	_ = os.RemoveAll(tmpDir)
+
+	return modifiedGenesis, nil
 }
