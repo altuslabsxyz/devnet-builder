@@ -92,7 +92,7 @@ func (uc *SwitchBinaryUseCase) Execute(ctx context.Context, input dto.SwitchBina
 		}
 
 		// Start with new binary
-		cmd := uc.buildStartCommand(node, metadata, newBinary)
+		cmd := uc.buildStartCommand(node, metadata, newBinary, input.UpgradeHeight)
 		newHandle, err := uc.executor.Start(ctx, cmd)
 		if err != nil {
 			uc.logger.Error("Failed to restart node %d: %v", node.Index, err)
@@ -120,18 +120,26 @@ func (uc *SwitchBinaryUseCase) Execute(ctx context.Context, input dto.SwitchBina
 	}, nil
 }
 
-func (uc *SwitchBinaryUseCase) buildStartCommand(node *ports.NodeMetadata, metadata *ports.DevnetMetadata, binaryPath string) ports.Command {
+func (uc *SwitchBinaryUseCase) buildStartCommand(node *ports.NodeMetadata, metadata *ports.DevnetMetadata, binaryPath string, upgradeHeight int64) ports.Command {
 	binary := binaryPath
 	if binary == "" {
-		binary = "stabiled" // Default binary name
+		binary = "stabled" // Default binary name
+	}
+
+	args := []string{"start", "--home", node.HomeDir}
+
+	// Add --unsafe-skip-upgrades if upgrade height is specified
+	// This is needed because the new binary may not have the upgrade handler registered
+	if upgradeHeight > 0 {
+		args = append(args, "--unsafe-skip-upgrades", fmt.Sprintf("%d", upgradeHeight))
 	}
 
 	return ports.Command{
 		Binary:  binary,
-		Args:    []string{"start", "--home", node.HomeDir},
+		Args:    args,
 		WorkDir: node.HomeDir,
-		LogPath: fmt.Sprintf("%s/stabiled.log", node.HomeDir),
-		PIDPath: fmt.Sprintf("%s/stabiled.pid", node.HomeDir),
+		LogPath: fmt.Sprintf("%s/stabled.log", node.HomeDir),
+		PIDPath: fmt.Sprintf("%s/stabled.pid", node.HomeDir),
 	}
 }
 

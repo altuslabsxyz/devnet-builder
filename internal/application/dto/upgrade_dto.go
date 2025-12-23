@@ -50,6 +50,7 @@ type SwitchBinaryInput struct {
 	CachePath     string        // Pre-built cached binary
 	CommitHash    string        // Commit hash of cached binary
 	Mode          ports.ExecutionMode
+	UpgradeHeight int64         // Height to skip via --unsafe-skip-upgrades
 }
 
 // SwitchBinaryOutput contains the result of switching.

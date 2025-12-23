@@ -100,6 +100,7 @@ func (uc *ExecuteUpgradeUseCase) Execute(ctx context.Context, input dto.ExecuteU
 		CachePath:     input.CachePath,
 		CommitHash:    input.CommitHash,
 		Mode:          input.Mode,
+		UpgradeHeight: proposeResult.UpgradeHeight,
 	})
 	if err != nil {
 		output.Error = err
@@ -125,8 +126,23 @@ func (uc *ExecuteUpgradeUseCase) Execute(ctx context.Context, input dto.ExecuteU
 
 func (uc *ExecuteUpgradeUseCase) waitForUpgradeHeight(ctx context.Context, targetHeight int64) error {
 	for {
-		currentHeight, err := uc.rpcClient.GetBlockHeight(ctx)
+		// Check context before blocking RPC call
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Use timeout context for RPC call to prevent indefinite blocking
+		rpcCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		currentHeight, err := uc.rpcClient.GetBlockHeight(rpcCtx)
+		cancel()
+
 		if err != nil {
+			// Check if parent context was cancelled
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return fmt.Errorf("failed to get block height: %w", err)
 		}
 
@@ -149,12 +165,44 @@ func (uc *ExecuteUpgradeUseCase) waitForChainHalt(ctx context.Context, upgradeHe
 	stableCount := 0
 	var lastHeight int64
 
-	for stableCount < 3 {
-		currentHeight, err := uc.rpcClient.GetBlockHeight(ctx)
+	// Set a maximum wait time to prevent infinite waiting
+	// if chain doesn't halt (e.g., proposal failed)
+	maxWaitTime := 10 * time.Minute
+	deadline := time.Now().Add(maxWaitTime)
+
+	for stableCount < 3 && time.Now().Before(deadline) {
+		// Check context before blocking RPC call
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Use timeout context for RPC call
+		rpcCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		currentHeight, err := uc.rpcClient.GetBlockHeight(rpcCtx)
+		cancel()
+
 		if err != nil {
+			// Check if parent context was cancelled
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			// RPC error might indicate chain is halting
 			stableCount++
+			// Use select instead of continue to allow cancellation
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(2 * time.Second):
+			}
 			continue
+		}
+
+		// Check if chain has moved significantly past upgrade height
+		// This could indicate the upgrade proposal failed
+		if currentHeight > upgradeHeight+10 {
+			return fmt.Errorf("chain continued past upgrade height %d (current: %d); upgrade proposal may have failed", upgradeHeight, currentHeight)
 		}
 
 		if currentHeight == lastHeight && currentHeight >= upgradeHeight {
@@ -171,6 +219,10 @@ func (uc *ExecuteUpgradeUseCase) waitForChainHalt(ctx context.Context, upgradeHe
 		}
 	}
 
+	if stableCount < 3 {
+		return fmt.Errorf("timeout waiting for chain to halt at upgrade height %d", upgradeHeight)
+	}
+
 	return nil
 }
 
@@ -180,10 +232,30 @@ func (uc *ExecuteUpgradeUseCase) verifyChainResumed(ctx context.Context) (int64,
 	var lastHeight int64
 
 	for time.Now().Before(deadline) {
-		currentHeight, err := uc.rpcClient.GetBlockHeight(ctx)
+		// Check context at start of each iteration
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		default:
+		}
+
+		// Use timeout context for RPC call to prevent indefinite blocking
+		rpcCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		currentHeight, err := uc.rpcClient.GetBlockHeight(rpcCtx)
+		cancel()
+
 		if err != nil {
+			// Check if parent context was cancelled
+			if ctx.Err() != nil {
+				return 0, ctx.Err()
+			}
 			uc.logger.Debug("RPC not responding yet...")
-			time.Sleep(5 * time.Second)
+			// Use select for cancellable wait instead of time.Sleep
+			select {
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			case <-time.After(5 * time.Second):
+			}
 			continue
 		}
 

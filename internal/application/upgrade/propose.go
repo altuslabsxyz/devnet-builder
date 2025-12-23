@@ -27,8 +27,9 @@ const (
 	// GovAuthority is the governance module account address.
 	GovAuthority = "stable10d07y265gmmuvt4z0w9aw880jnsr700jjjzdw5"
 
-	// DefaultDepositAmount is the deposit amount in astable (50002 STABLE).
-	DefaultDepositAmount = "50002000000000000000000"
+	// DefaultDepositAmount is the deposit amount in astable (100 STABLE).
+	// Note: This must be less than validator balance (10000 STABLE) and above min_deposit (10 STABLE).
+	DefaultDepositAmount = "100000000000000000000"
 
 	// DefaultDepositDenom is the denomination for deposit.
 	DefaultDepositDenom = "astable"
@@ -166,6 +167,15 @@ func (uc *ProposeUseCase) submitProposal(ctx context.Context, input dto.ProposeI
 
 	// Get nonce
 	fromAddr := common.HexToAddress(proposer.HexAddress)
+	uc.logger.Debug("Proposer address: %s (hex: %s)", proposer.Bech32Address, proposer.HexAddress)
+
+	// Check proposer balance
+	balance, err := client.BalanceAt(ctx, fromAddr, nil)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to get balance: %w", err)
+	}
+	uc.logger.Debug("Proposer balance: %s wei", balance.String())
+
 	nonce, err := client.PendingNonceAt(ctx, fromAddr)
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to get nonce: %w", err)
@@ -193,11 +203,14 @@ func (uc *ProposeUseCase) submitProposal(ctx context.Context, input dto.ProposeI
 		depositDenom = DefaultDepositDenom
 	}
 
+	uc.logger.Debug("Deposit: %s %s", depositAmount, depositDenom)
+
 	// Build call data for submitProposal
 	callData, err := buildSubmitProposalCallData(proposer.HexAddress, proposalJSON, depositDenom, depositAmount)
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to build call data: %w", err)
 	}
+	uc.logger.Debug("Call data length: %d bytes", len(callData))
 
 	// Estimate gas
 	govAddr := common.HexToAddress(GovPrecompileAddress)
@@ -206,6 +219,13 @@ func (uc *ProposeUseCase) submitProposal(ctx context.Context, input dto.ProposeI
 		To:       &govAddr,
 		GasPrice: gasPrice,
 		Data:     callData,
+	}
+
+	// First, simulate the call to get any revert reason
+	_, err = client.CallContract(ctx, msg, nil)
+	if err != nil {
+		uc.logger.Debug("Simulation failed: %v", err)
+		return "", 0, fmt.Errorf("proposal simulation failed: %w", err)
 	}
 
 	gasLimit, err := client.EstimateGas(ctx, msg)
