@@ -1,8 +1,13 @@
 package upgrade
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/dto"
@@ -11,11 +16,14 @@ import (
 
 // ExecuteUpgradeUseCase orchestrates the full upgrade workflow.
 type ExecuteUpgradeUseCase struct {
-	proposeUC *ProposeUseCase
-	voteUC    *VoteUseCase
-	switchUC  *SwitchBinaryUseCase
-	rpcClient ports.RPCClient
-	logger    ports.Logger
+	proposeUC     *ProposeUseCase
+	voteUC        *VoteUseCase
+	switchUC      *SwitchBinaryUseCase
+	rpcClient     ports.RPCClient
+	devnetRepo    ports.DevnetRepository
+	nodeRepo      ports.NodeRepository
+	healthChecker ports.HealthChecker
+	logger        ports.Logger
 }
 
 // NewExecuteUpgradeUseCase creates a new ExecuteUpgradeUseCase.
@@ -24,14 +32,20 @@ func NewExecuteUpgradeUseCase(
 	voteUC *VoteUseCase,
 	switchUC *SwitchBinaryUseCase,
 	rpcClient ports.RPCClient,
+	devnetRepo ports.DevnetRepository,
+	nodeRepo ports.NodeRepository,
+	healthChecker ports.HealthChecker,
 	logger ports.Logger,
 ) *ExecuteUpgradeUseCase {
 	return &ExecuteUpgradeUseCase{
-		proposeUC: proposeUC,
-		voteUC:    voteUC,
-		switchUC:  switchUC,
-		rpcClient: rpcClient,
-		logger:    logger,
+		proposeUC:     proposeUC,
+		voteUC:        voteUC,
+		switchUC:      switchUC,
+		rpcClient:     rpcClient,
+		devnetRepo:    devnetRepo,
+		nodeRepo:      nodeRepo,
+		healthChecker: healthChecker,
+		logger:        logger,
 	}
 }
 
@@ -109,7 +123,7 @@ func (uc *ExecuteUpgradeUseCase) Execute(ctx context.Context, input dto.ExecuteU
 	output.NewBinary = switchResult.NewBinary
 
 	// Verify chain resumed
-	postHeight, err := uc.verifyChainResumed(ctx)
+	postHeight, err := uc.verifyChainResumed(ctx, input.HomeDir)
 	if err != nil {
 		output.Error = err
 		return output, err
@@ -125,10 +139,27 @@ func (uc *ExecuteUpgradeUseCase) Execute(ctx context.Context, input dto.ExecuteU
 }
 
 func (uc *ExecuteUpgradeUseCase) waitForUpgradeHeight(ctx context.Context, targetHeight int64) error {
+	var (
+		lastHeight     int64
+		lastUpdateTime time.Time
+		blockRate      float64 // blocks per second (EMA)
+		alpha          = 0.3    // smoothing factor for EMA
+	)
+
+	// Progress bar configuration
+	const (
+		barWidth      = 30
+		updateMessage = "\r  Progress: [%s] %3d%% | Height: %d/%d | Remaining: %d blocks | ETA: %s"
+	)
+
+	// Clear any previous progress line on start
+	fmt.Fprint(uc.logger.Writer(), "\n")
+
 	for {
 		// Check context before blocking RPC call
 		select {
 		case <-ctx.Done():
+			fmt.Fprint(uc.logger.Writer(), "\n") // New line on cancellation
 			return ctx.Err()
 		default:
 		}
@@ -141,23 +172,109 @@ func (uc *ExecuteUpgradeUseCase) waitForUpgradeHeight(ctx context.Context, targe
 		if err != nil {
 			// Check if parent context was cancelled
 			if ctx.Err() != nil {
+				fmt.Fprint(uc.logger.Writer(), "\n")
 				return ctx.Err()
 			}
 			return fmt.Errorf("failed to get block height: %w", err)
 		}
 
 		if currentHeight >= targetHeight {
+			// Print final progress at 100%
+			bar := makeProgressBar(barWidth, 100)
+			fmt.Fprintf(uc.logger.Writer(), updateMessage+"\n",
+				bar, 100, currentHeight, targetHeight, 0, "0s")
 			return nil
 		}
 
-		uc.logger.Debug("Current height: %d, target: %d", currentHeight, targetHeight)
+		// Calculate progress metrics
+		remaining := targetHeight - currentHeight
+		progress := int(float64(currentHeight) / float64(targetHeight) * 100)
+
+		// Calculate block rate and ETA
+		var eta string
+		if lastHeight > 0 && currentHeight > lastHeight {
+			elapsed := time.Since(lastUpdateTime).Seconds()
+			if elapsed > 0 {
+				currentRate := float64(currentHeight-lastHeight) / elapsed
+				// Use EMA for smooth rate calculation
+				if blockRate == 0 {
+					blockRate = currentRate
+				} else {
+					blockRate = alpha*currentRate + (1-alpha)*blockRate
+				}
+
+				if blockRate > 0 {
+					etaSeconds := float64(remaining) / blockRate
+					eta = formatDuration(time.Duration(etaSeconds * float64(time.Second)))
+				} else {
+					eta = "calculating..."
+				}
+			} else {
+				eta = "calculating..."
+			}
+		} else {
+			eta = "calculating..."
+		}
+
+		// Create and display progress bar
+		bar := makeProgressBar(barWidth, progress)
+		fmt.Fprintf(uc.logger.Writer(), updateMessage,
+			bar, progress, currentHeight, targetHeight, remaining, eta)
+
+		// Update tracking variables
+		lastHeight = currentHeight
+		lastUpdateTime = time.Now()
+
+		uc.logger.Debug("Current height: %d, target: %d, rate: %.2f blocks/s",
+			currentHeight, targetHeight, blockRate)
 
 		select {
 		case <-ctx.Done():
+			fmt.Fprint(uc.logger.Writer(), "\n")
 			return ctx.Err()
 		case <-time.After(2 * time.Second):
 		}
 	}
+}
+
+// makeProgressBar creates an ASCII progress bar
+func makeProgressBar(width, percent int) string {
+	if percent > 100 {
+		percent = 100
+	}
+	if percent < 0 {
+		percent = 0
+	}
+
+	filled := (width * percent) / 100
+	bar := make([]byte, width)
+	for i := 0; i < width; i++ {
+		if i < filled {
+			bar[i] = '='
+		} else if i == filled {
+			bar[i] = '>'
+		} else {
+			bar[i] = ' '
+		}
+	}
+	return string(bar)
+}
+
+// formatDuration formats a duration into a human-readable string
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	h := d / time.Hour
+	d -= h * time.Hour
+	m := d / time.Minute
+	d -= m * time.Minute
+	s := d / time.Second
+
+	if h > 0 {
+		return fmt.Sprintf("%dh%dm%ds", h, m, s)
+	} else if m > 0 {
+		return fmt.Sprintf("%dm%ds", m, s)
+	}
+	return fmt.Sprintf("%ds", s)
 }
 
 func (uc *ExecuteUpgradeUseCase) waitForChainHalt(ctx context.Context, upgradeHeight int64) error {
@@ -226,31 +343,124 @@ func (uc *ExecuteUpgradeUseCase) waitForChainHalt(ctx context.Context, upgradeHe
 	return nil
 }
 
-func (uc *ExecuteUpgradeUseCase) verifyChainResumed(ctx context.Context) (int64, error) {
-	// Wait for chain to start producing blocks again
+func (uc *ExecuteUpgradeUseCase) verifyChainResumed(ctx context.Context, homeDir string) (int64, error) {
+	uc.logger.Info("Waiting for chain to resume...")
+	uc.logger.Info("Streaming node logs (Press Ctrl+C to interrupt):")
+	fmt.Fprintln(uc.logger.Writer())
+
+	// Load all nodes
+	nodes, err := uc.nodeRepo.LoadAll(ctx, homeDir)
+	if err != nil || len(nodes) == 0 {
+		uc.logger.Warn("Could not load nodes for log tailing: %v", err)
+		return uc.verifyChainResumedSimple(ctx)
+	}
+
+	// Start log tailing in background
+	logCtx, logCancel := context.WithCancel(ctx)
+	defer logCancel()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		uc.tailNodeLogs(logCtx, nodes)
+	}()
+
+	// Monitor chain health
+	deadline := time.Now().Add(5 * time.Minute)
+	var lastHeight int64
+	checkInterval := 3 * time.Second
+
+	for time.Now().Before(deadline) {
+		// Check context
+		select {
+		case <-ctx.Done():
+			logCancel()
+			wg.Wait()
+			fmt.Fprintln(uc.logger.Writer())
+			return 0, ctx.Err()
+		default:
+		}
+
+		// Check chain health
+		rpcCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		currentHeight, err := uc.rpcClient.GetBlockHeight(rpcCtx)
+		cancel()
+
+		if err != nil {
+			if ctx.Err() != nil {
+				logCancel()
+				wg.Wait()
+				fmt.Fprintln(uc.logger.Writer())
+				return 0, ctx.Err()
+			}
+			uc.logger.Debug("RPC not responding yet...")
+			select {
+			case <-ctx.Done():
+				logCancel()
+				wg.Wait()
+				fmt.Fprintln(uc.logger.Writer())
+				return 0, ctx.Err()
+			case <-time.After(checkInterval):
+			}
+			continue
+		}
+
+		// Chain is producing blocks again
+		if lastHeight > 0 && currentHeight > lastHeight {
+			uc.logger.Debug("Chain resumed at height %d", currentHeight)
+
+			// Give it a moment to stabilize
+			time.Sleep(2 * time.Second)
+
+			// Stop log tailing
+			logCancel()
+			wg.Wait()
+
+			fmt.Fprintln(uc.logger.Writer())
+			uc.logger.Success("Chain is healthy and producing blocks!")
+			return currentHeight, nil
+		}
+
+		lastHeight = currentHeight
+
+		select {
+		case <-ctx.Done():
+			logCancel()
+			wg.Wait()
+			fmt.Fprintln(uc.logger.Writer())
+			return 0, ctx.Err()
+		case <-time.After(checkInterval):
+		}
+	}
+
+	logCancel()
+	wg.Wait()
+	fmt.Fprintln(uc.logger.Writer())
+	return 0, fmt.Errorf("timeout waiting for chain to resume")
+}
+
+// verifyChainResumedSimple is a fallback when log tailing is not available
+func (uc *ExecuteUpgradeUseCase) verifyChainResumedSimple(ctx context.Context) (int64, error) {
 	deadline := time.Now().Add(5 * time.Minute)
 	var lastHeight int64
 
 	for time.Now().Before(deadline) {
-		// Check context at start of each iteration
 		select {
 		case <-ctx.Done():
 			return 0, ctx.Err()
 		default:
 		}
 
-		// Use timeout context for RPC call to prevent indefinite blocking
 		rpcCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		currentHeight, err := uc.rpcClient.GetBlockHeight(rpcCtx)
 		cancel()
 
 		if err != nil {
-			// Check if parent context was cancelled
 			if ctx.Err() != nil {
 				return 0, ctx.Err()
 			}
 			uc.logger.Debug("RPC not responding yet...")
-			// Use select for cancellable wait instead of time.Sleep
 			select {
 			case <-ctx.Done():
 				return 0, ctx.Err()
@@ -273,6 +483,74 @@ func (uc *ExecuteUpgradeUseCase) verifyChainResumed(ctx context.Context) (int64,
 	}
 
 	return 0, fmt.Errorf("timeout waiting for chain to resume")
+}
+
+// tailNodeLogs tails logs from all nodes and outputs to logger
+func (uc *ExecuteUpgradeUseCase) tailNodeLogs(ctx context.Context, nodes []*ports.NodeMetadata) {
+	var wg sync.WaitGroup
+
+	// Tail first node's log (node0) as primary output
+	if len(nodes) > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			uc.tailSingleNodeLog(ctx, nodes[0], true)
+		}()
+	}
+
+	wg.Wait()
+}
+
+// tailSingleNodeLog tails a single node's log file
+func (uc *ExecuteUpgradeUseCase) tailSingleNodeLog(ctx context.Context, node *ports.NodeMetadata, showPrefix bool) {
+	// Construct log file path
+	logPath := filepath.Join(node.HomeDir, fmt.Sprintf("%s.log", node.Name))
+
+	// Open log file
+	file, err := os.Open(logPath)
+	if err != nil {
+		uc.logger.Debug("Could not open log file %s: %v", logPath, err)
+		return
+	}
+	defer file.Close()
+
+	// Seek to end of file to only show new logs
+	_, err = file.Seek(0, io.SeekEnd)
+	if err != nil {
+		uc.logger.Debug("Could not seek log file: %v", err)
+		return
+	}
+
+	reader := bufio.NewReader(file)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	prefix := ""
+	if showPrefix {
+		prefix = fmt.Sprintf("[%s] ", node.Name)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			for {
+				line, err := reader.ReadString('\n')
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+					return
+				}
+
+				// Print log line
+				if line != "" && line != "\n" {
+					fmt.Fprintf(uc.logger.Writer(), "%s%s", prefix, line)
+				}
+			}
+		}
+	}
 }
 
 // MonitorUseCase handles monitoring upgrade progress.
