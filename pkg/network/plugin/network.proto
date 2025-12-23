@@ -17,6 +17,7 @@ service NetworkModule {
     rpc DefaultBinaryVersion(Empty) returns (StringResponse);
 
     // Chain
+    // DEPRECATED: DefaultChainID will be removed in v2.0.0
     rpc DefaultChainID(Empty) returns (StringResponse);
     rpc Bech32Prefix(Empty) returns (StringResponse);
     rpc BaseDenom(Empty) returns (StringResponse);

@@ -54,6 +54,8 @@ func (s *GRPCServer) DefaultBinaryVersion(ctx context.Context, req *Empty) (*Str
 }
 
 // Chain methods
+
+// DEPRECATED: DefaultChainID will be removed in v2.0.0
 func (s *GRPCServer) DefaultChainID(ctx context.Context, req *Empty) (*StringResponse, error) {
 	return &StringResponse{Value: s.impl.DefaultChainID()}, nil
 }

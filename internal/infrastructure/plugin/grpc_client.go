@@ -70,6 +70,8 @@ func (c *GRPCClient) DefaultBinaryVersion() string {
 }
 
 // Chain methods
+
+// DEPRECATED: DefaultChainID will be removed in v2.0.0
 func (c *GRPCClient) DefaultChainID() string {
 	resp, err := c.client.DefaultChainID(context.Background(), &pb.Empty{})
 	if err != nil {
