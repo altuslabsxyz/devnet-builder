@@ -17,6 +17,7 @@ type CachedBinary struct {
 	Network    string    `json:"network"`     // Network type (mainnet, testnet)
 	BuildTags  []string  `json:"build_tags"`  // Go build tags used (e.g., ["no_dynamic_precompiles"])
 	BinaryPath string    `json:"-"`           // Absolute path to the cached binary (not persisted)
+	DirKey     string    `json:"-"`           // Actual directory name on disk (may differ from CacheKey() for legacy entries)
 }
 
 // CacheKey returns the cache key combining commit hash and build tags.
@@ -24,6 +25,16 @@ type CachedBinary struct {
 // Example: "abc123...def-1a2b3c4d" or "abc123...def-00000000" (no tags)
 func (c *CachedBinary) CacheKey() string {
 	return MakeCacheKey(c.CommitHash, c.BuildTags)
+}
+
+// ActualDirKey returns the actual directory name on disk.
+// This may differ from CacheKey() for legacy entries that don't have tag hashes.
+// Falls back to CacheKey() if DirKey is not set.
+func (c *CachedBinary) ActualDirKey() string {
+	if c.DirKey != "" {
+		return c.DirKey
+	}
+	return c.CacheKey()
 }
 
 // Metadata returns the persistable metadata for this cached binary.

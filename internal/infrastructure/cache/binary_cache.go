@@ -104,6 +104,7 @@ func (c *BinaryCache) loadEntries() error {
 			Network:    metadata.Network,
 			BuildTags:  metadata.BuildTags,
 			BinaryPath: binaryPath,
+			DirKey:     cacheKey, // Store actual directory name for symlink creation
 		}
 	}
 
@@ -189,6 +190,7 @@ func (c *BinaryCache) Store(sourcePath string, cached *CachedBinary) error {
 	}
 	cached.Size = info.Size()
 	cached.BinaryPath = destPath
+	cached.DirKey = cacheKey // For newly created entries, DirKey matches CacheKey
 
 	// Write metadata
 	metadataPath := filepath.Join(entryDir, MetadataFile)

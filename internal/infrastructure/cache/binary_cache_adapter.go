@@ -110,11 +110,13 @@ func (a *BinaryCacheAdapter) SetActive(ref string) error {
 }
 
 // findCacheKeyByCommit finds a cache key that matches the given commit hash.
+// Returns the actual directory name on disk (which may differ from the computed cache key
+// for legacy entries that don't have tag hashes in the directory name).
 func (a *BinaryCacheAdapter) findCacheKeyByCommit(commitHash string) string {
 	entries := a.cache.List()
 	for _, entry := range entries {
 		if entry.CommitHash == commitHash {
-			return entry.CacheKey()
+			return entry.ActualDirKey()
 		}
 	}
 	return ""
