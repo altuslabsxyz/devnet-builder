@@ -170,3 +170,25 @@ type SymlinkInfo struct {
 	Exists     bool
 	IsRegular  bool // true if it's a regular file instead of symlink
 }
+
+// NodeConfigOptions contains options for node configuration.
+// This is passed to ConfigureNode to customize config.toml and app.toml.
+type NodeConfigOptions struct {
+	// ChainID is the chain identifier
+	ChainID string
+
+	// Ports is the port configuration for this node
+	Ports PortConfig
+
+	// PersistentPeers is the persistent peers string (node_id@host:port,...)
+	PersistentPeers string
+
+	// NumValidators is the total number of validators
+	NumValidators int
+
+	// IsValidator indicates if this node is a validator
+	IsValidator bool
+
+	// Moniker is the node's moniker/name
+	Moniker string
+}

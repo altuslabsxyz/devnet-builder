@@ -62,6 +62,27 @@ type GenesisModifier interface {
 	ModifyGenesis(genesis []byte, opts GenesisModifyOptions) ([]byte, error)
 }
 
+// FileBasedGenesisModifier defines operations for modifying large genesis files.
+// When genesis files exceed gRPC message size limits (default 4MB), this interface
+// allows file-based operations that bypass gRPC serialization.
+//
+// This is particularly useful for fork-based devnets where exported genesis
+// can be 50-100+ MB in size.
+type FileBasedGenesisModifier interface {
+	// ModifyGenesisFile modifies a genesis file at inputPath and writes to outputPath.
+	// This is the file-based equivalent of ModifyGenesis() for large genesis files.
+	//
+	// Parameters:
+	//   - inputPath: Path to the input genesis.json file
+	//   - outputPath: Path where the modified genesis should be written
+	//   - opts: Genesis modification options
+	//
+	// Returns:
+	//   - outputSize: Size of the output file in bytes
+	//   - error: Any error that occurred during modification
+	ModifyGenesisFile(inputPath, outputPath string, opts GenesisModifyOptions) (int64, error)
+}
+
 // GenesisConfigProvider provides genesis configuration parameters.
 // This interface exposes network-specific genesis defaults.
 type GenesisConfigProvider interface {
@@ -126,6 +147,9 @@ type NetworkModule interface {
 	SnapshotURL(networkType string) string
 	RPCEndpoint(networkType string) string
 	AvailableNetworks() []string
+
+	// Node Configuration - Returns TOML overrides to merge with init'd configs
+	GetConfigOverrides(nodeIndex int, opts NodeConfigOptions) (configToml []byte, appToml []byte, err error)
 }
 
 // PluginLoader defines operations for loading network plugins.

@@ -133,6 +133,18 @@ type SnapshotFetcher interface {
 	// Download downloads a snapshot from the given URL.
 	Download(ctx context.Context, url string, destPath string) error
 
+	// DownloadWithCache downloads a snapshot with caching support.
+	// If a valid cached snapshot exists, returns the cached path without downloading.
+	// Parameters:
+	//   - url: Snapshot download URL
+	//   - network: Network name for cache organization (e.g., "mainnet", "testnet")
+	//   - noCache: If true, ignores cache and always downloads
+	// Returns:
+	//   - snapshotPath: Path to the snapshot file (cached or newly downloaded)
+	//   - fromCache: True if the snapshot was served from cache
+	//   - error: Any error that occurred
+	DownloadWithCache(ctx context.Context, url, network string, noCache bool) (snapshotPath string, fromCache bool, err error)
+
 	// Extract extracts a compressed snapshot.
 	Extract(ctx context.Context, archivePath, destPath string) error
 
@@ -276,4 +288,112 @@ type BuildResult struct {
 	Ref        string
 	CommitHash string
 	CachedPath string
+}
+
+// StateExportService defines operations for exporting genesis from snapshot state.
+// This is essential for creating devnets that mirror production state:
+// - Fork mainnet/testnet state for testing
+// - Create realistic test environments with actual balances and contracts
+// - Test upgrades against real state
+type StateExportService interface {
+	// ExportFromSnapshot exports genesis from a snapshot's application state.
+	// This is the main entry point that orchestrates the full export flow:
+	// 1. Prepares the home directory with config and snapshot data
+	// 2. Runs the chain's export command
+	// 3. Validates the exported genesis
+	//
+	// Parameters:
+	//   - ctx: Context for cancellation
+	//   - opts: Export options including paths and settings
+	//
+	// Returns: Exported genesis JSON bytes, or error
+	ExportFromSnapshot(ctx context.Context, opts StateExportOptions) ([]byte, error)
+
+	// PrepareForExport prepares the node home directory for export.
+	// This is called after extracting the snapshot and before running export.
+	// It ensures:
+	// - config directory exists with genesis.json
+	// - data/priv_validator_state.json exists
+	//
+	// Parameters:
+	//   - ctx: Context for cancellation
+	//   - homeDir: Path to the node home directory
+	//   - rpcGenesis: Genesis from RPC (needed for chain params)
+	PrepareForExport(ctx context.Context, homeDir string, rpcGenesis []byte) error
+
+	// ValidateExportedGenesis validates the exported genesis.
+	// Checks for required modules and proper structure.
+	ValidateExportedGenesis(genesis []byte) error
+
+	// DefaultExportOptions returns the default export options for devnet.
+	DefaultExportOptions() *ExportOptions
+}
+
+// StateExportOptions holds options for state export.
+type StateExportOptions struct {
+	// HomeDir is the path to the node home directory containing snapshot data
+	HomeDir string
+
+	// BinaryPath is the path to the chain binary for running export
+	BinaryPath string
+
+	// RpcGenesis is the genesis fetched from RPC (for chain params)
+	RpcGenesis []byte
+
+	// ExportOpts are the export command options
+	ExportOpts *ExportOptions
+}
+
+// ExportOptions defines options for genesis state export.
+type ExportOptions struct {
+	// ForZeroHeight resets the chain height to 0 for the exported genesis.
+	// When true:
+	// - Block height is reset to 0
+	// - All delegation heights are reset
+	// - Validator signing info is cleared
+	ForZeroHeight bool
+
+	// JailWhitelist is a list of validator operator addresses that should
+	// not be jailed in the exported genesis.
+	JailWhitelist []string
+
+	// ModulesToSkip is a list of module names to skip during export.
+	ModulesToSkip []string
+
+	// Height specifies a specific height to export from.
+	// If 0, exports from the latest height.
+	Height int64
+
+	// OutputPath is the path to write the exported genesis.
+	// If empty, genesis is written to stdout.
+	OutputPath string
+}
+
+// NewExportOptions creates default export options suitable for devnet.
+func NewExportOptions() *ExportOptions {
+	return &ExportOptions{
+		ForZeroHeight: true,
+		JailWhitelist: nil,
+		ModulesToSkip: nil,
+		Height:        0,
+		OutputPath:    "",
+	}
+}
+
+// SnapshotInfo contains information about a snapshot.
+type SnapshotInfo struct {
+	// URL is the download URL for the snapshot archive.
+	URL string
+
+	// Format is the archive format (e.g., "tar.lz4", "tar.zst", "tar.gz").
+	Format string
+
+	// Height is the block height of the snapshot.
+	Height int64
+
+	// Hash is the hash of the snapshot archive for verification.
+	Hash string
+
+	// Size is the size of the snapshot in bytes.
+	Size int64
 }
