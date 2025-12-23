@@ -130,9 +130,12 @@ func (uc *SwitchBinaryUseCase) buildStartCommand(node *ports.NodeMetadata, metad
 
 	// Add --unsafe-skip-upgrades if upgrade height is specified
 	// This is needed because the new binary may not have the upgrade handler registered
-	if upgradeHeight > 0 {
-		args = append(args, "--unsafe-skip-upgrades", fmt.Sprintf("%d", upgradeHeight))
-	}
+	//
+	// WARN: if this upgrade adds new module, or something need to migrate, IT MUST BE NOT SET.
+	//
+	//if upgradeHeight > 0 {
+	//	args = append(args, "--unsafe-skip-upgrades", fmt.Sprintf("%d", upgradeHeight))
+	//}
 
 	return ports.Command{
 		Binary:  binary,
