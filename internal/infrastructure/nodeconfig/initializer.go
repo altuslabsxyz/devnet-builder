@@ -317,6 +317,17 @@ func (i *NodeInitializer) CreateAccountKey(ctx context.Context, keyringDir, keyN
 		binaryPath = "stabled"
 	}
 
+	// Delete existing key first to avoid interactive prompt (EOF error)
+	// The prompt "override the existing name X [y/N]:" causes EOF when stdin is closed
+	deleteArgs := []string{
+		"keys", "delete", keyName,
+		"--keyring-backend", "test",
+		"--home", keyringDir,
+		"-y", // Force delete without confirmation
+	}
+	// Ignore error - key may not exist
+	_ = exec.CommandContext(ctx, binaryPath, deleteArgs...).Run()
+
 	// Create the key using stabled keys add
 	// Use --output json to get structured output
 	args := []string{
@@ -329,8 +340,8 @@ func (i *NodeInitializer) CreateAccountKey(ctx context.Context, keyringDir, keyN
 	cmd := exec.CommandContext(ctx, binaryPath, args...)
 	cmdOutput, err := cmd.CombinedOutput()
 	if err != nil {
-		// Check if key already exists
-		if strings.Contains(string(cmdOutput), "already exists") {
+		// Check if key already exists (shouldn't happen after delete, but just in case)
+		if strings.Contains(string(cmdOutput), "already exists") || strings.Contains(string(cmdOutput), "EOF") {
 			// Key exists, get its info
 			return i.GetAccountKey(ctx, keyringDir, keyName)
 		}
