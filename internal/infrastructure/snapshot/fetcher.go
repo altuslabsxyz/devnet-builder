@@ -94,6 +94,7 @@ func (f *FetcherAdapter) DownloadWithCache(ctx context.Context, url, network str
 }
 
 // Extract extracts a compressed snapshot.
+// If extraction fails due to a corrupted archive, the cache is automatically cleared.
 func (f *FetcherAdapter) Extract(ctx context.Context, archivePath, destPath string) error {
 	// Detect decompressor from file extension
 	decompressor := detectDecompressorFromPath(archivePath)
@@ -140,6 +141,16 @@ func (f *FetcherAdapter) Extract(ctx context.Context, archivePath, destPath stri
 
 	cmdOutput, err := cmd.CombinedOutput()
 	if err != nil {
+		// Extraction failed - likely corrupted archive
+		// Clear the cache so the next attempt will re-download
+		network := extractNetworkFromPath(archivePath)
+		if network != "" {
+			f.logger.Warn("Extraction failed, clearing corrupted cache for network: %s", network)
+			if clearErr := ClearCache(f.homeDir, network); clearErr != nil {
+				f.logger.Debug("Failed to clear cache: %v", clearErr)
+			}
+		}
+
 		return &SnapshotError{
 			Operation: "extract",
 			Message:   fmt.Sprintf("extraction failed: %v\nOutput: %s", err, string(cmdOutput)),
@@ -148,6 +159,27 @@ func (f *FetcherAdapter) Extract(ctx context.Context, archivePath, destPath stri
 
 	f.logger.Success("Extraction complete")
 	return nil
+}
+
+// extractNetworkFromPath extracts the network name from a snapshot path.
+// Expected path format: ~/.devnet-builder/snapshots/{network}/snapshot.tar.{ext}
+func extractNetworkFromPath(archivePath string) string {
+	// Get parent directory (should be network name like "mainnet" or "testnet")
+	dir := filepath.Dir(archivePath)
+	network := filepath.Base(dir)
+
+	// Validate it's a known network
+	if network == "mainnet" || network == "testnet" {
+		return network
+	}
+
+	// Check if grandparent is "snapshots" to confirm path structure
+	grandparent := filepath.Base(filepath.Dir(dir))
+	if grandparent == "snapshots" {
+		return network
+	}
+
+	return ""
 }
 
 // GetLatestSnapshotURL retrieves the latest snapshot URL for a network.

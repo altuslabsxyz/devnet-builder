@@ -171,6 +171,20 @@ func downloadFile(ctx context.Context, url, destPath string, logger *output.Logg
 	// Close file before rename
 	out.Close()
 
+	// Validate downloaded file size matches Content-Length
+	// This prevents truncated downloads from being cached as valid
+	if contentLength > 0 {
+		info, err := os.Stat(tmpPath)
+		if err != nil {
+			os.Remove(tmpPath)
+			return fmt.Errorf("failed to stat downloaded file: %w", err)
+		}
+		if info.Size() != contentLength {
+			os.Remove(tmpPath)
+			return fmt.Errorf("incomplete download: got %d bytes, expected %d bytes", info.Size(), contentLength)
+		}
+	}
+
 	// Rename temp file to final destination
 	if err := os.Rename(tmpPath, destPath); err != nil {
 		os.Remove(tmpPath)
