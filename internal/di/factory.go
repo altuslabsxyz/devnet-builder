@@ -379,10 +379,6 @@ func (a *networkModuleAdapter) DefaultBinaryVersion() string {
 	return a.module.DefaultBinaryVersion()
 }
 
-func (a *networkModuleAdapter) DefaultChainID() string {
-	return a.module.DefaultChainID()
-}
-
 func (a *networkModuleAdapter) Bech32Prefix() string {
 	return a.module.Bech32Prefix()
 }
@@ -508,7 +504,6 @@ func (a *networkModuleAdapter) ModifyGenesisFile(inputPath, outputPath string, o
 func (a *networkModuleAdapter) GenesisConfig() ports.GenesisConfig {
 	cfg := a.module.GenesisConfig()
 	return ports.GenesisConfig{
-		ChainID:          a.module.DefaultChainID(),
 		UnbondingTime:    cfg.UnbondingTime,
 		VotingPeriod:     cfg.VotingPeriod,
 		MaxDepositPeriod: cfg.MaxDepositPeriod,

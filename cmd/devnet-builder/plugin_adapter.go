@@ -68,10 +68,6 @@ func (a *pluginAdapter) DefaultBinaryVersion() string {
 // ChainConfig
 // ============================================
 
-func (a *pluginAdapter) DefaultChainID() string {
-	return a.module.DefaultChainID()
-}
-
 func (a *pluginAdapter) Bech32Prefix() string {
 	return a.module.Bech32Prefix()
 }
