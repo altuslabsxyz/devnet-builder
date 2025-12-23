@@ -205,11 +205,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	} else {
 		// Local mode: run interactive selection flow for GitHub releases
 		if isInteractive {
-			selection, err := runDeployInteractiveSelection(ctx, cmd)
+			selection, err := runDeployInteractiveSelection(ctx, cmd, deployNetwork)
 			if err != nil {
 				return wrapInteractiveError(cmd, err, "failed to fetch versions")
 			}
-			deployNetwork = selection.Network
 			exportVersion = selection.ExportVersion
 			startVersion = selection.StartVersion
 			deployStableVersion = exportVersion
@@ -402,7 +401,8 @@ func outputDeployErrorClean(err error) error {
 }
 
 // runDeployInteractiveSelection runs the interactive version selection flow.
-func runDeployInteractiveSelection(ctx context.Context, cmd *cobra.Command) (*interactive.SelectionConfig, error) {
+// Network is already determined from config, so only versions are selected interactively.
+func runDeployInteractiveSelection(ctx context.Context, cmd *cobra.Command, network string) (*interactive.SelectionConfig, error) {
 	fileCfg := GetLoadedFileConfig()
 
 	cacheTTL := github.DefaultCacheTTL
@@ -425,7 +425,8 @@ func runDeployInteractiveSelection(ctx context.Context, cmd *cobra.Command) (*in
 	client := github.NewClient(clientOpts...)
 
 	selector := interactive.NewSelector(client)
-	return selector.RunSelectionFlow(ctx)
+	// Use RunVersionSelectionFlow to skip network selection (network already determined)
+	return selector.RunVersionSelectionFlow(ctx, network)
 }
 
 // resolveDeployDockerImage determines the docker image to use.

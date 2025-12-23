@@ -33,6 +33,22 @@ func (s *Selector) RunSelectionFlow(ctx context.Context) (*SelectionConfig, erro
 	}
 	config.Network = network
 
+	// Step 2-5: Run version selection flow
+	return s.runVersionSelection(ctx, config)
+}
+
+// RunVersionSelectionFlow runs version selection workflow with pre-determined network.
+// This is used when network is already configured (e.g., from config.toml or flags).
+// Returns the selection config and any error (including cancellation).
+func (s *Selector) RunVersionSelectionFlow(ctx context.Context, network string) (*SelectionConfig, error) {
+	config := &SelectionConfig{
+		Network: network,
+	}
+	return s.runVersionSelection(ctx, config)
+}
+
+// runVersionSelection is the internal implementation for version selection steps.
+func (s *Selector) runVersionSelection(ctx context.Context, config *SelectionConfig) (*SelectionConfig, error) {
 	// Step 2: Fetch available versions
 	releases, fromCache, err := s.client.FetchReleasesWithCache(ctx)
 	if err != nil {
