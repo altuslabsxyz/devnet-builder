@@ -105,8 +105,8 @@ func ValidateModule(m NetworkModule) error {
 		}
 	}
 
-	// DefaultChainID can be empty - it means "preserve original genesis chain-id"
-	// This allows using snapshots with matching chain-id from mainnet/testnet
+	// DefaultChainID is deprecated and optional. Empty string means chain-id
+	// is extracted from genesis files (RPC or snapshot export).
 
 	// Validate Bech32Prefix
 	if m.Bech32Prefix() == "" {

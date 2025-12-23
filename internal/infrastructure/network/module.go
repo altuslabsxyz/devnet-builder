@@ -45,10 +45,6 @@ type BinaryProvider interface {
 
 // ChainConfig provides chain-specific configuration.
 type ChainConfig interface {
-	// DefaultChainID returns the default chain identifier for devnet.
-	// Example: "stable_9000-1", "ault_20904-1"
-	DefaultChainID() string
-
 	// Bech32Prefix returns the address prefix for this network.
 	// Example: "stable", "ault"
 	// Used for account address generation and validation.

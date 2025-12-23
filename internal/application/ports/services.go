@@ -93,7 +93,6 @@ type GenesisConfigProvider interface {
 
 // GenesisConfig contains network-specific genesis parameters for devnet.
 type GenesisConfig struct {
-	ChainID          string        // Default chain ID for devnet
 	UnbondingTime    time.Duration // Unbonding period (devnet: ~60s)
 	VotingPeriod     time.Duration // Governance voting period (devnet: ~60s)
 	MaxDepositPeriod time.Duration // Max deposit period for proposals
@@ -117,7 +116,6 @@ type NetworkModule interface {
 	DefaultBinaryVersion() string
 
 	// Chain
-	DefaultChainID() string
 	Bech32Prefix() string
 	BaseDenom() string
 
