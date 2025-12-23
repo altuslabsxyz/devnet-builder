@@ -617,20 +617,30 @@ func (b *Builder) BuildToCache(ctx context.Context, opts BuildOptions, binaryCac
 	return cached, nil
 }
 
-// ResolveCommitHash resolves a ref to a commit hash by cloning the repo.
+// ResolveCommitHash resolves a ref to a commit hash without cloning.
 // This is useful for checking the cache before building.
+//
+// Resolution priority:
+// 1. Annotated tag's actual commit (refs/tags/ref^{})
+// 2. Lightweight tag (refs/tags/ref)
+// 3. Branch (refs/heads/ref)
+//
+// This ensures tags are preferred over branches when both exist with similar names
+// (e.g., v1.1.4 tag vs benchmark/v1.1.4 branch).
 func (b *Builder) ResolveCommitHash(ctx context.Context, ref string) (string, error) {
 	// If it's already a 40-char commit hash, return as-is
 	if len(ref) == 40 && isCommitHash(ref) {
 		return ref, nil
 	}
 
-	// Create temp directory for ls-remote
 	repoURL, err := b.getRepoURL()
 	if err != nil {
 		return "", fmt.Errorf("failed to get repository URL: %w", err)
 	}
-	cmd := exec.CommandContext(ctx, "git", "ls-remote", repoURL, ref)
+
+	// Query for all refs matching the pattern
+	// Use wildcards to catch both exact matches and annotated tag dereferences
+	cmd := exec.CommandContext(ctx, "git", "ls-remote", repoURL)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve ref: %w", err)
@@ -641,11 +651,63 @@ func (b *Builder) ResolveCommitHash(ctx context.Context, ref string) (string, er
 		return "", fmt.Errorf("ref not found: %s", ref)
 	}
 
-	// Output format: "hash\trefs/heads/branch" or "hash\trefs/tags/tag"
-	parts := strings.Fields(lines[0])
-	if len(parts) < 1 {
-		return "", fmt.Errorf("unexpected git ls-remote output")
+	// Parse all refs and find the best match
+	// Priority: annotated tag commit (^{}) > lightweight tag > branch
+	var (
+		annotatedTagCommit string // refs/tags/ref^{} - highest priority
+		tagCommit          string // refs/tags/ref
+		branchCommit       string // refs/heads/*/ref or refs/heads/ref
+	)
+
+	exactTagRef := fmt.Sprintf("refs/tags/%s", ref)
+	annotatedTagRef := fmt.Sprintf("refs/tags/%s^{}", ref)
+
+	for _, line := range lines {
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+		hash := parts[0]
+		refPath := parts[1]
+
+		// Check for annotated tag dereference (highest priority)
+		if refPath == annotatedTagRef {
+			annotatedTagCommit = hash
+			continue
+		}
+
+		// Check for exact tag match
+		if refPath == exactTagRef {
+			tagCommit = hash
+			continue
+		}
+
+		// Check for branch ending with our ref (e.g., refs/heads/main or refs/heads/feature/v1.1.4)
+		if strings.HasPrefix(refPath, "refs/heads/") && strings.HasSuffix(refPath, "/"+ref) {
+			branchCommit = hash
+			continue
+		}
+
+		// Check for exact branch match (refs/heads/ref)
+		if refPath == fmt.Sprintf("refs/heads/%s", ref) {
+			branchCommit = hash
+			continue
+		}
 	}
 
-	return parts[0], nil
+	// Return based on priority
+	if annotatedTagCommit != "" {
+		b.logger.Debug("Resolved %s to annotated tag commit: %s", ref, annotatedTagCommit[:12])
+		return annotatedTagCommit, nil
+	}
+	if tagCommit != "" {
+		b.logger.Debug("Resolved %s to tag: %s", ref, tagCommit[:12])
+		return tagCommit, nil
+	}
+	if branchCommit != "" {
+		b.logger.Debug("Resolved %s to branch: %s", ref, branchCommit[:12])
+		return branchCommit, nil
+	}
+
+	return "", fmt.Errorf("ref not found: %s", ref)
 }
