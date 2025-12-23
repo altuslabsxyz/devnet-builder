@@ -42,12 +42,14 @@ const (
 	NetworkModule_LogFileName_FullMethodName            = "/network.NetworkModule/LogFileName"
 	NetworkModule_ProcessPattern_FullMethodName         = "/network.NetworkModule/ProcessPattern"
 	NetworkModule_ModifyGenesis_FullMethodName          = "/network.NetworkModule/ModifyGenesis"
+	NetworkModule_ModifyGenesisFile_FullMethodName      = "/network.NetworkModule/ModifyGenesisFile"
 	NetworkModule_GenerateDevnet_FullMethodName         = "/network.NetworkModule/GenerateDevnet"
 	NetworkModule_GetCodec_FullMethodName               = "/network.NetworkModule/GetCodec"
 	NetworkModule_Validate_FullMethodName               = "/network.NetworkModule/Validate"
 	NetworkModule_SnapshotURL_FullMethodName            = "/network.NetworkModule/SnapshotURL"
 	NetworkModule_RPCEndpoint_FullMethodName            = "/network.NetworkModule/RPCEndpoint"
 	NetworkModule_AvailableNetworks_FullMethodName      = "/network.NetworkModule/AvailableNetworks"
+	NetworkModule_GetConfigOverrides_FullMethodName     = "/network.NetworkModule/GetConfigOverrides"
 )
 
 // NetworkModuleClient is the client API for NetworkModule service.
@@ -87,6 +89,7 @@ type NetworkModuleClient interface {
 	ProcessPattern(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StringResponse, error)
 	// Operations
 	ModifyGenesis(ctx context.Context, in *ModifyGenesisRequest, opts ...grpc.CallOption) (*BytesResponse, error)
+	ModifyGenesisFile(ctx context.Context, in *ModifyGenesisFileRequest, opts ...grpc.CallOption) (*ModifyGenesisFileResponse, error)
 	GenerateDevnet(ctx context.Context, in *GenerateDevnetRequest, opts ...grpc.CallOption) (*ErrorResponse, error)
 	GetCodec(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*BytesResponse, error)
 	// Validation
@@ -95,6 +98,8 @@ type NetworkModuleClient interface {
 	SnapshotURL(ctx context.Context, in *StringRequest, opts ...grpc.CallOption) (*StringResponse, error)
 	RPCEndpoint(ctx context.Context, in *StringRequest, opts ...grpc.CallOption) (*StringResponse, error)
 	AvailableNetworks(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StringListResponse, error)
+	// Node Configuration
+	GetConfigOverrides(ctx context.Context, in *NodeConfigRequest, opts ...grpc.CallOption) (*ConfigOverridesResponse, error)
 }
 
 type networkModuleClient struct {
@@ -335,6 +340,16 @@ func (c *networkModuleClient) ModifyGenesis(ctx context.Context, in *ModifyGenes
 	return out, nil
 }
 
+func (c *networkModuleClient) ModifyGenesisFile(ctx context.Context, in *ModifyGenesisFileRequest, opts ...grpc.CallOption) (*ModifyGenesisFileResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ModifyGenesisFileResponse)
+	err := c.cc.Invoke(ctx, NetworkModule_ModifyGenesisFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *networkModuleClient) GenerateDevnet(ctx context.Context, in *GenerateDevnetRequest, opts ...grpc.CallOption) (*ErrorResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ErrorResponse)
@@ -395,6 +410,16 @@ func (c *networkModuleClient) AvailableNetworks(ctx context.Context, in *Empty, 
 	return out, nil
 }
 
+func (c *networkModuleClient) GetConfigOverrides(ctx context.Context, in *NodeConfigRequest, opts ...grpc.CallOption) (*ConfigOverridesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ConfigOverridesResponse)
+	err := c.cc.Invoke(ctx, NetworkModule_GetConfigOverrides_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NetworkModuleServer is the server API for NetworkModule service.
 // All implementations must embed UnimplementedNetworkModuleServer
 // for forward compatibility.
@@ -432,6 +457,7 @@ type NetworkModuleServer interface {
 	ProcessPattern(context.Context, *Empty) (*StringResponse, error)
 	// Operations
 	ModifyGenesis(context.Context, *ModifyGenesisRequest) (*BytesResponse, error)
+	ModifyGenesisFile(context.Context, *ModifyGenesisFileRequest) (*ModifyGenesisFileResponse, error)
 	GenerateDevnet(context.Context, *GenerateDevnetRequest) (*ErrorResponse, error)
 	GetCodec(context.Context, *Empty) (*BytesResponse, error)
 	// Validation
@@ -440,6 +466,8 @@ type NetworkModuleServer interface {
 	SnapshotURL(context.Context, *StringRequest) (*StringResponse, error)
 	RPCEndpoint(context.Context, *StringRequest) (*StringResponse, error)
 	AvailableNetworks(context.Context, *Empty) (*StringListResponse, error)
+	// Node Configuration
+	GetConfigOverrides(context.Context, *NodeConfigRequest) (*ConfigOverridesResponse, error)
 	mustEmbedUnimplementedNetworkModuleServer()
 }
 
@@ -519,6 +547,9 @@ func (UnimplementedNetworkModuleServer) ProcessPattern(context.Context, *Empty) 
 func (UnimplementedNetworkModuleServer) ModifyGenesis(context.Context, *ModifyGenesisRequest) (*BytesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ModifyGenesis not implemented")
 }
+func (UnimplementedNetworkModuleServer) ModifyGenesisFile(context.Context, *ModifyGenesisFileRequest) (*ModifyGenesisFileResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ModifyGenesisFile not implemented")
+}
 func (UnimplementedNetworkModuleServer) GenerateDevnet(context.Context, *GenerateDevnetRequest) (*ErrorResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GenerateDevnet not implemented")
 }
@@ -536,6 +567,9 @@ func (UnimplementedNetworkModuleServer) RPCEndpoint(context.Context, *StringRequ
 }
 func (UnimplementedNetworkModuleServer) AvailableNetworks(context.Context, *Empty) (*StringListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AvailableNetworks not implemented")
+}
+func (UnimplementedNetworkModuleServer) GetConfigOverrides(context.Context, *NodeConfigRequest) (*ConfigOverridesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetConfigOverrides not implemented")
 }
 func (UnimplementedNetworkModuleServer) mustEmbedUnimplementedNetworkModuleServer() {}
 func (UnimplementedNetworkModuleServer) testEmbeddedByValue()                       {}
@@ -972,6 +1006,24 @@ func _NetworkModule_ModifyGenesis_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NetworkModule_ModifyGenesisFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ModifyGenesisFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkModuleServer).ModifyGenesisFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkModule_ModifyGenesisFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkModuleServer).ModifyGenesisFile(ctx, req.(*ModifyGenesisFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NetworkModule_GenerateDevnet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GenerateDevnetRequest)
 	if err := dec(in); err != nil {
@@ -1080,6 +1132,24 @@ func _NetworkModule_AvailableNetworks_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NetworkModule_GetConfigOverrides_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NodeConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkModuleServer).GetConfigOverrides(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkModule_GetConfigOverrides_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkModuleServer).GetConfigOverrides(ctx, req.(*NodeConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NetworkModule_ServiceDesc is the grpc.ServiceDesc for NetworkModule service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1180,6 +1250,10 @@ var NetworkModule_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _NetworkModule_ModifyGenesis_Handler,
 		},
 		{
+			MethodName: "ModifyGenesisFile",
+			Handler:    _NetworkModule_ModifyGenesisFile_Handler,
+		},
+		{
 			MethodName: "GenerateDevnet",
 			Handler:    _NetworkModule_GenerateDevnet_Handler,
 		},
@@ -1202,6 +1276,10 @@ var NetworkModule_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AvailableNetworks",
 			Handler:    _NetworkModule_AvailableNetworks_Handler,
+		},
+		{
+			MethodName: "GetConfigOverrides",
+			Handler:    _NetworkModule_GetConfigOverrides_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

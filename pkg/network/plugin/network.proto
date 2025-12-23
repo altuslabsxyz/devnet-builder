@@ -44,6 +44,7 @@ service NetworkModule {
 
     // Operations
     rpc ModifyGenesis(ModifyGenesisRequest) returns (BytesResponse);
+    rpc ModifyGenesisFile(ModifyGenesisFileRequest) returns (ModifyGenesisFileResponse);
     rpc GenerateDevnet(GenerateDevnetRequest) returns (ErrorResponse);
     rpc GetCodec(Empty) returns (BytesResponse);
 
@@ -54,6 +55,9 @@ service NetworkModule {
     rpc SnapshotURL(StringRequest) returns (StringResponse);
     rpc RPCEndpoint(StringRequest) returns (StringResponse);
     rpc AvailableNetworks(Empty) returns (StringListResponse);
+
+    // Node Configuration
+    rpc GetConfigOverrides(NodeConfigRequest) returns (ConfigOverridesResponse);
 }
 
 message Empty {}
@@ -153,4 +157,35 @@ message GenerateDevnetRequest {
     string output_dir = 6;
     string chain_id = 7;
     string genesis_file = 8;
+}
+
+message NodeConfigRequest {
+    int32 node_index = 1;
+    string chain_id = 2;
+    PortConfigResponse ports = 3;
+    string persistent_peers = 4;
+    int32 num_validators = 5;
+    bool is_validator = 6;
+    string moniker = 7;
+}
+
+message ConfigOverridesResponse {
+    bytes config_toml = 1;
+    bytes app_toml = 2;
+    string error = 3;
+}
+
+// ModifyGenesisFileRequest uses file paths instead of raw bytes
+// to handle large genesis files that exceed gRPC message limits.
+message ModifyGenesisFileRequest {
+    string input_path = 1;   // Path to input genesis.json
+    string output_path = 2;  // Path where modified genesis should be written
+    string chain_id = 3;
+    int32 num_validators = 4;
+    repeated ValidatorInfo validators = 5;
+}
+
+message ModifyGenesisFileResponse {
+    string error = 1;
+    int64 output_size = 2;   // Size of the output file in bytes
 }

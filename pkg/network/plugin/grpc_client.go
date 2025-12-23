@@ -353,3 +353,64 @@ func (c *GRPCClient) AvailableNetworks() []string {
 	}
 	return resp.Values
 }
+
+// GetConfigOverrides returns TOML configuration overrides for a node.
+func (c *GRPCClient) GetConfigOverrides(nodeIndex int, opts network.NodeConfigOptions) ([]byte, []byte, error) {
+	resp, err := c.client.GetConfigOverrides(context.Background(), &NodeConfigRequest{
+		NodeIndex:       int32(nodeIndex),
+		ChainId:         opts.ChainID,
+		PersistentPeers: opts.PersistentPeers,
+		NumValidators:   int32(opts.NumValidators),
+		IsValidator:     opts.IsValidator,
+		Moniker:         opts.Moniker,
+		Ports: &PortConfigResponse{
+			Rpc:       int32(opts.Ports.RPC),
+			P2P:       int32(opts.Ports.P2P),
+			Grpc:      int32(opts.Ports.GRPC),
+			GrpcWeb:   int32(opts.Ports.GRPCWeb),
+			Api:       int32(opts.Ports.API),
+			EvmRpc:    int32(opts.Ports.EVMRPC),
+			EvmSocket: int32(opts.Ports.EVMSocket),
+		},
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp.Error != "" {
+		return nil, nil, errors.New(resp.Error)
+	}
+	return resp.ConfigToml, resp.AppToml, nil
+}
+
+// Ensure GRPCClient implements FileBasedGenesisModifier
+var _ network.FileBasedGenesisModifier = (*GRPCClient)(nil)
+
+// ModifyGenesisFile implements network.FileBasedGenesisModifier.
+// This method uses file paths instead of raw bytes to avoid gRPC message size limits.
+func (c *GRPCClient) ModifyGenesisFile(inputPath, outputPath string, opts network.GenesisOptions) (int64, error) {
+	// Convert validators to protobuf format
+	validators := make([]*ValidatorInfo, len(opts.Validators))
+	for i, v := range opts.Validators {
+		validators[i] = &ValidatorInfo{
+			Moniker:         v.Moniker,
+			ConsPubKey:      v.ConsPubKey,
+			OperatorAddress: v.OperatorAddress,
+			SelfDelegation:  v.SelfDelegation,
+		}
+	}
+
+	resp, err := c.client.ModifyGenesisFile(context.Background(), &ModifyGenesisFileRequest{
+		InputPath:     inputPath,
+		OutputPath:    outputPath,
+		ChainId:       opts.ChainID,
+		NumValidators: int32(opts.NumValidators),
+		Validators:    validators,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if resp.Error != "" {
+		return 0, errors.New(resp.Error)
+	}
+	return resp.OutputSize, nil
+}

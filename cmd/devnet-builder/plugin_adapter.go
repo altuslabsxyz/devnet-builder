@@ -188,6 +188,35 @@ func (a *pluginAdapter) ModifyGenesis(genesis []byte, opts internalNetwork.Genes
 	return a.module.ModifyGenesis(genesis, pkgOpts)
 }
 
+// ModifyGenesisFile implements FileBasedGenesisModifier for large genesis files.
+// This bypasses gRPC message size limits by using file paths instead of raw bytes.
+func (a *pluginAdapter) ModifyGenesisFile(inputPath, outputPath string, opts internalNetwork.GenesisOptions) (int64, error) {
+	// Check if underlying module supports file-based modification
+	fileModifier, ok := a.module.(pkgNetwork.FileBasedGenesisModifier)
+	if !ok {
+		return 0, fmt.Errorf("plugin does not support file-based genesis modification")
+	}
+
+	// Convert validators from internal to pkg types
+	validators := make([]pkgNetwork.ValidatorInfo, len(opts.Validators))
+	for i, v := range opts.Validators {
+		validators[i] = pkgNetwork.ValidatorInfo{
+			Moniker:         v.Moniker,
+			ConsPubKey:      v.ConsPubKey,
+			OperatorAddress: v.OperatorAddress,
+			SelfDelegation:  v.SelfDelegation,
+		}
+	}
+
+	pkgOpts := pkgNetwork.GenesisOptions{
+		ChainID:       opts.ChainID,
+		NumValidators: opts.NumValidators,
+		Validators:    validators,
+	}
+
+	return fileModifier.ModifyGenesisFile(inputPath, outputPath, pkgOpts)
+}
+
 // ============================================
 // DevnetGenerator
 // ============================================
@@ -259,6 +288,31 @@ func (a *pluginAdapter) AvailableNetworks() []string {
 }
 
 // ============================================
+// NodeConfigurator
+// ============================================
+
+func (a *pluginAdapter) GetConfigOverrides(nodeIndex int, opts internalNetwork.NodeConfigOptions) ([]byte, []byte, error) {
+	// Convert internal options to pkg options
+	pkgOpts := pkgNetwork.NodeConfigOptions{
+		ChainID:         opts.ChainID,
+		PersistentPeers: opts.PersistentPeers,
+		NumValidators:   opts.NumValidators,
+		IsValidator:     opts.IsValidator,
+		Moniker:         opts.Moniker,
+		Ports: pkgNetwork.PortConfig{
+			RPC:       opts.Ports.RPC,
+			P2P:       opts.Ports.P2P,
+			GRPC:      opts.Ports.GRPC,
+			GRPCWeb:   opts.Ports.GRPCWeb,
+			API:       opts.Ports.API,
+			EVMRPC:    opts.Ports.EVMRPC,
+			EVMSocket: opts.Ports.EVMWS,
+		},
+	}
+	return a.module.GetConfigOverrides(nodeIndex, pkgOpts)
+}
+
+// ============================================
 // Generator Adapter
 // ============================================
 
@@ -314,5 +368,52 @@ func (g *pluginGeneratorAdapter) GetAccounts() []internalNetwork.AccountInfo {
 		}
 	}
 	return accounts
+}
+
+// ============================================
+// StateExporter Adapter (Optional Interface)
+// ============================================
+
+// AsStateExporter returns a StateExporter if the underlying module implements it.
+// Returns nil if the module does not support state export.
+func (a *pluginAdapter) AsStateExporter() internalNetwork.StateExporter {
+	exporter, ok := a.module.(pkgNetwork.StateExporter)
+	if !ok {
+		return nil
+	}
+	return &pluginStateExporterAdapter{module: exporter}
+}
+
+// pluginStateExporterAdapter adapts pkg/network.StateExporter to internal/network.StateExporter.
+type pluginStateExporterAdapter struct {
+	module pkgNetwork.StateExporter
+}
+
+// ExportCommandWithOptions returns arguments for exporting genesis/state with options.
+func (a *pluginStateExporterAdapter) ExportCommandWithOptions(homeDir string, opts internalNetwork.ExportOptions) []string {
+	pkgOpts := pkgNetwork.ExportOptions{
+		ForZeroHeight: opts.ForZeroHeight,
+		JailWhitelist: opts.JailWhitelist,
+		ModulesToSkip: opts.ModulesToSkip,
+		Height:        opts.Height,
+		OutputPath:    opts.OutputPath,
+	}
+	return a.module.ExportCommandWithOptions(homeDir, pkgOpts)
+}
+
+// ValidateExportedGenesis validates the exported genesis for this network.
+func (a *pluginStateExporterAdapter) ValidateExportedGenesis(genesis []byte) error {
+	return a.module.ValidateExportedGenesis(genesis)
+}
+
+// RequiredModules returns the list of modules that must be present.
+func (a *pluginStateExporterAdapter) RequiredModules() []string {
+	return a.module.RequiredModules()
+}
+
+// SnapshotFormat returns the expected snapshot archive format.
+func (a *pluginStateExporterAdapter) SnapshotFormat(networkType string) internalNetwork.SnapshotFormat {
+	format := a.module.SnapshotFormat(networkType)
+	return internalNetwork.SnapshotFormat(format)
 }
 

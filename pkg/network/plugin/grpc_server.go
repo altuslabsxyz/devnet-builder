@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/b-harvest/devnet-builder/pkg/network"
@@ -226,6 +227,85 @@ func (s *GRPCServer) RPCEndpoint(ctx context.Context, req *StringRequest) (*Stri
 
 func (s *GRPCServer) AvailableNetworks(ctx context.Context, req *Empty) (*StringListResponse, error) {
 	return &StringListResponse{Values: s.impl.AvailableNetworks()}, nil
+}
+
+// GetConfigOverrides returns TOML configuration overrides for a node.
+func (s *GRPCServer) GetConfigOverrides(ctx context.Context, req *NodeConfigRequest) (*ConfigOverridesResponse, error) {
+	opts := network.NodeConfigOptions{
+		ChainID:         req.ChainId,
+		PersistentPeers: req.PersistentPeers,
+		NumValidators:   int(req.NumValidators),
+		IsValidator:     req.IsValidator,
+		Moniker:         req.Moniker,
+	}
+	if req.Ports != nil {
+		opts.Ports = network.PortConfig{
+			RPC:       int(req.Ports.Rpc),
+			P2P:       int(req.Ports.P2P),
+			GRPC:      int(req.Ports.Grpc),
+			GRPCWeb:   int(req.Ports.GrpcWeb),
+			API:       int(req.Ports.Api),
+			EVMRPC:    int(req.Ports.EvmRpc),
+			EVMSocket: int(req.Ports.EvmSocket),
+		}
+	}
+
+	configToml, appToml, err := s.impl.GetConfigOverrides(int(req.NodeIndex), opts)
+	if err != nil {
+		return &ConfigOverridesResponse{Error: err.Error()}, nil
+	}
+	return &ConfigOverridesResponse{
+		ConfigToml: configToml,
+		AppToml:    appToml,
+	}, nil
+}
+
+// ModifyGenesisFile handles file-based genesis modification.
+// This method avoids gRPC message size limits by using file paths.
+func (s *GRPCServer) ModifyGenesisFile(ctx context.Context, req *ModifyGenesisFileRequest) (*ModifyGenesisFileResponse, error) {
+	// Convert validators from protobuf to network types
+	validators := make([]network.ValidatorInfo, len(req.Validators))
+	for i, v := range req.Validators {
+		validators[i] = network.ValidatorInfo{
+			Moniker:         v.Moniker,
+			ConsPubKey:      v.ConsPubKey,
+			OperatorAddress: v.OperatorAddress,
+			SelfDelegation:  v.SelfDelegation,
+		}
+	}
+
+	opts := network.GenesisOptions{
+		ChainID:       req.ChainId,
+		NumValidators: int(req.NumValidators),
+		Validators:    validators,
+	}
+
+	// Check if the implementation supports file-based modification
+	if fbm, ok := s.impl.(network.FileBasedGenesisModifier); ok {
+		// Use the optimized file-based method
+		outputSize, err := fbm.ModifyGenesisFile(req.InputPath, req.OutputPath, opts)
+		if err != nil {
+			return &ModifyGenesisFileResponse{Error: err.Error()}, nil
+		}
+		return &ModifyGenesisFileResponse{OutputSize: outputSize}, nil
+	}
+
+	// Fallback: read file, modify in memory, write file
+	genesis, err := os.ReadFile(req.InputPath)
+	if err != nil {
+		return &ModifyGenesisFileResponse{Error: "failed to read input file: " + err.Error()}, nil
+	}
+
+	modifiedGenesis, err := s.impl.ModifyGenesis(genesis, opts)
+	if err != nil {
+		return &ModifyGenesisFileResponse{Error: err.Error()}, nil
+	}
+
+	if err := os.WriteFile(req.OutputPath, modifiedGenesis, 0644); err != nil {
+		return &ModifyGenesisFileResponse{Error: "failed to write output file: " + err.Error()}, nil
+	}
+
+	return &ModifyGenesisFileResponse{OutputSize: int64(len(modifiedGenesis))}, nil
 }
 
 // Helper to convert Duration
