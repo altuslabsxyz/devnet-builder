@@ -703,12 +703,16 @@ func (uc *ProvisionUseCase) exportGenesisFromSnapshot(ctx context.Context, input
 	}
 
 	// Step 3: Export genesis from snapshot state
+	// Pass snapshot information to enable genesis export caching
 	uc.logger.Info("Exporting genesis from snapshot state...")
 	exportOpts := ports.StateExportOptions{
-		HomeDir:    exportDir,
-		BinaryPath: input.BinaryPath,
-		RpcGenesis: rpcGenesis,
-		ExportOpts: uc.stateExportSvc.DefaultExportOptions(),
+		HomeDir:           exportDir,
+		BinaryPath:        input.BinaryPath,
+		RpcGenesis:        rpcGenesis,
+		ExportOpts:        uc.stateExportSvc.DefaultExportOptions(),
+		Network:           input.Network,
+		SnapshotURL:       snapshotURL,
+		SnapshotFromCache: fromCache,
 	}
 
 	genesis, err := uc.stateExportSvc.ExportFromSnapshot(ctx, exportOpts)

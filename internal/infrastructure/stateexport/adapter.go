@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	"github.com/b-harvest/devnet-builder/internal/output"
@@ -51,11 +52,37 @@ func (a *Adapter) WithDefaultCommand(cmdBuilder func(homeDir string) []string) *
 }
 
 // ExportFromSnapshot exports genesis from a snapshot's application state.
+// This method supports caching: if the snapshot was loaded from cache AND a valid
+// genesis cache exists for the same network, the cached genesis is returned immediately.
 func (a *Adapter) ExportFromSnapshot(ctx context.Context, opts ports.StateExportOptions) ([]byte, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
+	}
+
+	// Check cache if snapshot was from cache
+	if opts.SnapshotFromCache && opts.Network != "" {
+		a.logger.Debug("Snapshot was cached, checking for cached genesis...")
+		cache, err := GetValidGenesisCache(a.homeDir, opts.Network)
+		if err != nil {
+			a.logger.Debug("Genesis cache check failed: %v", err)
+		}
+		if cache != nil {
+			// Verify the cached genesis is from the same snapshot
+			if cache.SnapshotURL == opts.SnapshotURL || opts.SnapshotURL == "" {
+				// Read cached genesis
+				genesis, err := os.ReadFile(cache.FilePath)
+				if err != nil {
+					a.logger.Debug("Failed to read cached genesis: %v", err)
+				} else {
+					a.logger.Info("Using cached genesis export (expires in %s)", cache.TimeUntilExpiry().Round(time.Minute))
+					return genesis, nil
+				}
+			} else {
+				a.logger.Debug("Cached genesis is from different snapshot, will re-export")
+			}
+		}
 	}
 
 	// Step 1: Prepare for export
@@ -103,6 +130,17 @@ func (a *Adapter) ExportFromSnapshot(ctx context.Context, opts ports.StateExport
 		return nil, &StateExportError{
 			Operation: "validate",
 			Message:   err.Error(),
+		}
+	}
+
+	// Step 6: Save to cache if snapshot was cached
+	if opts.SnapshotFromCache && opts.Network != "" && opts.SnapshotURL != "" {
+		a.logger.Debug("Saving genesis export to cache...")
+		if err := SaveGenesisToCacheWithSnapshot(a.homeDir, opts.Network, opts.SnapshotURL, genesis); err != nil {
+			a.logger.Debug("Failed to save genesis to cache: %v", err)
+			// Don't fail the operation if caching fails
+		} else {
+			a.logger.Debug("Genesis export cached successfully")
 		}
 	}
 

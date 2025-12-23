@@ -342,6 +342,18 @@ type StateExportOptions struct {
 
 	// ExportOpts are the export command options
 	ExportOpts *ExportOptions
+
+	// Network is the network type (e.g., "mainnet", "testnet")
+	// Used for genesis export caching
+	Network string
+
+	// SnapshotURL is the URL of the snapshot this genesis is being exported from
+	// Used to associate the cached genesis with its source snapshot
+	SnapshotURL string
+
+	// SnapshotFromCache indicates whether the snapshot was loaded from cache
+	// When true, genesis export will also attempt to use cached genesis
+	SnapshotFromCache bool
 }
 
 // ExportOptions defines options for genesis state export.
