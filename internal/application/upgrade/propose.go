@@ -126,8 +126,8 @@ func (uc *ProposeUseCase) calculateUpgradeHeight(ctx context.Context, input dto.
 		return 0, err
 	}
 
-	// Estimate block time
-	blockTime, err := uc.rpcClient.GetBlockTime(ctx, 50)
+	// Estimate block time from recent 5 blocks
+	blockTime, err := uc.rpcClient.GetBlockTime(ctx, 5)
 	if err != nil {
 		uc.logger.Debug("Could not estimate block time, using default 2s")
 		blockTime = 2 * time.Second
@@ -136,13 +136,56 @@ func (uc *ProposeUseCase) calculateUpgradeHeight(ctx context.Context, input dto.
 	// Calculate blocks during voting period
 	votingBlocks := int64(input.VotingPeriod / blockTime)
 
-	// Add buffer
+	// Auto-calculate height buffer based on block time
 	buffer := int64(input.HeightBuffer)
 	if buffer == 0 {
-		buffer = 30
+		buffer = uc.calculateHeightBuffer(ctx, currentHeight, blockTime)
+		uc.logger.Debug("Auto-calculated height buffer: %d blocks (based on %.2fs block time)",
+			buffer, blockTime.Seconds())
 	}
 
-	return currentHeight + votingBlocks + buffer, nil
+	upgradeHeight := currentHeight + votingBlocks + buffer
+	uc.logger.Debug("Upgrade height calculation: current=%d + voting=%d + buffer=%d = %d",
+		currentHeight, votingBlocks, buffer, upgradeHeight)
+
+	return upgradeHeight, nil
+}
+
+// calculateHeightBuffer calculates height buffer based on block time.
+// This ensures we have enough time for the upgrade regardless of block speed.
+// Formula: buffer = time_needed / block_time
+// where time_needed is approximately 80 seconds (enough time for validators to prepare).
+func (uc *ProposeUseCase) calculateHeightBuffer(ctx context.Context, currentHeight int64, blockTime time.Duration) int64 {
+	const (
+		defaultBuffer     = 40  // Default buffer when chain height is too low
+		minBuffer         = 10  // Minimum buffer regardless of block time
+		targetBufferTime  = 80 * time.Second // Target time buffer (~80 seconds)
+	)
+
+	// If current height is less than 5, use default buffer
+	if currentHeight < 5 {
+		uc.logger.Debug("Chain height (%d) < 5, using default buffer: %d", currentHeight, defaultBuffer)
+		return defaultBuffer
+	}
+
+	// Calculate buffer based on block time
+	// Goal: Have at least targetBufferTime seconds before upgrade
+	calculatedBuffer := int64(targetBufferTime / blockTime)
+
+	// Ensure minimum buffer
+	if calculatedBuffer < minBuffer {
+		uc.logger.Debug("Calculated buffer (%d) < minimum (%d), using minimum", calculatedBuffer, minBuffer)
+		return minBuffer
+	}
+
+	// Cap at reasonable maximum (e.g., 200 blocks)
+	const maxBuffer = 200
+	if calculatedBuffer > maxBuffer {
+		uc.logger.Debug("Calculated buffer (%d) > maximum (%d), using maximum", calculatedBuffer, maxBuffer)
+		return maxBuffer
+	}
+
+	return calculatedBuffer
 }
 
 func (uc *ProposeUseCase) submitProposal(ctx context.Context, input dto.ProposeInput, upgradeHeight int64, proposer ports.ValidatorKey, evmRPCURL string) (string, uint64, error) {

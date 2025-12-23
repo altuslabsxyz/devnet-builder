@@ -347,7 +347,7 @@ devnet-builder upgrade [flags]
 | `--export-genesis` | bool | false | Export genesis before/after upgrade |
 | `--genesis-dir` | string | | Directory for genesis exports |
 | `--upgrade-height` | int | 0 | Explicit upgrade height (0 = auto-calculate) |
-| `--height-buffer` | int | 30 | Blocks to add after voting period ends |
+| `--height-buffer` | int | 0 | Blocks to add after voting period ends (0 = auto-calculate based on block time from recent 5 blocks) |
 | `--voting-period` | duration | 60s | Expedited voting period duration |
 | `--no-interactive` | bool | false | Disable interactive mode |
 

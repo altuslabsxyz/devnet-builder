@@ -22,7 +22,7 @@ import (
 
 // Default upgrade constants
 const (
-	DefaultHeightBuffer  = 30
+	DefaultHeightBuffer  = 0 // 0 = auto-calculate based on block time
 	DefaultVotingPeriod  = 60 * time.Second
 )
 
@@ -96,7 +96,7 @@ Examples:
 
 	// Optional flags
 	cmd.Flags().StringVar(&votingPeriod, "voting-period", "60s", "Expedited voting period duration")
-	cmd.Flags().IntVar(&heightBuffer, "height-buffer", DefaultHeightBuffer, "Blocks to add after voting period ends")
+	cmd.Flags().IntVar(&heightBuffer, "height-buffer", DefaultHeightBuffer, "Blocks to add after voting period ends (0 = auto-calculate based on block time)")
 	cmd.Flags().Int64Var(&upgradeHeight, "upgrade-height", 0, "Explicit upgrade height (0 = auto-calculate)")
 	cmd.Flags().BoolVar(&exportGenesis, "export-genesis", false, "Export genesis before and after upgrade")
 	cmd.Flags().StringVar(&genesisDir, "genesis-dir", "", "Directory for genesis exports (default: <home>/devnet/genesis-snapshots)")
@@ -397,7 +397,11 @@ func printUpgradePlan(name, mode, targetImage, targetBinary string, cached *dto.
 		fmt.Printf("Target Binary:    %s (cached)\n", cached.BinaryPath)
 	}
 	fmt.Printf("Voting Period:    %s\n", votingPeriod)
-	fmt.Printf("Height Buffer:    %d blocks\n", heightBuffer)
+	if heightBuffer == 0 {
+		fmt.Printf("Height Buffer:    auto-calculate (based on block time)\n")
+	} else {
+		fmt.Printf("Height Buffer:    %d blocks (manual)\n", heightBuffer)
+	}
 	if upgradeHeight > 0 {
 		fmt.Printf("Upgrade Height:   %d (explicit)\n", upgradeHeight)
 	} else {
