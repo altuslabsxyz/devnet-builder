@@ -114,14 +114,19 @@ func (uc *ProvisionUseCase) Execute(ctx context.Context, input dto.ProvisionInpu
 
 	// Determine chain ID to use
 	originalChainID, _ := extractChainID(genesis)
-	pluginChainID := ""
-	if uc.networkModule != nil {
-		pluginChainID = uc.networkModule.DefaultChainID()
-	}
+
+	// Notes: we'll use just forked genesis's chain-id
+	//pluginChainID := ""
+	//if uc.networkModule != nil {
+	//	pluginChainID = uc.networkModule.DefaultChainID()
+	//}
+
 	chainIDToUse := originalChainID
-	if pluginChainID != "" {
-		chainIDToUse = pluginChainID
-	}
+
+	//if pluginChainID != "" {
+	//	chainIDToUse = pluginChainID
+	//}
+
 	metadata.ChainID = chainIDToUse
 
 	// Step 1: Create account keys for validators (for transaction signing)
@@ -246,7 +251,6 @@ func (uc *ProvisionUseCase) downloadAndExtractSnapshot(ctx context.Context, inpu
 	// Extract snapshot
 	return uc.snapshotSvc.Extract(ctx, snapshotPath, input.HomeDir)
 }
-
 
 func (uc *ProvisionUseCase) generateValidators(ctx context.Context, input dto.ProvisionInput, metadata *ports.DevnetMetadata, genesis []byte) ([]*ports.NodeMetadata, error) {
 	// Get chain ID from plugin first (devnet-specific), fallback to genesis
