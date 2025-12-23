@@ -18,6 +18,7 @@ import (
 	infraprocess "github.com/b-harvest/devnet-builder/internal/infrastructure/process"
 	infrarpc "github.com/b-harvest/devnet-builder/internal/infrastructure/rpc"
 	infrasnapshot "github.com/b-harvest/devnet-builder/internal/infrastructure/snapshot"
+	infrastateexport "github.com/b-harvest/devnet-builder/internal/infrastructure/stateexport"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/b-harvest/devnet-builder/internal/output"
 )
@@ -117,6 +118,11 @@ func (f *InfrastructureFactory) CreateGenesisFetcher() ports.GenesisFetcher {
 		// Use module's default docker image if available
 	}
 	return infragenesis.NewFetcherAdapter(f.homeDir, binaryPath, dockerImage, f.dockerMode, f.logger)
+}
+
+// CreateStateExportService creates a StateExportService implementation.
+func (f *InfrastructureFactory) CreateStateExportService() ports.StateExportService {
+	return infrastateexport.NewAdapter(f.homeDir, f.logger)
 }
 
 // CreateNodeInitializer creates a NodeInitializer implementation.
@@ -275,6 +281,7 @@ func (f *InfrastructureFactory) WireContainer(opts ...Option) (*Container, error
 	executor := f.CreateProcessExecutor()
 	snapshotFetcher := f.CreateSnapshotFetcher()
 	genesisFetcher := f.CreateGenesisFetcher()
+	stateExportSvc := f.CreateStateExportService()
 	nodeInitializer := f.CreateNodeInitializer()
 	builder := f.CreateBuilder()
 
@@ -308,6 +315,7 @@ func (f *InfrastructureFactory) WireContainer(opts ...Option) (*Container, error
 		WithEVMClient(evmClient),
 		WithSnapshotFetcher(snapshotFetcher),
 		WithGenesisFetcher(genesisFetcher),
+		WithStateExportService(stateExportSvc),
 		WithNodeInitializer(nodeInitializer),
 		WithHealthChecker(healthChecker),
 		WithBuilder(builder),
@@ -331,6 +339,12 @@ func (f *InfrastructureFactory) WireContainer(opts ...Option) (*Container, error
 type networkModuleAdapter struct {
 	module network.NetworkModule
 }
+
+// Compile-time interface checks.
+var (
+	_ ports.NetworkModule            = (*networkModuleAdapter)(nil)
+	_ ports.FileBasedGenesisModifier = (*networkModuleAdapter)(nil)
+)
 
 func (a *networkModuleAdapter) Name() string {
 	return a.module.Name()
@@ -448,6 +462,36 @@ func (a *networkModuleAdapter) ModifyGenesis(genesis []byte, opts ports.GenesisM
 	return a.module.ModifyGenesis(genesis, networkOpts)
 }
 
+// ModifyGenesisFile implements ports.FileBasedGenesisModifier.
+// This method handles large genesis files that exceed gRPC message size limits (4MB).
+func (a *networkModuleAdapter) ModifyGenesisFile(inputPath, outputPath string, opts ports.GenesisModifyOptions) (int64, error) {
+	// Check if underlying module supports file-based modification
+	fileModifier, ok := a.module.(network.FileBasedGenesisModifier)
+	if !ok {
+		return 0, fmt.Errorf("network module does not support file-based genesis modification")
+	}
+
+	// Convert ports.ValidatorInfo to network.GenesisValidatorInfo
+	validators := make([]network.GenesisValidatorInfo, len(opts.AddValidators))
+	for i, v := range opts.AddValidators {
+		validators[i] = network.GenesisValidatorInfo{
+			Moniker:         v.Moniker,
+			ConsPubKey:      v.ConsPubKey,
+			OperatorAddress: v.OperatorAddress,
+			SelfDelegation:  v.SelfDelegation,
+		}
+	}
+
+	// Convert ports.GenesisModifyOptions to network.GenesisOptions
+	networkOpts := network.GenesisOptions{
+		ChainID:       opts.ChainID,
+		NumValidators: opts.NumValidators,
+		Validators:    validators,
+	}
+
+	return fileModifier.ModifyGenesisFile(inputPath, outputPath, networkOpts)
+}
+
 func (a *networkModuleAdapter) GenesisConfig() ports.GenesisConfig {
 	cfg := a.module.GenesisConfig()
 	return ports.GenesisConfig{
@@ -460,4 +504,25 @@ func (a *networkModuleAdapter) GenesisConfig() ports.GenesisConfig {
 		BaseDenom:        cfg.BaseDenom,
 		BondDenom:        cfg.BondDenom,
 	}
+}
+
+func (a *networkModuleAdapter) GetConfigOverrides(nodeIndex int, opts ports.NodeConfigOptions) ([]byte, []byte, error) {
+	// Convert ports.NodeConfigOptions to network.NodeConfigOptions
+	networkOpts := network.NodeConfigOptions{
+		ChainID:         opts.ChainID,
+		PersistentPeers: opts.PersistentPeers,
+		NumValidators:   opts.NumValidators,
+		IsValidator:     opts.IsValidator,
+		Moniker:         opts.Moniker,
+		Ports: network.PortConfig{
+			RPC:     opts.Ports.RPC,
+			P2P:     opts.Ports.P2P,
+			GRPC:    opts.Ports.GRPC,
+			GRPCWeb: opts.Ports.GRPCWeb,
+			API:     opts.Ports.API,
+			EVMRPC:  opts.Ports.EVM,
+			EVMWS:   opts.Ports.EVMWS,
+		},
+	}
+	return a.module.GetConfigOverrides(nodeIndex, networkOpts)
 }

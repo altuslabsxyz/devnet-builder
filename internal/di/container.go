@@ -39,6 +39,7 @@ type Container struct {
 	evmClient           ports.EVMClient
 	snapshotSvc         ports.SnapshotFetcher
 	genesisSvc          ports.GenesisFetcher
+	stateExportSvc      ports.StateExportService
 	nodeInitializer     ports.NodeInitializer
 	keyManager          ports.KeyManager
 	validatorKeyLoader  ports.ValidatorKeyLoader
@@ -186,6 +187,13 @@ func WithSnapshotFetcher(svc ports.SnapshotFetcher) Option {
 func WithGenesisFetcher(svc ports.GenesisFetcher) Option {
 	return func(c *Container) {
 		c.genesisSvc = svc
+	}
+}
+
+// WithStateExportService sets the state export service.
+func WithStateExportService(svc ports.StateExportService) Option {
+	return func(c *Container) {
+		c.stateExportSvc = svc
 	}
 }
 
@@ -377,6 +385,7 @@ func (c *Container) ProvisionUseCase() *appdevnet.ProvisionUseCase {
 			c.nodeRepo,
 			c.snapshotSvc,
 			c.genesisSvc,
+			c.stateExportSvc,
 			c.nodeInitializer,
 			c.networkModule,
 			c.LoggerPort(),
