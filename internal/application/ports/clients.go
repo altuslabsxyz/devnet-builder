@@ -28,6 +28,9 @@ type RPCClient interface {
 	// GetAppVersion returns the application version from /abci_info.
 	// Returns empty string if the version is not set or cannot be retrieved.
 	GetAppVersion(ctx context.Context) (string, error)
+
+	// GetGovParams retrieves governance parameters from the chain.
+	GetGovParams(ctx context.Context) (*GovParams, error)
 }
 
 // Proposal represents a governance proposal.
@@ -62,6 +65,14 @@ type UpgradePlan struct {
 	Height int64
 	Info   string
 	Time   time.Time
+}
+
+// GovParams represents governance parameters.
+type GovParams struct {
+	VotingPeriod          time.Duration
+	ExpeditedVotingPeriod time.Duration
+	MinDeposit            string
+	ExpeditedMinDeposit   string
 }
 
 // EVMClient defines operations for interacting with EVM RPC.

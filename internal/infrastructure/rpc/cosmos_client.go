@@ -441,5 +441,127 @@ func (c *CosmosRPCClient) GetAppVersion(ctx context.Context) (string, error) {
 	return abciInfo.Result.Response.Version, nil
 }
 
+// GetGovParams retrieves governance parameters from the chain.
+func (c *CosmosRPCClient) GetGovParams(ctx context.Context) (*ports.GovParams, error) {
+	// Query voting params
+	votingURL := c.restBaseURL + "/cosmos/gov/v1/params/voting"
+	req, err := http.NewRequestWithContext(ctx, "GET", votingURL, nil)
+	if err != nil {
+		return nil, &RPCError{Operation: "gov_params", Message: err.Error()}
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, &RPCError{Operation: "gov_params", Message: err.Error()}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, &RPCError{Operation: "gov_params", Message: fmt.Sprintf("HTTP %d", resp.StatusCode)}
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, &RPCError{Operation: "gov_params", Message: err.Error()}
+	}
+
+	var votingParams struct {
+		VotingParams struct {
+			VotingPeriod          string `json:"voting_period"`
+			ExpeditedVotingPeriod string `json:"expedited_voting_period"`
+		} `json:"voting_params"`
+	}
+
+	if err := json.Unmarshal(body, &votingParams); err != nil {
+		return nil, &RPCError{Operation: "gov_params", Message: "failed to parse voting params"}
+	}
+
+	// Query deposit params
+	depositURL := c.restBaseURL + "/cosmos/gov/v1/params/deposit"
+	req, err = http.NewRequestWithContext(ctx, "GET", depositURL, nil)
+	if err != nil {
+		return nil, &RPCError{Operation: "gov_params", Message: err.Error()}
+	}
+
+	resp, err = c.client.Do(req)
+	if err != nil {
+		return nil, &RPCError{Operation: "gov_params", Message: err.Error()}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, &RPCError{Operation: "gov_params", Message: fmt.Sprintf("HTTP %d", resp.StatusCode)}
+	}
+
+	body, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, &RPCError{Operation: "gov_params", Message: err.Error()}
+	}
+
+	var depositParams struct {
+		DepositParams struct {
+			MinDeposit          []struct {
+				Denom  string `json:"denom"`
+				Amount string `json:"amount"`
+			} `json:"min_deposit"`
+			ExpeditedMinDeposit []struct {
+				Denom  string `json:"denom"`
+				Amount string `json:"amount"`
+			} `json:"expedited_min_deposit"`
+		} `json:"deposit_params"`
+	}
+
+	if err := json.Unmarshal(body, &depositParams); err != nil {
+		return nil, &RPCError{Operation: "gov_params", Message: "failed to parse deposit params"}
+	}
+
+	// Parse durations (format: "172800s" -> 172800 seconds)
+	votingPeriod, err := parseDuration(votingParams.VotingParams.VotingPeriod)
+	if err != nil {
+		return nil, &RPCError{Operation: "gov_params", Message: fmt.Sprintf("failed to parse voting_period: %v", err)}
+	}
+
+	expeditedVotingPeriod, err := parseDuration(votingParams.VotingParams.ExpeditedVotingPeriod)
+	if err != nil {
+		return nil, &RPCError{Operation: "gov_params", Message: fmt.Sprintf("failed to parse expedited_voting_period: %v", err)}
+	}
+
+	// Extract min deposit amount (first denom)
+	minDeposit := "0"
+	if len(depositParams.DepositParams.MinDeposit) > 0 {
+		minDeposit = depositParams.DepositParams.MinDeposit[0].Amount
+	}
+
+	expeditedMinDeposit := "0"
+	if len(depositParams.DepositParams.ExpeditedMinDeposit) > 0 {
+		expeditedMinDeposit = depositParams.DepositParams.ExpeditedMinDeposit[0].Amount
+	}
+
+	return &ports.GovParams{
+		VotingPeriod:          votingPeriod,
+		ExpeditedVotingPeriod: expeditedVotingPeriod,
+		MinDeposit:            minDeposit,
+		ExpeditedMinDeposit:   expeditedMinDeposit,
+	}, nil
+}
+
+// parseDuration parses a duration string like "172800s" to time.Duration.
+func parseDuration(s string) (time.Duration, error) {
+	// Remove trailing 's' and parse as seconds
+	if len(s) == 0 {
+		return 0, fmt.Errorf("empty duration string")
+	}
+	if s[len(s)-1] != 's' {
+		return 0, fmt.Errorf("duration must end with 's': %s", s)
+	}
+
+	seconds, err := strconv.ParseInt(s[:len(s)-1], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse duration: %v", err)
+	}
+
+	return time.Duration(seconds) * time.Second, nil
+}
+
 // Ensure CosmosRPCClient implements RPCClient.
 var _ ports.RPCClient = (*CosmosRPCClient)(nil)

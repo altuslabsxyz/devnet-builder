@@ -126,6 +126,20 @@ func (uc *ProposeUseCase) calculateUpgradeHeight(ctx context.Context, input dto.
 		return 0, err
 	}
 
+	// Get governance parameters from chain
+	govParams, err := uc.rpcClient.GetGovParams(ctx)
+	if err != nil {
+		uc.logger.Debug("Could not fetch governance params, using default voting period: %v", err)
+		// Fallback to input voting period if chain query fails
+		govParams = &ports.GovParams{
+			ExpeditedVotingPeriod: input.VotingPeriod,
+		}
+	}
+
+	// Use expedited voting period from chain parameters
+	votingPeriod := govParams.ExpeditedVotingPeriod
+	uc.logger.Debug("Using expedited voting period from chain: %s", votingPeriod)
+
 	// Estimate block time from recent 5 blocks
 	blockTime, err := uc.rpcClient.GetBlockTime(ctx, 5)
 	if err != nil {
@@ -134,7 +148,7 @@ func (uc *ProposeUseCase) calculateUpgradeHeight(ctx context.Context, input dto.
 	}
 
 	// Calculate blocks during voting period
-	votingBlocks := int64(input.VotingPeriod / blockTime)
+	votingBlocks := int64(votingPeriod / blockTime)
 
 	// Auto-calculate height buffer based on block time
 	buffer := int64(input.HeightBuffer)
