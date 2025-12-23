@@ -177,9 +177,10 @@ type GenesisFetcher interface {
 
 // AccountKeyInfo contains information about an account key.
 type AccountKeyInfo struct {
-	Name    string
-	Address string
-	PubKey  string
+	Name     string
+	Address  string
+	PubKey   string
+	Mnemonic string
 }
 
 // NodeInitializer defines operations for initializing blockchain nodes.

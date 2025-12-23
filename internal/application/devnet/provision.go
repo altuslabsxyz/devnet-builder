@@ -144,6 +144,12 @@ func (uc *ProvisionUseCase) Execute(ctx context.Context, input dto.ProvisionInpu
 		return nil, fmt.Errorf("failed to initialize nodes: %w", err)
 	}
 
+	// Step 2.1: Save validator key information to JSON files for export-keys command
+	uc.logger.Debug("Saving validator key information...")
+	if err := uc.saveValidatorKeys(input.HomeDir, accountKeys, uc.networkModule.Bech32Prefix()); err != nil {
+		return nil, fmt.Errorf("failed to save validator keys: %w", err)
+	}
+
 	// Step 2.5: Configure nodes with network-specific settings (config.toml, app.toml)
 	uc.logger.Info("Configuring node settings...")
 	if err := uc.configureNodes(ctx, nodes, chainIDToUse, input.NumValidators); err != nil {
@@ -485,6 +491,50 @@ func (uc *ProvisionUseCase) createAccountKeys(ctx context.Context, accountsDir s
 	}
 
 	return keys, nil
+}
+
+// saveValidatorKeys saves validator key information to JSON files for export-keys command.
+// This creates validator{i}.json in each node directory with account address, valoper address, and mnemonic.
+func (uc *ProvisionUseCase) saveValidatorKeys(homeDir string, accountKeys []*ports.AccountKeyInfo, bech32Prefix string) error {
+	devnetDir := filepath.Join(homeDir, "devnet")
+
+	for i, key := range accountKeys {
+		// Convert account address to valoper address
+		valoperAddress, err := convertToValoperAddress(key.Address, bech32Prefix)
+		if err != nil {
+			return fmt.Errorf("failed to convert address for validator %d: %w", i, err)
+		}
+
+		// Create validator key file structure
+		keyFile := struct {
+			Name       string `json:"name"`
+			Address    string `json:"address"`
+			ValAddress string `json:"val_address"`
+			Mnemonic   string `json:"mnemonic"`
+		}{
+			Name:       key.Name,
+			Address:    key.Address,
+			ValAddress: valoperAddress,
+			Mnemonic:   key.Mnemonic,
+		}
+
+		// Save to node directory
+		nodeDir := filepath.Join(devnetDir, fmt.Sprintf("node%d", i))
+		keyPath := filepath.Join(nodeDir, fmt.Sprintf("validator%d.json", i))
+
+		data, err := json.MarshalIndent(keyFile, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal validator key %d: %w", i, err)
+		}
+
+		if err := os.WriteFile(keyPath, data, 0644); err != nil {
+			return fmt.Errorf("failed to write validator key file %d: %w", i, err)
+		}
+
+		uc.logger.Debug("Saved validator key %d to %s", i, keyPath)
+	}
+
+	return nil
 }
 
 // buildValidatorInfo combines consensus keys from nodes with account addresses.
