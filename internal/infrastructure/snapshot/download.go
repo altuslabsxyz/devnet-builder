@@ -139,9 +139,10 @@ func downloadFile(ctx context.Context, url, destPath string, logger *output.Logg
 	}
 	defer out.Close()
 
-	// Copy with progress (simplified)
+	// Copy with progress
 	contentLength := resp.ContentLength
 	var downloaded int64
+	now := time.Now()
 
 	// Create progress reporter
 	progressReader := &progressReader{
@@ -149,11 +150,19 @@ func downloadFile(ctx context.Context, url, destPath string, logger *output.Logg
 		total:          contentLength,
 		downloaded:     &downloaded,
 		logger:         logger,
-		lastReport:     time.Now(),
-		reportInterval: 5 * time.Second,
+		lastReport:     now,
+		reportInterval: 500 * time.Millisecond, // Update every 500ms for smooth progress
+		startTime:      now,
+		lastDownloaded: 0,
+		lastSpeedCheck: now,
+		currentSpeed:   0,
 	}
 
 	_, err = io.Copy(out, progressReader)
+
+	// Complete progress bar
+	logger.ProgressComplete()
+
 	if err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("failed to write file: %w", err)
@@ -179,6 +188,10 @@ type progressReader struct {
 	logger         *output.Logger
 	lastReport     time.Time
 	reportInterval time.Duration
+	startTime      time.Time
+	lastDownloaded int64
+	lastSpeedCheck time.Time
+	currentSpeed   float64
 }
 
 func (pr *progressReader) Read(p []byte) (int, error) {
@@ -187,16 +200,21 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 
 	// Report progress periodically
 	if time.Since(pr.lastReport) >= pr.reportInterval {
-		pr.lastReport = time.Now()
-		if pr.total > 0 {
-			percent := float64(*pr.downloaded) / float64(pr.total) * 100
-			pr.logger.Debug("Downloaded %.1f%% (%d MB / %d MB)",
-				percent,
-				*pr.downloaded/(1024*1024),
-				pr.total/(1024*1024))
-		} else {
-			pr.logger.Debug("Downloaded %d MB", *pr.downloaded/(1024*1024))
+		now := time.Now()
+
+		// Calculate speed (bytes per second)
+		timeSinceLastCheck := now.Sub(pr.lastSpeedCheck).Seconds()
+		if timeSinceLastCheck > 0 {
+			bytesDownloaded := *pr.downloaded - pr.lastDownloaded
+			pr.currentSpeed = float64(bytesDownloaded) / timeSinceLastCheck
+			pr.lastDownloaded = *pr.downloaded
+			pr.lastSpeedCheck = now
 		}
+
+		pr.lastReport = now
+
+		// Show progress bar (visible by default)
+		pr.logger.Progress(*pr.downloaded, pr.total, pr.currentSpeed)
 	}
 
 	return n, err

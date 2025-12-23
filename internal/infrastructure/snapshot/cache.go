@@ -9,8 +9,10 @@ import (
 )
 
 const (
-	// CacheExpiration is the duration after which a cached snapshot expires.
-	CacheExpiration = 24 * time.Hour
+	// DefaultCacheExpiration is the default duration after which a cached snapshot expires.
+	// Snapshots are large files (1-10GB), so caching for 30 minutes provides a good balance
+	// between avoiding redundant downloads during development and ensuring fresh state.
+	DefaultCacheExpiration = 30 * time.Minute
 )
 
 // SnapshotCache represents a downloaded and cached state snapshot.
@@ -34,8 +36,13 @@ type SnapshotCache struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// NewSnapshotCache creates a new SnapshotCache entry.
+// NewSnapshotCache creates a new SnapshotCache entry with default expiration.
 func NewSnapshotCache(network, filePath, sourceURL, decompressor string, sizeBytes int64) *SnapshotCache {
+	return NewSnapshotCacheWithExpiration(network, filePath, sourceURL, decompressor, sizeBytes, DefaultCacheExpiration)
+}
+
+// NewSnapshotCacheWithExpiration creates a new SnapshotCache entry with custom expiration.
+func NewSnapshotCacheWithExpiration(network, filePath, sourceURL, decompressor string, sizeBytes int64, expiration time.Duration) *SnapshotCache {
 	now := time.Now()
 	return &SnapshotCache{
 		Network:      network,
@@ -44,7 +51,7 @@ func NewSnapshotCache(network, filePath, sourceURL, decompressor string, sizeByt
 		Decompressor: decompressor,
 		SourceURL:    sourceURL,
 		DownloadedAt: now,
-		ExpiresAt:    now.Add(CacheExpiration),
+		ExpiresAt:    now.Add(expiration),
 	}
 }
 

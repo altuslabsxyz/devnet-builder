@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	"github.com/b-harvest/devnet-builder/internal/output"
@@ -51,10 +52,60 @@ func (f *FetcherAdapter) Download(ctx context.Context, url string, destPath stri
 	return nil
 }
 
+// DownloadWithCache downloads a snapshot with caching support.
+// If a valid cached snapshot exists, returns the cached path without downloading.
+// The cache is stored in ~/.devnet-builder/snapshots/<network>/ with 30-minute expiration.
+func (f *FetcherAdapter) DownloadWithCache(ctx context.Context, url, network string, noCache bool) (string, bool, error) {
+	// Check cache first (unless noCache is set)
+	if !noCache {
+		cache, err := GetValidCache(f.homeDir, network)
+		if err != nil {
+			f.logger.Debug("Cache check failed: %v", err)
+		}
+		if cache != nil {
+			// Verify the file still exists
+			if _, err := os.Stat(cache.FilePath); err == nil {
+				f.logger.Info("Using cached snapshot (expires in %s)", cache.TimeUntilExpiry().Round(time.Minute))
+				return cache.FilePath, true, nil
+			}
+			// File doesn't exist, clear invalid cache
+			f.logger.Debug("Cached file not found, will re-download")
+		}
+	}
+
+	// Download to cache directory
+	opts := DownloadOptions{
+		URL:     url,
+		Network: network,
+		HomeDir: f.homeDir,
+		NoCache: noCache,
+		Logger:  f.logger,
+	}
+
+	cache, err := Download(ctx, opts)
+	if err != nil {
+		return "", false, &SnapshotError{
+			Operation: "download",
+			Message:   err.Error(),
+		}
+	}
+
+	return cache.FilePath, false, nil
+}
+
 // Extract extracts a compressed snapshot.
 func (f *FetcherAdapter) Extract(ctx context.Context, archivePath, destPath string) error {
 	// Detect decompressor from file extension
 	decompressor := detectDecompressorFromPath(archivePath)
+
+	// Get archive size for progress estimation
+	archiveInfo, err := os.Stat(archivePath)
+	if err != nil {
+		return &SnapshotError{
+			Operation: "extract",
+			Message:   fmt.Sprintf("failed to stat archive: %v", err),
+		}
+	}
 
 	// Ensure destination directory exists
 	if err := os.MkdirAll(destPath, 0755); err != nil {
@@ -64,10 +115,13 @@ func (f *FetcherAdapter) Extract(ctx context.Context, archivePath, destPath stri
 		}
 	}
 
+	f.logger.Info("Extracting snapshot (%.1f MB)...", float64(archiveInfo.Size())/(1024*1024))
+
 	var cmd *exec.Cmd
 
 	switch decompressor {
 	case "zstd":
+		// Use pv for progress if available, otherwise fallback
 		cmd = exec.CommandContext(ctx, "bash", "-c",
 			fmt.Sprintf("zstd -d -c %q | tar xf - -C %q", archivePath, destPath))
 	case "lz4":
@@ -92,6 +146,7 @@ func (f *FetcherAdapter) Extract(ctx context.Context, archivePath, destPath stri
 		}
 	}
 
+	f.logger.Success("Extraction complete")
 	return nil
 }
 
