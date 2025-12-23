@@ -29,6 +29,7 @@ var (
 	deployExportVersion     string
 	deployStartVersion      string
 	deployImage             string
+	deployFork              bool // Fork live network state via snapshot export
 )
 
 // DeployResult represents the JSON output for the deploy command.
@@ -104,6 +105,10 @@ Examples:
 	// Blockchain network module flag
 	cmd.Flags().StringVar(&deployBlockchainNetwork, "blockchain", "stable",
 		"Blockchain network module (stable, ault)")
+
+	// Fork mode flag - exports genesis from snapshot state instead of RPC genesis
+	cmd.Flags().BoolVar(&deployFork, "fork", true,
+		"Fork live network state (export genesis from snapshot)")
 
 	return cmd
 }
@@ -209,8 +214,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			startVersion = selection.StartVersion
 			deployStableVersion = exportVersion
 		} else {
-			exportVersion = deployStableVersion
-			startVersion = deployStableVersion
+			// Non-interactive: use explicit flags if provided, otherwise fall back to --stable-version
+			if deployExportVersion != "" {
+				exportVersion = deployExportVersion
+			} else {
+				exportVersion = deployStableVersion
+			}
+			if deployStartVersion != "" {
+				startVersion = deployStartVersion
+			} else {
+				startVersion = deployStableVersion
+			}
 		}
 	}
 
@@ -271,6 +285,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		DockerImage:       dockerImage,
 		NoCache:           deployNoCache,
 		CustomBinaryPath:  customBinaryPath,
+		UseSnapshot:       deployFork,
+		BinaryPath:        customBinaryPath,
 	}
 
 	_, err = svc.Provision(ctx, provisionInput)
@@ -513,10 +529,12 @@ func buildBinaryForDeploy(ctx context.Context, blockchainNetwork, ref, networkTy
 	logger.Info("Building binary from source (ref: %s)...", ref)
 
 	// Execute BuildUseCase
+	// Note: ToCache=false means Build() is called which creates the symlink
+	// at ~/.devnet-builder/bin/stabled, required for key creation and node init
 	return container.BuildUseCase().Execute(ctx, dto.BuildInput{
 		Ref:      ref,
 		Network:  networkType,
 		UseCache: true,  // Check cache first
-		ToCache:  true,  // Store in cache for reuse
+		ToCache:  false, // Use Build() to create symlink at bin/stabled
 	})
 }
