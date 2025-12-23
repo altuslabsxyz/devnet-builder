@@ -13,6 +13,7 @@ import (
 
 	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/stateexport"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/tomlutil"
 )
 
@@ -736,6 +737,26 @@ func (uc *ProvisionUseCase) exportGenesisFromSnapshot(ctx context.Context, input
 	}
 	if fromCache {
 		uc.logger.Success("Using cached snapshot")
+	}
+
+	// Step 1.5: Check genesis cache BEFORE extraction
+	// If snapshot was cached and genesis cache exists, use it directly
+	if fromCache && input.Network != "" && !input.NoCache {
+		cache, err := stateexport.GetValidGenesisCache(input.HomeDir, input.Network)
+		if err == nil && cache != nil {
+			// Verify the cached genesis is from the same snapshot
+			if cache.SnapshotURL == snapshotURL {
+				// Read cached genesis
+				genesis, err := os.ReadFile(cache.FilePath)
+				if err == nil {
+					uc.logger.Info("Using cached genesis export (expires in %s)", cache.TimeUntilExpiry().Round(time.Minute))
+					return genesis, nil
+				}
+				uc.logger.Debug("Failed to read cached genesis: %v", err)
+			} else {
+				uc.logger.Debug("Cached genesis is from different snapshot, will re-export")
+			}
+		}
 	}
 
 	// Create temp directory for extraction and export
