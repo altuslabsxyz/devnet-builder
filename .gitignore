@@ -1,6 +1,9 @@
-build/
+/build/
 .idea/
 .vscode/
+
+# Allow source code directories named 'build'
+!internal/**/build/
 
 # Genesis export files
 *.json.export
