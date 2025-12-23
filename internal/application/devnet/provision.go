@@ -113,22 +113,9 @@ func (uc *ProvisionUseCase) Execute(ctx context.Context, input dto.ProvisionInpu
 		genesis = rpcGenesis
 	}
 
-	// Determine chain ID to use
-	originalChainID, _ := extractChainID(genesis)
-
-	// Notes: we'll use just forked genesis's chain-id
-	//pluginChainID := ""
-	//if uc.networkModule != nil {
-	//	pluginChainID = uc.networkModule.DefaultChainID()
-	//}
-
-	chainIDToUse := originalChainID
-
-	//if pluginChainID != "" {
-	//	chainIDToUse = pluginChainID
-	//}
-
-	metadata.ChainID = chainIDToUse
+	// Determine chain ID to use from genesis
+	chainID, _ := extractChainID(genesis)
+	metadata.ChainID = chainID
 
 	// Step 1: Create account keys for validators (for transaction signing)
 	uc.logger.Info("Creating validator account keys...")
@@ -140,7 +127,7 @@ func (uc *ProvisionUseCase) Execute(ctx context.Context, input dto.ProvisionInpu
 
 	// Step 2: Initialize nodes to generate consensus keys (for block signing)
 	uc.logger.Info("Initializing validator nodes...")
-	nodes, err := uc.initializeNodes(ctx, input, chainIDToUse)
+	nodes, err := uc.initializeNodes(ctx, input, chainID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize nodes: %w", err)
 	}
@@ -153,7 +140,7 @@ func (uc *ProvisionUseCase) Execute(ctx context.Context, input dto.ProvisionInpu
 
 	// Step 2.5: Configure nodes with network-specific settings (config.toml, app.toml)
 	uc.logger.Info("Configuring node settings...")
-	if err := uc.configureNodes(ctx, nodes, chainIDToUse, input.NumValidators); err != nil {
+	if err := uc.configureNodes(ctx, nodes, chainID, input.NumValidators); err != nil {
 		return nil, fmt.Errorf("failed to configure nodes: %w", err)
 	}
 
@@ -165,10 +152,10 @@ func (uc *ProvisionUseCase) Execute(ctx context.Context, input dto.ProvisionInpu
 	}
 
 	// Step 4: Modify genesis with validators
-	uc.logger.Info("Modifying genesis for devnet (chainID: %s)...", chainIDToUse)
+	uc.logger.Info("Modifying genesis for devnet (chainID: %s)...", chainID)
 	if uc.networkModule != nil {
 		opts := ports.GenesisModifyOptions{
-			ChainID:       chainIDToUse,
+			ChainID:       chainID,
 			NumValidators: input.NumValidators,
 			AddValidators: validators,
 		}
@@ -259,74 +246,6 @@ func (uc *ProvisionUseCase) downloadAndExtractSnapshot(ctx context.Context, inpu
 	return uc.snapshotSvc.Extract(ctx, snapshotPath, input.HomeDir)
 }
 
-func (uc *ProvisionUseCase) generateValidators(ctx context.Context, input dto.ProvisionInput, metadata *ports.DevnetMetadata, genesis []byte) ([]*ports.NodeMetadata, error) {
-	// Get chain ID from plugin first (devnet-specific), fallback to genesis
-	var chainID string
-	if uc.networkModule != nil {
-		chainID = uc.networkModule.DefaultChainID()
-		if chainID != "" {
-			uc.logger.Debug("Using chain ID from plugin: %s", chainID)
-		}
-	}
-
-	// If plugin doesn't provide a chain ID, extract from genesis
-	if chainID == "" {
-		var err error
-		chainID, err = extractChainID(genesis)
-		if err != nil {
-			return nil, fmt.Errorf("failed to extract chain_id from genesis: %w", err)
-		}
-		uc.logger.Debug("Extracted chain ID from genesis: %s", chainID)
-	}
-	metadata.ChainID = chainID
-
-	nodes := make([]*ports.NodeMetadata, input.NumValidators)
-	defaultPorts := uc.networkModule.DefaultPorts()
-
-	for i := 0; i < input.NumValidators; i++ {
-		nodeDir := filepath.Join(input.HomeDir, "devnet", fmt.Sprintf("node%d", i))
-		moniker := fmt.Sprintf("node%d", i)
-
-		// Create node directory
-		if err := os.MkdirAll(nodeDir, 0755); err != nil {
-			return nil, fmt.Errorf("failed to create node directory %s: %w", nodeDir, err)
-		}
-
-		// Initialize the node
-		uc.logger.Debug("Initializing node %d at %s", i, nodeDir)
-		if err := uc.nodeInitializer.Initialize(ctx, nodeDir, moniker, chainID); err != nil {
-			return nil, fmt.Errorf("failed to initialize node %d: %w", i, err)
-		}
-
-		// Write genesis to node's config
-		genesisPath := filepath.Join(nodeDir, "config", "genesis.json")
-		if err := os.WriteFile(genesisPath, genesis, 0644); err != nil {
-			return nil, fmt.Errorf("failed to write genesis for node %d: %w", i, err)
-		}
-
-		// Get node ID
-		nodeID, err := uc.nodeInitializer.GetNodeID(ctx, nodeDir)
-		if err != nil {
-			uc.logger.Warn("Failed to get node ID for node %d: %v", i, err)
-		}
-
-		nodes[i] = &ports.NodeMetadata{
-			Index:   i,
-			Name:    moniker,
-			HomeDir: nodeDir,
-			ChainID: chainID,
-			NodeID:  nodeID,
-			Ports:   calculateNodePorts(defaultPorts, i),
-		}
-	}
-
-	// Set genesis path in metadata
-	if len(nodes) > 0 {
-		metadata.GenesisPath = filepath.Join(nodes[0].HomeDir, "config", "genesis.json")
-	}
-
-	return nodes, nil
-}
 
 // extractChainID extracts the chain_id from genesis JSON.
 func extractChainID(genesis []byte) (string, error) {

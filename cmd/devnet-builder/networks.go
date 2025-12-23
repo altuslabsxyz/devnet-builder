@@ -82,7 +82,7 @@ func outputNetworksText(networkNames []string) error {
 		fmt.Printf("  Binary:       %s\n", mod.BinaryName())
 		fmt.Printf("  Bech32:       %s\n", mod.Bech32Prefix())
 		fmt.Printf("  Base Denom:   %s\n", mod.BaseDenom())
-		fmt.Printf("  Chain ID:     %s\n", mod.DefaultChainID())
+		fmt.Printf("  Chain ID:     %s\n", "(from genesis)")
 		fmt.Printf("  Docker:       %s\n", mod.DockerImage())
 		fmt.Println()
 	}
@@ -110,7 +110,7 @@ func outputNetworksJSON(networkNames []string) error {
 			BinaryName:  mod.BinaryName(),
 			Bech32:      mod.Bech32Prefix(),
 			BaseDenom:   mod.BaseDenom(),
-			ChainID:     mod.DefaultChainID(),
+			ChainID:     "(from genesis)",
 			DockerImage: mod.DockerImage(),
 		})
 	}
