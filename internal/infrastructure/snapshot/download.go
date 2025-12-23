@@ -29,7 +29,7 @@ const (
 type DownloadOptions struct {
 	URL      string
 	DestPath string
-	Network  string
+	CacheKey string // Format: "plugin-network" (e.g., "stable-mainnet", "ault-testnet")
 	HomeDir  string
 	NoCache  bool
 	Logger   *output.Logger
@@ -44,8 +44,8 @@ func Download(ctx context.Context, opts DownloadOptions) (*SnapshotCache, error)
 	}
 
 	// Check cache first (unless NoCache is set)
-	if !opts.NoCache {
-		cache, err := GetValidCache(opts.HomeDir, opts.Network)
+	if !opts.NoCache && opts.CacheKey != "" {
+		cache, err := GetValidCache(opts.HomeDir, opts.CacheKey)
 		if err != nil {
 			logger.Debug("Cache check failed: %v", err)
 		}
@@ -60,8 +60,8 @@ func Download(ctx context.Context, opts DownloadOptions) (*SnapshotCache, error)
 
 	// Set destination path if not provided
 	destPath := opts.DestPath
-	if destPath == "" {
-		destPath = SnapshotPath(opts.HomeDir, opts.Network, extension)
+	if destPath == "" && opts.CacheKey != "" {
+		destPath = SnapshotPath(opts.HomeDir, opts.CacheKey, extension)
 	}
 
 	// Ensure directory exists
@@ -90,11 +90,13 @@ func Download(ctx context.Context, opts DownloadOptions) (*SnapshotCache, error)
 			}
 
 			// Create cache entry
-			cache := NewSnapshotCache(opts.Network, destPath, opts.URL, decompressor, info.Size())
+			cache := NewSnapshotCache(opts.CacheKey, destPath, opts.URL, decompressor, info.Size())
 
-			// Save cache metadata
-			if err := cache.Save(opts.HomeDir); err != nil {
-				logger.Warn("Failed to save cache metadata: %v", err)
+			// Save cache metadata (only if cache key is provided)
+			if opts.CacheKey != "" {
+				if err := cache.Save(opts.HomeDir); err != nil {
+					logger.Warn("Failed to save cache metadata: %v", err)
+				}
 			}
 
 			return cache, nil

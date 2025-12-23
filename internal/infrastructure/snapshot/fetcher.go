@@ -54,11 +54,12 @@ func (f *FetcherAdapter) Download(ctx context.Context, url string, destPath stri
 
 // DownloadWithCache downloads a snapshot with caching support.
 // If a valid cached snapshot exists, returns the cached path without downloading.
-// The cache is stored in ~/.devnet-builder/snapshots/<network>/ with 30-minute expiration.
-func (f *FetcherAdapter) DownloadWithCache(ctx context.Context, url, network string, noCache bool) (string, bool, error) {
+// The cache is stored in ~/.devnet-builder/snapshots/<cacheKey>/ with 30-minute expiration.
+// cacheKey format: "plugin-network" (e.g., "stable-mainnet", "ault-testnet")
+func (f *FetcherAdapter) DownloadWithCache(ctx context.Context, url, cacheKey string, noCache bool) (string, bool, error) {
 	// Check cache first (unless noCache is set)
 	if !noCache {
-		cache, err := GetValidCache(f.homeDir, network)
+		cache, err := GetValidCache(f.homeDir, cacheKey)
 		if err != nil {
 			f.logger.Debug("Cache check failed: %v", err)
 		}
@@ -75,11 +76,11 @@ func (f *FetcherAdapter) DownloadWithCache(ctx context.Context, url, network str
 
 	// Download to cache directory
 	opts := DownloadOptions{
-		URL:     url,
-		Network: network,
-		HomeDir: f.homeDir,
-		NoCache: noCache,
-		Logger:  f.logger,
+		URL:      url,
+		CacheKey: cacheKey,
+		HomeDir:  f.homeDir,
+		NoCache:  noCache,
+		Logger:   f.logger,
 	}
 
 	cache, err := Download(ctx, opts)
@@ -143,10 +144,10 @@ func (f *FetcherAdapter) Extract(ctx context.Context, archivePath, destPath stri
 	if err != nil {
 		// Extraction failed - likely corrupted archive
 		// Clear the cache so the next attempt will re-download
-		network := extractNetworkFromPath(archivePath)
-		if network != "" {
-			f.logger.Warn("Extraction failed, clearing corrupted cache for network: %s", network)
-			if clearErr := ClearCache(f.homeDir, network); clearErr != nil {
+		cacheKey := extractCacheKeyFromPath(archivePath)
+		if cacheKey != "" {
+			f.logger.Warn("Extraction failed, clearing corrupted cache: %s", cacheKey)
+			if clearErr := ClearCache(f.homeDir, cacheKey); clearErr != nil {
 				f.logger.Debug("Failed to clear cache: %v", clearErr)
 			}
 		}
@@ -161,35 +162,31 @@ func (f *FetcherAdapter) Extract(ctx context.Context, archivePath, destPath stri
 	return nil
 }
 
-// extractNetworkFromPath extracts the network name from a snapshot path.
-// Expected path format: ~/.devnet-builder/snapshots/{network}/snapshot.tar.{ext}
-func extractNetworkFromPath(archivePath string) string {
-	// Get parent directory (should be network name like "mainnet" or "testnet")
+// extractCacheKeyFromPath extracts the cache key from a snapshot path.
+// Expected path format: ~/.devnet-builder/snapshots/{cache-key}/snapshot.tar.{ext}
+// cache-key format: "plugin-network" (e.g., "stable-mainnet", "ault-testnet")
+func extractCacheKeyFromPath(archivePath string) string {
+	// Get parent directory (should be cache key like "stable-mainnet")
 	dir := filepath.Dir(archivePath)
-	network := filepath.Base(dir)
-
-	// Validate it's a known network
-	if network == "mainnet" || network == "testnet" {
-		return network
-	}
+	cacheKey := filepath.Base(dir)
 
 	// Check if grandparent is "snapshots" to confirm path structure
 	grandparent := filepath.Base(filepath.Dir(dir))
 	if grandparent == "snapshots" {
-		return network
+		return cacheKey
 	}
 
 	return ""
 }
 
-// GetLatestSnapshotURL retrieves the latest snapshot URL for a network.
-func (f *FetcherAdapter) GetLatestSnapshotURL(ctx context.Context, network string) (string, error) {
+// GetLatestSnapshotURL retrieves the latest snapshot URL for a cache key.
+func (f *FetcherAdapter) GetLatestSnapshotURL(ctx context.Context, cacheKey string) (string, error) {
 	// Check if there's a cached snapshot URL
-	cache, err := GetValidCache(f.homeDir, network)
+	cache, err := GetValidCache(f.homeDir, cacheKey)
 	if err != nil || cache == nil {
 		return "", &SnapshotError{
 			Operation: "get_latest_url",
-			Message:   fmt.Sprintf("no cached snapshot URL for network %s", network),
+			Message:   fmt.Sprintf("no cached snapshot URL for cache key %s", cacheKey),
 		}
 	}
 
@@ -214,9 +211,10 @@ func detectDecompressorFromPath(path string) string {
 	return "zstd" // Default
 }
 
-// StandardSnapshotPath returns the standard snapshot path for a network.
-func StandardSnapshotPath(homeDir, network, extension string) string {
-	return filepath.Join(homeDir, "snapshots", network, "snapshot"+extension)
+// StandardSnapshotPath returns the standard snapshot path for a cache key.
+// cacheKey format: "plugin-network" (e.g., "stable-mainnet", "ault-testnet")
+func StandardSnapshotPath(homeDir, cacheKey, extension string) string {
+	return filepath.Join(homeDir, "snapshots", cacheKey, "snapshot"+extension)
 }
 
 // Ensure FetcherAdapter implements SnapshotFetcher.

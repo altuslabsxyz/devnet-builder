@@ -19,7 +19,7 @@ const (
 // BEFORE any plugin modifications.
 type GenesisCache struct {
 	// Identification
-	Network string `json:"network"` // "mainnet" or "testnet"
+	CacheKey string `json:"cache_key"` // "plugin-network" format (e.g., "stable-mainnet", "ault-testnet")
 
 	// Genesis Data
 	FilePath  string `json:"file_path"`  // Path to cached genesis.json
@@ -35,15 +35,15 @@ type GenesisCache struct {
 }
 
 // NewGenesisCache creates a new GenesisCache entry with default expiration.
-func NewGenesisCache(network, filePath, snapshotURL, chainID string, sizeBytes int64) *GenesisCache {
-	return NewGenesisCacheWithExpiration(network, filePath, snapshotURL, chainID, sizeBytes, DefaultGenesisCacheExpiration)
+func NewGenesisCache(cacheKey, filePath, snapshotURL, chainID string, sizeBytes int64) *GenesisCache {
+	return NewGenesisCacheWithExpiration(cacheKey, filePath, snapshotURL, chainID, sizeBytes, DefaultGenesisCacheExpiration)
 }
 
 // NewGenesisCacheWithExpiration creates a new GenesisCache entry with custom expiration.
-func NewGenesisCacheWithExpiration(network, filePath, snapshotURL, chainID string, sizeBytes int64, expiration time.Duration) *GenesisCache {
+func NewGenesisCacheWithExpiration(cacheKey, filePath, snapshotURL, chainID string, sizeBytes int64, expiration time.Duration) *GenesisCache {
 	now := time.Now()
 	return &GenesisCache{
-		Network:     network,
+		CacheKey:    cacheKey,
 		FilePath:    filePath,
 		SizeBytes:   sizeBytes,
 		ChainID:     chainID,
@@ -76,23 +76,23 @@ func (g *GenesisCache) TimeUntilExpiry() time.Duration {
 }
 
 // GenesisCacheDir returns the cache directory for genesis (same as snapshot cache).
-func GenesisCacheDir(homeDir, network string) string {
-	return filepath.Join(homeDir, "snapshots", network)
+func GenesisCacheDir(homeDir, cacheKey string) string {
+	return filepath.Join(homeDir, "snapshots", cacheKey)
 }
 
 // GenesisMetadataPath returns the path to the genesis cache metadata file.
-func GenesisMetadataPath(homeDir, network string) string {
-	return filepath.Join(GenesisCacheDir(homeDir, network), "genesis.meta.json")
+func GenesisMetadataPath(homeDir, cacheKey string) string {
+	return filepath.Join(GenesisCacheDir(homeDir, cacheKey), "genesis.meta.json")
 }
 
 // GenesisCachePath returns the path where the cached genesis should be stored.
-func GenesisCachePath(homeDir, network string) string {
-	return filepath.Join(GenesisCacheDir(homeDir, network), "genesis.cached.json")
+func GenesisCachePath(homeDir, cacheKey string) string {
+	return filepath.Join(GenesisCacheDir(homeDir, cacheKey), "genesis.cached.json")
 }
 
 // Save persists the genesis cache metadata to disk.
 func (g *GenesisCache) Save(homeDir string) error {
-	cacheDir := GenesisCacheDir(homeDir, g.Network)
+	cacheDir := GenesisCacheDir(homeDir, g.CacheKey)
 
 	// Ensure directory exists
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
@@ -104,7 +104,7 @@ func (g *GenesisCache) Save(homeDir string) error {
 		return fmt.Errorf("failed to marshal genesis cache metadata: %w", err)
 	}
 
-	metaPath := GenesisMetadataPath(homeDir, g.Network)
+	metaPath := GenesisMetadataPath(homeDir, g.CacheKey)
 	if err := os.WriteFile(metaPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write genesis cache metadata: %w", err)
 	}
@@ -113,8 +113,8 @@ func (g *GenesisCache) Save(homeDir string) error {
 }
 
 // LoadGenesisCache loads genesis cache metadata from disk.
-func LoadGenesisCache(homeDir, network string) (*GenesisCache, error) {
-	metaPath := GenesisMetadataPath(homeDir, network)
+func LoadGenesisCache(homeDir, cacheKey string) (*GenesisCache, error) {
+	metaPath := GenesisMetadataPath(homeDir, cacheKey)
 
 	data, err := os.ReadFile(metaPath)
 	if err != nil {
@@ -132,16 +132,16 @@ func LoadGenesisCache(homeDir, network string) (*GenesisCache, error) {
 	return &cache, nil
 }
 
-// ClearGenesisCache removes the cached genesis for a network.
-func ClearGenesisCache(homeDir, network string) error {
+// ClearGenesisCache removes the cached genesis for a cache key.
+func ClearGenesisCache(homeDir, cacheKey string) error {
 	// Remove cached genesis file
-	genesisPath := GenesisCachePath(homeDir, network)
+	genesisPath := GenesisCachePath(homeDir, cacheKey)
 	if err := os.Remove(genesisPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove cached genesis: %w", err)
 	}
 
 	// Remove metadata
-	metaPath := GenesisMetadataPath(homeDir, network)
+	metaPath := GenesisMetadataPath(homeDir, cacheKey)
 	if err := os.Remove(metaPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove genesis cache metadata: %w", err)
 	}
@@ -150,8 +150,8 @@ func ClearGenesisCache(homeDir, network string) error {
 }
 
 // GetValidGenesisCache returns a valid genesis cache entry if one exists, nil otherwise.
-func GetValidGenesisCache(homeDir, network string) (*GenesisCache, error) {
-	cache, err := LoadGenesisCache(homeDir, network)
+func GetValidGenesisCache(homeDir, cacheKey string) (*GenesisCache, error) {
+	cache, err := LoadGenesisCache(homeDir, cacheKey)
 	if err != nil {
 		return nil, err
 	}
@@ -161,16 +161,17 @@ func GetValidGenesisCache(homeDir, network string) (*GenesisCache, error) {
 	return cache, nil
 }
 
-// GenesisCacheExists returns true if a valid genesis cache exists for the network.
-func GenesisCacheExists(homeDir, network string) bool {
-	cache, err := GetValidGenesisCache(homeDir, network)
+// GenesisCacheExists returns true if a valid genesis cache exists for the cache key.
+func GenesisCacheExists(homeDir, cacheKey string) bool {
+	cache, err := GetValidGenesisCache(homeDir, cacheKey)
 	return err == nil && cache != nil
 }
 
 // SaveGenesisToCacheWithSnapshot saves exported genesis to cache.
 // This should be called after successfully exporting genesis from a snapshot.
 // The snapshotURL is used to associate this genesis with the snapshot it came from.
-func SaveGenesisToCacheWithSnapshot(homeDir, network, snapshotURL string, genesis []byte) error {
+// cacheKey format: "plugin-network" (e.g., "stable-mainnet", "ault-testnet")
+func SaveGenesisToCacheWithSnapshot(homeDir, cacheKey, snapshotURL string, genesis []byte) error {
 	// Extract chain ID from genesis
 	chainID, err := GetChainIDFromGenesis(genesis)
 	if err != nil {
@@ -178,14 +179,14 @@ func SaveGenesisToCacheWithSnapshot(homeDir, network, snapshotURL string, genesi
 	}
 
 	// Write genesis to cache file
-	genesisPath := GenesisCachePath(homeDir, network)
+	genesisPath := GenesisCachePath(homeDir, cacheKey)
 	if err := os.WriteFile(genesisPath, genesis, 0644); err != nil {
 		return fmt.Errorf("failed to write cached genesis: %w", err)
 	}
 
 	// Create cache metadata
 	cache := NewGenesisCache(
-		network,
+		cacheKey,
 		genesisPath,
 		snapshotURL,
 		chainID,

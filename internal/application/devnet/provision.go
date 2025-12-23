@@ -728,10 +728,12 @@ func (uc *ProvisionUseCase) exportGenesisFromSnapshot(ctx context.Context, input
 	}
 
 	// Step 1: Download snapshot with caching
-	// Cached snapshots are stored in ~/.devnet-builder/snapshots/<network>/
+	// Cached snapshots are stored in ~/.devnet-builder/snapshots/<cacheKey>/
 	// Cache expires after 30 minutes by default
+	// Cache key format: "plugin-network" (e.g., "stable-mainnet", "ault-testnet")
+	cacheKey := fmt.Sprintf("%s-%s", input.BlockchainNetwork, input.Network)
 	uc.logger.Info("Downloading snapshot from %s...", snapshotURL)
-	snapshotPath, fromCache, err := uc.snapshotSvc.DownloadWithCache(ctx, snapshotURL, input.Network, input.NoCache)
+	snapshotPath, fromCache, err := uc.snapshotSvc.DownloadWithCache(ctx, snapshotURL, cacheKey, input.NoCache)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download snapshot: %w", err)
 	}
@@ -741,8 +743,8 @@ func (uc *ProvisionUseCase) exportGenesisFromSnapshot(ctx context.Context, input
 
 	// Step 1.5: Check genesis cache BEFORE extraction
 	// If snapshot was cached and genesis cache exists, use it directly
-	if fromCache && input.Network != "" && !input.NoCache {
-		cache, err := stateexport.GetValidGenesisCache(input.HomeDir, input.Network)
+	if fromCache && cacheKey != "" && !input.NoCache {
+		cache, err := stateexport.GetValidGenesisCache(input.HomeDir, cacheKey)
 		if err == nil && cache != nil {
 			// Verify the cached genesis is from the same snapshot
 			if cache.SnapshotURL == snapshotURL {
@@ -781,7 +783,8 @@ func (uc *ProvisionUseCase) exportGenesisFromSnapshot(ctx context.Context, input
 		BinaryPath:        input.BinaryPath,
 		RpcGenesis:        rpcGenesis,
 		ExportOpts:        uc.stateExportSvc.DefaultExportOptions(),
-		Network:           input.Network,
+		Network:           input.Network,            // Keep for backward compatibility
+		CacheKey:          cacheKey,                 // Use composite cache key
 		SnapshotURL:       snapshotURL,
 		SnapshotFromCache: fromCache,
 	}

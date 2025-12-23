@@ -62,9 +62,15 @@ func (a *Adapter) ExportFromSnapshot(ctx context.Context, opts ports.StateExport
 	}
 
 	// Check cache if snapshot was from cache
-	if opts.SnapshotFromCache && opts.Network != "" {
+	// Use CacheKey if provided, fallback to Network for backward compatibility
+	cacheKey := opts.CacheKey
+	if cacheKey == "" {
+		cacheKey = opts.Network
+	}
+
+	if opts.SnapshotFromCache && cacheKey != "" {
 		a.logger.Debug("Snapshot was cached, checking for cached genesis...")
-		cache, err := GetValidGenesisCache(a.homeDir, opts.Network)
+		cache, err := GetValidGenesisCache(a.homeDir, cacheKey)
 		if err != nil {
 			a.logger.Debug("Genesis cache check failed: %v", err)
 		}
@@ -134,9 +140,9 @@ func (a *Adapter) ExportFromSnapshot(ctx context.Context, opts ports.StateExport
 	}
 
 	// Step 6: Save to cache if snapshot was cached
-	if opts.SnapshotFromCache && opts.Network != "" && opts.SnapshotURL != "" {
+	if opts.SnapshotFromCache && cacheKey != "" && opts.SnapshotURL != "" {
 		a.logger.Debug("Saving genesis export to cache...")
-		if err := SaveGenesisToCacheWithSnapshot(a.homeDir, opts.Network, opts.SnapshotURL, genesis); err != nil {
+		if err := SaveGenesisToCacheWithSnapshot(a.homeDir, cacheKey, opts.SnapshotURL, genesis); err != nil {
 			a.logger.Debug("Failed to save genesis to cache: %v", err)
 			// Don't fail the operation if caching fails
 		} else {

@@ -148,19 +148,19 @@ type SnapshotFetcher interface {
 	// If a valid cached snapshot exists, returns the cached path without downloading.
 	// Parameters:
 	//   - url: Snapshot download URL
-	//   - network: Network name for cache organization (e.g., "mainnet", "testnet")
+	//   - cacheKey: Cache key for organization (format: "plugin-network", e.g., "stable-mainnet", "ault-testnet")
 	//   - noCache: If true, ignores cache and always downloads
 	// Returns:
 	//   - snapshotPath: Path to the snapshot file (cached or newly downloaded)
 	//   - fromCache: True if the snapshot was served from cache
 	//   - error: Any error that occurred
-	DownloadWithCache(ctx context.Context, url, network string, noCache bool) (snapshotPath string, fromCache bool, err error)
+	DownloadWithCache(ctx context.Context, url, cacheKey string, noCache bool) (snapshotPath string, fromCache bool, err error)
 
 	// Extract extracts a compressed snapshot.
 	Extract(ctx context.Context, archivePath, destPath string) error
 
-	// GetLatestSnapshotURL retrieves the latest snapshot URL for a network.
-	GetLatestSnapshotURL(ctx context.Context, network string) (string, error)
+	// GetLatestSnapshotURL retrieves the latest snapshot URL for a cache key.
+	GetLatestSnapshotURL(ctx context.Context, cacheKey string) (string, error)
 }
 
 // GenesisFetcher defines operations for fetching genesis data.
@@ -356,8 +356,12 @@ type StateExportOptions struct {
 	ExportOpts *ExportOptions
 
 	// Network is the network type (e.g., "mainnet", "testnet")
-	// Used for genesis export caching
+	// Deprecated: Use CacheKey instead
 	Network string
+
+	// CacheKey is the cache key for genesis export caching
+	// Format: "plugin-network" (e.g., "stable-mainnet", "ault-testnet")
+	CacheKey string
 
 	// SnapshotURL is the URL of the snapshot this genesis is being exported from
 	// Used to associate the cached genesis with its source snapshot

@@ -18,7 +18,7 @@ const (
 // SnapshotCache represents a downloaded and cached state snapshot.
 type SnapshotCache struct {
 	// Identification
-	Network string `json:"network"` // "mainnet" or "testnet"
+	CacheKey string `json:"cache_key"` // "plugin-network" format (e.g., "stable-mainnet", "ault-testnet")
 
 	// File Info
 	FilePath     string `json:"file_path"`
@@ -37,15 +37,15 @@ type SnapshotCache struct {
 }
 
 // NewSnapshotCache creates a new SnapshotCache entry with default expiration.
-func NewSnapshotCache(network, filePath, sourceURL, decompressor string, sizeBytes int64) *SnapshotCache {
-	return NewSnapshotCacheWithExpiration(network, filePath, sourceURL, decompressor, sizeBytes, DefaultCacheExpiration)
+func NewSnapshotCache(cacheKey, filePath, sourceURL, decompressor string, sizeBytes int64) *SnapshotCache {
+	return NewSnapshotCacheWithExpiration(cacheKey, filePath, sourceURL, decompressor, sizeBytes, DefaultCacheExpiration)
 }
 
 // NewSnapshotCacheWithExpiration creates a new SnapshotCache entry with custom expiration.
-func NewSnapshotCacheWithExpiration(network, filePath, sourceURL, decompressor string, sizeBytes int64, expiration time.Duration) *SnapshotCache {
+func NewSnapshotCacheWithExpiration(cacheKey, filePath, sourceURL, decompressor string, sizeBytes int64, expiration time.Duration) *SnapshotCache {
 	now := time.Now()
 	return &SnapshotCache{
-		Network:      network,
+		CacheKey:     cacheKey,
 		FilePath:     filePath,
 		SizeBytes:    sizeBytes,
 		Decompressor: decompressor,
@@ -77,24 +77,24 @@ func (s *SnapshotCache) TimeUntilExpiry() time.Duration {
 	return time.Until(s.ExpiresAt)
 }
 
-// CacheDir returns the cache directory for a given home directory and network.
-func CacheDir(homeDir, network string) string {
-	return filepath.Join(homeDir, "snapshots", network)
+// CacheDir returns the cache directory for a given home directory and cache key.
+func CacheDir(homeDir, cacheKey string) string {
+	return filepath.Join(homeDir, "snapshots", cacheKey)
 }
 
 // MetadataPath returns the path to the cache metadata file.
-func MetadataPath(homeDir, network string) string {
-	return filepath.Join(CacheDir(homeDir, network), "snapshot.meta.json")
+func MetadataPath(homeDir, cacheKey string) string {
+	return filepath.Join(CacheDir(homeDir, cacheKey), "snapshot.meta.json")
 }
 
 // SnapshotPath returns the path where the snapshot file should be stored.
-func SnapshotPath(homeDir, network, extension string) string {
-	return filepath.Join(CacheDir(homeDir, network), "snapshot"+extension)
+func SnapshotPath(homeDir, cacheKey, extension string) string {
+	return filepath.Join(CacheDir(homeDir, cacheKey), "snapshot"+extension)
 }
 
 // Save persists the cache metadata to disk.
 func (s *SnapshotCache) Save(homeDir string) error {
-	cacheDir := CacheDir(homeDir, s.Network)
+	cacheDir := CacheDir(homeDir, s.CacheKey)
 
 	// Ensure directory exists
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
@@ -106,7 +106,7 @@ func (s *SnapshotCache) Save(homeDir string) error {
 		return fmt.Errorf("failed to marshal cache metadata: %w", err)
 	}
 
-	metaPath := MetadataPath(homeDir, s.Network)
+	metaPath := MetadataPath(homeDir, s.CacheKey)
 	if err := os.WriteFile(metaPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write cache metadata: %w", err)
 	}
@@ -115,8 +115,8 @@ func (s *SnapshotCache) Save(homeDir string) error {
 }
 
 // LoadSnapshotCache loads cache metadata from disk.
-func LoadSnapshotCache(homeDir, network string) (*SnapshotCache, error) {
-	metaPath := MetadataPath(homeDir, network)
+func LoadSnapshotCache(homeDir, cacheKey string) (*SnapshotCache, error) {
+	metaPath := MetadataPath(homeDir, cacheKey)
 
 	data, err := os.ReadFile(metaPath)
 	if err != nil {
@@ -134,9 +134,9 @@ func LoadSnapshotCache(homeDir, network string) (*SnapshotCache, error) {
 	return &cache, nil
 }
 
-// ClearCache removes the cached snapshot for a network.
-func ClearCache(homeDir, network string) error {
-	cacheDir := CacheDir(homeDir, network)
+// ClearCache removes the cached snapshot for a cache key.
+func ClearCache(homeDir, cacheKey string) error {
+	cacheDir := CacheDir(homeDir, cacheKey)
 	if err := os.RemoveAll(cacheDir); err != nil {
 		return fmt.Errorf("failed to clear cache: %w", err)
 	}
@@ -153,8 +153,8 @@ func ClearAllCaches(homeDir string) error {
 }
 
 // GetValidCache returns a valid cache entry if one exists, nil otherwise.
-func GetValidCache(homeDir, network string) (*SnapshotCache, error) {
-	cache, err := LoadSnapshotCache(homeDir, network)
+func GetValidCache(homeDir, cacheKey string) (*SnapshotCache, error) {
+	cache, err := LoadSnapshotCache(homeDir, cacheKey)
 	if err != nil {
 		return nil, err
 	}
@@ -164,8 +164,8 @@ func GetValidCache(homeDir, network string) (*SnapshotCache, error) {
 	return cache, nil
 }
 
-// CacheExists returns true if a valid cache exists for the network.
-func CacheExists(homeDir, network string) bool {
-	cache, err := GetValidCache(homeDir, network)
+// CacheExists returns true if a valid cache exists for the cache key.
+func CacheExists(homeDir, cacheKey string) bool {
+	cache, err := GetValidCache(homeDir, cacheKey)
 	return err == nil && cache != nil
 }
