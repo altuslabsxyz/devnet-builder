@@ -67,7 +67,6 @@ require (
 	github.com/desertbit/timer v1.0.1 // indirect
 	github.com/dgraph-io/badger/v4 v4.2.0 // indirect
 	github.com/dgraph-io/ristretto v0.1.1 // indirect
-	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/dvsekhvalnov/jose2go v1.7.0 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.0 // indirect
@@ -160,13 +159,6 @@ require (
 	nhooyr.io/websocket v1.8.11 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
-)
-
-replace (
-	github.com/cometbft/cometbft => github.com/stablelabs/stable-bft v0.38.19-stable-0
-	github.com/cosmos/cosmos-sdk => github.com/stablelabs/stable-sdk v0.53.4-stable-2
-	github.com/cosmos/evm => github.com/stablelabs/stable-evm v0.3.2-stable-3
-	github.com/ethereum/go-ethereum => github.com/stablelabs/stable-geth v1.15.11-stable-0
 )
 
 replace (
