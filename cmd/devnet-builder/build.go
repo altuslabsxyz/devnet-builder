@@ -9,30 +9,30 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/spf13/cobra"
 
-	"github.com/stablelabs/stable-devnet/internal/network"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 )
 
 // buildOpts holds the configuration for the build command.
 type buildOpts struct {
-	numValidators      int
-	numAccounts        int
-	accountBalanceStr  string
+	numValidators       int
+	numAccounts         int
+	accountBalanceStr   string
 	validatorBalanceStr string
-	validatorStakeStr  string
-	outputDir          string
-	chainID            string
-	networkName        string
+	validatorStakeStr   string
+	outputDir           string
+	chainID             string
+	networkName         string
 }
 
 func NewBuildCmd() *cobra.Command {
 	opts := &buildOpts{
-		numValidators:      4,
-		numAccounts:        10,
-		accountBalanceStr:  "1000000000000000000000astable,500000000000000000000agusdt",
+		numValidators:       4,
+		numAccounts:         10,
+		accountBalanceStr:   "1000000000000000000000astable,500000000000000000000agusdt",
 		validatorBalanceStr: "1000000000000000000000astable,500000000000000000000agusdt",
-		validatorStakeStr:  "100000000000000000000",
-		outputDir:          "./devnet",
-		networkName:        "stable",
+		validatorStakeStr:   "100000000000000000000",
+		outputDir:           "./devnet",
+		networkName:         "stable",
 	}
 
 	cmd := &cobra.Command{

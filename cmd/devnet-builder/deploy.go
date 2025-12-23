@@ -7,14 +7,14 @@ import (
 	"os"
 	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/application/dto"
+	"github.com/b-harvest/devnet-builder/internal/config"
+	"github.com/b-harvest/devnet-builder/internal/di"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/builder"
-	"github.com/stablelabs/stable-devnet/internal/config"
-	"github.com/stablelabs/stable-devnet/internal/devnet"
-	"github.com/stablelabs/stable-devnet/internal/github"
-	"github.com/stablelabs/stable-devnet/internal/interactive"
-	"github.com/stablelabs/stable-devnet/internal/network"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 var (
@@ -29,6 +29,7 @@ var (
 	deployExportVersion     string
 	deployStartVersion      string
 	deployImage             string
+	deployFork              bool // Fork live network state via snapshot export
 )
 
 // DeployResult represents the JSON output for the deploy command.
@@ -105,6 +106,10 @@ Examples:
 	cmd.Flags().StringVar(&deployBlockchainNetwork, "blockchain", "stable",
 		"Blockchain network module (stable, ault)")
 
+	// Fork mode flag - exports genesis from snapshot state instead of RPC genesis
+	cmd.Flags().BoolVar(&deployFork, "fork", true,
+		"Fork live network state (export genesis from snapshot)")
+
 	return cmd
 }
 
@@ -143,14 +148,14 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Apply environment variables (env overrides config.toml but not flags)
-	if network := os.Getenv("STABLE_DEVNET_NETWORK"); network != "" && !cmd.Flags().Changed("network") {
-		fileCfg.Network = &network
+	if networkEnv := os.Getenv("STABLE_DEVNET_NETWORK"); networkEnv != "" && !cmd.Flags().Changed("network") {
+		fileCfg.Network = &networkEnv
 	}
-	if mode := os.Getenv("STABLE_DEVNET_MODE"); mode != "" && !cmd.Flags().Changed("mode") {
-		fileCfg.Mode = &mode
+	if modeEnv := os.Getenv("STABLE_DEVNET_MODE"); modeEnv != "" && !cmd.Flags().Changed("mode") {
+		fileCfg.Mode = &modeEnv
 	}
-	if version := os.Getenv("STABLE_VERSION"); version != "" && !cmd.Flags().Changed("stable-version") {
-		fileCfg.StableVersion = &version
+	if versionEnv := os.Getenv("STABLE_VERSION"); versionEnv != "" && !cmd.Flags().Changed("stable-version") {
+		fileCfg.StableVersion = &versionEnv
 	}
 
 	// Run partial interactive setup for missing base config values
@@ -180,7 +185,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Track if versions are custom refs
-	var exportIsCustomRef bool
 	var exportVersion string
 	var startVersion string
 	var dockerImage string
@@ -193,11 +197,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if deployMode == "docker" {
 		resolvedImage, err := resolveDeployDockerImage(ctx, cmd, isInteractive)
 		if err != nil {
-			if interactive.IsCancellation(err) {
-				fmt.Println("Operation cancelled.")
-				return nil
-			}
-			return err
+			return wrapInteractiveError(cmd, err, "failed to resolve docker image")
 		}
 		dockerImage = resolvedImage
 		exportVersion = deployStableVersion
@@ -207,20 +207,24 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		if isInteractive {
 			selection, err := runDeployInteractiveSelection(ctx, cmd)
 			if err != nil {
-				if interactive.IsCancellation(err) {
-					fmt.Println("Operation cancelled.")
-					return nil
-				}
-				return err
+				return wrapInteractiveError(cmd, err, "failed to fetch versions")
 			}
 			deployNetwork = selection.Network
 			exportVersion = selection.ExportVersion
-			exportIsCustomRef = selection.ExportIsCustomRef
 			startVersion = selection.StartVersion
 			deployStableVersion = exportVersion
 		} else {
-			exportVersion = deployStableVersion
-			startVersion = deployStableVersion
+			// Non-interactive: use explicit flags if provided, otherwise fall back to --stable-version
+			if deployExportVersion != "" {
+				exportVersion = deployExportVersion
+			} else {
+				exportVersion = deployStableVersion
+			}
+			if deployStartVersion != "" {
+				startVersion = deployStartVersion
+			} else {
+				startVersion = deployStableVersion
+			}
 		}
 	}
 
@@ -240,167 +244,143 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unknown blockchain network: %s (available: %v)", deployBlockchainNetwork, available)
 	}
 
+	// Get network module for DI container
+	networkModule, err := network.Get(deployBlockchainNetwork)
+	if err != nil {
+		return fmt.Errorf("failed to get network module: %w", err)
+	}
+
 	// Check if devnet already exists
-	if devnet.DevnetExists(homeDir) {
+	svc, err := getCleanServiceWithConfig(CleanServiceConfig{
+		NetworkModule: networkModule,
+		DockerMode:    deployMode == "docker",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to initialize service: %w", err)
+	}
+	if svc.DevnetExists() {
 		return fmt.Errorf("devnet already exists at %s\nUse 'devnet-builder destroy' to remove it first", homeDir)
 	}
 
 	// Build binary for local mode (all versions need to be built/cached)
 	var customBinaryPath string
 	if deployMode == "local" {
-		networkModule, _ := network.Get(deployBlockchainNetwork)
-		b := builder.NewBuilder(homeDir, logger, networkModule)
-		logger.Info("Building binary from source (ref: %s)...", startVersion)
-		result, err := b.Build(ctx, builder.BuildOptions{
-			Ref:     startVersion,
-			Network: deployNetwork,
-		})
+		buildResult, err := buildBinaryForDeploy(ctx, deployBlockchainNetwork, startVersion, deployNetwork, logger)
 		if err != nil {
 			return fmt.Errorf("failed to build from source: %w", err)
 		}
-		customBinaryPath = result.BinaryPath
-		logger.Success("Binary built: %s (commit: %s)", result.BinaryPath, result.CommitHash)
+		customBinaryPath = buildResult.BinaryPath
+		logger.Success("Binary built: %s (commit: %s)", buildResult.BinaryPath, buildResult.CommitHash)
 	}
 
-	// Store start version info in metadata for reference
-	_ = startVersion
-	_ = exportIsCustomRef
-
-	// Phase 1: Provision (create config, generate validators)
-	provisionOpts := devnet.ProvisionOptions{
+	// Phase 1: Provision using CleanDevnetService
+	provisionInput := dto.ProvisionInput{
 		HomeDir:           homeDir,
 		Network:           deployNetwork,
 		BlockchainNetwork: deployBlockchainNetwork,
 		NumValidators:     deployValidators,
 		NumAccounts:       deployAccounts,
-		Mode:              devnet.ExecutionMode(deployMode),
+		Mode:              deployMode,
 		StableVersion:     exportVersion,
 		DockerImage:       dockerImage,
 		NoCache:           deployNoCache,
-		Logger:            logger,
+		CustomBinaryPath:  customBinaryPath,
+		UseSnapshot:       deployFork,
+		BinaryPath:        customBinaryPath,
 	}
 
-	_, err = devnet.Provision(ctx, provisionOpts)
+	_, err = svc.Provision(ctx, provisionInput)
 	if err != nil {
 		if jsonMode {
-			return outputDeployError(err)
+			return outputDeployErrorClean(err)
 		}
 		return err
 	}
 
-	// Phase 2: Run (start nodes)
-	// For local mode, we always build/cache binary, so always use custom path
-	useCustomBinary := deployMode == "local" && customBinaryPath != ""
-	runOpts := devnet.RunOptions{
-		HomeDir:          homeDir,
-		Mode:             devnet.ExecutionMode(deployMode),
-		StableVersion:    exportVersion,
-		HealthTimeout:    devnet.HealthCheckTimeout,
-		Logger:           logger,
-		IsCustomRef:      useCustomBinary,
-		CustomBinaryPath: customBinaryPath,
-	}
-
-	runResult, err := devnet.Run(ctx, runOpts)
+	// Phase 2: Run using CleanDevnetService
+	runResult, err := svc.Start(ctx, 5*time.Minute)
 	if err != nil {
-		if runResult != nil && runResult.Devnet != nil {
-			if jsonMode {
-				return outputDeployJSONFromRunResult(runResult, err)
-			}
-		}
 		if jsonMode {
-			return outputDeployError(err)
+			return outputDeployErrorClean(err)
 		}
 		return err
 	}
+
+	// Get devnet info for output
+	devnetInfo, _ := svc.LoadDevnetInfo(ctx)
 
 	// Output result
 	if jsonMode {
-		return outputDeployJSON(runResult.Devnet)
+		return outputDeployJSONClean(runResult, devnetInfo)
 	}
-	return outputDeployText(runResult.Devnet)
+	return outputDeployTextClean(runResult, devnetInfo)
 }
 
-func outputDeployJSONFromRunResult(result *devnet.RunResult, err error) error {
-	jsonResult := DeployResult{
-		Status:            "partial",
-		ChainID:           result.Devnet.Metadata.ChainID,
-		Network:           result.Devnet.Metadata.NetworkSource,
-		BlockchainNetwork: result.Devnet.Metadata.BlockchainNetwork,
-		Mode:              string(result.Devnet.Metadata.ExecutionMode),
-		DockerImage:       result.Devnet.Metadata.DockerImage,
-		Validators:        result.Devnet.Metadata.NumValidators,
-		Nodes:             make([]NodeResult, len(result.Devnet.Nodes)),
+func outputDeployTextClean(result *dto.RunOutput, devnetInfo *dto.DevnetInfo) error {
+	fmt.Println()
+	output.Bold("Chain ID:     %s", devnetInfo.ChainID)
+	output.Info("Network:      %s", devnetInfo.NetworkSource)
+	output.Info("Blockchain:   %s", devnetInfo.BlockchainNetwork)
+	output.Info("Mode:         %s", devnetInfo.ExecutionMode)
+	if devnetInfo.DockerImage != "" {
+		output.Info("Docker Image: %s", devnetInfo.DockerImage)
+	}
+	output.Info("Validators:   %d", devnetInfo.NumValidators)
+	fmt.Println()
+	output.Bold("Endpoints:")
+
+	for _, n := range devnetInfo.Nodes {
+		status := "running"
+		for _, ns := range result.Nodes {
+			if ns.Index == n.Index && !ns.IsRunning {
+				status = "failed"
+				break
+			}
+		}
+		if status == "running" {
+			fmt.Printf("  Node %d: %s (RPC) | %s (EVM)\n",
+				n.Index, n.RPCURL, n.EVMURL)
+		} else {
+			fmt.Printf("  Node %d: [FAILED]\n", n.Index)
+		}
 	}
 
-	for i, n := range result.Devnet.Nodes {
+	return nil
+}
+
+func outputDeployJSONClean(result *dto.RunOutput, devnetInfo *dto.DevnetInfo) error {
+	jsonResult := DeployResult{
+		Status:            "success",
+		ChainID:           devnetInfo.ChainID,
+		Network:           devnetInfo.NetworkSource,
+		BlockchainNetwork: devnetInfo.BlockchainNetwork,
+		Mode:              devnetInfo.ExecutionMode,
+		DockerImage:       devnetInfo.DockerImage,
+		Validators:        devnetInfo.NumValidators,
+		Nodes:             make([]NodeResult, len(devnetInfo.Nodes)),
+	}
+
+	if !result.AllRunning {
+		jsonResult.Status = "partial"
+	}
+
+	for i, n := range devnetInfo.Nodes {
 		status := "running"
-		for _, fn := range result.FailedNodes {
-			if fn.Index == n.Index {
+		for _, ns := range result.Nodes {
+			if ns.Index == n.Index && !ns.IsRunning {
 				status = "failed"
 				break
 			}
 		}
 		jsonResult.Nodes[i] = NodeResult{
 			Index:  n.Index,
-			RPC:    n.RPCURL(),
-			EVMRPC: n.EVMRPCURL(),
+			RPC:    n.RPCURL,
+			EVMRPC: n.EVMURL,
 			Status: status,
 		}
 	}
 
-	data, jsonErr := json.MarshalIndent(jsonResult, "", "  ")
-	if jsonErr != nil {
-		return jsonErr
-	}
-
-	fmt.Println(string(data))
-	return err
-}
-
-func outputDeployText(d *devnet.Devnet) error {
-	fmt.Println()
-	output.Bold("Chain ID:     %s", d.Metadata.ChainID)
-	output.Info("Network:      %s", d.Metadata.NetworkSource)
-	output.Info("Blockchain:   %s", d.Metadata.BlockchainNetwork)
-	output.Info("Mode:         %s", d.Metadata.ExecutionMode)
-	if d.Metadata.DockerImage != "" {
-		output.Info("Docker Image: %s", d.Metadata.DockerImage)
-	}
-	output.Info("Validators:   %d", d.Metadata.NumValidators)
-	fmt.Println()
-	output.Bold("Endpoints:")
-
-	for _, n := range d.Nodes {
-		fmt.Printf("  Node %d: %s (RPC) | %s (EVM)\n",
-			n.Index, n.RPCURL(), n.EVMRPCURL())
-	}
-
-	return nil
-}
-
-func outputDeployJSON(d *devnet.Devnet) error {
-	result := DeployResult{
-		Status:            "success",
-		ChainID:           d.Metadata.ChainID,
-		Network:           d.Metadata.NetworkSource,
-		BlockchainNetwork: d.Metadata.BlockchainNetwork,
-		Mode:              string(d.Metadata.ExecutionMode),
-		DockerImage:       d.Metadata.DockerImage,
-		Validators:        d.Metadata.NumValidators,
-		Nodes:             make([]NodeResult, len(d.Nodes)),
-	}
-
-	for i, n := range d.Nodes {
-		result.Nodes[i] = NodeResult{
-			Index:  n.Index,
-			RPC:    n.RPCURL(),
-			EVMRPC: n.EVMRPCURL(),
-			Status: string(n.Status),
-		}
-	}
-
-	data, err := json.MarshalIndent(result, "", "  ")
+	data, err := json.MarshalIndent(jsonResult, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -409,7 +389,7 @@ func outputDeployJSON(d *devnet.Devnet) error {
 	return nil
 }
 
-func outputDeployError(err error) error {
+func outputDeployErrorClean(err error) error {
 	result := map[string]interface{}{
 		"error":   true,
 		"code":    getErrorCode(err),
@@ -436,9 +416,12 @@ func runDeployInteractiveSelection(ctx context.Context, cmd *cobra.Command) (*in
 	clientOpts := []github.ClientOption{
 		github.WithCache(cacheManager),
 	}
-	if fileCfg != nil && fileCfg.GitHubToken != nil && *fileCfg.GitHubToken != "" {
-		clientOpts = append(clientOpts, github.WithToken(*fileCfg.GitHubToken))
+
+	// Resolve GitHub token from keychain, environment, or config file
+	if token, found := resolveGitHubToken(fileCfg); found {
+		clientOpts = append(clientOpts, github.WithToken(token))
 	}
+
 	client := github.NewClient(clientOpts...)
 
 	selector := interactive.NewSelector(client)
@@ -487,9 +470,12 @@ func runDeployDockerImageSelection(ctx context.Context) (*DockerImageSelectionRe
 	clientOpts := []github.ClientOption{
 		github.WithCache(cacheManager),
 	}
-	if fileCfg != nil && fileCfg.GitHubToken != nil && *fileCfg.GitHubToken != "" {
-		clientOpts = append(clientOpts, github.WithToken(*fileCfg.GitHubToken))
+
+	// Resolve GitHub token from keychain, environment, or config file
+	if token, found := resolveGitHubToken(fileCfg); found {
+		clientOpts = append(clientOpts, github.WithToken(token))
 	}
+
 	client := github.NewClient(clientOpts...)
 
 	versions, fromCache, err := client.GetImageVersionsWithCache(ctx, DefaultDockerPackage)
@@ -519,4 +505,36 @@ func runDeployDockerImageSelection(ctx context.Context) (*DockerImageSelectionRe
 		IsCustom:  isCustom,
 		FromCache: fromCache,
 	}, nil
+}
+
+// buildBinaryForDeploy builds a binary using DI container and BuildUseCase.
+// This replaces direct usage of the legacy builder package.
+func buildBinaryForDeploy(ctx context.Context, blockchainNetwork, ref, networkType string, logger *output.Logger) (*dto.BuildOutput, error) {
+	// Get network module
+	networkModule, err := network.Get(blockchainNetwork)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network module: %w", err)
+	}
+
+	// Create DI factory with network module
+	factory := di.NewInfrastructureFactory(homeDir, logger).
+		WithNetworkModule(networkModule)
+
+	// Wire container
+	container, err := factory.WireContainer()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize: %w", err)
+	}
+
+	logger.Info("Building binary from source (ref: %s)...", ref)
+
+	// Execute BuildUseCase
+	// Note: ToCache=false means Build() is called which creates the symlink
+	// at ~/.devnet-builder/bin/stabled, required for key creation and node init
+	return container.BuildUseCase().Execute(ctx, dto.BuildInput{
+		Ref:      ref,
+		Network:  networkType,
+		UseCache: true,  // Check cache first
+		ToCache:  false, // Use Build() to create symlink at bin/stabled
+	})
 }

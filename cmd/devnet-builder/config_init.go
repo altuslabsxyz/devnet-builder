@@ -5,16 +5,16 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/b-harvest/devnet-builder/internal/config"
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/config"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 // Sample config.toml template
 const sampleConfigTemplate = `# devnet-builder configuration file
 # Priority: default < config.toml < environment < CLI flag
 #
-# This file is located at: ~/.stable-devnet/config.toml
+# This file is located at: ~/.devnet-builder/config.toml
 # Use --config /path/to/config.toml to specify an alternative location
 
 # =============================================================================
@@ -22,7 +22,7 @@ const sampleConfigTemplate = `# devnet-builder configuration file
 # =============================================================================
 
 # Base directory for devnet data
-# home = "~/.stable-devnet"
+# home = "~/.devnet-builder"
 
 # Enable verbose logging
 # verbose = false
@@ -80,7 +80,7 @@ Use --template to generate a sample config file with all available options
 instead of running the interactive setup.
 
 Examples:
-  # Interactive configuration (creates/updates ~/.stable-devnet/config.toml)
+  # Interactive configuration (creates/updates ~/.devnet-builder/config.toml)
   devnet-builder config init
 
   # Generate a template config file
@@ -95,7 +95,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVarP(&configInitOutput, "output", "o", "",
-		"Output path for config file (default: ~/.stable-devnet/config.toml)")
+		"Output path for config file (default: ~/.devnet-builder/config.toml)")
 	cmd.Flags().BoolVarP(&configInitForce, "force", "f", false,
 		"Overwrite existing config with defaults without prompting")
 	cmd.Flags().BoolVarP(&configInitTemplate, "template", "t", false,

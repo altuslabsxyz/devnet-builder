@@ -1,15 +1,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
-	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/application/dto"
+	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/b-harvest/devnet-builder/internal/di"
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/cache"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 // NewCacheCmd creates the cache command group.
@@ -76,49 +78,50 @@ Shows commit hash, ref, build time, size, and network for each cached binary.`,
 }
 
 func runCacheList(cmd *cobra.Command, args []string) error {
-	logger := output.DefaultLogger
+	ctx := context.Background()
 
-	// Initialize cache
-	binaryCache := cache.NewBinaryCache(homeDir, logger)
-	if err := binaryCache.Initialize(); err != nil {
-		return fmt.Errorf("failed to initialize cache: %w", err)
+	// Create DI container for cache operations (uses default binary name)
+	container, err := createCacheContainer()
+	if err != nil {
+		return fmt.Errorf("failed to initialize: %w", err)
 	}
 
-	entries := binaryCache.List()
-	stats := binaryCache.Stats()
-
-	// Sort by build time (newest first)
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].BuildTime.After(entries[j].BuildTime)
+	// Execute CacheListUseCase
+	result, err := container.CacheListUseCase().Execute(ctx, dto.CacheListInput{
+		ShowDetails: true,
 	})
+	if err != nil {
+		return fmt.Errorf("failed to list cache: %w", err)
+	}
 
 	if jsonMode {
-		return outputCacheListJSON(entries, stats)
+		return outputCacheListJSON(result)
 	}
-	return outputCacheListText(entries, stats)
+	return outputCacheListText(result)
 }
 
-func outputCacheListJSON(entries []*cache.CachedBinary, stats *cache.CacheStats) error {
-	result := CacheListJSON{
-		TotalEntries: stats.TotalEntries,
-		TotalSize:    stats.TotalSize,
-		TotalHuman:   formatBytes(stats.TotalSize),
-		Entries:      make([]CacheEntryJSON, len(entries)),
-	}
-
-	for i, entry := range entries {
-		result.Entries[i] = CacheEntryJSON{
-			CommitHash: entry.CommitHash,
-			Ref:        entry.Ref,
-			BuildTime:  entry.BuildTime.Format(time.RFC3339),
-			Size:       entry.Size,
-			SizeHuman:  formatBytes(entry.Size),
-			Network:    entry.Network,
-			Path:       entry.BinaryPath,
+func outputCacheListJSON(result *dto.CacheListOutput) error {
+	entries := make([]CacheEntryJSON, len(result.Binaries))
+	for i, b := range result.Binaries {
+		entries[i] = CacheEntryJSON{
+			CommitHash: b.CommitHash,
+			Ref:        b.Ref,
+			BuildTime:  b.BuildTime,
+			Size:       b.Size,
+			SizeHuman:  formatBytes(b.Size),
+			Network:    b.Network,
+			Path:       b.Path,
 		}
 	}
 
-	data, err := json.MarshalIndent(result, "", "  ")
+	jsonResult := CacheListJSON{
+		TotalEntries: len(result.Binaries),
+		TotalSize:    result.TotalSize,
+		TotalHuman:   formatBytes(result.TotalSize),
+		Entries:      entries,
+	}
+
+	data, err := json.MarshalIndent(jsonResult, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -126,8 +129,8 @@ func outputCacheListJSON(entries []*cache.CachedBinary, stats *cache.CacheStats)
 	return nil
 }
 
-func outputCacheListText(entries []*cache.CachedBinary, stats *cache.CacheStats) error {
-	if len(entries) == 0 {
+func outputCacheListText(result *dto.CacheListOutput) error {
+	if len(result.Binaries) == 0 {
 		fmt.Println("No cached binaries found.")
 		fmt.Println()
 		fmt.Println("Binaries are cached when you run:")
@@ -135,13 +138,20 @@ func outputCacheListText(entries []*cache.CachedBinary, stats *cache.CacheStats)
 		return nil
 	}
 
+	// Sort by build time (newest first) - parse time strings for sorting
+	binaries := make([]dto.CacheBinary, len(result.Binaries))
+	copy(binaries, result.Binaries)
+	sort.Slice(binaries, func(i, j int) bool {
+		return binaries[i].BuildTime > binaries[j].BuildTime
+	})
+
 	output.Bold("Cached Binaries")
 	fmt.Println("─────────────────────────────────────────────────────────────────────────")
 	fmt.Printf("%-12s  %-20s  %-19s  %-10s  %s\n",
 		"COMMIT", "REF", "BUILD TIME", "SIZE", "NETWORK")
 	fmt.Println("─────────────────────────────────────────────────────────────────────────")
 
-	for _, entry := range entries {
+	for _, entry := range binaries {
 		commitShort := entry.CommitHash
 		if len(commitShort) > 12 {
 			commitShort = commitShort[:12]
@@ -152,7 +162,7 @@ func outputCacheListText(entries []*cache.CachedBinary, stats *cache.CacheStats)
 			ref = ref[:17] + "..."
 		}
 
-		buildTime := entry.BuildTime.Format("2006-01-02 15:04:05")
+		buildTime := entry.BuildTime
 		size := formatBytes(entry.Size)
 		network := entry.Network
 		if network == "" {
@@ -164,7 +174,7 @@ func outputCacheListText(entries []*cache.CachedBinary, stats *cache.CacheStats)
 	}
 
 	fmt.Println("─────────────────────────────────────────────────────────────────────────")
-	fmt.Printf("Total: %d entries, %s\n", stats.TotalEntries, formatBytes(stats.TotalSize))
+	fmt.Printf("Total: %d entries, %s\n", len(result.Binaries), formatBytes(result.TotalSize))
 	fmt.Println()
 
 	return nil
@@ -191,15 +201,17 @@ This frees up disk space but will require rebuilding binaries on next upgrade.`,
 }
 
 func runCacheClean(force bool) error {
-	logger := output.DefaultLogger
+	ctx := context.Background()
 
-	// Initialize cache
-	binaryCache := cache.NewBinaryCache(homeDir, logger)
-	if err := binaryCache.Initialize(); err != nil {
-		return fmt.Errorf("failed to initialize cache: %w", err)
+	// Create DI container for cache operations
+	container, err := createCacheContainer()
+	if err != nil {
+		return fmt.Errorf("failed to initialize: %w", err)
 	}
 
-	stats := binaryCache.Stats()
+	// Get cache info for confirmation
+	cache := container.BinaryCache()
+	stats := cache.Stats()
 
 	if stats.TotalEntries == 0 {
 		fmt.Println("Cache is already empty.")
@@ -219,21 +231,24 @@ func runCacheClean(force bool) error {
 		}
 	}
 
-	// Clean cache
-	if err := binaryCache.Clean(); err != nil {
+	// Execute CacheCleanUseCase
+	result, err := container.CacheCleanUseCase().Execute(ctx, dto.CacheCleanInput{
+		KeepActive: false,
+	})
+	if err != nil {
 		return fmt.Errorf("failed to clean cache: %w", err)
 	}
 
 	if jsonMode {
-		result := map[string]interface{}{
+		jsonResult := map[string]interface{}{
 			"status":          "cleaned",
-			"entries_removed": stats.TotalEntries,
-			"bytes_freed":     stats.TotalSize,
+			"entries_removed": len(result.Removed),
+			"bytes_freed":     result.SpaceFreed,
 		}
-		data, _ := json.MarshalIndent(result, "", "  ")
+		data, _ := json.MarshalIndent(jsonResult, "", "  ")
 		fmt.Println(string(data))
 	} else {
-		output.Success("Cache cleaned: %d entries removed (%s freed)", stats.TotalEntries, formatBytes(stats.TotalSize))
+		output.Success("Cache cleaned: %d entries removed (%s freed)", len(result.Removed), formatBytes(result.SpaceFreed))
 	}
 
 	return nil
@@ -268,42 +283,35 @@ Displays:
 }
 
 func runCacheInfo(cmd *cobra.Command, args []string) error {
-	logger := output.DefaultLogger
-
-	// Initialize cache
-	binaryCache := cache.NewBinaryCache(homeDir, logger)
-	if err := binaryCache.Initialize(); err != nil {
-		return fmt.Errorf("failed to initialize cache: %w", err)
-	}
-
-	// Get symlink info
-	symlinkMgr := cache.NewSymlinkManager(homeDir)
-	symlink, err := symlinkMgr.GetCurrent()
+	// Create DI container for cache operations
+	container, err := createCacheContainer()
 	if err != nil {
-		logger.Debug("Failed to get symlink info: %v", err)
+		return fmt.Errorf("failed to initialize: %w", err)
 	}
 
-	stats := binaryCache.Stats()
+	cache := container.BinaryCache()
+	stats := cache.Stats()
+	symlinkInfo, _ := cache.SymlinkInfo()
 
 	if jsonMode {
-		return outputCacheInfoJSON(binaryCache, symlinkMgr, symlink, stats)
+		return outputCacheInfoJSONClean(cache, symlinkInfo, stats)
 	}
-	return outputCacheInfoText(binaryCache, symlinkMgr, symlink, stats)
+	return outputCacheInfoTextClean(cache, symlinkInfo, stats)
 }
 
-func outputCacheInfoJSON(binaryCache *cache.BinaryCache, symlinkMgr *cache.SymlinkManager, symlink *cache.ActiveSymlink, stats *cache.CacheStats) error {
+func outputCacheInfoJSONClean(cache ports.BinaryCache, symlinkInfo *ports.SymlinkInfo, stats ports.CacheStats) error {
 	result := CacheInfoJSON{
-		CacheDir:       binaryCache.CacheDir(),
-		SymlinkPath:    symlinkMgr.SymlinkPath(),
-		SymlinkExists:  symlink != nil,
+		CacheDir:       cache.CacheDir(),
+		SymlinkPath:    cache.SymlinkPath(),
 		TotalEntries:   stats.TotalEntries,
 		TotalSize:      stats.TotalSize,
 		TotalSizeHuman: formatBytes(stats.TotalSize),
 	}
 
-	if symlink != nil {
-		result.SymlinkTarget = symlink.Target
-		result.ActiveCommit = symlink.CommitHash
+	if symlinkInfo != nil {
+		result.SymlinkExists = symlinkInfo.Exists
+		result.SymlinkTarget = symlinkInfo.Target
+		result.ActiveCommit = symlinkInfo.CommitHash
 	}
 
 	data, err := json.MarshalIndent(result, "", "  ")
@@ -314,22 +322,28 @@ func outputCacheInfoJSON(binaryCache *cache.BinaryCache, symlinkMgr *cache.Symli
 	return nil
 }
 
-func outputCacheInfoText(binaryCache *cache.BinaryCache, symlinkMgr *cache.SymlinkManager, symlink *cache.ActiveSymlink, stats *cache.CacheStats) error {
+func outputCacheInfoTextClean(cache ports.BinaryCache, symlinkInfo *ports.SymlinkInfo, stats ports.CacheStats) error {
 	output.Bold("Cache Information")
 	fmt.Println("─────────────────────────────────────────────────────────────────────────")
 
-	fmt.Printf("Cache Directory:  %s\n", binaryCache.CacheDir())
-	fmt.Printf("Symlink Path:     %s\n", symlinkMgr.SymlinkPath())
+	fmt.Printf("Cache Directory:  %s\n", cache.CacheDir())
+	fmt.Printf("Symlink Path:     %s\n", cache.SymlinkPath())
 
-	if symlink != nil {
-		fmt.Printf("Symlink Target:   %s\n", symlink.Target)
-		if symlink.CommitHash != "" {
-			fmt.Printf("Active Commit:    %s\n", color.GreenString(symlink.CommitHash[:12]))
+	if symlinkInfo != nil {
+		if symlinkInfo.Exists {
+			fmt.Printf("Symlink Target:   %s\n", symlinkInfo.Target)
+			if symlinkInfo.CommitHash != "" {
+				commitShort := symlinkInfo.CommitHash
+				if len(commitShort) > 12 {
+					commitShort = commitShort[:12]
+				}
+				fmt.Printf("Active Commit:    %s\n", color.GreenString(commitShort))
+			}
+		} else if symlinkInfo.IsRegular {
+			fmt.Printf("Binary Status:    %s (not a symlink)\n", color.YellowString("Direct file"))
+		} else {
+			fmt.Printf("Binary Status:    %s\n", color.YellowString("Not found"))
 		}
-	} else if symlinkMgr.IsRegularFile() {
-		fmt.Printf("Binary Status:    %s (not a symlink)\n", color.YellowString("Direct file"))
-	} else {
-		fmt.Printf("Binary Status:    %s\n", color.YellowString("Not found"))
 	}
 
 	fmt.Println()
@@ -340,6 +354,13 @@ func outputCacheInfoText(binaryCache *cache.BinaryCache, symlinkMgr *cache.Symli
 	fmt.Println()
 
 	return nil
+}
+
+// createCacheContainer creates a DI container configured for cache operations.
+// It uses default binary name since cache operations don't require a network module.
+func createCacheContainer() (*di.Container, error) {
+	factory := di.NewInfrastructureFactory(homeDir, output.DefaultLogger)
+	return factory.WireContainer()
 }
 
 // formatBytes formats bytes as human-readable string.

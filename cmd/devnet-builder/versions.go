@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/github"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 var (

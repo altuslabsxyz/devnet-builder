@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/application/dto"
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/devnet"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 var (
@@ -41,83 +41,71 @@ Examples:
 
 func runRestart(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	logger := output.DefaultLogger
+	svc, err := getCleanService()
+	if err != nil {
+		return outputRestartError(fmt.Errorf("failed to initialize service: %w", err))
+	}
 
-	// Load devnet using consolidated helper
-	loaded, err := loadDevnetOrFail(logger)
+	// Check if devnet exists
+	if !svc.DevnetExists() {
+		if jsonMode {
+			return outputRestartError(fmt.Errorf("no devnet found"))
+		}
+		return fmt.Errorf("no devnet found at %s", homeDir)
+	}
+
+	// Restart
+	if !jsonMode {
+		output.Info("Restarting devnet...")
+	}
+
+	result, err := svc.Restart(ctx, restartTimeout)
 	if err != nil {
 		if jsonMode {
 			return outputRestartError(err)
 		}
 		return err
 	}
-	d := loaded.Devnet
-
-	// Stop nodes
-	if !jsonMode {
-		output.Info("Stopping devnet nodes...")
-	}
-
-	if err := d.Stop(ctx, restartTimeout); err != nil {
-		logger.Warn("Stop encountered issues: %v", err)
-	}
-
-	// Wait a moment for cleanup
-	time.Sleep(2 * time.Second)
-
-	// Start nodes
-	if !jsonMode {
-		output.Info("Starting devnet nodes...")
-	}
-
-	if err := d.StartNodes(ctx, d.Metadata.GenesisPath); err != nil {
-		if jsonMode {
-			return outputRestartError(err)
-		}
-		return fmt.Errorf("failed to start nodes: %w", err)
-	}
-
-	// Update metadata
-	d.Metadata.SetRunning()
-	if err := d.Metadata.Save(); err != nil {
-		logger.Warn("Failed to update metadata: %v", err)
-	}
 
 	if jsonMode {
-		return outputRestartJSON(d)
+		return outputRestartJSONResult(result)
 	}
 
-	output.Success("Devnet restarted successfully.")
-	fmt.Println()
-	output.Bold("Endpoints:")
-	for _, n := range d.Nodes {
-		fmt.Printf("  Node %d: %s (RPC) | %s (EVM)\n",
-			n.Index, n.RPCURL(), n.EVMRPCURL())
+	if result.AllRunning {
+		output.Success("Devnet restarted successfully.")
+	} else {
+		output.Warn("Devnet restarted with some issues (stopped: %d, started: %d)",
+			result.StoppedNodes, result.StartedNodes)
+	}
+
+	// Show endpoints
+	info, err := svc.LoadDevnetInfo(ctx)
+	if err == nil && info != nil {
+		fmt.Println()
+		output.Bold("Endpoints:")
+		for _, n := range info.Nodes {
+			fmt.Printf("  Node %d: %s (RPC) | %s (EVM)\n",
+				n.Index, n.RPCURL, n.EVMURL)
+		}
 	}
 
 	return nil
 }
 
-func outputRestartJSON(d *devnet.Devnet) error {
-	result := StartResult{
-		Status:     "success",
-		ChainID:    d.Metadata.ChainID,
-		Network:    d.Metadata.NetworkSource,
-		Mode:       string(d.Metadata.ExecutionMode),
-		Validators: d.Metadata.NumValidators,
-		Nodes:      make([]NodeResult, len(d.Nodes)),
+func outputRestartJSONResult(result *dto.RestartOutput) error {
+	status := "success"
+	if !result.AllRunning {
+		status = "partial"
 	}
 
-	for i, n := range d.Nodes {
-		result.Nodes[i] = NodeResult{
-			Index:  n.Index,
-			RPC:    n.RPCURL(),
-			EVMRPC: n.EVMRPCURL(),
-			Status: string(n.Status),
-		}
+	jsonResult := map[string]interface{}{
+		"status":        status,
+		"stopped_nodes": result.StoppedNodes,
+		"started_nodes": result.StartedNodes,
+		"all_running":   result.AllRunning,
 	}
 
-	data, _ := json.MarshalIndent(result, "", "  ")
+	data, _ := json.MarshalIndent(jsonResult, "", "  ")
 	fmt.Println(string(data))
 	return nil
 }

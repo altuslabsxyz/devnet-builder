@@ -4,9 +4,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/b-harvest/devnet-builder/internal/config"
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/config"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 // Global configuration variables
@@ -25,9 +25,9 @@ var (
 func DefaultHomeDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return ".stable-devnet"
+		return ".devnet-builder"
 	}
-	return filepath.Join(home, ".stable-devnet")
+	return filepath.Join(home, ".devnet-builder")
 }
 
 // Command group IDs for organized help output.
@@ -35,7 +35,6 @@ const (
 	GroupMain       = "main"
 	GroupMonitoring = "monitoring"
 	GroupAdvanced   = "advanced"
-	GroupDeprecated = "deprecated"
 )
 
 func NewRootCmd() *cobra.Command {
@@ -46,7 +45,7 @@ func NewRootCmd() *cobra.Command {
 
 It consolidates multiple shell scripts into a single binary for easier devnet management:
   - Start a fully functional multi-validator devnet with a single command
-  - Manage devnet lifecycle (up, down, destroy)
+  - Manage devnet lifecycle (start, stop, destroy)
   - Monitor devnet status and view node logs
   - Export validator and account keys
   - Build with specific stable repository versions
@@ -65,7 +64,7 @@ Examples:
   devnet-builder logs -f
 
   # Stop the devnet
-  devnet-builder down`,
+  devnet-builder stop`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Load config file
 			loader := config.NewConfigLoader(homeDir, configPath, output.DefaultLogger)
@@ -136,15 +135,14 @@ Examples:
 	cmd.AddGroup(&cobra.Group{ID: GroupMain, Title: "Main Commands:"})
 	cmd.AddGroup(&cobra.Group{ID: GroupMonitoring, Title: "Monitoring Commands:"})
 	cmd.AddGroup(&cobra.Group{ID: GroupAdvanced, Title: "Advanced Commands:"})
-	cmd.AddGroup(&cobra.Group{ID: GroupDeprecated, Title: "Deprecated Commands (use alternatives):"})
 
-	// Main commands (new Docker Compose-style commands)
+	// Main commands
 	deployCmd := NewDeployCmd()
 	deployCmd.GroupID = GroupMain
-	upCmd := NewUpCmd()
-	upCmd.GroupID = GroupMain
-	downCmd := NewDownCmd()
-	downCmd.GroupID = GroupMain
+	startCmd := NewStartCmd()
+	startCmd.GroupID = GroupMain
+	stopCmd := NewStopCmd()
+	stopCmd.GroupID = GroupMain
 	initCmd := NewInitCmd()
 	initCmd.GroupID = GroupMain
 	destroyCmd := NewDestroyCmd()
@@ -180,28 +178,16 @@ Examples:
 	networksCmd := NewNetworksCmd()
 	networksCmd.GroupID = GroupAdvanced
 
-	// Deprecated commands (old names, hidden from main help)
-	startCmd := NewStartCmd()
-	startCmd.GroupID = GroupDeprecated
-	runCmd := NewRunCmd()
-	runCmd.GroupID = GroupDeprecated
-	stopCmd := NewStopCmd()
-	stopCmd.GroupID = GroupDeprecated
-	provisionCmd := NewProvisionCmd()
-	provisionCmd.GroupID = GroupDeprecated
-	cleanCmd := NewCleanCmd()
-	cleanCmd.GroupID = GroupDeprecated
-
 	// Utility commands (no group - shown separately)
 	versionCmd := NewVersionCmd()
 	completionCmd := NewCompletionCmd()
 
 	// Add subcommands
 	cmd.AddCommand(
-		// Main commands (new)
+		// Main commands
 		deployCmd,
-		upCmd,
-		downCmd,
+		startCmd,
+		stopCmd,
 		initCmd,
 		destroyCmd,
 
@@ -221,13 +207,6 @@ Examples:
 		cacheCmd,
 		configCmd,
 		networksCmd,
-
-		// Deprecated commands (old names)
-		startCmd,
-		runCmd,
-		stopCmd,
-		provisionCmd,
-		cleanCmd,
 
 		// Utility commands
 		versionCmd,

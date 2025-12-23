@@ -56,7 +56,7 @@ sudo apt install -y docker.io curl jq zstd
 
 ```bash
 # Clone the repository
-git clone https://github.com/stablelabs/stable-devnet.git
+git clone https://github.com/b-harvest/devnet-builder.git
 cd stable-devnet
 
 # Build the binary

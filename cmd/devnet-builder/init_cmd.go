@@ -7,11 +7,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/b-harvest/devnet-builder/internal/application/dto"
+	"github.com/b-harvest/devnet-builder/internal/config"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/config"
-	"github.com/stablelabs/stable-devnet/internal/devnet"
-	"github.com/stablelabs/stable-devnet/internal/network"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 var (
@@ -46,7 +46,7 @@ func NewInitCmd() *cobra.Command {
 This allows you to:
 1. Modify config files (config.toml, app.toml) before starting
 2. Adjust genesis parameters
-3. Start nodes separately using 'devnet-builder up'
+3. Start nodes separately using 'devnet-builder start'
 
 The init command performs:
 - Download snapshot from network
@@ -65,7 +65,7 @@ Examples:
   devnet-builder init --validators 2
 
   # After initializing, modify config then run:
-  devnet-builder up`,
+  devnet-builder start`,
 		RunE: runInit,
 	}
 
@@ -89,7 +89,6 @@ Examples:
 
 func runInit(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	logger := output.DefaultLogger
 
 	// Build effective config from: default < config.toml < env < flag
 	// Start with loaded config.toml values
@@ -122,14 +121,14 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Apply environment variables (env overrides config.toml but not flags)
-	if network := os.Getenv("STABLE_DEVNET_NETWORK"); network != "" && !cmd.Flags().Changed("network") {
-		fileCfg.Network = &network
+	if networkEnv := os.Getenv("STABLE_DEVNET_NETWORK"); networkEnv != "" && !cmd.Flags().Changed("network") {
+		fileCfg.Network = &networkEnv
 	}
-	if mode := os.Getenv("STABLE_DEVNET_MODE"); mode != "" && !cmd.Flags().Changed("mode") {
-		fileCfg.Mode = &mode
+	if modeEnv := os.Getenv("STABLE_DEVNET_MODE"); modeEnv != "" && !cmd.Flags().Changed("mode") {
+		fileCfg.Mode = &modeEnv
 	}
-	if version := os.Getenv("STABLE_VERSION"); version != "" && !cmd.Flags().Changed("stable-version") {
-		fileCfg.StableVersion = &version
+	if versionEnv := os.Getenv("STABLE_VERSION"); versionEnv != "" && !cmd.Flags().Changed("stable-version") {
+		fileCfg.StableVersion = &versionEnv
 	}
 
 	// Run partial interactive setup for missing values
@@ -138,9 +137,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		// Check if it's a missing fields error for better messaging
 		if mfErr, ok := err.(*config.MissingFieldsError); ok {
-			return outputInitError(fmt.Errorf("missing required configuration: %v\nRun 'devnet-builder config init' to create a configuration file", mfErr.Fields))
+			return outputInitErrorClean(fmt.Errorf("missing required configuration: %v\nRun 'devnet-builder config init' to create a configuration file", mfErr.Fields))
 		}
-		return outputInitError(err)
+		return outputInitErrorClean(err)
 	}
 
 	// Extract values from effective config
@@ -160,64 +159,70 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Validate inputs
 	if initNetwork != "mainnet" && initNetwork != "testnet" {
-		return outputInitError(fmt.Errorf("invalid network: %s (must be 'mainnet' or 'testnet')", initNetwork))
+		return outputInitErrorClean(fmt.Errorf("invalid network: %s (must be 'mainnet' or 'testnet')", initNetwork))
 	}
 	if initValidators < 1 || initValidators > 4 {
-		return outputInitError(fmt.Errorf("invalid validators: %d (must be 1-4)", initValidators))
+		return outputInitErrorClean(fmt.Errorf("invalid validators: %d (must be 1-4)", initValidators))
 	}
 	if initMode != "docker" && initMode != "local" {
-		return outputInitError(fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", initMode))
+		return outputInitErrorClean(fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", initMode))
 	}
 	// Validate blockchain network module exists
 	if !network.Has(initBlockchainNetwork) {
 		available := network.List()
-		return outputInitError(fmt.Errorf("unknown blockchain network: %s (available: %v)", initBlockchainNetwork, available))
+		return outputInitErrorClean(fmt.Errorf("unknown blockchain network: %s (available: %v)", initBlockchainNetwork, available))
 	}
 
-	// Check if devnet already exists
-	if devnet.DevnetExists(homeDir) {
-		return outputInitError(fmt.Errorf("devnet already exists at %s\nUse 'devnet-builder destroy' to remove it first", homeDir))
+	// Check if devnet already exists using CleanDevnetService
+	svc, err := getCleanService()
+	if err != nil {
+		return outputInitErrorClean(fmt.Errorf("failed to initialize service: %w", err))
+	}
+	if svc.DevnetExists() {
+		return outputInitErrorClean(fmt.Errorf("devnet already exists at %s\nUse 'devnet-builder destroy' to remove it first", homeDir))
 	}
 
-	// Run provision
-	opts := devnet.ProvisionOptions{
+	// Run provision using CleanDevnetService
+	provisionInput := dto.ProvisionInput{
 		HomeDir:           homeDir,
 		Network:           initNetwork,
 		BlockchainNetwork: initBlockchainNetwork,
 		NumValidators:     initValidators,
 		NumAccounts:       initAccounts,
-		Mode:              devnet.ExecutionMode(initMode),
+		Mode:              initMode,
 		StableVersion:     initVersion,
 		NoCache:           initNoCache,
-		Logger:            logger,
 	}
 
-	result, err := devnet.Provision(ctx, opts)
+	result, err := svc.Provision(ctx, provisionInput)
 	if err != nil {
-		return outputInitError(err)
+		return outputInitErrorClean(err)
 	}
+
+	// Load devnet info for output
+	devnetInfo, _ := svc.LoadDevnetInfo(ctx)
 
 	// Output result
 	if jsonMode {
-		return outputInitJSON(result)
+		return outputInitJSONClean(result, devnetInfo)
 	}
-	return outputInitText(result)
+	return outputInitTextClean(result, devnetInfo)
 }
 
-func outputInitText(result *devnet.ProvisionResult) error {
+func outputInitTextClean(result *dto.ProvisionOutput, devnetInfo *dto.DevnetInfo) error {
 	fmt.Println()
 	output.Success("Initialization complete!")
 	fmt.Println()
 
-	output.Bold("Chain ID:     %s", result.Metadata.ChainID)
-	output.Info("Network:      %s", result.Metadata.NetworkSource)
-	output.Info("Blockchain:   %s", result.Metadata.BlockchainNetwork)
-	output.Info("Validators:   %d", result.Metadata.NumValidators)
+	output.Bold("Chain ID:     %s", devnetInfo.ChainID)
+	output.Info("Network:      %s", devnetInfo.NetworkSource)
+	output.Info("Blockchain:   %s", devnetInfo.BlockchainNetwork)
+	output.Info("Validators:   %d", devnetInfo.NumValidators)
 	fmt.Println()
 
 	// Print config file paths
 	output.Bold("Configuration files:")
-	devnetDir := filepath.Join(result.Metadata.HomeDir, "devnet")
+	devnetDir := filepath.Join(homeDir, "devnet")
 	fmt.Printf("  config.toml:   %s/node0/config/config.toml\n", devnetDir)
 	fmt.Printf("  app.toml:      %s/node0/config/app.toml\n", devnetDir)
 	fmt.Printf("  genesis.json:  %s\n", result.GenesisPath)
@@ -238,28 +243,28 @@ func outputInitText(result *devnet.ProvisionResult) error {
 	fmt.Println()
 
 	output.Bold("Next step:")
-	fmt.Println("  Run 'devnet-builder up' to start the nodes")
+	fmt.Println("  Run 'devnet-builder start' to start the nodes")
 	fmt.Println()
 
 	return nil
 }
 
-func outputInitJSON(result *devnet.ProvisionResult) error {
-	devnetDir := filepath.Join(result.Metadata.HomeDir, "devnet")
+func outputInitJSONClean(result *dto.ProvisionOutput, devnetInfo *dto.DevnetInfo) error {
+	devnetDir := filepath.Join(homeDir, "devnet")
 
 	jsonResult := InitJSONResult{
 		Status:            "success",
-		ProvisionState:    string(result.Metadata.ProvisionState),
-		ChainID:           result.Metadata.ChainID,
-		Network:           result.Metadata.NetworkSource,
-		BlockchainNetwork: result.Metadata.BlockchainNetwork,
-		Validators:        result.Metadata.NumValidators,
+		ProvisionState:    "provisioned",
+		ChainID:           devnetInfo.ChainID,
+		Network:           devnetInfo.NetworkSource,
+		BlockchainNetwork: devnetInfo.BlockchainNetwork,
+		Validators:        devnetInfo.NumValidators,
 		ConfigPaths: map[string]string{
 			"config.toml":  filepath.Join(devnetDir, "node0", "config", "config.toml"),
 			"app.toml":     filepath.Join(devnetDir, "node0", "config", "app.toml"),
 			"genesis.json": result.GenesisPath,
 		},
-		NextCommand: "devnet-builder up",
+		NextCommand: "devnet-builder start",
 	}
 
 	data, err := json.MarshalIndent(jsonResult, "", "  ")
@@ -271,7 +276,7 @@ func outputInitJSON(result *devnet.ProvisionResult) error {
 	return nil
 }
 
-func outputInitError(err error) error {
+func outputInitErrorClean(err error) error {
 	if jsonMode {
 		jsonResult := InitJSONResult{
 			Status:         "error",

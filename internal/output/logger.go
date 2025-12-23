@@ -119,40 +119,120 @@ func (l *Logger) Println(format string, args ...interface{}) {
 	fmt.Fprintf(l.out, format+"\n", args...)
 }
 
+// Progress prints a progress bar on the same line (uses carriage return).
+// downloaded and total are in bytes. speed is in bytes per second.
+func (l *Logger) Progress(downloaded, total int64, speed float64) {
+	if l.jsonMode {
+		return
+	}
+
+	// Calculate percentage
+	var percent float64
+	if total > 0 {
+		percent = float64(downloaded) / float64(total) * 100
+	}
+
+	// Format sizes
+	downloadedMB := float64(downloaded) / (1024 * 1024)
+	totalMB := float64(total) / (1024 * 1024)
+
+	// Format speed
+	speedMB := speed / (1024 * 1024)
+
+	// Build progress bar (width: 30 chars)
+	barWidth := 30
+	filled := int(percent / 100 * float64(barWidth))
+	if filled > barWidth {
+		filled = barWidth
+	}
+
+	bar := ""
+	for i := 0; i < barWidth; i++ {
+		if i < filled {
+			bar += "█"
+		} else {
+			bar += "░"
+		}
+	}
+
+	// Calculate ETA
+	eta := ""
+	if speed > 0 && total > 0 {
+		remaining := total - downloaded
+		etaSecs := float64(remaining) / speed
+		if etaSecs < 60 {
+			eta = fmt.Sprintf("%.0fs", etaSecs)
+		} else if etaSecs < 3600 {
+			eta = fmt.Sprintf("%.1fm", etaSecs/60)
+		} else {
+			eta = fmt.Sprintf("%.1fh", etaSecs/3600)
+		}
+	}
+
+	// Print progress line (overwrite previous)
+	cyan := color.New(color.FgCyan)
+	if total > 0 {
+		cyan.Fprintf(l.out, "\r  %s %5.1f%% | %.1f/%.1f MB | %.1f MB/s | ETA: %s    ",
+			bar, percent, downloadedMB, totalMB, speedMB, eta)
+	} else {
+		cyan.Fprintf(l.out, "\r  Downloaded: %.1f MB | %.1f MB/s    ", downloadedMB, speedMB)
+	}
+}
+
+// ProgressComplete finishes the progress bar and moves to a new line.
+func (l *Logger) ProgressComplete() {
+	if l.jsonMode {
+		return
+	}
+	fmt.Fprintf(l.out, "\n")
+}
+
 // DefaultLogger is the package-level default logger instance.
+//
+// Deprecated: DefaultLogger is provided for backward compatibility.
+// New code should use dependency injection by passing *Logger through
+// constructors or configuration structs. Use NewLogger() to create
+// a new logger instance instead of relying on this global.
 var DefaultLogger = NewLogger()
 
 // Info prints an informational message using the default logger.
+// Deprecated: Use (*Logger).Info() with an injected logger instead.
 func Info(format string, args ...interface{}) {
 	DefaultLogger.Info(format, args...)
 }
 
 // Warn prints a warning message using the default logger.
+// Deprecated: Use (*Logger).Warn() with an injected logger instead.
 func Warn(format string, args ...interface{}) {
 	DefaultLogger.Warn(format, args...)
 }
 
 // Error prints an error message using the default logger.
+// Deprecated: Use (*Logger).Error() with an injected logger instead.
 func Error(format string, args ...interface{}) {
 	DefaultLogger.Error(format, args...)
 }
 
 // Success prints a success message using the default logger.
+// Deprecated: Use (*Logger).Success() with an injected logger instead.
 func Success(format string, args ...interface{}) {
 	DefaultLogger.Success(format, args...)
 }
 
 // Debug prints a debug message using the default logger.
+// Deprecated: Use (*Logger).Debug() with an injected logger instead.
 func Debug(format string, args ...interface{}) {
 	DefaultLogger.Debug(format, args...)
 }
 
 // Bold prints a bold message using the default logger.
+// Deprecated: Use (*Logger).Bold() with an injected logger instead.
 func Bold(format string, args ...interface{}) {
 	DefaultLogger.Bold(format, args...)
 }
 
 // Cyan prints a cyan message using the default logger.
+// Deprecated: Use (*Logger).Cyan() with an injected logger instead.
 func Cyan(format string, args ...interface{}) {
 	DefaultLogger.Cyan(format, args...)
 }

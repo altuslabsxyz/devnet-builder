@@ -1,11 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
+	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/devnet"
 )
 
 var (
@@ -40,30 +41,36 @@ Examples:
 }
 
 func runExportKeys(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	svc, err := getCleanService()
+	if err != nil {
+		return outputExportKeysError(fmt.Errorf("failed to initialize service: %w", err))
+	}
+
 	// Validate inputs first
 	if exportType != "all" && exportType != "validators" && exportType != "accounts" {
 		return outputExportKeysError(fmt.Errorf("invalid type: %s (must be 'validators', 'accounts', or 'all')", exportType))
 	}
 
-	// Check if devnet exists using consolidated helper
-	if _, err := loadMetadataOrFail(nil); err != nil {
-		return outputExportKeysError(err)
+	// Check if devnet exists
+	if !svc.DevnetExists() {
+		return outputExportKeysError(fmt.Errorf("no devnet found at %s", homeDir))
 	}
 
-	// Export keys
-	export, err := devnet.ExportKeys(homeDir, exportType)
+	// Export keys using service
+	export, err := svc.ExportKeys(ctx, exportType)
 	if err != nil {
 		return outputExportKeysError(err)
 	}
 
 	// Output as JSON only
-	return outputExportKeysJSON(export)
+	return outputExportKeysJSONClean(export)
 }
 
-func outputExportKeysJSON(export *devnet.KeyExport) error {
+func outputExportKeysJSONClean(export *dto.ExportKeysOutput) error {
 	data, err := json.MarshalIndent(export, "", "  ")
 	if err != nil {
-		return err
+		return outputExportKeysError(err)
 	}
 	fmt.Println(string(data))
 	return nil

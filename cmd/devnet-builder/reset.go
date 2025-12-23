@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 var (
@@ -45,17 +45,18 @@ Examples:
 
 func runReset(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	logger := output.DefaultLogger
-
-	// First check existence before confirmation prompt
-	loaded, err := loadDevnetOrFail(logger)
+	svc, err := getCleanService()
 	if err != nil {
-		if jsonMode {
-			return outputResetError(err)
-		}
-		return err
+		return outputResetError(fmt.Errorf("failed to initialize service: %w", err))
 	}
-	d := loaded.Devnet
+
+	// Check if devnet exists
+	if !svc.DevnetExists() {
+		if jsonMode {
+			return outputResetError(fmt.Errorf("no devnet found"))
+		}
+		return fmt.Errorf("no devnet found at %s", homeDir)
+	}
 
 	// Confirmation prompt (unless --force)
 	if !resetForce && !jsonMode {
@@ -80,36 +81,21 @@ func runReset(cmd *cobra.Command, args []string) error {
 		output.Info("Resetting devnet...")
 	}
 
-	if resetHard {
-		if err := d.HardReset(ctx); err != nil {
-			if jsonMode {
-				return outputResetError(err)
-			}
-			return fmt.Errorf("failed to hard reset: %w", err)
+	result, err := svc.Reset(ctx, resetHard)
+	if err != nil {
+		if jsonMode {
+			return outputResetError(err)
 		}
-	} else {
-		if err := d.SoftReset(ctx); err != nil {
-			if jsonMode {
-				return outputResetError(err)
-			}
-			return fmt.Errorf("failed to soft reset: %w", err)
-		}
-
-		// Show progress for soft reset
-		if !jsonMode {
-			for _, n := range d.Nodes {
-				fmt.Printf("  Clearing %s data...\n", n.Name)
-			}
-		}
+		return err
 	}
 
 	if jsonMode {
-		return outputResetJSON(resetHard)
+		return outputResetJSON(result.Type == "hard")
 	}
 
 	output.Success("Devnet reset successfully.")
 	if resetHard {
-		fmt.Println("Run 'devnet-builder start' to provision a new devnet.")
+		fmt.Println("Run 'devnet-builder deploy' to provision a new devnet.")
 	} else {
 		fmt.Println("Run 'devnet-builder start' to restart the devnet with fresh chain data.")
 	}

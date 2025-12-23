@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/application/dto"
+	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/devnet"
-	"github.com/stablelabs/stable-devnet/internal/node"
-	"github.com/stablelabs/stable-devnet/internal/output"
 )
 
 // StatusResult represents the JSON output for the status command.
@@ -34,6 +34,7 @@ type NodeStatusResult struct {
 	BlockHeight int64  `json:"block_height"`
 	PeerCount   int    `json:"peer_count"`
 	CatchingUp  bool   `json:"catching_up"`
+	AppVersion  string `json:"app_version,omitempty"`
 	Error       string `json:"error,omitempty"`
 }
 
@@ -60,100 +61,83 @@ Examples:
 
 func runStatus(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	logger := output.DefaultLogger
+	svc, err := getCleanService()
+	if err != nil {
+		return outputStatusError(fmt.Errorf("failed to initialize service: %w", err))
+	}
 
-	// Load devnet using consolidated helper
-	loaded, err := loadDevnetOrFail(logger)
+	// Get status using service
+	status, err := svc.GetStatus(ctx)
 	if err != nil {
 		if jsonMode {
 			return outputStatusError(err)
 		}
 		return err
 	}
-	d := loaded.Devnet
-
-	// Backward compatibility: if version not in metadata, try to read from genesis
-	if d.Metadata.InitialVersion == "" {
-		if err := d.Metadata.SetInitialVersionFromGenesis(); err == nil {
-			// Save updated metadata with version info
-			d.Metadata.Save()
-		}
-	}
-
-	// Get health status of all nodes
-	health := d.GetHealth(ctx)
-
-	// Update overall status based on node health
-	overallStatus := d.Metadata.Status
-	runningCount := 0
-	for _, h := range health {
-		if h.Status == node.NodeStatusRunning || h.Status == node.NodeStatusSyncing {
-			runningCount++
-		}
-	}
-
-	if runningCount == len(d.Nodes) {
-		overallStatus = devnet.StatusRunning
-	} else if runningCount > 0 {
-		// Partial running
-		overallStatus = devnet.StatusRunning
-	} else {
-		overallStatus = devnet.StatusStopped
-	}
 
 	if jsonMode {
-		return outputStatusJSON(d, health, overallStatus)
+		return outputStatusJSON(status)
 	}
 
-	return outputStatusText(d, health, overallStatus)
+	return outputStatusText(status)
 }
 
-func outputStatusText(d *devnet.Devnet, health []*node.NodeHealth, status devnet.DevnetStatus) error {
+func outputStatusText(status *dto.StatusOutput) error {
+	d := status.Devnet
+
 	output.Bold("Devnet Status")
 	fmt.Println("─────────────────────────────────────────────────────────")
 	fmt.Println()
 
-	fmt.Printf("Chain ID:     %s\n", d.Metadata.ChainID)
-	fmt.Printf("Network:      %s\n", d.Metadata.NetworkSource)
-	fmt.Printf("Blockchain:   %s\n", d.Metadata.BlockchainNetwork)
-	fmt.Printf("Mode:         %s\n", d.Metadata.ExecutionMode)
-	if d.Metadata.DockerImage != "" {
-		fmt.Printf("Docker Image: %s\n", d.Metadata.DockerImage)
+	fmt.Printf("Chain ID:     %s\n", d.ChainID)
+	fmt.Printf("Network:      %s\n", d.NetworkSource)
+	fmt.Printf("Blockchain:   %s\n", d.BlockchainNetwork)
+	fmt.Printf("Mode:         %s\n", d.ExecutionMode)
+	if d.DockerImage != "" {
+		fmt.Printf("Docker Image: %s\n", d.DockerImage)
 	}
 
 	// Version info
-	if d.Metadata.InitialVersion != "" {
-		fmt.Printf("Version:      %s", d.Metadata.CurrentVersion)
-		if d.Metadata.CurrentVersion != d.Metadata.InitialVersion {
-			fmt.Printf(" (initial: %s)", d.Metadata.InitialVersion)
+	if d.InitialVersion != "" {
+		fmt.Printf("Version:      %s", d.CurrentVersion)
+		if d.CurrentVersion != d.InitialVersion {
+			fmt.Printf(" (initial: %s)", d.InitialVersion)
 		}
 		fmt.Println()
 	}
 
-	fmt.Printf("Created:      %s\n", d.Metadata.CreatedAt.Format("2006-01-02 15:04:05 MST"))
+	fmt.Printf("Created:      %s\n", d.CreatedAt.Format("2006-01-02 15:04:05 MST"))
 
 	// Status with color
-	statusStr := string(status)
-	switch status {
-	case devnet.StatusRunning:
+	statusStr := status.OverallStatus
+	switch status.OverallStatus {
+	case "running":
 		statusStr = color.GreenString("running")
-	case devnet.StatusStopped:
+	case "stopped":
 		statusStr = color.YellowString("stopped")
-	case devnet.StatusError:
+	case "partial":
+		statusStr = color.CyanString("partial")
+	case "error":
 		statusStr = color.RedString("error")
 	}
 	fmt.Printf("Status:       %s\n", statusStr)
 	fmt.Println()
 
 	output.Bold("Nodes:")
-	for _, h := range health {
-		nodeStatus := formatNodeStatus(h)
+	for _, h := range status.Nodes {
+		nodeStatus := formatNodeStatusDTO(h)
 		heightStr := fmt.Sprintf("height=%d", h.BlockHeight)
 		peersStr := fmt.Sprintf("peers=%d", h.PeerCount)
 		catchingUpStr := fmt.Sprintf("catching_up=%v", h.CatchingUp)
 
-		fmt.Printf("  Node %d [%s]  %s  %s  %s\n",
-			h.Index, nodeStatus, heightStr, peersStr, catchingUpStr)
+		// Format app version
+		versionStr := "Not Upgraded yet"
+		if h.AppVersion != "" {
+			versionStr = h.AppVersion
+		}
+
+		fmt.Printf("  Node %d [%s]  %s  %s  %s  version=%s\n",
+			h.Index, nodeStatus, heightStr, peersStr, catchingUpStr, versionStr)
 
 		if h.Error != "" {
 			fmt.Printf("         Error: %s\n", color.RedString(h.Error))
@@ -163,44 +147,45 @@ func outputStatusText(d *devnet.Devnet, health []*node.NodeHealth, status devnet
 	return nil
 }
 
-func formatNodeStatus(h *node.NodeHealth) string {
+func formatNodeStatusDTO(h dto.NodeHealthStatus) string {
 	switch h.Status {
-	case node.NodeStatusRunning:
+	case ports.NodeStatusRunning:
 		return color.GreenString("running")
-	case node.NodeStatusSyncing:
+	case ports.NodeStatusSyncing:
 		return color.CyanString("syncing")
-	case node.NodeStatusStopped:
+	case ports.NodeStatusStopped:
 		return color.YellowString("stopped")
-	case node.NodeStatusStarting:
-		return color.CyanString("starting")
-	case node.NodeStatusError:
+	case ports.NodeStatusError:
 		return color.RedString("error")
 	default:
 		return string(h.Status)
 	}
 }
 
-func outputStatusJSON(d *devnet.Devnet, health []*node.NodeHealth, status devnet.DevnetStatus) error {
+func outputStatusJSON(status *dto.StatusOutput) error {
+	d := status.Devnet
+
 	result := StatusResult{
-		ChainID:           d.Metadata.ChainID,
-		Network:           d.Metadata.NetworkSource,
-		BlockchainNetwork: d.Metadata.BlockchainNetwork,
-		Mode:              string(d.Metadata.ExecutionMode),
-		DockerImage:       d.Metadata.DockerImage,
-		InitialVersion:    d.Metadata.InitialVersion,
-		CurrentVersion:    d.Metadata.CurrentVersion,
-		CreatedAt:         d.Metadata.CreatedAt,
-		Status:            string(status),
-		Nodes:             make([]NodeStatusResult, len(health)),
+		ChainID:           d.ChainID,
+		Network:           d.NetworkSource,
+		BlockchainNetwork: d.BlockchainNetwork,
+		Mode:              d.ExecutionMode,
+		DockerImage:       d.DockerImage,
+		InitialVersion:    d.InitialVersion,
+		CurrentVersion:    d.CurrentVersion,
+		CreatedAt:         d.CreatedAt,
+		Status:            status.OverallStatus,
+		Nodes:             make([]NodeStatusResult, len(status.Nodes)),
 	}
 
-	for i, h := range health {
+	for i, h := range status.Nodes {
 		result.Nodes[i] = NodeStatusResult{
 			Index:       h.Index,
 			Status:      string(h.Status),
 			BlockHeight: h.BlockHeight,
 			PeerCount:   h.PeerCount,
 			CatchingUp:  h.CatchingUp,
+			AppVersion:  h.AppVersion,
 			Error:       h.Error,
 		}
 	}

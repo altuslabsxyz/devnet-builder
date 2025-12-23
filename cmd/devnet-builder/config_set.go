@@ -9,14 +9,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/config"
+	"github.com/b-harvest/devnet-builder/internal/domain/credential"
+	infracred "github.com/b-harvest/devnet-builder/internal/infrastructure/credential"
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/config"
-	"github.com/stablelabs/stable-devnet/internal/output"
 	"golang.org/x/term"
 )
 
-// secretKeys defines which keys should use hidden input when value is not provided.
+// secretKeys defines which keys should use hidden input and secure storage.
 var secretKeys = map[string]bool{
 	"github-token": true,
 }
@@ -28,6 +30,11 @@ var keyAliases = map[string]string{
 	"cache_ttl":      "cache-ttl",
 	"stable_version": "stable-version",
 }
+
+// Command flags
+var (
+	configSetUseConfigFile bool // Force storage in config file instead of keychain
+)
 
 // normalizeKey converts a key to its canonical form.
 func normalizeKey(key string) string {
@@ -42,10 +49,15 @@ func NewConfigSetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set <key> [value]",
 		Short: "Set a configuration value",
-		Long: `Set a configuration value in the config file.
+		Long: `Set a configuration value securely.
+
+For sensitive values (like github-token), the system keychain is used by default:
+  - macOS: Keychain Access
+  - Linux: Secret Service (GNOME Keyring, KWallet)
+  - Windows: Windows Credential Manager
 
 Available keys:
-  github-token   GitHub Personal Access Token for private repos
+  github-token   GitHub Personal Access Token (stored in keychain)
   cache-ttl      Version cache TTL (e.g., "1h", "30m", "2h")
   network        Default network (mainnet, testnet)
   validators     Default number of validators (1-4)
@@ -53,11 +65,14 @@ Available keys:
   stable-version Default stable version
 
 Examples:
-  # Set GitHub token (prompts for hidden input)
+  # Set GitHub token securely (uses system keychain, prompts for hidden input)
   devnet-builder config set github-token
 
   # Set GitHub token directly
   devnet-builder config set github-token ghp_xxxxxxxxxxxx
+
+  # Force storage in config file (less secure, not recommended)
+  devnet-builder config set github-token --use-config-file
 
   # Set cache TTL to 2 hours
   devnet-builder config set cache-ttl 2h
@@ -67,6 +82,9 @@ Examples:
 		Args: cobra.RangeArgs(1, 2),
 		RunE: runConfigSet,
 	}
+
+	cmd.Flags().BoolVar(&configSetUseConfigFile, "use-config-file", false,
+		"Store in config file instead of system keychain (less secure)")
 
 	return cmd
 }
@@ -90,7 +108,58 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		value = args[1]
 	}
 
-	// Find or create config file
+	// Handle secret keys (like github-token) with secure storage
+	if secretKeys[key] && !configSetUseConfigFile {
+		return setSecretValue(key, value)
+	}
+
+	// Non-secret keys: store in config file
+	return setConfigFileValue(key, value)
+}
+
+// setSecretValue stores a secret in the system keychain.
+func setSecretValue(key, value string) error {
+	// Validate the credential
+	credType := keyToCredentialType(key)
+	if credType == "" {
+		return fmt.Errorf("unknown secret key: %s", key)
+	}
+
+	// Validate token format for GitHub tokens
+	if credType == credential.TypeGitHubToken {
+		if err := credential.ValidateGitHubToken(value); err != nil {
+			output.Warn("Token doesn't appear to be a valid GitHub token (expected ghp_*, gho_*, etc.)")
+		}
+	}
+
+	// Try to store in keychain
+	keychain := infracred.NewKeychainStore()
+	if keychain.IsAvailable() {
+		if err := keychain.Set(credType, value); err != nil {
+			output.Warn("Failed to store in system keychain: %v", err)
+			output.Info("Falling back to config file storage...")
+			return setConfigFileValueForSecret(key, value)
+		}
+
+		output.Success("Securely stored %s in system keychain", key)
+		output.Info("Storage: %s", getKeychainDescription())
+
+		// Remove from config file if present (migrate to secure storage)
+		if err := removeSecretFromConfigFile(key); err != nil {
+			output.Debug("Note: Could not remove old value from config file: %v", err)
+		}
+
+		return nil
+	}
+
+	// Keychain not available, warn and use config file
+	output.Warn("System keychain not available on this system")
+	output.Info("Storing in config file (less secure)")
+	return setConfigFileValueForSecret(key, value)
+}
+
+// setConfigFileValue stores a non-secret value in config.toml.
+func setConfigFileValue(key, value string) error {
 	configFile := filepath.Join(homeDir, "config.toml")
 
 	// Load existing config or create new
@@ -102,17 +171,9 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Set the value
+	// Set the value based on key
 	switch key {
-	case "github-token":
-		// Validate token format
-		if !isValidGitHubToken(value) {
-			output.Warn("Token doesn't appear to be a valid GitHub token (expected ghp_* or github_pat_*)")
-		}
-		cfg.GitHubToken = &value
-
 	case "cache-ttl":
-		// Validate TTL format
 		if _, err := time.ParseDuration(value); err != nil {
 			return fmt.Errorf("invalid cache-ttl format: %w (expected duration like '1h', '30m')", err)
 		}
@@ -125,7 +186,6 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		cfg.Network = &value
 
 	case "validators":
-		// Parse as int
 		var validators int
 		if _, err := fmt.Sscanf(value, "%d", &validators); err != nil {
 			return fmt.Errorf("invalid validators: %s (must be 1-4)", value)
@@ -148,19 +208,45 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unknown config key: %s", key)
 	}
 
-	// Ensure directory exists
+	return writeConfigFile(configFile, &cfg, value, key)
+}
+
+// setConfigFileValueForSecret stores a secret in config file (fallback).
+func setConfigFileValueForSecret(key, value string) error {
+	configFile := filepath.Join(homeDir, "config.toml")
+
+	var cfg config.FileConfig
+	data, err := os.ReadFile(configFile)
+	if err == nil {
+		if err := toml.Unmarshal(data, &cfg); err != nil {
+			return fmt.Errorf("failed to parse config file: %w", err)
+		}
+	}
+
+	switch key {
+	case "github-token":
+		cfg.GitHubToken = &value
+	default:
+		return fmt.Errorf("unknown secret key: %s", key)
+	}
+
+	output.Warn("Storing sensitive data in config file is less secure than system keychain")
+
+	return writeConfigFile(configFile, &cfg, maskToken(value), key)
+}
+
+// writeConfigFile writes the config and displays success message.
+func writeConfigFile(configFile string, cfg *config.FileConfig, displayValue, key string) error {
 	if err := os.MkdirAll(filepath.Dir(configFile), 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	// Marshal config
-	newData, err := toml.Marshal(&cfg)
+	newData, err := toml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	// Write config file with appropriate permissions
-	// Use 0600 if token is present for security
+	// Use restrictive permissions if secrets are present
 	perm := os.FileMode(0644)
 	if cfg.GitHubToken != nil && *cfg.GitHubToken != "" {
 		perm = 0600
@@ -170,15 +256,82 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
-	// Display success message
-	displayValue := value
-	if key == "github-token" {
-		displayValue = maskToken(value)
-	}
 	output.Success("Set %s = %s", key, displayValue)
 	output.Info("Config saved to: %s", configFile)
 
 	return nil
+}
+
+// removeSecretFromConfigFile removes a secret from config file after migrating to keychain.
+func removeSecretFromConfigFile(key string) error {
+	configFile := filepath.Join(homeDir, "config.toml")
+
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		return nil // No config file, nothing to remove
+	}
+
+	var cfg config.FileConfig
+	if err := toml.Unmarshal(data, &cfg); err != nil {
+		return err
+	}
+
+	// Clear the secret
+	switch key {
+	case "github-token":
+		if cfg.GitHubToken != nil {
+			cfg.GitHubToken = nil
+			newData, err := toml.Marshal(&cfg)
+			if err != nil {
+				return err
+			}
+			return os.WriteFile(configFile, newData, 0644)
+		}
+	}
+
+	return nil
+}
+
+// keyToCredentialType maps config keys to credential types.
+func keyToCredentialType(key string) credential.CredentialType {
+	switch key {
+	case "github-token":
+		return credential.TypeGitHubToken
+	default:
+		return ""
+	}
+}
+
+// getKeychainDescription returns a user-friendly description of the keychain.
+func getKeychainDescription() string {
+	switch {
+	case isMacOS():
+		return "macOS Keychain Access"
+	case isLinux():
+		return "Secret Service (GNOME Keyring / KWallet)"
+	case isWindows():
+		return "Windows Credential Manager"
+	default:
+		return "System Keychain"
+	}
+}
+
+func isMacOS() bool {
+	return strings.Contains(strings.ToLower(os.Getenv("OSTYPE")), "darwin") ||
+		fileExists("/System/Library/CoreServices/SystemVersion.plist")
+}
+
+func isLinux() bool {
+	return fileExists("/etc/os-release")
+}
+
+func isWindows() bool {
+	return os.Getenv("OS") == "Windows_NT"
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // isValidGitHubToken checks if a token looks like a valid GitHub token.

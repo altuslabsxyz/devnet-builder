@@ -9,15 +9,29 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/application/dto"
+	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/b-harvest/devnet-builder/internal/di"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
+	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/builder"
-	"github.com/stablelabs/stable-devnet/internal/cache"
-	"github.com/stablelabs/stable-devnet/internal/devnet"
-	"github.com/stablelabs/stable-devnet/internal/github"
-	"github.com/stablelabs/stable-devnet/internal/interactive"
-	"github.com/stablelabs/stable-devnet/internal/output"
-	"github.com/stablelabs/stable-devnet/internal/upgrade"
+)
+
+// Default upgrade constants
+const (
+	DefaultHeightBuffer  = 30
+	DefaultVotingPeriod  = 60 * time.Second
+)
+
+// ExecutionMode for upgrade command
+type UpgradeExecutionMode string
+
+const (
+	UpgradeModeDocker UpgradeExecutionMode = "docker"
+	UpgradeModeLocal  UpgradeExecutionMode = "local"
 )
 
 // Upgrade command flags
@@ -25,7 +39,7 @@ var (
 	upgradeName          string
 	upgradeImage         string
 	upgradeBinary        string
-	upgradeMode          string // NEW: --mode flag for docker/local
+	upgradeMode          string
 	votingPeriod         string
 	heightBuffer         int
 	upgradeHeight        int64
@@ -82,7 +96,7 @@ Examples:
 
 	// Optional flags
 	cmd.Flags().StringVar(&votingPeriod, "voting-period", "60s", "Expedited voting period duration")
-	cmd.Flags().IntVar(&heightBuffer, "height-buffer", upgrade.DefaultHeightBuffer, "Blocks to add after voting period ends")
+	cmd.Flags().IntVar(&heightBuffer, "height-buffer", DefaultHeightBuffer, "Blocks to add after voting period ends")
 	cmd.Flags().Int64Var(&upgradeHeight, "upgrade-height", 0, "Explicit upgrade height (0 = auto-calculate)")
 	cmd.Flags().BoolVar(&exportGenesis, "export-genesis", false, "Export genesis before and after upgrade")
 	cmd.Flags().StringVar(&genesisDir, "genesis-dir", "", "Directory for genesis exports (default: <home>/devnet/genesis-snapshots)")
@@ -115,8 +129,8 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		<-sigChan
 		fmt.Println()
 		output.Warn("Upgrade interrupted. Current state:")
-		if lastStage != "" {
-			fmt.Printf("  Last stage: %s\n", lastStage)
+		if lastUpgradeStage != "" {
+			fmt.Printf("  Last stage: %s\n", lastUpgradeStage)
 		}
 		output.Warn("The devnet may be in an intermediate state.")
 		output.Info("Run 'devnet-builder status' to check chain health.")
@@ -125,8 +139,23 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 
 	logger := output.DefaultLogger
 
-	// Load devnet metadata using consolidated helper
-	metadata, err := loadMetadataOrFail(logger)
+	// Initialize CleanDevnetService for existence and status checks
+	svc, err := getCleanService()
+	if err != nil {
+		return outputUpgradeError(fmt.Errorf("failed to initialize service: %w", err))
+	}
+
+	// Check if devnet exists using CleanDevnetService
+	if !svc.DevnetExists() {
+		err := fmt.Errorf("no devnet found at %s", homeDir)
+		if jsonMode {
+			return outputUpgradeError(err)
+		}
+		return err
+	}
+
+	// Load metadata via CleanDevnetService for status check
+	cleanMetadata, err := svc.LoadMetadata(ctx)
 	if err != nil {
 		if jsonMode {
 			return outputUpgradeError(err)
@@ -134,41 +163,44 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if metadata.Status != devnet.StatusRunning {
+	if cleanMetadata.Status != ports.StateRunning {
 		if jsonMode {
 			return outputUpgradeError(fmt.Errorf("devnet is not running"))
 		}
 		return fmt.Errorf("devnet is not running\nStart it with 'devnet-builder start'")
 	}
 
-	// Resolve execution mode: flag > metadata default (T004)
-	resolvedMode := metadata.ExecutionMode
+	// Get network module for binary name
+	networkModule, err := network.Get(cleanMetadata.BlockchainNetwork)
+	if err != nil {
+		return outputUpgradeError(fmt.Errorf("failed to get network module: %w", err))
+	}
+
+	// Resolve execution mode: flag > metadata default
+	resolvedMode := UpgradeExecutionMode(cleanMetadata.ExecutionMode)
 	modeExplicitlySet := false
 	if upgradeMode != "" {
-		// Validate mode value
-		switch devnet.ExecutionMode(upgradeMode) {
-		case devnet.ModeDocker, devnet.ModeLocal:
-			resolvedMode = devnet.ExecutionMode(upgradeMode)
+		switch UpgradeExecutionMode(upgradeMode) {
+		case UpgradeModeDocker, UpgradeModeLocal:
+			resolvedMode = UpgradeExecutionMode(upgradeMode)
 			modeExplicitlySet = true
 		default:
 			return fmt.Errorf("invalid mode %q: must be 'docker' or 'local'", upgradeMode)
 		}
 	}
 
-	// Mode validation against --image/--binary flags (T005, T006)
+	// Mode validation against --image/--binary flags
 	if !jsonMode {
-		// Warn if mode doesn't match the provided flags
-		if resolvedMode == devnet.ModeDocker && upgradeBinary != "" && !modeExplicitlySet {
+		if resolvedMode == UpgradeModeDocker && upgradeBinary != "" && !modeExplicitlySet {
 			output.Warn("Devnet was started in docker mode but --binary was provided.")
 			output.Warn("Use --image for docker mode, or --mode local to switch modes.")
 		}
-		if resolvedMode == devnet.ModeLocal && upgradeImage != "" && !modeExplicitlySet {
+		if resolvedMode == UpgradeModeLocal && upgradeImage != "" && !modeExplicitlySet {
 			output.Warn("Devnet was started in local mode but --image was provided.")
 			output.Warn("Use --binary for local mode, or --mode docker to switch modes.")
 		}
-		// Warn if explicitly switching modes (T010 - mode change warning)
-		if modeExplicitlySet && resolvedMode != metadata.ExecutionMode {
-			output.Warn("Switching execution mode from %s to %s.", metadata.ExecutionMode, resolvedMode)
+		if modeExplicitlySet && resolvedMode != UpgradeExecutionMode(cleanMetadata.ExecutionMode) {
+			output.Warn("Switching execution mode from %s to %s.", cleanMetadata.ExecutionMode, resolvedMode)
 			output.Warn("The devnet will continue in %s mode after this upgrade.", resolvedMode)
 		}
 	}
@@ -208,45 +240,28 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("upgrade name is required (--name or interactive mode)")
 	}
 
-	// Initialize binary cache
-	binaryCache := cache.NewBinaryCache(homeDir, logger)
-	if err := binaryCache.Initialize(); err != nil {
-		logger.Warn("Failed to initialize binary cache: %v", err)
-		// Continue without cache - will fall back to direct binary copy
-	}
-
-	// T011: Mode-aware version resolution
-	// For docker mode with standard version tag, use docker image
-	// For local mode or custom refs, build local binary
-	var cachedBinary *cache.CachedBinary
-	var customBinaryPath string
+	// Mode-aware version resolution
+	var cachedBuildResult *dto.BuildOutput
 	var versionResolvedImage string
 
 	if selectedVersion != "" && upgradeImage == "" && upgradeBinary == "" {
-		networkModule, _ := metadata.GetNetworkModule()
-		if resolvedMode == devnet.ModeDocker && isStandardVersionTag(selectedVersion) {
+		if resolvedMode == UpgradeModeDocker && isStandardVersionTag(selectedVersion) {
 			// Docker mode with standard version tag: resolve to docker image
-			dockerImage := "ghcr.io/stablelabs/stable" // fallback
-			if networkModule != nil {
-				dockerImage = networkModule.DockerImage()
-			}
+			dockerImage := networkModule.DockerImage()
 			versionResolvedImage = fmt.Sprintf("%s:%s", dockerImage, selectedVersion)
 			logger.Info("Using docker image for version %s: %s", selectedVersion, versionResolvedImage)
 		} else {
-			// Local mode or custom ref: build local binary to cache
-			b := builder.NewBuilder(homeDir, logger, networkModule)
-			logger.Info("Pre-building upgrade binary (ref: %s)...", selectedVersion)
-
-			// Build to cache
-			cached, err := b.BuildToCache(ctx, builder.BuildOptions{
-				Ref:     selectedVersion,
-				Network: metadata.NetworkSource,
-			}, binaryCache)
+			// Local mode or custom ref: build local binary to cache using DI container
+			buildResult, err := buildBinaryForUpgrade(ctx, cleanMetadata.BlockchainNetwork, selectedVersion, cleanMetadata.NetworkName, logger)
 			if err != nil {
 				return fmt.Errorf("failed to pre-build binary: %w", err)
 			}
-			cachedBinary = cached
-			logger.Success("Binary pre-built and cached (commit: %s)", cached.CommitHash[:12])
+			cachedBuildResult = buildResult
+			commitShort := buildResult.CommitHash
+			if len(commitShort) > 12 {
+				commitShort = commitShort[:12]
+			}
+			logger.Success("Binary pre-built and cached (commit: %s)", commitShort)
 		}
 	}
 
@@ -259,69 +274,67 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	// Determine target binary/image
 	targetBinary := upgradeBinary
 	targetImage := upgradeImage
-	if customBinaryPath != "" {
-		targetBinary = customBinaryPath
-	}
 	if versionResolvedImage != "" {
 		targetImage = versionResolvedImage
 	}
 
-	// Build upgrade config
-	cfg := &upgrade.UpgradeConfig{
-		Name:          selectedName,
-		Mode:          resolvedMode, // T008: Pass resolved mode to UpgradeConfig
-		TargetImage:   targetImage,
+	// Print upgrade plan (non-JSON mode)
+	if !jsonMode {
+		printUpgradePlan(selectedName, string(resolvedMode), targetImage, targetBinary, cachedBuildResult, vp, cleanMetadata)
+	}
+
+	// Create DI container for upgrade
+	factory := di.NewInfrastructureFactory(homeDir, logger).
+		WithNetworkModule(networkModule).
+		WithDockerMode(resolvedMode == UpgradeModeDocker)
+
+	container, err := factory.WireContainer()
+	if err != nil {
+		return outputUpgradeError(fmt.Errorf("failed to initialize: %w", err))
+	}
+
+	// Build ExecuteUpgradeInput
+	input := dto.ExecuteUpgradeInput{
+		HomeDir:       homeDir,
+		UpgradeName:   selectedName,
 		TargetBinary:  targetBinary,
+		TargetImage:   targetImage,
 		TargetVersion: selectedVersion,
 		VotingPeriod:  vp,
 		HeightBuffer:  heightBuffer,
 		UpgradeHeight: upgradeHeight,
 		ExportGenesis: exportGenesis,
 		GenesisDir:    genesisDir,
+		Mode:          ports.ExecutionMode(resolvedMode),
 	}
 
 	// If we have a cached binary, use cache mode for atomic symlink switch
-	if cachedBinary != nil {
-		cfg.CachePath = cachedBinary.BinaryPath
-		cfg.CommitHash = cachedBinary.CommitHash
-		// Clear target binary since we're using cache
-		cfg.TargetBinary = ""
+	if cachedBuildResult != nil {
+		input.CachePath = cachedBuildResult.BinaryPath
+		input.CommitHash = cachedBuildResult.CommitHash
+		input.TargetBinary = "" // Clear since we're using cache
 	}
 
-	// Validate config
-	if err := cfg.Validate(); err != nil {
-		if jsonMode {
-			return outputUpgradeError(err)
-		}
-		return err
-	}
-
-	// Build execute options
-	opts := &upgrade.ExecuteOptions{
-		HomeDir:  homeDir,
-		Metadata: metadata,
-		Logger:   logger,
-	}
-
-	// Print upgrade plan (non-JSON mode)
+	// Execute the upgrade using the UseCase
 	if !jsonMode {
-		printUpgradePlan(cfg, metadata)
+		fmt.Printf("[1/6] %s\n", color.CyanString("Verifying devnet status..."))
 	}
 
-	// Set up progress callback for non-JSON mode
-	if !jsonMode {
-		opts.ProgressCallback = func(p upgrade.UpgradeProgress) {
-			printUpgradeProgress(p)
-		}
-	}
-
-	// Execute the upgrade
-	result, err := upgrade.ExecuteUpgrade(ctx, cfg, opts)
+	result, err := container.ExecuteUpgradeUseCase().Execute(ctx, input)
 	if err != nil {
 		if jsonMode {
 			return outputUpgradeError(err)
 		}
 		return err
+	}
+
+	// Update metadata with new version if upgrade was successful
+	if result.Success {
+		cleanMetadata.CurrentVersion = selectedVersion
+		cleanMetadata.ExecutionMode = ports.ExecutionMode(resolvedMode)
+		if err := svc.SaveMetadata(ctx, cleanMetadata); err != nil {
+			logger.Warn("Failed to update metadata: %v", err)
+		}
 	}
 
 	// Output result
@@ -371,22 +384,22 @@ func isStandardVersionTag(s string) bool {
 	return false
 }
 
-func printUpgradePlan(cfg *upgrade.UpgradeConfig, metadata *devnet.DevnetMetadata) {
+func printUpgradePlan(name, mode, targetImage, targetBinary string, cached *dto.BuildOutput, votingPeriod time.Duration, metadata *ports.DevnetMetadata) {
 	output.Bold("Upgrade Plan")
 	fmt.Println("─────────────────────────────────────────────────────────")
-	fmt.Printf("Upgrade Name:     %s\n", cfg.Name)
-	fmt.Printf("Mode:             %s\n", cfg.Mode) // T007: Display mode in upgrade plan
-	if cfg.TargetImage != "" {
-		fmt.Printf("Target Image:     %s\n", cfg.TargetImage)
-	} else if cfg.TargetBinary != "" {
-		fmt.Printf("Target Binary:    %s\n", cfg.TargetBinary)
-	} else if cfg.CachePath != "" {
-		fmt.Printf("Target Binary:    %s (cached)\n", cfg.CachePath)
+	fmt.Printf("Upgrade Name:     %s\n", name)
+	fmt.Printf("Mode:             %s\n", mode)
+	if targetImage != "" {
+		fmt.Printf("Target Image:     %s\n", targetImage)
+	} else if targetBinary != "" {
+		fmt.Printf("Target Binary:    %s\n", targetBinary)
+	} else if cached != nil {
+		fmt.Printf("Target Binary:    %s (cached)\n", cached.BinaryPath)
 	}
-	fmt.Printf("Voting Period:    %s\n", cfg.VotingPeriod)
-	fmt.Printf("Height Buffer:    %d blocks\n", cfg.HeightBuffer)
-	if cfg.UpgradeHeight > 0 {
-		fmt.Printf("Upgrade Height:   %d (explicit)\n", cfg.UpgradeHeight)
+	fmt.Printf("Voting Period:    %s\n", votingPeriod)
+	fmt.Printf("Height Buffer:    %d blocks\n", heightBuffer)
+	if upgradeHeight > 0 {
+		fmt.Printf("Upgrade Height:   %d (explicit)\n", upgradeHeight)
 	} else {
 		fmt.Printf("Upgrade Height:   auto-calculate\n")
 	}
@@ -394,61 +407,16 @@ func printUpgradePlan(cfg *upgrade.UpgradeConfig, metadata *devnet.DevnetMetadat
 	fmt.Println()
 }
 
-var lastStage upgrade.UpgradeStage
+var lastUpgradeStage string
 
-func printUpgradeProgress(p upgrade.UpgradeProgress) {
-	// Only print when stage changes, except for waiting stage which updates continuously
-	if p.Stage == lastStage && p.Stage != upgrade.StageWaiting && p.Stage != upgrade.StageVoting {
-		return
+func outputUpgradeText(result *dto.ExecuteUpgradeOutput) error {
+	if result.Error != nil {
+		output.Error("Upgrade failed: %v", result.Error)
+		return result.Error
 	}
-	lastStage = p.Stage
 
-	switch p.Stage {
-	case upgrade.StageVerifying:
-		fmt.Printf("[1/6] %s\n", color.CyanString("Verifying devnet status..."))
-	case upgrade.StageSubmitting:
-		fmt.Printf("[2/6] %s\n", color.CyanString("Submitting upgrade proposal..."))
-	case upgrade.StageVoting:
-		fmt.Printf("\r[3/6] %s Voted: %d/%d validators   ",
-			color.CyanString("Voting from validators..."), p.VotesCast, p.TotalVoters)
-		if p.VotesCast == p.TotalVoters {
-			fmt.Println() // New line when done
-		}
-	case upgrade.StageWaiting:
-		if p.TargetHeight > 0 {
-			remaining := p.TargetHeight - p.CurrentHeight
-			timeRemaining := time.Until(p.VotingEndTime)
-			if timeRemaining < 0 {
-				timeRemaining = 0
-			}
-			if remaining > 0 || timeRemaining > 0 {
-				// Show time remaining if voting period not complete, otherwise show blocks
-				if timeRemaining > 0 {
-					fmt.Printf("\r[4/6] %s Block %d/%d (%s remaining)   ",
-						color.CyanString("Waiting for voting period..."),
-						p.CurrentHeight, p.TargetHeight, timeRemaining.Round(time.Second))
-				} else {
-					fmt.Printf("\r[4/6] %s Block %d/%d (%d blocks remaining)   ",
-						color.CyanString("Waiting for upgrade height..."),
-						p.CurrentHeight, p.TargetHeight, remaining)
-				}
-			}
-		}
-	case upgrade.StageSwitching:
-		fmt.Println() // New line after waiting
-		fmt.Printf("[5/6] %s\n", color.CyanString("Switching to new binary..."))
-	case upgrade.StageVerifyingResume:
-		fmt.Printf("[6/6] %s\n", color.CyanString("Verifying chain resumed..."))
-	case upgrade.StageCompleted:
-		fmt.Println()
-		output.Success("Upgrade completed successfully!")
-	case upgrade.StageFailed:
-		fmt.Println()
-		output.Error("Upgrade failed: %v", p.Error)
-	}
-}
-
-func outputUpgradeText(result *upgrade.UpgradeResult) error {
+	fmt.Println()
+	output.Success("Upgrade completed successfully!")
 	fmt.Println()
 	output.Bold("Upgrade Summary")
 	fmt.Println("─────────────────────────────────────────────────────────")
@@ -478,7 +446,11 @@ func outputUpgradeText(result *upgrade.UpgradeResult) error {
 	return nil
 }
 
-func outputUpgradeJSON(result *upgrade.UpgradeResult) error {
+func outputUpgradeJSON(result *dto.ExecuteUpgradeOutput) error {
+	if result.Error != nil {
+		return outputUpgradeError(result.Error)
+	}
+
 	jsonResult := UpgradeResultJSON{
 		Status:            "success",
 		UpgradeName:       result.NewBinary,
@@ -501,16 +473,8 @@ func outputUpgradeJSON(result *upgrade.UpgradeResult) error {
 }
 
 func outputUpgradeError(err error) error {
-	// Check if it's an UpgradeError for better error reporting
-	var errCode string
-	var suggestion string
-
-	if ue, ok := err.(*upgrade.UpgradeError); ok {
-		errCode = string(ue.Stage)
-		suggestion = ue.Suggestion
-	} else {
-		errCode = "UPGRADE_FAILED"
-	}
+	errCode := "UPGRADE_FAILED"
+	suggestion := ""
 
 	result := map[string]interface{}{
 		"error":   true,
@@ -524,4 +488,86 @@ func outputUpgradeError(err error) error {
 	data, _ := json.MarshalIndent(result, "", "  ")
 	fmt.Println(string(data))
 	return err
+}
+
+// buildBinaryForUpgrade builds a binary using DI container and BuildUseCase.
+func buildBinaryForUpgrade(ctx context.Context, blockchainNetwork, ref, networkType string, logger *output.Logger) (*dto.BuildOutput, error) {
+	// Get network module
+	networkModule, err := network.Get(blockchainNetwork)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network module: %w", err)
+	}
+
+	// Create DI factory with network module
+	factory := di.NewInfrastructureFactory(homeDir, logger).
+		WithNetworkModule(networkModule)
+
+	// Wire container
+	container, err := factory.WireContainer()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize: %w", err)
+	}
+
+	logger.Info("Pre-building upgrade binary (ref: %s)...", ref)
+
+	// Execute BuildUseCase
+	return container.BuildUseCase().Execute(ctx, dto.BuildInput{
+		Ref:      ref,
+		Network:  networkType,
+		UseCache: true,
+		ToCache:  true,
+	})
+}
+
+// PortsMetadataAdapter wraps *ports.DevnetMetadata for compatibility.
+type PortsMetadataAdapter struct {
+	metadata      *ports.DevnetMetadata
+	svc           *CleanDevnetService
+	networkModule network.NetworkModule
+}
+
+// NewPortsMetadataAdapter creates a new adapter wrapping the given ports metadata.
+func NewPortsMetadataAdapter(m *ports.DevnetMetadata, svc *CleanDevnetService, nm network.NetworkModule) *PortsMetadataAdapter {
+	return &PortsMetadataAdapter{
+		metadata:      m,
+		svc:           svc,
+		networkModule: nm,
+	}
+}
+
+func (a *PortsMetadataAdapter) GetChainID() string {
+	return a.metadata.ChainID
+}
+
+func (a *PortsMetadataAdapter) GetExecutionMode() ports.ExecutionMode {
+	return a.metadata.ExecutionMode
+}
+
+func (a *PortsMetadataAdapter) SetExecutionMode(mode ports.ExecutionMode) {
+	a.metadata.ExecutionMode = mode
+}
+
+func (a *PortsMetadataAdapter) GetVersion() string {
+	return a.metadata.CurrentVersion
+}
+
+func (a *PortsMetadataAdapter) SetVersion(version string) {
+	a.metadata.CurrentVersion = version
+}
+
+func (a *PortsMetadataAdapter) GetNumValidators() int {
+	return a.metadata.NumValidators
+}
+
+func (a *PortsMetadataAdapter) GetBinaryName() string {
+	return a.networkModule.BinaryName()
+}
+
+func (a *PortsMetadataAdapter) GetHomeDir() string {
+	return a.metadata.HomeDir
+}
+
+func (a *PortsMetadataAdapter) Save() error {
+	ctx := context.Background()
+	return a.svc.SaveMetadata(ctx, a.metadata)
 }

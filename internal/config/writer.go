@@ -69,7 +69,7 @@ func (w *ConfigWriter) generateTOMLWithComments(cfg *FileConfig) string {
 	if cfg.Home != nil {
 		content += fmt.Sprintf("home = %q\n", *cfg.Home)
 	} else {
-		content += "# home = \"~/.stable-devnet\"\n"
+		content += "# home = \"~/.devnet-builder\"\n"
 	}
 
 	if cfg.Verbose != nil && *cfg.Verbose {

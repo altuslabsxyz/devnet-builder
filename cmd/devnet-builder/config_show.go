@@ -5,8 +5,8 @@ import (
 	"os"
 	"text/tabwriter"
 
+	"github.com/b-harvest/devnet-builder/internal/config"
 	"github.com/spf13/cobra"
-	"github.com/stablelabs/stable-devnet/internal/config"
 )
 
 // NewConfigShowCmd creates the config show subcommand.

@@ -5,8 +5,8 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/manifoldco/promptui"
-	"github.com/stablelabs/stable-devnet/internal/network"
 	"golang.org/x/term"
 )
 
