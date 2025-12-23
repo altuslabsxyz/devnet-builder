@@ -265,11 +265,29 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Parse voting period
-	vp, err := time.ParseDuration(votingPeriod)
+	// Get on-chain governance parameters
+	logger.Info("Fetching governance parameters from chain...")
+	rpcHost := "localhost"
+	rpcPort := 26657
+	tempFactory := di.NewInfrastructureFactory(homeDir, logger)
+	rpcClient := tempFactory.CreateRPCClient(rpcHost, rpcPort)
+
+	govParams, err := rpcClient.GetGovParams(ctx)
 	if err != nil {
-		return fmt.Errorf("invalid voting period: %w", err)
+		logger.Debug("Failed to fetch gov params, using CLI flag value: %v", err)
+		// Fallback to CLI flag if chain query fails
+		vp, parseErr := time.ParseDuration(votingPeriod)
+		if parseErr != nil {
+			return fmt.Errorf("invalid voting period: %w", parseErr)
+		}
+		govParams = &ports.GovParams{
+			ExpeditedVotingPeriod: vp,
+		}
 	}
+
+	// Use expedited voting period from chain
+	vp := govParams.ExpeditedVotingPeriod
+	logger.Info("Using expedited voting period: %s", vp)
 
 	// Determine target binary/image
 	targetBinary := upgradeBinary
