@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	appversion "github.com/b-harvest/devnet-builder/internal/application/version"
 	infrabuilder "github.com/b-harvest/devnet-builder/internal/infrastructure/builder"
 	infracache "github.com/b-harvest/devnet-builder/internal/infrastructure/cache"
 	infraevm "github.com/b-harvest/devnet-builder/internal/infrastructure/evm"
@@ -19,6 +20,7 @@ import (
 	infrarpc "github.com/b-harvest/devnet-builder/internal/infrastructure/rpc"
 	infrasnapshot "github.com/b-harvest/devnet-builder/internal/infrastructure/snapshot"
 	infrastateexport "github.com/b-harvest/devnet-builder/internal/infrastructure/stateexport"
+	infraversion "github.com/b-harvest/devnet-builder/internal/infrastructure/version"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/b-harvest/devnet-builder/internal/output"
 )
@@ -215,6 +217,17 @@ func (f *InfrastructureFactory) CreateValidatorKeyLoader() ports.ValidatorKeyLoa
 		dockerImage = f.module.DockerImage()
 	}
 	return infrakeyring.NewValidatorKeyLoader(dockerImage)
+}
+
+// CreateVersionRepository creates a VersionRepository implementation.
+func (f *InfrastructureFactory) CreateVersionRepository() ports.VersionRepository {
+	return infraversion.NewFilesystemVersionRepository()
+}
+
+// CreateMigrationService creates a MigrationService implementation.
+func (f *InfrastructureFactory) CreateMigrationService() ports.MigrationService {
+	repo := f.CreateVersionRepository()
+	return appversion.NewService(repo, f.logger)
 }
 
 // healthCheckerAdapter adapts RPCClient to HealthChecker interface.
