@@ -68,7 +68,7 @@ jobs:
         run: go mod download
 
       - name: Run tests with race detection
-        run: go test -race -v ./...
+        run: go test -p 1 -race -v ./...
 
   lint:
     name: Lint
