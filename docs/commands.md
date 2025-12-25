@@ -47,7 +47,7 @@ devnet-builder deploy [flags]
 | `-n, --network` | string | mainnet | Network source (mainnet, testnet) |
 | `-m, --mode` | string | docker | Execution mode (docker, local) |
 | `--image` | string | | Docker image tag (e.g., 1.1.3-mainnet) |
-| `--stable-version` | string | latest | Stable version to use |
+| `--network-version` | string | latest | Network version to use |
 | `--no-cache` | bool | false | Skip snapshot cache, download fresh |
 | `--no-interactive` | bool | false | Disable interactive mode |
 | `--export-version` | string | | Version for genesis export (non-interactive) |
@@ -72,7 +72,7 @@ devnet-builder deploy --network testnet
 devnet-builder deploy --mode local
 
 # Deploy specific version
-devnet-builder deploy --stable-version v1.1.3
+devnet-builder deploy --network-version v1.1.3
 ```
 
 ---
@@ -97,7 +97,7 @@ devnet-builder init
 
 # Initialize, then customize config before starting
 devnet-builder init --validators 2
-# Edit ~/.stable-devnet/devnet/node0/config/config.toml
+# Edit ~/.devnet-builder/devnet/node0/config/config.toml
 devnet-builder up
 ```
 
@@ -118,7 +118,7 @@ devnet-builder up [flags]
 | `--mode` | string | | Override execution mode |
 | `--binary-ref` | string | | Binary reference for local mode |
 | `--health-timeout` | duration | 5m | Timeout waiting for nodes to be healthy |
-| `--stable-version` | string | | Stable repository version (overrides init version) |
+| `--network-version` | string | | Network repository version (overrides init version) |
 
 #### Examples
 
@@ -227,7 +227,7 @@ devnet-builder status --json | jq '.nodes[0].height'
 
 ```
 Devnet Status: running
-Chain ID: stable_988-1
+Chain ID: <chain-id>
 Execution Mode: docker
 Network Source: mainnet
 
@@ -358,10 +358,10 @@ devnet-builder upgrade [flags]
 devnet-builder upgrade
 
 # Upgrade to new Docker image
-devnet-builder upgrade --name v2 --image ghcr.io/stablelabs/stable:v2.0.0
+devnet-builder upgrade --name v2 --image <docker-registry>/<network-image>:v2.0.0
 
 # Upgrade with local binary
-devnet-builder upgrade --name v2 --binary /path/to/stabled
+devnet-builder upgrade --name v2 --binary /path/to/<binary-name>
 
 # Upgrade and export genesis for debugging
 devnet-builder upgrade --name v2 --image v2.0.0-mainnet --export-genesis
@@ -398,9 +398,9 @@ devnet-builder build [genesis-export.json] [flags]
 |------|------|---------|-------------|
 | `--validators` | int | 4 | Number of validators |
 | `--accounts` | int | 10 | Number of funded accounts |
-| `--validator-balance` | string | 1000000000000000000000astable,500000000000000000000agusdt | Balance for each validator |
-| `--account-balance` | string | 1000000000000000000000astable,500000000000000000000agusdt | Balance for each account |
-| `--validator-stake` | string | 100000000000000000000 | Stake amount for each validator (in astable) |
+| `--validator-balance` | string | 1000000000000000000000<base-denom>,500000000000000000000<secondary-denom> | Balance for each validator |
+| `--account-balance` | string | 1000000000000000000000<base-denom>,500000000000000000000<secondary-denom> | Balance for each account |
+| `--validator-stake` | string | 100000000000000000000 | Stake amount for each validator (in base denom) |
 | `--output` | string | ./devnet | Output directory for devnet files |
 | `--chain-id` | string | | Chain ID (defaults to from genesis) |
 
@@ -623,7 +623,7 @@ These flags work with all commands.
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--config` | string | auto-detect | Path to config.toml |
-| `-H, --home` | string | ~/.stable-devnet | Base directory for devnet data |
+| `-H, --home` | string | ~/.devnet-builder | Base directory for devnet data |
 | `--json` | bool | false | Output in JSON format |
 | `--no-color` | bool | false | Disable colored output |
 | `-v, --verbose` | bool | false | Enable verbose logging |

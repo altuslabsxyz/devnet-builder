@@ -19,14 +19,14 @@ Configuration values are resolved in the following order (highest to lowest prio
 1. **CLI flags** - Direct command-line arguments
 2. **Environment variables** - `DEVNET_*` prefixed variables
 3. **Local config file** - `./config.toml` in current directory
-4. **User config file** - `~/.stable-devnet/config.toml`
+4. **User config file** - `~/.devnet-builder/config.toml`
 5. **Default values** - Built-in defaults
 
 ### Example
 
 ```bash
 # Default: validators = 4
-# In ~/.stable-devnet/config.toml: validators = 2
+# In ~/.devnet-builder/config.toml: validators = 2
 # In ./config.toml: validators = 3
 # CLI flag wins:
 devnet-builder deploy --validators 1  # Uses 1 validator
@@ -36,14 +36,14 @@ devnet-builder deploy --validators 1  # Uses 1 validator
 
 ## config.toml Reference
 
-Create a config file with `devnet-builder config init` or manually create `~/.stable-devnet/config.toml`.
+Create a config file with `devnet-builder config init` or manually create `~/.devnet-builder/config.toml`.
 
 ### Complete Reference
 
 ```toml
 # Base directory for all devnet data
-# Default: ~/.stable-devnet
-home = "~/.stable-devnet"
+# Default: ~/.devnet-builder
+home = "~/.devnet-builder"
 
 # Number of validator nodes
 # Default: 4
@@ -64,10 +64,10 @@ network = "mainnet"
 # Default: "docker"
 mode = "docker"
 
-# Stable version to use
+# Network version to use
 # Options: "latest", specific version tag
 # Default: "latest"
-stable_version = "latest"
+network_version = "latest"
 
 # Skip snapshot cache, always download fresh
 # Default: false
@@ -90,12 +90,12 @@ no_color = false
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `home` | string | `~/.stable-devnet` | Base directory for devnet data, cache, and configs |
+| `home` | string | `~/.devnet-builder` | Base directory for devnet data, cache, and configs |
 | `validators` | int | 4 | Number of validator nodes (1-10) |
 | `accounts` | int | 0 | Additional funded test accounts |
 | `network` | string | mainnet | Network source: mainnet or testnet |
 | `mode` | string | docker | Execution mode: docker or local |
-| `stable_version` | string | latest | Version tag for stable binary |
+| `network_version` | string | latest | Version tag for network binary |
 | `no_cache` | bool | false | Skip cached snapshots |
 | `verbose` | bool | false | Enable debug logging |
 | `json` | bool | false | JSON output for scripts |
@@ -116,7 +116,7 @@ All configuration options can be set via environment variables with the `DEVNET_
 | `DEVNET_ACCOUNTS` | `accounts` | int |
 | `DEVNET_NETWORK` | `network` | string |
 | `DEVNET_MODE` | `mode` | string |
-| `DEVNET_STABLE_VERSION` | `stable_version` | string |
+| `DEVNET_NETWORK_VERSION` | `network_version` | string |
 | `DEVNET_NO_CACHE` | `no_cache` | bool |
 | `DEVNET_VERBOSE` | `verbose` | bool |
 | `DEVNET_JSON` | `json` | bool |
@@ -162,7 +162,7 @@ env:
 ### Minimal Development Config
 
 ```toml
-# ~/.stable-devnet/config.toml
+# ~/.devnet-builder/config.toml
 # Fast startup for local development
 validators = 1
 mode = "docker"
@@ -171,7 +171,7 @@ mode = "docker"
 ### Full Testing Config
 
 ```toml
-# ~/.stable-devnet/config.toml
+# ~/.devnet-builder/config.toml
 # Full consensus testing setup
 validators = 4
 accounts = 5
@@ -195,8 +195,8 @@ json = true
 ### Local Binary Development
 
 ```toml
-# ~/.stable-devnet/config.toml
-# For developers building stable locally
+# ~/.devnet-builder/config.toml
+# For developers building network locally
 validators = 2
 mode = "local"
 verbose = true
@@ -208,14 +208,14 @@ verbose = true
 # mainnet-config.toml
 validators = 4
 network = "mainnet"
-home = "~/.stable-devnet-mainnet"
+home = "~/.devnet-builder-mainnet"
 ```
 
 ```toml
 # testnet-config.toml
 validators = 4
 network = "testnet"
-home = "~/.stable-devnet-testnet"
+home = "~/.devnet-builder-testnet"
 ```
 
 ```bash
@@ -283,11 +283,11 @@ devnet-testnet status
 Understanding the home directory structure helps with troubleshooting:
 
 ```
-~/.stable-devnet/
+~/.devnet-builder/
 ├── bin/                    # Local binaries (symlinks)
 ├── build/                  # Build artifacts
 ├── cache/                  # Binary cache for upgrades
-│   └── binaries/          # Cached stabled binaries by commit
+│   └── binaries/          # Cached network binaries by commit
 ├── config.toml            # User configuration
 ├── devnet/                # Active devnet data
 │   ├── metadata.json      # Devnet state and config

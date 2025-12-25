@@ -1,6 +1,6 @@
 # Getting Started with devnet-builder
 
-This guide walks you through installing devnet-builder and deploying your first local Stable devnet.
+This guide walks you through installing devnet-builder and deploying your first local blockchain development network.
 
 ## Prerequisites
 
@@ -57,7 +57,7 @@ sudo apt install -y docker.io curl jq zstd
 ```bash
 # Clone the repository
 git clone https://github.com/b-harvest/devnet-builder.git
-cd stable-devnet
+cd devnet-builder
 
 # Build the binary
 make build
@@ -93,7 +93,7 @@ export PATH="$PATH:$(pwd)/build"
 
 This will:
 1. Check prerequisites (Docker, curl, jq, zstd)
-2. Download mainnet snapshot (~5-10GB, cached for future use)
+2. Download network snapshot (~5-10GB, cached for future use)
 3. Export genesis state
 4. Create 4 validator nodes with keys
 5. Start all validators
@@ -108,7 +108,7 @@ This will:
 Expected output:
 ```
 Devnet Status: running
-Chain ID: stable_988-1
+Chain ID: <network-specific>
 Execution Mode: docker
 Network Source: mainnet
 
@@ -130,7 +130,7 @@ Endpoints:
 # Check block height via RPC
 curl -s http://localhost:26657/status | jq '.result.sync_info.latest_block_height'
 
-# Check via EVM JSON-RPC
+# Check via EVM JSON-RPC (if supported by network)
 curl -s http://localhost:8545 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
@@ -218,7 +218,7 @@ After deployment, verify your devnet is working:
 
 - [ ] `devnet-builder status` shows all nodes healthy
 - [ ] `curl http://localhost:26657/status` returns JSON
-- [ ] `curl http://localhost:8545` responds to EVM requests
+- [ ] `curl http://localhost:8545` responds to EVM requests (if supported)
 - [ ] Block height is increasing (check twice with 5 second gap)
 - [ ] Logs show no errors: `devnet-builder logs --tail 20`
 
@@ -229,4 +229,5 @@ After deployment, verify your devnet is working:
 - **[Command Reference](commands.md)** - Learn all available commands
 - **[Configuration](configuration.md)** - Customize behavior with config.toml
 - **[Workflows](workflows.md)** - Common debugging workflows
+- **[Plugin Development](PLUGIN_DEVELOPMENT.md)** - Create custom network plugins
 - **[Troubleshooting](troubleshooting.md)** - Fix common issues

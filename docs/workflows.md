@@ -31,7 +31,7 @@ The upgrade workflow allows you to test chain upgrades in a controlled environme
 
 ```bash
 # Deploy with specific initial version
-devnet-builder deploy --image ghcr.io/stablelabs/stable:v1.0.0
+devnet-builder deploy --image <docker-registry>/<network-image>:v1.0.0
 ```
 
 #### Step 2: Verify Chain is Running
@@ -50,7 +50,7 @@ curl -s http://localhost:26657/status | jq '.result.sync_info.latest_block_heigh
 # Start upgrade to new version
 devnet-builder upgrade \
   --name v2-upgrade \
-  --image ghcr.io/stablelabs/stable:v2.0.0
+  --image <docker-registry>/<network-image>:v2.0.0
 ```
 
 This will:
@@ -91,8 +91,8 @@ devnet-builder upgrade \
 ```
 
 Genesis files saved to:
-- `~/.stable-devnet/genesis/pre-upgrade-v2-upgrade.json`
-- `~/.stable-devnet/genesis/post-upgrade-v2-upgrade.json`
+- `~/.devnet-builder/genesis/pre-upgrade-v2-upgrade.json`
+- `~/.devnet-builder/genesis/post-upgrade-v2-upgrade.json`
 
 ### Upgrade with Local Binary
 
@@ -100,13 +100,13 @@ For testing locally-built binaries:
 
 ```bash
 # Build your binary first
-cd /path/to/stable
+cd /path/to/network
 make build
 
 # Upgrade using local binary
 devnet-builder upgrade \
   --name v2-upgrade \
-  --binary /path/to/stable/build/stabled \
+  --binary /path/to/network/build/<binary-name> \
   --mode local
 ```
 
@@ -126,13 +126,13 @@ devnet-builder export-keys
 Output:
 ```
 Validators:
-  node0: stable1abc...
+  node0: <prefix>1abc...
     Private Key: 0x1234...
-  node1: stable1def...
+  node1: <prefix>1def...
     Private Key: 0x5678...
 
 Accounts:
-  account0: stable1ghi...
+  account0: <prefix>1ghi...
     Private Key: 0xabcd...
 ```
 
@@ -242,7 +242,7 @@ To reset a specific node:
 devnet-builder node stop node2
 
 # Clear node data manually
-rm -rf ~/.stable-devnet/devnet/node2/data/*
+rm -rf ~/.devnet-builder/devnet/node2/data/*
 
 # Restart node
 devnet-builder node start node2
@@ -291,7 +291,7 @@ Best for:
 devnet-builder deploy --mode local
 
 # Use specific binary
-devnet-builder deploy --mode local --binary-ref /path/to/stabled
+devnet-builder deploy --mode local --binary-ref /path/to/<binary-name>
 ```
 
 Requirements:
@@ -311,7 +311,7 @@ devnet-builder deploy --mode docker
 devnet-builder down
 
 # Restart with local binary (for debugging)
-devnet-builder up --mode local --binary-ref /path/to/debug-stabled
+devnet-builder up --mode local --binary-ref /path/to/debug-<binary-name>
 ```
 
 ### Mode Comparison

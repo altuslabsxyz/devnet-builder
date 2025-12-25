@@ -25,11 +25,11 @@ Solutions for common issues when using devnet-builder.
 Understanding the directory structure helps locate files for debugging:
 
 ```
-~/.stable-devnet/
+~/.devnet-builder/
 ├── bin/                    # Local binaries (symlinks)
 ├── build/                  # Build artifacts
 ├── cache/                  # Binary cache for upgrades
-│   └── binaries/          # Cached stabled binaries by commit
+│   └── binaries/          # Cached network binaries by commit
 ├── config.toml            # User configuration
 ├── devnet/                # Active devnet data
 │   ├── metadata.json      # Devnet state and config
@@ -136,7 +136,7 @@ devnet-builder destroy --force
 
 **Common culprits:**
 - Previous devnet-builder instance
-- Local stabled process
+- Local network daemon process
 - Other blockchain nodes
 
 ---
@@ -152,10 +152,10 @@ devnet-builder destroy --force
 
 ```bash
 # Check disk space
-df -h ~/.stable-devnet
+df -h ~/.devnet-builder
 
 # Clear snapshot cache
-rm -rf ~/.stable-devnet/snapshots/*
+rm -rf ~/.devnet-builder/snapshots/*
 
 # Clear binary cache
 devnet-builder cache clean
@@ -276,14 +276,14 @@ devnet-builder deploy --image <new-image>
 
 **Symptoms:**
 - Error: `permission denied`
-- Cannot write to ~/.stable-devnet
+- Cannot write to ~/.devnet-builder
 - Docker socket permission errors
 
 **Solutions:**
 
 ```bash
 # Fix home directory permissions
-chmod -R u+rw ~/.stable-devnet
+chmod -R u+rw ~/.devnet-builder
 
 # Fix Docker socket permissions
 sudo chmod 666 /var/run/docker.sock
@@ -307,13 +307,13 @@ sudo -E devnet-builder deploy
 
 ```bash
 # Check container status (Docker mode)
-docker ps -a | grep stable-devnet
+docker ps -a | grep devnet-builder
 
 # Check specific node logs
 devnet-builder logs node0 --tail 100
 
 # Check resource usage
-docker stats stable-devnet-node0
+docker stats devnet-builder-node0
 ```
 
 **Solutions:**
@@ -343,7 +343,7 @@ docker stats --no-stream
 
 ```bash
 # Clear corrupted snapshot
-rm -rf ~/.stable-devnet/snapshots/mainnet/*
+rm -rf ~/.devnet-builder/snapshots/mainnet/*
 
 # Retry with verbose logging
 devnet-builder deploy -v
@@ -355,10 +355,10 @@ devnet-builder deploy --no-cache
 **Check network:**
 ```bash
 # Test connectivity
-curl -I https://stable-mainnet-data.s3.amazonaws.com/snapshots/stable_pruned.tar.zst
+curl -I <snapshot-source>/snapshots/network_pruned.tar.zst
 
 # Check available space
-df -h ~/.stable-devnet
+df -h ~/.devnet-builder
 ```
 
 ---
@@ -378,7 +378,7 @@ curl -s http://localhost:26657/status | jq '.result.sync_info.catching_up'
 # Should return "false"
 
 # Try manual export (Docker mode)
-docker exec stable-devnet-node0 stabled export --home /home/stable/.stabled
+docker exec devnet-builder-node0 <binary-name> export --home /home/network/.<network-home>
 
 # Check logs for specific error
 devnet-builder logs node0 | grep -i "export\|genesis"
@@ -411,8 +411,8 @@ devnet-builder logs --tail 200 > devnet-logs.txt
 
 | Mode | Log Location |
 |------|--------------|
-| Docker | `docker logs stable-devnet-node0` |
-| Local | `~/.stable-devnet/devnet/node0/node.log` |
+| Docker | `docker logs devnet-builder-node0` |
+| Local | `~/.devnet-builder/devnet/node0/node.log` |
 
 ### Useful Debug Commands
 
@@ -421,13 +421,13 @@ devnet-builder logs --tail 200 > devnet-logs.txt
 devnet-builder status --json | jq
 
 # Check all containers
-docker ps -a | grep stable
+docker ps -a | grep devnet
 
 # Check Docker logs
-docker logs stable-devnet-node0 --tail 100
+docker logs devnet-builder-node0 --tail 100
 
 # Check disk usage
-du -sh ~/.stable-devnet/*
+du -sh ~/.devnet-builder/*
 
 # Network diagnostics
 curl -s http://localhost:26657/health

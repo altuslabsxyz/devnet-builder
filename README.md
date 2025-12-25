@@ -1,19 +1,19 @@
-# Stable Devnet
+# devnet-builder
 
-> Start a local 4-validator devnet with mainnet state in 3 commands
+> Build and manage local blockchain development networks with production state
 
 ## TL;DR
 
 ```bash
-git clone https://github.com/b-harvest/devnet-builder.git && cd stable-devnet
+git clone https://github.com/b-harvest/devnet-builder.git && cd devnet-builder
 make build
 ./build/devnet-builder deploy
 ```
 
-After ~2 minutes, you'll have a running devnet at:
+After ~2 minutes, you'll have a running local blockchain network with:
 - **Cosmos RPC**: http://localhost:26657
-- **EVM JSON-RPC**: http://localhost:8545
-- **Chain ID**: stable_988-1 (mainnet) or stabletestnet_2201-1 (testnet)
+- **EVM JSON-RPC**: http://localhost:8545 (if supported by network)
+- **Multiple validators**: Production-like consensus environment
 
 ---
 
@@ -25,6 +25,7 @@ After ~2 minutes, you'll have a running devnet at:
 - [Basic Commands](#basic-commands)
 - [Documentation](#documentation)
 - [Test Accounts](#test-accounts)
+- [Plugin System](#plugin-system)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
 
@@ -54,7 +55,7 @@ zstd --version || lz4 --version
 
 ```bash
 git clone https://github.com/b-harvest/devnet-builder.git
-cd stable-devnet
+cd devnet-builder
 make build
 
 # Binary will be at ./build/devnet-builder
@@ -117,6 +118,7 @@ For detailed documentation, see the [docs/](docs/) directory:
 - **[Command Reference](docs/commands.md)** - Complete CLI documentation with all flags and examples
 - **[Configuration](docs/configuration.md)** - config.toml options and customization
 - **[Workflows](docs/workflows.md)** - Common debugging and testing workflows
+- **[Plugin Development](docs/PLUGIN_DEVELOPMENT.md)** - Create custom network plugins
 - **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
 
 ---
@@ -138,15 +140,32 @@ devnet-builder export-keys --json
 devnet-builder export-keys --type accounts
 ```
 
-### EVM Configuration
+### Network Configuration
+
+Configure your tools to connect to the local devnet:
 
 | Parameter | Value |
 |-----------|-------|
-| Network Name | Stable Devnet |
-| Chain ID | stable_988-1 (mainnet fork) |
-| EVM Chain ID | 988 (mainnet) / 2201 (testnet) |
-| RPC URL | http://localhost:8545 |
+| Network Name | Local Devnet |
+| RPC URL | http://localhost:26657 |
+| EVM JSON-RPC | http://localhost:8545 |
 | WebSocket | ws://localhost:8546 |
+
+---
+
+## Plugin System
+
+devnet-builder supports multiple blockchain networks through a plugin architecture. Create custom plugins for any Cosmos SDK-based chain.
+
+```bash
+# List available networks
+devnet-builder networks
+
+# Deploy specific network
+devnet-builder --network <network-name> deploy
+```
+
+See [docs/PLUGIN_DEVELOPMENT.md](docs/PLUGIN_DEVELOPMENT.md) for creating custom network plugins.
 
 ---
 
