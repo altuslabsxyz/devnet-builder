@@ -300,6 +300,7 @@ type BuildResult struct {
 	Ref        string
 	CommitHash string
 	CachedPath string
+	CacheRef   string // Cache key for SetActive (format: commitHash-buildTagsHash)
 }
 
 // StateExportService defines operations for exporting genesis from snapshot state.

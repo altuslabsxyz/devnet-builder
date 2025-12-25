@@ -48,7 +48,8 @@ type SwitchBinaryInput struct {
 	TargetImage   string        // Docker image
 	TargetVersion string        // Version string
 	CachePath     string        // Pre-built cached binary
-	CommitHash    string        // Commit hash of cached binary
+	CommitHash    string        // Commit hash of cached binary (deprecated, use CacheRef)
+	CacheRef      string        // Cache key for SetActive
 	Mode          ports.ExecutionMode
 	UpgradeHeight int64         // Height to skip via --unsafe-skip-upgrades
 }
@@ -88,7 +89,8 @@ type ExecuteUpgradeInput struct {
 	TargetBinary  string
 	TargetImage   string
 	CachePath     string
-	CommitHash    string
+	CommitHash    string // Deprecated, use CacheRef
+	CacheRef      string // Cache key for SetActive
 
 	// Options
 	TargetVersion string

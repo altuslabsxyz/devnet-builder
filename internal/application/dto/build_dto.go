@@ -14,6 +14,7 @@ type BuildOutput struct {
 	Ref        string
 	CommitHash string
 	CachedPath string
+	CacheRef   string // Cache key for SetActive
 	FromCache  bool
 }
 
