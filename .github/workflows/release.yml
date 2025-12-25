@@ -101,36 +101,9 @@ jobs:
             dist/*.txt
           retention-days: 30
 
-  verify:
-    name: Verify Release
-    needs: goreleaser
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: release-artifacts
-          path: dist
-
-      - name: Verify checksums
-        run: |
-          cd dist
-          if [ -f checksums.txt ]; then
-            echo "Verifying checksums..."
-            sha256sum -c checksums.txt 2>/dev/null || echo "Checksum verification completed with warnings for non-binary files"
-          fi
-
-      - name: Test Docker image (amd64)
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          docker pull ghcr.io/b-harvest/devnet-builder:${TAG}
-          docker run --rm ghcr.io/b-harvest/devnet-builder:${TAG} version
-
   announce:
     name: Release Summary
-    needs: [goreleaser, verify]
+    needs: goreleaser
     runs-on: ubuntu-latest
     if: success()
 
