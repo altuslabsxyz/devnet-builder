@@ -163,6 +163,90 @@ func (n *MyNetwork) GetGovernanceParams(rpcEndpoint, networkType string) (*plugi
 
 **Example:** See `examples/cosmos-plugin/main.go` for a complete reference implementation.
 
+### RPC Operations (Optional)
+
+Plugins can implement chain-specific RPC operations. These methods allow full delegation of blockchain queries to the plugin, enabling support for non-standard Cosmos SDK chains or custom RPC implementations.
+
+All RPC methods follow the same pattern: try plugin first, fall back to REST if Unimplemented.
+
+#### GetBlockHeight
+
+Returns the current block height from the chain.
+
+```go
+func (n *MyNetwork) GetBlockHeight(ctx context.Context, rpcEndpoint string) (*plugin.BlockHeightResponse, error) {
+    // Query rpcEndpoint + "/status"
+    return &plugin.BlockHeightResponse{Height: 12345, Error: ""}, nil
+}
+```
+
+#### GetBlockTime
+
+Estimates average block time by sampling recent blocks.
+
+```go
+func (n *MyNetwork) GetBlockTime(ctx context.Context, rpcEndpoint string, sampleSize int) (*plugin.BlockTimeResponse, error) {
+    return &plugin.BlockTimeResponse{BlockTimeNs: int64(6 * time.Second), Error: ""}, nil
+}
+```
+
+#### IsChainRunning
+
+Checks if the chain is responding to RPC requests.
+
+```go
+func (n *MyNetwork) IsChainRunning(ctx context.Context, rpcEndpoint string) (*plugin.ChainStatusResponse, error) {
+    return &plugin.ChainStatusResponse{IsRunning: true, Error: ""}, nil
+}
+```
+
+#### WaitForBlock
+
+Waits until the chain reaches the specified height.
+
+```go
+func (n *MyNetwork) WaitForBlock(ctx context.Context, rpcEndpoint string, targetHeight int64, timeoutMs int64) (*plugin.WaitForBlockResponse, error) {
+    return &plugin.WaitForBlockResponse{CurrentHeight: targetHeight, Reached: true, Error: ""}, nil
+}
+```
+
+#### GetProposal
+
+Retrieves a governance proposal by ID.
+
+```go
+func (n *MyNetwork) GetProposal(ctx context.Context, rpcEndpoint string, proposalID uint64) (*plugin.ProposalResponse, error) {
+    return &plugin.ProposalResponse{
+        Id:                proposalID,
+        Status:            "PROPOSAL_STATUS_VOTING_PERIOD",
+        VotingEndTimeUnix: time.Now().Add(60 * time.Second).Unix(),
+        Error:             "",
+    }, nil
+}
+```
+
+#### GetUpgradePlan
+
+Retrieves the current upgrade plan if any.
+
+```go
+func (n *MyNetwork) GetUpgradePlan(ctx context.Context, rpcEndpoint string) (*plugin.UpgradePlanResponse, error) {
+    return &plugin.UpgradePlanResponse{HasPlan: false, Error: ""}, nil
+}
+```
+
+#### GetAppVersion
+
+Returns the application version from ABCI info.
+
+```go
+func (n *MyNetwork) GetAppVersion(ctx context.Context, rpcEndpoint string) (*plugin.AppVersionResponse, error) {
+    return &plugin.AppVersionResponse{Version: "v1.0.0", Error: ""}, nil
+}
+```
+
+**Backward compatibility:** All RPC methods are optional. If not implemented, devnet-builder falls back to direct REST API queries.
+
 ## Configuration Types
 
 ### BinarySource

@@ -11,8 +11,16 @@ import (
 )
 
 // mockPluginModule is a mock implementation of NetworkPluginModule for testing.
+// Implements all methods with default Unimplemented behavior for backward compatibility testing.
 type mockPluginModule struct {
 	getGovernanceParamsFn func(rpcEndpoint, networkType string) (*pb.GovernanceParamsResponse, error)
+	getBlockHeightFn      func(ctx context.Context, rpcEndpoint string) (*pb.BlockHeightResponse, error)
+	getBlockTimeFn        func(ctx context.Context, rpcEndpoint string, sampleSize int) (*pb.BlockTimeResponse, error)
+	isChainRunningFn      func(ctx context.Context, rpcEndpoint string) (*pb.ChainStatusResponse, error)
+	waitForBlockFn        func(ctx context.Context, rpcEndpoint string, targetHeight int64, timeoutMs int64) (*pb.WaitForBlockResponse, error)
+	getProposalFn         func(ctx context.Context, rpcEndpoint string, proposalID uint64) (*pb.ProposalResponse, error)
+	getUpgradePlanFn      func(ctx context.Context, rpcEndpoint string) (*pb.UpgradePlanResponse, error)
+	getAppVersionFn       func(ctx context.Context, rpcEndpoint string) (*pb.AppVersionResponse, error)
 }
 
 func (m *mockPluginModule) GetGovernanceParams(rpcEndpoint, networkType string) (*pb.GovernanceParamsResponse, error) {
@@ -20,6 +28,55 @@ func (m *mockPluginModule) GetGovernanceParams(rpcEndpoint, networkType string) 
 		return m.getGovernanceParamsFn(rpcEndpoint, networkType)
 	}
 	return nil, status.Errorf(codes.Unimplemented, "method GetGovernanceParams not implemented")
+}
+
+func (m *mockPluginModule) GetBlockHeight(ctx context.Context, rpcEndpoint string) (*pb.BlockHeightResponse, error) {
+	if m.getBlockHeightFn != nil {
+		return m.getBlockHeightFn(ctx, rpcEndpoint)
+	}
+	return nil, status.Errorf(codes.Unimplemented, "method GetBlockHeight not implemented")
+}
+
+func (m *mockPluginModule) GetBlockTime(ctx context.Context, rpcEndpoint string, sampleSize int) (*pb.BlockTimeResponse, error) {
+	if m.getBlockTimeFn != nil {
+		return m.getBlockTimeFn(ctx, rpcEndpoint, sampleSize)
+	}
+	return nil, status.Errorf(codes.Unimplemented, "method GetBlockTime not implemented")
+}
+
+func (m *mockPluginModule) IsChainRunning(ctx context.Context, rpcEndpoint string) (*pb.ChainStatusResponse, error) {
+	if m.isChainRunningFn != nil {
+		return m.isChainRunningFn(ctx, rpcEndpoint)
+	}
+	return nil, status.Errorf(codes.Unimplemented, "method IsChainRunning not implemented")
+}
+
+func (m *mockPluginModule) WaitForBlock(ctx context.Context, rpcEndpoint string, targetHeight int64, timeoutMs int64) (*pb.WaitForBlockResponse, error) {
+	if m.waitForBlockFn != nil {
+		return m.waitForBlockFn(ctx, rpcEndpoint, targetHeight, timeoutMs)
+	}
+	return nil, status.Errorf(codes.Unimplemented, "method WaitForBlock not implemented")
+}
+
+func (m *mockPluginModule) GetProposal(ctx context.Context, rpcEndpoint string, proposalID uint64) (*pb.ProposalResponse, error) {
+	if m.getProposalFn != nil {
+		return m.getProposalFn(ctx, rpcEndpoint, proposalID)
+	}
+	return nil, status.Errorf(codes.Unimplemented, "method GetProposal not implemented")
+}
+
+func (m *mockPluginModule) GetUpgradePlan(ctx context.Context, rpcEndpoint string) (*pb.UpgradePlanResponse, error) {
+	if m.getUpgradePlanFn != nil {
+		return m.getUpgradePlanFn(ctx, rpcEndpoint)
+	}
+	return nil, status.Errorf(codes.Unimplemented, "method GetUpgradePlan not implemented")
+}
+
+func (m *mockPluginModule) GetAppVersion(ctx context.Context, rpcEndpoint string) (*pb.AppVersionResponse, error) {
+	if m.getAppVersionFn != nil {
+		return m.getAppVersionFn(ctx, rpcEndpoint)
+	}
+	return nil, status.Errorf(codes.Unimplemented, "method GetAppVersion not implemented")
 }
 
 // TestCosmosRPCClient_PluginDelegation_Success tests successful plugin delegation.
