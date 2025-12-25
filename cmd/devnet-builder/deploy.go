@@ -30,6 +30,7 @@ var (
 	deployStartVersion      string
 	deployImage             string
 	deployFork              bool // Fork live network state via snapshot export
+	deployTestMnemonic      bool // Use deterministic test mnemonics for validators
 )
 
 // DeployResult represents the JSON output for the deploy command.
@@ -86,8 +87,10 @@ Examples:
 		"Stable repository version")
 	cmd.Flags().BoolVar(&deployNoCache, "no-cache", false,
 		"Skip snapshot cache")
-	cmd.Flags().IntVar(&deployAccounts, "accounts", 0,
+	cmd.Flags().IntVar(&deployAccounts, "accounts", 4,
 		"Additional funded accounts")
+	cmd.Flags().BoolVar(&deployTestMnemonic, "test-mnemonic", true,
+		"Use deterministic test mnemonics for validators (disable for production-like testing)")
 
 	// Interactive mode flags (controls version/docker image selection prompts)
 	// Note: Base config prompts (network, validators, mode) are handled by config.toml
@@ -286,6 +289,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		CustomBinaryPath:  customBinaryPath,
 		UseSnapshot:       deployFork,
 		BinaryPath:        customBinaryPath,
+		UseTestMnemonic:   deployTestMnemonic,
 	}
 
 	_, err = svc.Provision(ctx, provisionInput)
