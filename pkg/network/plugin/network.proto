@@ -66,6 +66,17 @@ service NetworkModule {
     // Plugins implement chain-specific logic to query voting periods, deposit amounts,
     // and other governance settings needed for upgrade workflows.
     rpc GetGovernanceParams(GovernanceParamsRequest) returns (GovernanceParamsResponse);
+
+    // RPC Operations
+    // All blockchain RPC operations are delegated to plugins to allow chain-specific implementations.
+    // Each plugin implements these methods using their chain's specific RPC/REST endpoints.
+    rpc GetBlockHeight(BlockHeightRequest) returns (BlockHeightResponse);
+    rpc GetBlockTime(BlockTimeRequest) returns (BlockTimeResponse);
+    rpc IsChainRunning(ChainStatusRequest) returns (ChainStatusResponse);
+    rpc WaitForBlock(WaitForBlockRequest) returns (WaitForBlockResponse);
+    rpc GetProposal(ProposalRequest) returns (ProposalResponse);
+    rpc GetUpgradePlan(UpgradePlanRequest) returns (UpgradePlanResponse);
+    rpc GetAppVersion(AppVersionRequest) returns (AppVersionResponse);
 }
 
 message Empty {}
@@ -252,4 +263,100 @@ message GovernanceParamsResponse {
     // error contains an error message if the parameter query failed.
     // Empty string ("") indicates success.
     string error = 5;
+}
+
+// BlockHeightRequest requests current block height from a network plugin.
+message BlockHeightRequest {
+    string rpc_endpoint = 1;
+}
+
+// BlockHeightResponse contains the current block height.
+message BlockHeightResponse {
+    int64 height = 1;
+    string error = 2;
+}
+
+// BlockTimeRequest requests average block time estimation.
+message BlockTimeRequest {
+    string rpc_endpoint = 1;
+    int32 sample_size = 2;  // Number of blocks to sample for average calculation
+}
+
+// BlockTimeResponse contains the estimated average block time.
+message BlockTimeResponse {
+    int64 block_time_ns = 1;  // Average block time in nanoseconds
+    string error = 2;
+}
+
+// ChainStatusRequest requests chain running status.
+message ChainStatusRequest {
+    string rpc_endpoint = 1;
+}
+
+// ChainStatusResponse contains chain running status.
+message ChainStatusResponse {
+    bool is_running = 1;
+    string error = 2;
+}
+
+// WaitForBlockRequest requests to wait until a specific block height.
+message WaitForBlockRequest {
+    string rpc_endpoint = 1;
+    int64 target_height = 2;
+    int64 timeout_ms = 3;  // Timeout in milliseconds (0 = use default)
+}
+
+// WaitForBlockResponse indicates whether the target height was reached.
+message WaitForBlockResponse {
+    int64 current_height = 1;
+    bool reached = 2;
+    string error = 3;
+}
+
+// ProposalRequest requests a governance proposal by ID.
+message ProposalRequest {
+    string rpc_endpoint = 1;
+    uint64 proposal_id = 2;
+}
+
+// ProposalResponse contains governance proposal details.
+message ProposalResponse {
+    uint64 id = 1;
+    string title = 2;
+    string description = 3;
+    string status = 4;  // PROPOSAL_STATUS_DEPOSIT_PERIOD, PROPOSAL_STATUS_VOTING_PERIOD, etc.
+    int64 voting_end_time_unix = 5;    // Unix timestamp in seconds
+    int64 submit_time_unix = 6;        // Unix timestamp in seconds
+    int64 deposit_end_time_unix = 7;   // Unix timestamp in seconds
+    string total_deposit = 8;
+    string final_tally_yes = 9;
+    string final_tally_no = 10;
+    string final_tally_abstain = 11;
+    string error = 12;
+}
+
+// UpgradePlanRequest requests the current upgrade plan.
+message UpgradePlanRequest {
+    string rpc_endpoint = 1;
+}
+
+// UpgradePlanResponse contains upgrade plan details.
+message UpgradePlanResponse {
+    string name = 1;
+    int64 height = 2;
+    string info = 3;
+    int64 time_unix = 4;  // Unix timestamp in seconds (deprecated, usually 0)
+    bool has_plan = 5;    // True if an upgrade plan exists
+    string error = 6;
+}
+
+// AppVersionRequest requests the application version.
+message AppVersionRequest {
+    string rpc_endpoint = 1;
+}
+
+// AppVersionResponse contains the application version.
+message AppVersionResponse {
+    string version = 1;
+    string error = 2;
 }
