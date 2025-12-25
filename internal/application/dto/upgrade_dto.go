@@ -97,7 +97,7 @@ type ExecuteUpgradeInput struct {
 	VotingPeriod  time.Duration
 	HeightBuffer  int
 	UpgradeHeight int64
-	ExportGenesis bool
+	WithExport    bool
 	GenesisDir    string
 	Mode          ports.ExecutionMode
 }

@@ -45,7 +45,7 @@ var (
 	forceVotingPeriod    bool
 	heightBuffer         int
 	upgradeHeight        int64
-	exportGenesis        bool
+	withExport           bool
 	genesisDir           string
 	upgradeNoInteractive bool
 	upgradeVersion       string
@@ -78,8 +78,8 @@ Examples:
   # Force custom voting period (override chain/plugin parameters)
   devnet-builder upgrade --name v2.0.0-upgrade --image ghcr.io/stablelabs/stable:v2.0.0 --voting-period 30s --force-voting-period
 
-  # Upgrade and export genesis snapshots
-  devnet-builder upgrade --name v2.0.0-upgrade --image ghcr.io/stablelabs/stable:v2.0.0 --export-genesis
+  # Upgrade and export state snapshots
+  devnet-builder upgrade --name v2.0.0-upgrade --image ghcr.io/stablelabs/stable:v2.0.0 --with-export
 
   # Interactive mode (default) - select version interactively
   devnet-builder upgrade
@@ -104,7 +104,7 @@ Examples:
 	cmd.Flags().BoolVar(&forceVotingPeriod, "force-voting-period", false, "Force use of --voting-period value, ignoring on-chain parameters")
 	cmd.Flags().IntVar(&heightBuffer, "height-buffer", DefaultHeightBuffer, "Blocks to add after voting period ends (0 = auto-calculate based on block time)")
 	cmd.Flags().Int64Var(&upgradeHeight, "upgrade-height", 0, "Explicit upgrade height (0 = auto-calculate)")
-	cmd.Flags().BoolVar(&exportGenesis, "export-genesis", false, "Export genesis before and after upgrade")
+	cmd.Flags().BoolVar(&withExport, "with-export", false, "Export state before and after upgrade")
 	cmd.Flags().StringVar(&genesisDir, "genesis-dir", "", "Directory for genesis exports (default: <home>/devnet/genesis-snapshots)")
 
 	return cmd
@@ -354,7 +354,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		VotingPeriod:  vp,
 		HeightBuffer:  heightBuffer,
 		UpgradeHeight: upgradeHeight,
-		ExportGenesis: exportGenesis,
+		WithExport:    withExport,
 		GenesisDir:    genesisDir,
 		Mode:          ports.ExecutionMode(resolvedMode),
 	}

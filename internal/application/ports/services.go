@@ -187,7 +187,7 @@ type UpgradeOptions struct {
 	VotingPeriod  time.Duration
 	HeightBuffer  int
 	UpgradeHeight int64
-	ExportGenesis bool
+	WithExport    bool
 }
 
 // UpgradeResult holds the result of an upgrade.
