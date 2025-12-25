@@ -62,6 +62,32 @@ type Module interface {
 	// Examples: "v1.1.3", "latest", "main"
 	DefaultBinaryVersion() string
 
+	// GetBuildConfig returns network-specific build configuration for binary compilation.
+	// This method enables plugins to customize build tags, linker flags, and environment
+	// variables for different network types (mainnet, testnet, devnet).
+	//
+	// Parameters:
+	//   - networkType: Target network type ("mainnet", "testnet", "devnet", etc.)
+	//
+	// Returns:
+	//   - BuildConfig with custom build configuration
+	//   - error if network type is not supported
+	//
+	// Example:
+	//   cfg, err := module.GetBuildConfig("testnet")
+	//   if err != nil {
+	//       return err
+	//   }
+	//   // cfg.LDFlags might contain: ["-X github.com/example/app.EVMChainID=2201"]
+	//
+	// If the plugin doesn't need network-specific build configuration, it should
+	// return an empty BuildConfig{} (not nil) to indicate no custom configuration.
+	//
+	// This is called during binary building to inject network-specific values
+	// (like chain IDs) at compile-time. The returned config is merged with
+	// default build configurations before being passed to the build tool.
+	GetBuildConfig(networkType string) (*BuildConfig, error)
+
 	// ============================================
 	// Chain Configuration
 	// ============================================

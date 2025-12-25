@@ -158,7 +158,7 @@ func (a *BinaryCacheAdapter) ListDetailed() []ports.CachedBinaryInfo {
 			Path:       entry.BinaryPath,
 			Size:       entry.Size,
 			BuildTime:  entry.BuildTime,
-			Network:    entry.Network,
+			Network:    entry.NetworkType, // Use NetworkType instead of deprecated Network
 		}
 	}
 	return result

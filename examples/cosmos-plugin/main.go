@@ -68,6 +68,12 @@ func (n *CosmosNetwork) DefaultBinaryVersion() string {
 	return "v18.1.0"
 }
 
+func (n *CosmosNetwork) GetBuildConfig(networkType string) (*network.BuildConfig, error) {
+	// Example: Return empty config for all networks (no custom build configuration)
+	// Plugins can customize this based on networkType
+	return &network.BuildConfig{}, nil
+}
+
 // ============================================
 // Chain Configuration
 // ============================================

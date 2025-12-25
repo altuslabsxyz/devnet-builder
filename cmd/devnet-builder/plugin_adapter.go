@@ -64,6 +64,10 @@ func (a *pluginAdapter) DefaultBinaryVersion() string {
 	return a.module.DefaultBinaryVersion()
 }
 
+func (a *pluginAdapter) GetBuildConfig(networkType string) (*pkgNetwork.BuildConfig, error) {
+	return a.module.GetBuildConfig(networkType)
+}
+
 // ============================================
 // ChainConfig
 // ============================================

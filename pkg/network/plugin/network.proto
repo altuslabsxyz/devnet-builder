@@ -15,6 +15,7 @@ service NetworkModule {
     rpc BinaryName(Empty) returns (StringResponse);
     rpc BinarySource(Empty) returns (BinarySourceResponse);
     rpc DefaultBinaryVersion(Empty) returns (StringResponse);
+    rpc GetBuildConfig(BuildConfigRequest) returns (BuildConfigResponse);
 
     // Chain
     // DEPRECATED: DefaultChainID will be removed in v2.0.0
@@ -189,4 +190,18 @@ message ModifyGenesisFileRequest {
 message ModifyGenesisFileResponse {
     string error = 1;
     int64 output_size = 2;   // Size of the output file in bytes
+}
+
+// BuildConfigRequest requests build configuration for a specific network type.
+message BuildConfigRequest {
+    string network_type = 1;  // Target network type (e.g., "mainnet", "testnet", "devnet")
+}
+
+// BuildConfigResponse contains network-specific build configuration.
+message BuildConfigResponse {
+    repeated string tags = 1;           // Go build tags (e.g., ["netgo", "ledger"])
+    repeated string ldflags = 2;        // Linker flags (e.g., ["-X main.Version=1.0", "-w"])
+    map<string, string> env = 3;        // Environment variables (e.g., {"CGO_ENABLED": "0"})
+    repeated string extra_args = 4;     // Additional arguments for build tool
+    string error = 5;                   // Error message if network type not supported
 }

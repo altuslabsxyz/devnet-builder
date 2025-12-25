@@ -85,6 +85,36 @@ func (c *GRPCClient) DefaultBinaryVersion() string {
 	return resp.Value
 }
 
+// GetBuildConfig returns network-specific build configuration from the plugin.
+func (c *GRPCClient) GetBuildConfig(networkType string) (*network.BuildConfig, error) {
+	resp, err := c.client.GetBuildConfig(context.Background(), &BuildConfigRequest{
+		NetworkType: networkType,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for error in response
+	if resp.Error != "" {
+		return nil, errors.New(resp.Error)
+	}
+
+	// Convert protobuf response to BuildConfig
+	config := &network.BuildConfig{
+		Tags:      resp.Tags,
+		LDFlags:   resp.Ldflags,
+		Env:       resp.Env,
+		ExtraArgs: resp.ExtraArgs,
+	}
+
+	// Return empty config if all fields are empty
+	if config.IsEmpty() {
+		return &network.BuildConfig{}, nil
+	}
+
+	return config, nil
+}
+
 // Chain methods
 
 // DEPRECATED: DefaultChainID will be removed in v2.0.0

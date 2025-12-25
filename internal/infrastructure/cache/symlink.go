@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/b-harvest/devnet-builder/pkg/network"
 )
 
 // SymlinkManager manages the binary symlink.
@@ -109,8 +111,16 @@ func (m *SymlinkManager) SwitchToCache(cache *BinaryCache, cacheKey string) erro
 }
 
 // SwitchToCacheWithTags switches the symlink to point to a cached binary by commit hash and build tags.
+// DEPRECATED: Uses legacy cache key format. New code should use SwitchToCacheWithConfig.
 func (m *SymlinkManager) SwitchToCacheWithTags(cache *BinaryCache, commitHash string, buildTags []string) error {
-	cacheKey := MakeCacheKey(commitHash, buildTags)
+	cacheKey := MakeCacheKeyLegacy(commitHash, buildTags)
+	return m.SwitchToCache(cache, cacheKey)
+}
+
+// SwitchToCacheWithConfig switches the symlink to point to a cached binary by network type, commit hash, and build config.
+// This is the preferred method for network-aware caching.
+func (m *SymlinkManager) SwitchToCacheWithConfig(cache *BinaryCache, networkType, commitHash string, buildConfig *network.BuildConfig) error {
+	cacheKey := MakeCacheKey(networkType, commitHash, buildConfig)
 	return m.SwitchToCache(cache, cacheKey)
 }
 
@@ -147,10 +157,10 @@ func (m *SymlinkManager) MigrateToSymlink(cache *BinaryCache, commitHash, ref, n
 
 	// Store current binary in cache
 	cached := &CachedBinary{
-		CommitHash: commitHash,
-		Ref:        ref,
-		Network:    network,
-		BuildTags:  buildTags,
+		CommitHash:  commitHash,
+		Ref:         ref,
+		NetworkType: network, // Use NetworkType instead of deprecated Network
+		BuildTags:   buildTags,
 	}
 
 	if err := cache.Store(m.symlinkPath, cached); err != nil {

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"cosmossdk.io/log"
+
+	sdknetwork "github.com/b-harvest/devnet-builder/pkg/network"
 )
 
 // =============================================================================
@@ -41,6 +43,15 @@ type BinaryProvider interface {
 	// DefaultBinaryVersion returns the default version to use if not specified.
 	// Example: "v1.1.3", "latest"
 	DefaultBinaryVersion() string
+
+	// GetBuildConfig returns network-specific build configuration.
+	// Parameters:
+	//   - networkType: Target network type ("mainnet", "testnet", "devnet", etc.)
+	// Returns:
+	//   - BuildConfig with custom build configuration
+	//   - error if network type is not supported
+	// If the module doesn't need custom build configuration, return empty BuildConfig{}, nil
+	GetBuildConfig(networkType string) (*sdknetwork.BuildConfig, error)
 }
 
 // ChainConfig provides chain-specific configuration.

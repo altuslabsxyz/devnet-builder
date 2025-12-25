@@ -102,7 +102,7 @@ func (a *BuilderAdapter) BuildToCache(ctx context.Context, opts ports.BuildOptio
 	// NOTE: Do NOT update symlink here - that should only happen after upgrade completes
 	// The cached binary path is returned so the upgrade flow can use it directly
 
-	cacheKey := cache.MakeCacheKey(cached.CommitHash, cached.BuildTags)
+	cacheKey := cache.MakeCacheKeyLegacy(cached.CommitHash, cached.BuildTags)
 	cachedPath := binaryCache.GetBinaryPath(cacheKey)
 	return &ports.BuildResult{
 		BinaryPath: cachedPath, // Return cached path, not symlink path

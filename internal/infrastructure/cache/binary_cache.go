@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/b-harvest/devnet-builder/pkg/network"
 )
 
 const (
@@ -93,18 +94,29 @@ func (c *BinaryCache) loadEntries() error {
 		}
 
 		// Compute the correct cache key from metadata
-		actualCacheKey := MakeCacheKey(metadata.CommitHash, metadata.BuildTags)
+		var actualCacheKey string
+		if metadata.NetworkType != "" && metadata.BuildConfig != nil {
+			// New format with network type
+			actualCacheKey = MakeCacheKey(metadata.NetworkType, metadata.CommitHash, metadata.BuildConfig)
+		} else if metadata.Network != "" && len(metadata.BuildTags) > 0 {
+			// Legacy format with old Network field
+			actualCacheKey = MakeCacheKeyLegacy(metadata.CommitHash, metadata.BuildTags)
+		} else {
+			// Fallback to legacy format
+			actualCacheKey = MakeCacheKeyLegacy(metadata.CommitHash, metadata.BuildTags)
+		}
 
 		binaryPath := filepath.Join(c.cacheDir, cacheKey, c.binaryName)
 		c.entries[actualCacheKey] = &CachedBinary{
-			CommitHash: metadata.CommitHash,
-			Ref:        metadata.Ref,
-			BuildTime:  metadata.BuildTime,
-			Size:       metadata.Size,
-			Network:    metadata.Network,
-			BuildTags:  metadata.BuildTags,
-			BinaryPath: binaryPath,
-			DirKey:     cacheKey, // Store actual directory name for symlink creation
+			CommitHash:  metadata.CommitHash,
+			Ref:         metadata.Ref,
+			BuildTime:   metadata.BuildTime,
+			Size:        metadata.Size,
+			NetworkType: metadata.NetworkType,
+			BuildConfig: metadata.BuildConfig,
+			BuildTags:   metadata.BuildTags, // For backward compat
+			BinaryPath:  binaryPath,
+			DirKey:      cacheKey, // Store actual directory name for symlink creation
 		}
 	}
 
@@ -127,8 +139,15 @@ func (c *BinaryCache) GetBinaryPath(cacheKey string) string {
 }
 
 // GetBinaryPathWithTags returns the full path to a cached binary by commit hash and build tags.
+// DEPRECATED: Use GetBinaryPathWithConfig instead. This method uses legacy cache key format.
 func (c *BinaryCache) GetBinaryPathWithTags(commitHash string, buildTags []string) string {
-	cacheKey := MakeCacheKey(commitHash, buildTags)
+	cacheKey := MakeCacheKeyLegacy(commitHash, buildTags)
+	return c.GetBinaryPath(cacheKey)
+}
+
+// GetBinaryPathWithConfig returns the full path to a cached binary by network type, commit hash, and build config.
+func (c *BinaryCache) GetBinaryPathWithConfig(networkType, commitHash string, buildConfig *network.BuildConfig) string {
+	cacheKey := MakeCacheKey(networkType, commitHash, buildConfig)
 	return c.GetBinaryPath(cacheKey)
 }
 
@@ -138,8 +157,15 @@ func (c *BinaryCache) Lookup(cacheKey string) *CachedBinary {
 }
 
 // LookupWithTags returns the cached binary for the given commit hash and build tags.
+// DEPRECATED: Use LookupWithConfig instead. This method uses legacy cache key format.
 func (c *BinaryCache) LookupWithTags(commitHash string, buildTags []string) *CachedBinary {
-	cacheKey := MakeCacheKey(commitHash, buildTags)
+	cacheKey := MakeCacheKeyLegacy(commitHash, buildTags)
+	return c.entries[cacheKey]
+}
+
+// LookupWithConfig returns the cached binary for the given network type, commit hash, and build config.
+func (c *BinaryCache) LookupWithConfig(networkType, commitHash string, buildConfig *network.BuildConfig) *CachedBinary {
+	cacheKey := MakeCacheKey(networkType, commitHash, buildConfig)
 	return c.entries[cacheKey]
 }
 
@@ -154,8 +180,15 @@ func (c *BinaryCache) IsCached(cacheKey string) bool {
 }
 
 // IsCachedWithTags checks if a binary for the given commit hash and build tags exists in cache.
+// DEPRECATED: Use IsCachedWithConfig instead. This method uses legacy cache key format.
 func (c *BinaryCache) IsCachedWithTags(commitHash string, buildTags []string) bool {
-	cacheKey := MakeCacheKey(commitHash, buildTags)
+	cacheKey := MakeCacheKeyLegacy(commitHash, buildTags)
+	return c.IsCached(cacheKey)
+}
+
+// IsCachedWithConfig checks if a binary for the given network type, commit hash, and build config exists in cache.
+func (c *BinaryCache) IsCachedWithConfig(networkType, commitHash string, buildConfig *network.BuildConfig) bool {
+	cacheKey := MakeCacheKey(networkType, commitHash, buildConfig)
 	return c.IsCached(cacheKey)
 }
 
@@ -225,8 +258,15 @@ func (c *BinaryCache) ValidateKey(cacheKey string) error {
 }
 
 // ValidateWithTags checks if a cached binary exists and is executable by commit hash and build tags.
+// DEPRECATED: Use ValidateWithConfig instead. This method uses legacy cache key format.
 func (c *BinaryCache) ValidateWithTags(commitHash string, buildTags []string) error {
-	cacheKey := MakeCacheKey(commitHash, buildTags)
+	cacheKey := MakeCacheKeyLegacy(commitHash, buildTags)
+	return c.ValidateKey(cacheKey)
+}
+
+// ValidateWithConfig checks if a cached binary exists and is executable by network type, commit hash, and build config.
+func (c *BinaryCache) ValidateWithConfig(networkType, commitHash string, buildConfig *network.BuildConfig) error {
+	cacheKey := MakeCacheKey(networkType, commitHash, buildConfig)
 	return c.ValidateKey(cacheKey)
 }
 
@@ -241,8 +281,15 @@ func (c *BinaryCache) Remove(cacheKey string) error {
 }
 
 // RemoveWithTags deletes a cached binary entry by commit hash and build tags.
+// DEPRECATED: Use RemoveWithConfig instead. This method uses legacy cache key format.
 func (c *BinaryCache) RemoveWithTags(commitHash string, buildTags []string) error {
-	cacheKey := MakeCacheKey(commitHash, buildTags)
+	cacheKey := MakeCacheKeyLegacy(commitHash, buildTags)
+	return c.Remove(cacheKey)
+}
+
+// RemoveWithConfig deletes a cached binary entry by network type, commit hash, and build config.
+func (c *BinaryCache) RemoveWithConfig(networkType, commitHash string, buildConfig *network.BuildConfig) error {
+	cacheKey := MakeCacheKey(networkType, commitHash, buildConfig)
 	return c.Remove(cacheKey)
 }
 

@@ -53,6 +53,50 @@ func (s *GRPCServer) DefaultBinaryVersion(ctx context.Context, req *Empty) (*Str
 	return &StringResponse{Value: s.impl.DefaultBinaryVersion()}, nil
 }
 
+// GetBuildConfig returns network-specific build configuration.
+// This implements fail-fast validation by validating the BuildConfig before returning.
+func (s *GRPCServer) GetBuildConfig(ctx context.Context, req *BuildConfigRequest) (*BuildConfigResponse, error) {
+	// Validate network type parameter
+	if req.NetworkType == "" {
+		return &BuildConfigResponse{
+			Error: "network_type is required",
+		}, nil
+	}
+
+	// Call the plugin's GetBuildConfig method
+	config, err := s.impl.GetBuildConfig(req.NetworkType)
+	if err != nil {
+		return &BuildConfigResponse{
+			Error: err.Error(),
+		}, nil
+	}
+
+	// Handle nil config (plugin returns no custom configuration)
+	if config == nil {
+		return &BuildConfigResponse{
+			Tags:      []string{},
+			Ldflags:   []string{},
+			Env:       map[string]string{},
+			ExtraArgs: []string{},
+		}, nil
+	}
+
+	// Validate the build config (fail-fast pattern from R0.5)
+	if err := config.Validate(); err != nil {
+		return &BuildConfigResponse{
+			Error: "invalid build config: " + err.Error(),
+		}, nil
+	}
+
+	// Convert to protobuf response
+	return &BuildConfigResponse{
+		Tags:      config.Tags,
+		Ldflags:   config.LDFlags,
+		Env:       config.Env,
+		ExtraArgs: config.ExtraArgs,
+	}, nil
+}
+
 // Chain methods
 
 // DEPRECATED: DefaultChainID will be removed in v2.0.0

@@ -25,6 +25,7 @@ const (
 	NetworkModule_BinaryName_FullMethodName             = "/network.NetworkModule/BinaryName"
 	NetworkModule_BinarySource_FullMethodName           = "/network.NetworkModule/BinarySource"
 	NetworkModule_DefaultBinaryVersion_FullMethodName   = "/network.NetworkModule/DefaultBinaryVersion"
+	NetworkModule_GetBuildConfig_FullMethodName         = "/network.NetworkModule/GetBuildConfig"
 	NetworkModule_DefaultChainID_FullMethodName         = "/network.NetworkModule/DefaultChainID"
 	NetworkModule_Bech32Prefix_FullMethodName           = "/network.NetworkModule/Bech32Prefix"
 	NetworkModule_BaseDenom_FullMethodName              = "/network.NetworkModule/BaseDenom"
@@ -66,7 +67,9 @@ type NetworkModuleClient interface {
 	BinaryName(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StringResponse, error)
 	BinarySource(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*BinarySourceResponse, error)
 	DefaultBinaryVersion(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StringResponse, error)
+	GetBuildConfig(ctx context.Context, in *BuildConfigRequest, opts ...grpc.CallOption) (*BuildConfigResponse, error)
 	// Chain
+	// DEPRECATED: DefaultChainID will be removed in v2.0.0
 	DefaultChainID(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StringResponse, error)
 	Bech32Prefix(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StringResponse, error)
 	BaseDenom(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StringResponse, error)
@@ -164,6 +167,16 @@ func (c *networkModuleClient) DefaultBinaryVersion(ctx context.Context, in *Empt
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StringResponse)
 	err := c.cc.Invoke(ctx, NetworkModule_DefaultBinaryVersion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *networkModuleClient) GetBuildConfig(ctx context.Context, in *BuildConfigRequest, opts ...grpc.CallOption) (*BuildConfigResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BuildConfigResponse)
+	err := c.cc.Invoke(ctx, NetworkModule_GetBuildConfig_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -434,7 +447,9 @@ type NetworkModuleServer interface {
 	BinaryName(context.Context, *Empty) (*StringResponse, error)
 	BinarySource(context.Context, *Empty) (*BinarySourceResponse, error)
 	DefaultBinaryVersion(context.Context, *Empty) (*StringResponse, error)
+	GetBuildConfig(context.Context, *BuildConfigRequest) (*BuildConfigResponse, error)
 	// Chain
+	// DEPRECATED: DefaultChainID will be removed in v2.0.0
 	DefaultChainID(context.Context, *Empty) (*StringResponse, error)
 	Bech32Prefix(context.Context, *Empty) (*StringResponse, error)
 	BaseDenom(context.Context, *Empty) (*StringResponse, error)
@@ -495,6 +510,9 @@ func (UnimplementedNetworkModuleServer) BinarySource(context.Context, *Empty) (*
 }
 func (UnimplementedNetworkModuleServer) DefaultBinaryVersion(context.Context, *Empty) (*StringResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DefaultBinaryVersion not implemented")
+}
+func (UnimplementedNetworkModuleServer) GetBuildConfig(context.Context, *BuildConfigRequest) (*BuildConfigResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBuildConfig not implemented")
 }
 func (UnimplementedNetworkModuleServer) DefaultChainID(context.Context, *Empty) (*StringResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DefaultChainID not implemented")
@@ -696,6 +714,24 @@ func _NetworkModule_DefaultBinaryVersion_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NetworkModuleServer).DefaultBinaryVersion(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NetworkModule_GetBuildConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BuildConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkModuleServer).GetBuildConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkModule_GetBuildConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkModuleServer).GetBuildConfig(ctx, req.(*BuildConfigRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1180,6 +1216,10 @@ var NetworkModule_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DefaultBinaryVersion",
 			Handler:    _NetworkModule_DefaultBinaryVersion_Handler,
+		},
+		{
+			MethodName: "GetBuildConfig",
+			Handler:    _NetworkModule_GetBuildConfig_Handler,
 		},
 		{
 			MethodName: "DefaultChainID",
