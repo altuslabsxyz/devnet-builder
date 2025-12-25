@@ -679,6 +679,7 @@ func (l *Loader) findPluginLocked(name string) (string, error) {
 }
 
 // findPlugin finds the plugin binary path for the given network name.
+//
 // Deprecated: Use findPluginLocked with proper locking.
 func (l *Loader) findPlugin(name string) (string, error) {
 	l.mu.RLock()
