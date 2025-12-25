@@ -15,6 +15,7 @@ import (
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
+	infrarpc "github.com/b-harvest/devnet-builder/internal/infrastructure/rpc"
 	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -269,8 +270,19 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	logger.Info("Fetching governance parameters from chain...")
 	rpcHost := "localhost"
 	rpcPort := 26657
-	tempFactory := di.NewInfrastructureFactory(homeDir, logger)
+	tempFactory := di.NewInfrastructureFactory(homeDir, logger).
+		WithNetworkModule(networkModule)
 	rpcClient := tempFactory.CreateRPCClient(rpcHost, rpcPort)
+
+	// Configure plugin delegation for governance parameter queries
+	// Type assert to check if network module supports governance parameter queries
+	if cosmosClient, ok := rpcClient.(*infrarpc.CosmosRPCClient); ok {
+		// Check if network module implements GetGovernanceParams (optional interface)
+		if pluginModule, ok := networkModule.(infrarpc.NetworkPluginModule); ok {
+			rpcClient = cosmosClient.WithPlugin(pluginModule, cleanMetadata.NetworkName)
+		}
+		// If plugin doesn't implement GetGovernanceParams, will fall back to REST API
+	}
 
 	govParams, err := rpcClient.GetGovParams(ctx)
 	if err != nil {
