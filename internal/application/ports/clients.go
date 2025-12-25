@@ -365,6 +365,7 @@ type StateExportOptions struct {
 	ExportOpts *ExportOptions
 
 	// Network is the network type (e.g., "mainnet", "testnet")
+	//
 	// Deprecated: Use CacheKey instead
 	Network string
 
