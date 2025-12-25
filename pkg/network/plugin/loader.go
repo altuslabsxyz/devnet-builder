@@ -198,6 +198,7 @@ func NewLoader(opts ...LoaderOption) *Loader {
 }
 
 // NewLoaderWithDirs creates a new plugin loader with specific directories (legacy API).
+//
 // Deprecated: Use NewLoader with WithPluginDirs option instead.
 func NewLoaderWithDirs(pluginDirs ...string) *Loader {
 	if len(pluginDirs) == 0 {
@@ -678,6 +679,7 @@ func (l *Loader) findPluginLocked(name string) (string, error) {
 }
 
 // findPlugin finds the plugin binary path for the given network name.
+//
 // Deprecated: Use findPluginLocked with proper locking.
 func (l *Loader) findPlugin(name string) (string, error) {
 	l.mu.RLock()

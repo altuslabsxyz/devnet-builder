@@ -14,11 +14,11 @@ import (
 
 // DockerDeployUseCase handles Docker-based devnet deployment with network isolation
 type DockerDeployUseCase struct {
-	orchestrator   domainports.DeploymentOrchestrator
-	devnetRepo     ports.DevnetRepository
-	nodeRepo       ports.NodeRepository
-	provisionUC    *ProvisionUseCase
-	logger         ports.Logger
+	orchestrator domainports.DeploymentOrchestrator
+	devnetRepo   ports.DevnetRepository
+	nodeRepo     ports.NodeRepository
+	provisionUC  *ProvisionUseCase
+	logger       ports.Logger
 }
 
 // NewDockerDeployUseCase creates a new Docker deployment use case
@@ -50,15 +50,15 @@ func (uc *DockerDeployUseCase) Execute(ctx context.Context, input dto.Deployment
 	// Step 1: Provision the devnet (initialize nodes, create genesis, etc.)
 	uc.logger.Info("Provisioning devnet...")
 	provisionInput := dto.ProvisionInput{
-		HomeDir:        input.HomeDir,
-		Network:        "testnet", // Default to testnet for now
-		NumValidators:  input.ValidatorCount,
-		NumAccounts:    0, // No separate accounts for Docker deployment
-		Mode:           "docker",
-		DockerImage:    input.Image,
-		StableVersion:  "",
-		NoCache:        false,
-		UseSnapshot:    false,
+		HomeDir:       input.HomeDir,
+		Network:       "testnet", // Default to testnet for now
+		NumValidators: input.ValidatorCount,
+		NumAccounts:   0, // No separate accounts for Docker deployment
+		Mode:          "docker",
+		DockerImage:   input.Image,
+		StableVersion: "",
+		NoCache:       false,
+		UseSnapshot:   false,
 	}
 
 	provisionOutput, err := uc.provisionUC.Execute(ctx, provisionInput)
@@ -162,11 +162,11 @@ func convertContainerInfo(containers []*domainports.ContainerInfo) []*dto.Contai
 
 // DockerDestroyUseCase handles cleanup of Docker-based devnets
 type DockerDestroyUseCase struct {
-	orchestrator    domainports.DeploymentOrchestrator
-	networkManager  domainports.NetworkManager
-	portAllocator   domainports.PortAllocator
-	devnetRepo      ports.DevnetRepository
-	logger          ports.Logger
+	orchestrator   domainports.DeploymentOrchestrator
+	networkManager domainports.NetworkManager
+	portAllocator  domainports.PortAllocator
+	devnetRepo     ports.DevnetRepository
+	logger         ports.Logger
 }
 
 // NewDockerDestroyUseCase creates a new Docker destroy use case

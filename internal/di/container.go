@@ -4,18 +4,36 @@
 package di
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"sync"
 
 	"github.com/b-harvest/devnet-builder/internal/application/binary"
 	"github.com/b-harvest/devnet-builder/internal/application/build"
 	appdevnet "github.com/b-harvest/devnet-builder/internal/application/devnet"
+	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	"github.com/b-harvest/devnet-builder/internal/application/upgrade"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
-	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/plugin"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
+
+// exportUseCaseAdapter adapts the concrete ExportUseCase to the ports interface.
+type exportUseCaseAdapter struct {
+	concrete interface {
+		Execute(ctx context.Context, input dto.ExportInput) (*dto.ExportOutput, error)
+	}
+}
+
+func (a *exportUseCaseAdapter) Execute(ctx context.Context, input interface{}) (interface{}, error) {
+	exportInput, ok := input.(dto.ExportInput)
+	if !ok {
+		return nil, fmt.Errorf("invalid input type for export: expected dto.ExportInput, got %T", input)
+	}
+	return a.concrete.Execute(ctx, exportInput)
+}
 
 // Container holds all application dependencies.
 // It provides lazy initialization of UseCases and ensures
@@ -51,6 +69,7 @@ type Container struct {
 	interactiveSelector ports.InteractiveSelector
 	binaryResolver      ports.BinaryResolver
 	binaryExecutor      ports.BinaryExecutor
+	exportRepo          ports.ExportRepository
 
 	// Lazy-initialized UseCases
 	provisionUC      *appdevnet.ProvisionUseCase
@@ -68,6 +87,7 @@ type Container struct {
 	cacheListUC      *build.CacheListUseCase
 	cacheCleanUC     *build.CacheCleanUseCase
 	passthroughUC    *binary.PassthroughUseCase
+	exportUC         *appdevnet.ExportUseCase
 }
 
 // Config holds configuration for the container.
@@ -271,6 +291,13 @@ func WithBinaryExecutor(executor ports.BinaryExecutor) Option {
 	}
 }
 
+// WithExportRepository sets the export repository.
+func WithExportRepository(repo ports.ExportRepository) Option {
+	return func(c *Container) {
+		c.exportRepo = repo
+	}
+}
+
 // New creates a new dependency injection container with the given options.
 func New(opts ...Option) *Container {
 	c := &Container{
@@ -331,6 +358,11 @@ func (c *Container) DevnetRepository() ports.DevnetRepository {
 // NodeRepository returns the node repository.
 func (c *Container) NodeRepository() ports.NodeRepository {
 	return c.nodeRepo
+}
+
+// ExportRepository returns the export repository.
+func (c *Container) ExportRepository() ports.ExportRepository {
+	return c.exportRepo
 }
 
 // SetNetworkModule sets the network module at runtime.
@@ -573,10 +605,14 @@ func (c *Container) ExecuteUpgradeUseCase() *upgrade.ExecuteUpgradeUseCase {
 	defer c.mu.Unlock()
 
 	if c.executeUpgradeUC == nil {
+		// Create export adapter to match ports interface
+		exportAdapter := &exportUseCaseAdapter{concrete: c.ExportUseCase()}
+
 		c.executeUpgradeUC = upgrade.NewExecuteUpgradeUseCase(
 			proposeUC,
 			voteUC,
 			switchUC,
+			exportAdapter,
 			c.rpcClient,
 			c.devnetRepo,
 			c.healthChecker,
@@ -655,6 +691,22 @@ func (c *Container) PassthroughUseCase() *binary.PassthroughUseCase {
 		)
 	}
 	return c.passthroughUC
+}
+
+// ExportUseCase returns the export use case (lazy init).
+func (c *Container) ExportUseCase() *appdevnet.ExportUseCase {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.exportUC == nil {
+		c.exportUC = appdevnet.NewExportUseCase(
+			c.devnetRepo,
+			c.nodeRepo,
+			c.exportRepo,
+			c.LoggerPort(),
+		)
+	}
+	return c.exportUC
 }
 
 // loggerAdapter adapts output.Logger to ports.Logger interface.

@@ -50,7 +50,10 @@ func main() {
 	// This is done after root command initialization but before execution
 	// We pass a nil container here since the container will be initialized
 	// lazily when commands are executed
-	enhanceRootWithBinaryPassthrough(rootCmd, nil)
+	if err := enhanceRootWithBinaryPassthrough(rootCmd, nil); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to setup binary passthrough: %v\n", err)
+		os.Exit(1)
+	}
 
 	err := rootCmd.Execute()
 

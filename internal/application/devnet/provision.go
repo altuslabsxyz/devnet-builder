@@ -246,7 +246,6 @@ func (uc *ProvisionUseCase) downloadAndExtractSnapshot(ctx context.Context, inpu
 	return uc.snapshotSvc.Extract(ctx, snapshotPath, input.HomeDir)
 }
 
-
 // extractChainID extracts the chain_id from genesis JSON.
 func extractChainID(genesis []byte) (string, error) {
 	var g struct {
@@ -717,8 +716,8 @@ func (uc *ProvisionUseCase) exportGenesisFromSnapshot(ctx context.Context, input
 		BinaryPath:        input.BinaryPath,
 		RpcGenesis:        rpcGenesis,
 		ExportOpts:        uc.stateExportSvc.DefaultExportOptions(),
-		Network:           input.Network,            // Keep for backward compatibility
-		CacheKey:          cacheKey,                 // Use composite cache key
+		Network:           input.Network, // Keep for backward compatibility
+		CacheKey:          cacheKey,      // Use composite cache key
 		SnapshotURL:       snapshotURL,
 		SnapshotFromCache: fromCache,
 	}

@@ -196,42 +196,49 @@ func (l *Logger) ProgressComplete() {
 var DefaultLogger = NewLogger()
 
 // Info prints an informational message using the default logger.
+//
 // Deprecated: Use (*Logger).Info() with an injected logger instead.
 func Info(format string, args ...interface{}) {
 	DefaultLogger.Info(format, args...)
 }
 
 // Warn prints a warning message using the default logger.
+//
 // Deprecated: Use (*Logger).Warn() with an injected logger instead.
 func Warn(format string, args ...interface{}) {
 	DefaultLogger.Warn(format, args...)
 }
 
 // Error prints an error message using the default logger.
+//
 // Deprecated: Use (*Logger).Error() with an injected logger instead.
 func Error(format string, args ...interface{}) {
 	DefaultLogger.Error(format, args...)
 }
 
 // Success prints a success message using the default logger.
+//
 // Deprecated: Use (*Logger).Success() with an injected logger instead.
 func Success(format string, args ...interface{}) {
 	DefaultLogger.Success(format, args...)
 }
 
 // Debug prints a debug message using the default logger.
+//
 // Deprecated: Use (*Logger).Debug() with an injected logger instead.
 func Debug(format string, args ...interface{}) {
 	DefaultLogger.Debug(format, args...)
 }
 
 // Bold prints a bold message using the default logger.
+//
 // Deprecated: Use (*Logger).Bold() with an injected logger instead.
 func Bold(format string, args ...interface{}) {
 	DefaultLogger.Bold(format, args...)
 }
 
 // Cyan prints a cyan message using the default logger.
+//
 // Deprecated: Use (*Logger).Cyan() with an injected logger instead.
 func Cyan(format string, args ...interface{}) {
 	DefaultLogger.Cyan(format, args...)

@@ -83,7 +83,8 @@ func runRestart(cmd *cobra.Command, args []string) error {
 	if err == nil && info != nil {
 		fmt.Println()
 		output.Bold("Endpoints:")
-		for _, n := range info.Nodes {
+		for i := range info.Nodes {
+			n := &info.Nodes[i]
 			fmt.Printf("  Node %d: %s (RPC) | %s (EVM)\n",
 				n.Index, n.RPCURL, n.EVMURL)
 		}

@@ -35,16 +35,16 @@ type RPCClient interface {
 
 // Proposal represents a governance proposal.
 type Proposal struct {
-	ID              uint64
-	Title           string
-	Description     string
-	Status          ProposalStatus
-	VotingEndTime   time.Time
-	SubmitTime      time.Time
-	DepositEndTime  time.Time
-	TotalDeposit    string
-	FinalTallyYes   string
-	FinalTallyNo    string
+	ID                uint64
+	Title             string
+	Description       string
+	Status            ProposalStatus
+	VotingEndTime     time.Time
+	SubmitTime        time.Time
+	DepositEndTime    time.Time
+	TotalDeposit      string
+	FinalTallyYes     string
+	FinalTallyNo      string
 	FinalTallyAbstain string
 }
 
@@ -52,11 +52,11 @@ type Proposal struct {
 type ProposalStatus string
 
 const (
-	ProposalStatusPending        ProposalStatus = "PROPOSAL_STATUS_DEPOSIT_PERIOD"
-	ProposalStatusVoting         ProposalStatus = "PROPOSAL_STATUS_VOTING_PERIOD"
-	ProposalStatusPassed         ProposalStatus = "PROPOSAL_STATUS_PASSED"
-	ProposalStatusRejected       ProposalStatus = "PROPOSAL_STATUS_REJECTED"
-	ProposalStatusFailed         ProposalStatus = "PROPOSAL_STATUS_FAILED"
+	ProposalStatusPending  ProposalStatus = "PROPOSAL_STATUS_DEPOSIT_PERIOD"
+	ProposalStatusVoting   ProposalStatus = "PROPOSAL_STATUS_VOTING_PERIOD"
+	ProposalStatusPassed   ProposalStatus = "PROPOSAL_STATUS_PASSED"
+	ProposalStatusRejected ProposalStatus = "PROPOSAL_STATUS_REJECTED"
+	ProposalStatusFailed   ProposalStatus = "PROPOSAL_STATUS_FAILED"
 )
 
 // UpgradePlan represents a scheduled upgrade.
@@ -209,14 +209,14 @@ type NodeInitializer interface {
 
 // GenesisModifyOptions holds options for modifying genesis.
 type GenesisModifyOptions struct {
-	ChainID           string
-	NumValidators     int           // Number of validators to configure for
-	VotingPeriod      time.Duration
-	UnbondingTime     time.Duration
-	InflationRate     string
-	MinGasPrice       string
-	AddValidators     []ValidatorInfo
-	AddAccounts       []AccountInfo
+	ChainID       string
+	NumValidators int // Number of validators to configure for
+	VotingPeriod  time.Duration
+	UnbondingTime time.Duration
+	InflationRate string
+	MinGasPrice   string
+	AddValidators []ValidatorInfo
+	AddAccounts   []AccountInfo
 }
 
 // ValidatorInfo represents validator information for genesis.
@@ -296,10 +296,10 @@ type Builder interface {
 
 // BuildOptions holds options for building.
 type BuildOptions struct {
-	Ref         string // Git ref (branch, tag, commit)
-	Network     string // Network type for build tags
-	OutputDir   string // Where to place the binary
-	UseCache    bool   // Whether to check cache first
+	Ref       string // Git ref (branch, tag, commit)
+	Network   string // Network type for build tags
+	OutputDir string // Where to place the binary
+	UseCache  bool   // Whether to check cache first
 }
 
 // BuildResult holds the result of a build.
@@ -365,6 +365,7 @@ type StateExportOptions struct {
 	ExportOpts *ExportOptions
 
 	// Network is the network type (e.g., "mainnet", "testnet")
+	//
 	// Deprecated: Use CacheKey instead
 	Network string
 

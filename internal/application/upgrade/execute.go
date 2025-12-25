@@ -14,6 +14,7 @@ type ExecuteUpgradeUseCase struct {
 	proposeUC     *ProposeUseCase
 	voteUC        *VoteUseCase
 	switchUC      *SwitchBinaryUseCase
+	exportUC      ports.ExportUseCase
 	rpcClient     ports.RPCClient
 	devnetRepo    ports.DevnetRepository
 	healthChecker ports.HealthChecker
@@ -25,6 +26,7 @@ func NewExecuteUpgradeUseCase(
 	proposeUC *ProposeUseCase,
 	voteUC *VoteUseCase,
 	switchUC *SwitchBinaryUseCase,
+	exportUC ports.ExportUseCase,
 	rpcClient ports.RPCClient,
 	devnetRepo ports.DevnetRepository,
 	healthChecker ports.HealthChecker,
@@ -34,6 +36,7 @@ func NewExecuteUpgradeUseCase(
 		proposeUC:     proposeUC,
 		voteUC:        voteUC,
 		switchUC:      switchUC,
+		exportUC:      exportUC,
 		rpcClient:     rpcClient,
 		devnetRepo:    devnetRepo,
 		healthChecker: healthChecker,
@@ -47,6 +50,30 @@ func (uc *ExecuteUpgradeUseCase) Execute(ctx context.Context, input dto.ExecuteU
 	uc.logger.Info("Starting upgrade workflow...")
 
 	output := &dto.ExecuteUpgradeOutput{}
+
+	// Pre-upgrade export (if enabled)
+	if input.WithExport {
+		uc.logger.Info("Pre-upgrade: Exporting state before upgrade...")
+		exportInput := dto.ExportInput{
+			HomeDir:   input.HomeDir,
+			OutputDir: input.GenesisDir,
+			Force:     false,
+		}
+
+		preExportResultRaw, err := uc.exportUC.Execute(ctx, exportInput)
+		if err != nil {
+			uc.logger.Error("Pre-upgrade export failed: %v", err)
+			output.Error = fmt.Errorf("pre-upgrade export failed: %w", err)
+			return output, output.Error
+		}
+		preExportResult, ok := preExportResultRaw.(*dto.ExportOutput)
+		if !ok {
+			output.Error = fmt.Errorf("invalid export result type")
+			return output, output.Error
+		}
+		output.PreGenesisPath = preExportResult.ExportPath
+		uc.logger.Success("Pre-upgrade export complete: %s", preExportResult.ExportPath)
+	}
 
 	// Step 1: Submit proposal
 	uc.logger.Info("Step 1/5: Submitting upgrade proposal...")
@@ -123,6 +150,31 @@ func (uc *ExecuteUpgradeUseCase) Execute(ctx context.Context, input dto.ExecuteU
 	}
 	output.PostUpgradeHeight = postHeight
 
+	// Post-upgrade export (if enabled)
+	if input.WithExport {
+		uc.logger.Info("Post-upgrade: Exporting state after upgrade...")
+		exportInput := dto.ExportInput{
+			HomeDir:   input.HomeDir,
+			OutputDir: input.GenesisDir,
+			Force:     false,
+		}
+
+		postExportResultRaw, err := uc.exportUC.Execute(ctx, exportInput)
+		if err != nil {
+			// Post-upgrade export failure is non-fatal (upgrade already complete)
+			uc.logger.Warn("Post-upgrade export failed: %v", err)
+			uc.logger.Warn("Upgrade completed successfully, but post-upgrade state export failed")
+		} else {
+			postExportResult, ok := postExportResultRaw.(*dto.ExportOutput)
+			if ok {
+				output.PostGenesisPath = postExportResult.ExportPath
+				uc.logger.Success("Post-upgrade export complete: %s", postExportResult.ExportPath)
+			} else {
+				uc.logger.Warn("Invalid export result type for post-upgrade export")
+			}
+		}
+	}
+
 	// Success
 	output.Success = true
 	output.Duration = time.Since(startTime)
@@ -136,7 +188,7 @@ func (uc *ExecuteUpgradeUseCase) waitForUpgradeHeight(ctx context.Context, targe
 		lastHeight     int64
 		lastUpdateTime time.Time
 		blockRate      float64 // blocks per second (EMA)
-		alpha          = 0.3    // smoothing factor for EMA
+		alpha          = 0.3   // smoothing factor for EMA
 	)
 
 	// Progress bar configuration

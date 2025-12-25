@@ -281,16 +281,60 @@ type ExecutionModeInfo struct {
 	LogPath       string
 }
 
+// ExportInput contains parameters for export operation
+type ExportInput struct {
+	HomeDir   string // Devnet home directory (required)
+	OutputDir string // Custom output directory (default: {HomeDir}/exports)
+	Force     bool   // Skip confirmation prompts
+}
+
+// ExportOutput contains the result of an export operation
+type ExportOutput struct {
+	ExportPath   string   // Full path to export directory
+	BlockHeight  int64    // Exported block height
+	GenesisPath  string   // Path to genesis file
+	MetadataPath string   // Path to metadata file
+	WasRunning   bool     // Whether chain was running before export
+	Warnings     []string // Non-critical warnings
+}
+
+// ExportListOutput contains a list of available exports
+type ExportListOutput struct {
+	Exports    []*ExportSummary // List of export summaries
+	TotalCount int              // Total number of exports
+	TotalSize  int64            // Combined size of all exports (bytes)
+}
+
+// ExportSummary contains brief information about an export
+type ExportSummary struct {
+	DirectoryName string    // Export directory name
+	DirectoryPath string    // Full path to export
+	BlockHeight   int64     // Export block height
+	Timestamp     time.Time // Export timestamp
+	BinaryVersion string    // Binary version used
+	NetworkSource string    // mainnet/testnet
+	SizeBytes     int64     // Total export size
+}
+
+// ExportInspectOutput contains detailed inspection of an export
+type ExportInspectOutput struct {
+	Metadata        interface{} // Full metadata (will be *export.ExportMetadata)
+	GenesisChecksum string      // SHA256 of genesis file
+	IsComplete      bool        // All required files present
+	MissingFiles    []string    // List of missing files if incomplete
+	SizeBytes       int64       // Total size
+}
+
 // DockerConfig contains Docker-specific configuration for devnet deployment
 type DockerConfig struct {
-	NetworkID      string              // Docker network ID
-	NetworkName    string              // Docker network name
-	Subnet         string              // Subnet CIDR
-	PortRangeStart int                 // Start of allocated port range
-	PortRangeEnd   int                 // End of allocated port range
-	ResourceLimits *ResourceLimits     // Container resource limits
-	Image          string              // Docker image reference
-	CustomBuild    *CustomBuildConfig  // Optional custom image build config
+	NetworkID      string             // Docker network ID
+	NetworkName    string             // Docker network name
+	Subnet         string             // Subnet CIDR
+	PortRangeStart int                // Start of allocated port range
+	PortRangeEnd   int                // End of allocated port range
+	ResourceLimits *ResourceLimits    // Container resource limits
+	Image          string             // Docker image reference
+	CustomBuild    *CustomBuildConfig // Optional custom image build config
 }
 
 // ResourceLimits defines container resource constraints
@@ -308,13 +352,13 @@ type CustomBuildConfig struct {
 
 // DeploymentInput contains the input for Docker-based deployment
 type DeploymentInput struct {
-	HomeDir        string              // Base directory for devnet data
-	DevnetName     string              // Unique devnet identifier
-	ValidatorCount int                 // Number of validators (1-100)
-	Image          string              // Docker image reference
-	ChainID        string              // Blockchain chain ID
-	ResourceLimits *ResourceLimits     // Container resource limits
-	CustomBuild    *CustomBuildConfig  // Optional custom image build
+	HomeDir        string             // Base directory for devnet data
+	DevnetName     string             // Unique devnet identifier
+	ValidatorCount int                // Number of validators (1-100)
+	Image          string             // Docker image reference
+	ChainID        string             // Blockchain chain ID
+	ResourceLimits *ResourceLimits    // Container resource limits
+	CustomBuild    *CustomBuildConfig // Optional custom image build
 }
 
 // Validate validates the deployment input
@@ -346,13 +390,13 @@ func (e ErrInvalidParameter) Error() string {
 
 // DeploymentOutput contains the result of deployment
 type DeploymentOutput struct {
-	DevnetName     string              // Devnet identifier
-	NetworkID      string              // Created Docker network ID
-	Subnet         string              // Allocated subnet
-	Containers     []*ContainerInfo    // Started container details
-	PortRangeStart int                 // Start of allocated port range
-	PortRangeEnd   int                 // End of allocated port range
-	Success        bool                // Whether deployment succeeded
+	DevnetName     string           // Devnet identifier
+	NetworkID      string           // Created Docker network ID
+	Subnet         string           // Allocated subnet
+	Containers     []*ContainerInfo // Started container details
+	PortRangeStart int              // Start of allocated port range
+	PortRangeEnd   int              // End of allocated port range
+	Success        bool             // Whether deployment succeeded
 }
 
 // ContainerInfo represents a deployed container

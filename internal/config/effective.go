@@ -44,7 +44,7 @@ func NewEffectiveConfig(defaultHomeDir string) *EffectiveConfig {
 		Validators:        NewIntValue(4),
 		Mode:              NewStringValue("docker"),
 		StableVersion:     NewStringValue("latest"),
-		NetworkVersion:    NewStringValue(""),       // Empty means use network module default
+		NetworkVersion:    NewStringValue(""), // Empty means use network module default
 		NoCache:           NewBoolValue(false),
 		Accounts:          NewIntValue(0),
 		GitHubToken:       NewStringValue(""),

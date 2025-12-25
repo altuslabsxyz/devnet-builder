@@ -142,6 +142,16 @@ func (s *CleanDevnetService) Destroy(ctx context.Context, cleanCache bool) (*dto
 	return s.container.DestroyUseCase().Execute(ctx, input)
 }
 
+// Export exports blockchain state using ExportUseCase.
+func (s *CleanDevnetService) Export(ctx context.Context, outputDir string, force bool) (*dto.ExportOutput, error) {
+	input := dto.ExportInput{
+		HomeDir:   s.homeDir,
+		OutputDir: outputDir,
+		Force:     force,
+	}
+	return s.container.ExportUseCase().Execute(ctx, input)
+}
+
 // GetStatus returns the full status of the devnet.
 func (s *CleanDevnetService) GetStatus(ctx context.Context) (*dto.StatusOutput, error) {
 	// Load devnet info

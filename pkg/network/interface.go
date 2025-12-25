@@ -93,7 +93,8 @@ type Module interface {
 	// ============================================
 
 	// DefaultChainID returns the default chain ID for the devnet.
-	// DEPRECATED: Chain ID is extracted from genesis files and stored in metadata.
+	//
+	// Deprecated: Chain ID is extracted from genesis files and stored in metadata.
 	// This method will be removed in v2.0.0. Return empty string for new plugins.
 	// Examples: "stabledevnet_2200-1", "osmosis-devnet-1"
 	DefaultChainID() string
@@ -303,9 +304,9 @@ type GenesisConfig struct {
 // ValidatorInfo represents validator information for genesis injection.
 type ValidatorInfo struct {
 	Moniker         string `json:"moniker"`
-	ConsPubKey      string `json:"cons_pub_key"`      // Base64 encoded Ed25519 pubkey
-	OperatorAddress string `json:"operator_address"`  // Bech32 valoper address
-	SelfDelegation  string `json:"self_delegation"`   // Amount of tokens delegated
+	ConsPubKey      string `json:"cons_pub_key"`     // Base64 encoded Ed25519 pubkey
+	OperatorAddress string `json:"operator_address"` // Bech32 valoper address
+	SelfDelegation  string `json:"self_delegation"`  // Amount of tokens delegated
 }
 
 // GenesisOptions contains user-provided overrides for genesis modification.

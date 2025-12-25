@@ -47,13 +47,13 @@ const (
 
 // CosmosRPCClient implements RPCClient for Cosmos chains.
 type CosmosRPCClient struct {
-	baseURL       string // RPC URL (port 26657)
-	restBaseURL   string // REST API URL (port 1317)
-	client        *http.Client
-	pollInterval  time.Duration
-	waitTimeout   time.Duration
-	pluginModule  NetworkPluginModule // Optional: for plugin-based parameter queries
-	networkType   string              // Optional: network type for plugin queries
+	baseURL      string // RPC URL (port 26657)
+	restBaseURL  string // REST API URL (port 1317)
+	client       *http.Client
+	pollInterval time.Duration
+	waitTimeout  time.Duration
+	pluginModule NetworkPluginModule // Optional: for plugin-based parameter queries
+	networkType  string              // Optional: network type for plugin queries
 }
 
 // NewCosmosRPCClient creates a new CosmosRPCClient.
@@ -75,7 +75,7 @@ func NewCosmosRPCClient(host string, port int) *CosmosRPCClient {
 func NewCosmosRPCClientWithURL(url string) *CosmosRPCClient {
 	// Extract host from URL and construct REST URL with port 1317
 	restURL := "http://localhost:1317" // Default fallback
-	if len(url) > 7 { // http://
+	if len(url) > 7 {                  // http://
 		// Try to parse and replace port
 		// Format: http://host:port
 		hostStart := 7
@@ -484,10 +484,10 @@ func (c *CosmosRPCClient) getProposalViaREST(ctx context.Context, id uint64) (*p
 	}
 
 	p := &ports.Proposal{
-		ID:              id,
-		Status:          ports.ProposalStatus(result.Proposal.Status),
-		FinalTallyYes:   result.Proposal.FinalTallyResult.YesCount,
-		FinalTallyNo:    result.Proposal.FinalTallyResult.NoCount,
+		ID:                id,
+		Status:            ports.ProposalStatus(result.Proposal.Status),
+		FinalTallyYes:     result.Proposal.FinalTallyResult.YesCount,
+		FinalTallyNo:      result.Proposal.FinalTallyResult.NoCount,
 		FinalTallyAbstain: result.Proposal.FinalTallyResult.AbstainCount,
 	}
 
@@ -838,7 +838,7 @@ func (c *CosmosRPCClient) queryGovernanceParamsViaREST(ctx context.Context) (*po
 
 	var depositParams struct {
 		DepositParams struct {
-			MinDeposit          []struct {
+			MinDeposit []struct {
 				Denom  string `json:"denom"`
 				Amount string `json:"amount"`
 			} `json:"min_deposit"`

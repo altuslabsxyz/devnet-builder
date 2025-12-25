@@ -121,11 +121,11 @@ func (p *Proposal) IsPassed() bool {
 
 // Vote represents a vote on an upgrade proposal.
 type Vote struct {
-	ValidatorIndex int       `json:"validator_index"`
-	ProposalID     uint64    `json:"proposal_id"`
+	ValidatorIndex int        `json:"validator_index"`
+	ProposalID     uint64     `json:"proposal_id"`
 	Option         VoteOption `json:"option"`
-	TxHash         string    `json:"tx_hash"`
-	VotedAt        time.Time `json:"voted_at"`
+	TxHash         string     `json:"tx_hash"`
+	VotedAt        time.Time  `json:"voted_at"`
 }
 
 // VoteOption represents a voting option.

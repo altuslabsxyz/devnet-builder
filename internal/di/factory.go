@@ -6,13 +6,16 @@ import (
 
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	appversion "github.com/b-harvest/devnet-builder/internal/application/version"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/binary"
 	infrabuilder "github.com/b-harvest/devnet-builder/internal/infrastructure/builder"
 	infracache "github.com/b-harvest/devnet-builder/internal/infrastructure/cache"
 	infraevm "github.com/b-harvest/devnet-builder/internal/infrastructure/evm"
+	infraexport "github.com/b-harvest/devnet-builder/internal/infrastructure/export"
 	infragenesis "github.com/b-harvest/devnet-builder/internal/infrastructure/genesis"
 	infragithub "github.com/b-harvest/devnet-builder/internal/infrastructure/github"
 	infrainteractive "github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
 	infrakeyring "github.com/b-harvest/devnet-builder/internal/infrastructure/keyring"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	infranode "github.com/b-harvest/devnet-builder/internal/infrastructure/node"
 	infranodeconfig "github.com/b-harvest/devnet-builder/internal/infrastructure/nodeconfig"
 	infrapersistence "github.com/b-harvest/devnet-builder/internal/infrastructure/persistence"
@@ -21,8 +24,6 @@ import (
 	infrasnapshot "github.com/b-harvest/devnet-builder/internal/infrastructure/snapshot"
 	infrastateexport "github.com/b-harvest/devnet-builder/internal/infrastructure/stateexport"
 	infraversion "github.com/b-harvest/devnet-builder/internal/infrastructure/version"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/binary"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/b-harvest/devnet-builder/pkg/network/plugin"
 )
@@ -74,6 +75,11 @@ func (f *InfrastructureFactory) CreateDevnetRepository() ports.DevnetRepository 
 // CreateNodeRepository creates a NodeRepository implementation.
 func (f *InfrastructureFactory) CreateNodeRepository() ports.NodeRepository {
 	return infrapersistence.NewNodeFileRepository()
+}
+
+// CreateExportRepository creates an ExportRepository implementation.
+func (f *InfrastructureFactory) CreateExportRepository() ports.ExportRepository {
+	return infraexport.NewRepository(f.homeDir)
 }
 
 // CreateProcessExecutor creates a ProcessExecutor implementation.
@@ -301,6 +307,7 @@ func (f *InfrastructureFactory) WireContainer(opts ...Option) (*Container, error
 	// Create all infrastructure implementations
 	devnetRepo := f.CreateDevnetRepository()
 	nodeRepo := f.CreateNodeRepository()
+	exportRepo := f.CreateExportRepository()
 	executor := f.CreateProcessExecutor()
 	snapshotFetcher := f.CreateSnapshotFetcher()
 	genesisFetcher := f.CreateGenesisFetcher()
@@ -337,6 +344,7 @@ func (f *InfrastructureFactory) WireContainer(opts ...Option) (*Container, error
 		WithLogger(f.logger),
 		WithDevnetRepository(devnetRepo),
 		WithNodeRepository(nodeRepo),
+		WithExportRepository(exportRepo),
 		WithExecutor(executor),
 		WithBinaryCache(binaryCache),
 		WithRPCClient(rpcClient),

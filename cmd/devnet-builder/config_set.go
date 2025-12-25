@@ -277,8 +277,7 @@ func removeSecretFromConfigFile(key string) error {
 	}
 
 	// Clear the secret
-	switch key {
-	case "github-token":
+	if key == "github-token" {
 		if cfg.GitHubToken != nil {
 			cfg.GitHubToken = nil
 			newData, err := toml.Marshal(&cfg)

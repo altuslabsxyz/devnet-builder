@@ -76,8 +76,8 @@ type Node struct {
 
 // ValidatorInfo holds validator-related information.
 type ValidatorInfo struct {
-	Address   string `json:"address,omitempty"`
-	PubKey    string `json:"pubkey,omitempty"`
+	Address    string `json:"address,omitempty"`
+	PubKey     string `json:"pubkey,omitempty"`
 	ConsPubKey string `json:"cons_pubkey,omitempty"`
 }
 

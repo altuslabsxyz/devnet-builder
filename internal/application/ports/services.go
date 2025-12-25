@@ -41,11 +41,11 @@ type HealthStatus struct {
 type NodeStatus string
 
 const (
-	NodeStatusRunning  NodeStatus = "running"
-	NodeStatusSyncing  NodeStatus = "syncing"
-	NodeStatusStopped  NodeStatus = "stopped"
-	NodeStatusError    NodeStatus = "error"
-	NodeStatusUnknown  NodeStatus = "unknown"
+	NodeStatusRunning NodeStatus = "running"
+	NodeStatusSyncing NodeStatus = "syncing"
+	NodeStatusStopped NodeStatus = "stopped"
+	NodeStatusError   NodeStatus = "error"
+	NodeStatusUnknown NodeStatus = "unknown"
 )
 
 // GenesisModifier defines operations for modifying genesis files.
@@ -187,7 +187,7 @@ type UpgradeOptions struct {
 	VotingPeriod  time.Duration
 	HeightBuffer  int
 	UpgradeHeight int64
-	ExportGenesis bool
+	WithExport    bool
 }
 
 // UpgradeResult holds the result of an upgrade.
@@ -227,3 +227,11 @@ const (
 	StageCompleted       UpgradeStage = "completed"
 	StageFailed          UpgradeStage = "failed"
 )
+
+// ExportUseCase defines the interface for exporting blockchain state.
+// Note: Uses dto.ExportInput and dto.ExportOutput from internal/application/dto
+type ExportUseCase interface {
+	// Execute performs a state export
+	// Returns export result with paths and metadata
+	Execute(ctx context.Context, input interface{}) (interface{}, error)
+}

@@ -326,11 +326,11 @@ func (n *CosmosNetwork) GetGovernanceParams(rpcEndpoint, networkType string) (*p
 
 	// For this example, return sensible devnet defaults:
 	return &plugin.GovernanceParamsResponse{
-		VotingPeriodNs:           int64(60 * time.Second),  // 60 seconds for devnet
-		ExpeditedVotingPeriodNs:  int64(30 * time.Second),  // 30 seconds for expedited
-		MinDeposit:               "10000000uatom",          // 10 ATOM
-		ExpeditedMinDeposit:      "50000000uatom",          // 50 ATOM
-		Error:                    "",                       // Empty = success
+		VotingPeriodNs:          int64(60 * time.Second), // 60 seconds for devnet
+		ExpeditedVotingPeriodNs: int64(30 * time.Second), // 30 seconds for expedited
+		MinDeposit:              "10000000uatom",         // 10 ATOM
+		ExpeditedMinDeposit:     "50000000uatom",         // 50 ATOM
+		Error:                   "",                      // Empty = success
 	}, nil
 
 	// Example error handling:

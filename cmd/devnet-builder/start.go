@@ -145,7 +145,8 @@ func outputUpTextClean(result *dto.RunOutput, devnetInfo *dto.DevnetInfo) error 
 	fmt.Println()
 
 	output.Bold("Endpoints:")
-	for _, n := range devnetInfo.Nodes {
+	for i := range devnetInfo.Nodes {
+		n := &devnetInfo.Nodes[i]
 		status := "running"
 		for _, ns := range result.Nodes {
 			if ns.Index == n.Index && !ns.IsRunning {
@@ -191,7 +192,8 @@ func outputUpJSONClean(result *dto.RunOutput, devnetInfo *dto.DevnetInfo) error 
 		jsonResult.Status = "partial"
 	}
 
-	for i, n := range devnetInfo.Nodes {
+	for i := range devnetInfo.Nodes {
+		n := &devnetInfo.Nodes[i]
 		status := "running"
 		for _, ns := range result.Nodes {
 			if ns.Index == n.Index && !ns.IsRunning {

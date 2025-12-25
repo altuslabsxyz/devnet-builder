@@ -23,13 +23,13 @@ type DeploymentOrchestrator interface {
 
 // DeploymentConfig specifies all parameters for a deployment
 type DeploymentConfig struct {
-	DevnetName     string                // Unique devnet identifier
-	ValidatorCount int                   // Number of validators (1-100)
-	Image          string                // Docker image reference
-	ChainID        string                // Blockchain chain ID
-	HomeDir        string                // Base directory for devnet data
-	ResourceLimits *ResourceLimits       // Container resource limits
-	CustomBuild    *CustomBuildConfig    // Optional custom image build
+	DevnetName     string             // Unique devnet identifier
+	ValidatorCount int                // Number of validators (1-100)
+	Image          string             // Docker image reference
+	ChainID        string             // Blockchain chain ID
+	HomeDir        string             // Base directory for devnet data
+	ResourceLimits *ResourceLimits    // Container resource limits
+	CustomBuild    *CustomBuildConfig // Optional custom image build
 }
 
 // ResourceLimits defines container resource constraints
