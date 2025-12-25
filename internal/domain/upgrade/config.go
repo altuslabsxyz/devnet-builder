@@ -44,8 +44,8 @@ type Config struct {
 	UpgradeHeight int64         `json:"upgrade_height,omitempty"` // 0 = auto-calculate
 
 	// State export
-	WithExport bool   `json:"with_export"`
-	GenesisDir string `json:"genesis_dir,omitempty"`
+	ExportEnabled bool   `json:"export_enabled"`
+	GenesisDir    string `json:"genesis_dir,omitempty"`
 }
 
 // NewConfig creates a new Config with default values.
@@ -148,7 +148,7 @@ func (c Config) WithHeightBuffer(buffer int) Config {
 
 // WithExport returns a new Config with state export enabled.
 func (c Config) WithExport(dir string) Config {
-	c.WithExport = true
+	c.ExportEnabled = true
 	c.GenesisDir = dir
 	return c
 }
