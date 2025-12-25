@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/domain/ports"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/docker"
@@ -158,9 +159,12 @@ func TestMultiDevnetIsolation_ConcurrentDeployment(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		devnetName := fmt.Sprintf("concurrent-test-%d", i)
-		go func(name string) {
+		go func(name string, index int) {
 			networkManager := docker.NewNetworkManager()
 			portAllocator := docker.NewPortAllocator(tmpDir)
+
+			// Add small stagger to reduce concurrent network creation conflicts
+			time.Sleep(time.Duration(index) * 100 * time.Millisecond)
 
 			netID, _, err := networkManager.CreateNetwork(ctx, name)
 			if err != nil {
@@ -181,7 +185,7 @@ func TestMultiDevnetIsolation_ConcurrentDeployment(t *testing.T) {
 				allocation: alloc,
 				err:        nil,
 			}
-		}(devnetName)
+		}(devnetName, i)
 	}
 
 	// Collect results
@@ -296,12 +300,17 @@ func getContainerIP(t *testing.T, ctx context.Context, containerID string) strin
 		"--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
 		containerID)
 
-	output, err := cmd.Output()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("Failed to get container IP: %v", err)
+		t.Fatalf("Failed to get container IP: %v, output: %s", err, string(output))
 	}
 
-	return strings.TrimSpace(string(output))
+	ip := strings.TrimSpace(string(output))
+	if ip == "" {
+		t.Fatalf("Container %s has no IP address", containerID)
+	}
+
+	return ip
 }
 
 func canPing(t *testing.T, ctx context.Context, fromContainerID, toIP string) bool {

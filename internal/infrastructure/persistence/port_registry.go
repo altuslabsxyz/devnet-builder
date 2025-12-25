@@ -78,13 +78,28 @@ func (r *PortRegistryFile) Save(ctx context.Context, allocations []*ports.PortAl
 		return fmt.Errorf("failed to create registry directory: %w", err)
 	}
 
-	// Write to file atomically (write to temp file, then rename)
-	tempPath := r.registryPath + ".tmp"
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+	// Write to file atomically using a unique temp file
+	// Create temp file in the same directory to ensure atomic rename
+	tempFile, err := os.CreateTemp(dir, ".port-registry.*.tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tempPath := tempFile.Name()
+
+	// Write data and close
+	if _, err := tempFile.Write(data); err != nil {
+		tempFile.Close()
+		os.Remove(tempPath)
 		return fmt.Errorf("failed to write port registry: %w", err)
 	}
+	if err := tempFile.Close(); err != nil {
+		os.Remove(tempPath)
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
 
+	// Atomic rename
 	if err := os.Rename(tempPath, r.registryPath); err != nil {
+		os.Remove(tempPath)
 		return fmt.Errorf("failed to rename port registry: %w", err)
 	}
 
