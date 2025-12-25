@@ -47,6 +47,12 @@ Examples:
 	cmd.Flags().StringVarP(&exportOutputDir, "output-dir", "o", "", "Custom output directory (default: {homeDir}/exports)")
 	cmd.Flags().BoolVarP(&exportForce, "force", "f", false, "Overwrite existing export directory")
 
+	// Add subcommands
+	cmd.AddCommand(
+		NewExportListCmd(),
+		NewExportInspectCmd(),
+	)
+
 	return cmd
 }
 
