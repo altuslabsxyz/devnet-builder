@@ -278,3 +278,47 @@ type ExecutionModeInfo struct {
 	ContainerName string
 	LogPath       string
 }
+
+// ExportInput contains parameters for export operation
+type ExportInput struct {
+	HomeDir   string // Devnet home directory (required)
+	OutputDir string // Custom output directory (default: {HomeDir}/exports)
+	Force     bool   // Skip confirmation prompts
+}
+
+// ExportOutput contains the result of an export operation
+type ExportOutput struct {
+	ExportPath   string   // Full path to export directory
+	BlockHeight  int64    // Exported block height
+	GenesisPath  string   // Path to genesis file
+	MetadataPath string   // Path to metadata file
+	WasRunning   bool     // Whether chain was running before export
+	Warnings     []string // Non-critical warnings
+}
+
+// ExportListOutput contains a list of available exports
+type ExportListOutput struct {
+	Exports    []*ExportSummary // List of export summaries
+	TotalCount int              // Total number of exports
+	TotalSize  int64            // Combined size of all exports (bytes)
+}
+
+// ExportSummary contains brief information about an export
+type ExportSummary struct {
+	DirectoryName string    // Export directory name
+	DirectoryPath string    // Full path to export
+	BlockHeight   int64     // Export block height
+	Timestamp     time.Time // Export timestamp
+	BinaryVersion string    // Binary version used
+	NetworkSource string    // mainnet/testnet
+	SizeBytes     int64     // Total export size
+}
+
+// ExportInspectOutput contains detailed inspection of an export
+type ExportInspectOutput struct {
+	Metadata        interface{} // Full metadata (will be *export.ExportMetadata)
+	GenesisChecksum string      // SHA256 of genesis file
+	IsComplete      bool        // All required files present
+	MissingFiles    []string    // List of missing files if incomplete
+	SizeBytes       int64       // Total size
+}

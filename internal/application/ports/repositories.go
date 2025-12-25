@@ -192,3 +192,21 @@ type NodeConfigOptions struct {
 	// Moniker is the node's moniker/name
 	Moniker string
 }
+
+// ExportRepository manages export persistence and querying
+type ExportRepository interface {
+	// Save saves export metadata to disk
+	Save(ctx context.Context, exp interface{}) error
+
+	// Load loads export from directory
+	Load(ctx context.Context, exportPath string) (interface{}, error)
+
+	// ListForDevnet lists all exports for a devnet
+	ListForDevnet(ctx context.Context, devnetHomeDir string) (interface{}, error)
+
+	// Delete removes an export directory
+	Delete(ctx context.Context, exportPath string) error
+
+	// Validate checks export completeness
+	Validate(ctx context.Context, exportPath string) (interface{}, error)
+}
