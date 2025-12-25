@@ -227,3 +227,11 @@ const (
 	StageCompleted       UpgradeStage = "completed"
 	StageFailed          UpgradeStage = "failed"
 )
+
+// ExportUseCase defines the interface for exporting blockchain state.
+// Note: Uses dto.ExportInput and dto.ExportOutput from internal/application/dto
+type ExportUseCase interface {
+	// Execute performs a state export
+	// Returns export result with paths and metadata
+	Execute(ctx context.Context, input interface{}) (interface{}, error)
+}

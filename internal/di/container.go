@@ -4,18 +4,36 @@
 package di
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"sync"
 
 	"github.com/b-harvest/devnet-builder/internal/application/binary"
 	"github.com/b-harvest/devnet-builder/internal/application/build"
+	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	appdevnet "github.com/b-harvest/devnet-builder/internal/application/devnet"
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	"github.com/b-harvest/devnet-builder/internal/application/upgrade"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
-	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/plugin"
+	"github.com/b-harvest/devnet-builder/internal/output"
 )
+
+// exportUseCaseAdapter adapts the concrete ExportUseCase to the ports interface.
+type exportUseCaseAdapter struct {
+	concrete interface {
+		Execute(ctx context.Context, input dto.ExportInput) (*dto.ExportOutput, error)
+	}
+}
+
+func (a *exportUseCaseAdapter) Execute(ctx context.Context, input interface{}) (interface{}, error) {
+	exportInput, ok := input.(dto.ExportInput)
+	if !ok {
+		return nil, fmt.Errorf("invalid input type for export: expected dto.ExportInput, got %T", input)
+	}
+	return a.concrete.Execute(ctx, exportInput)
+}
 
 // Container holds all application dependencies.
 // It provides lazy initialization of UseCases and ensures
@@ -587,10 +605,14 @@ func (c *Container) ExecuteUpgradeUseCase() *upgrade.ExecuteUpgradeUseCase {
 	defer c.mu.Unlock()
 
 	if c.executeUpgradeUC == nil {
+		// Create export adapter to match ports interface
+		exportAdapter := &exportUseCaseAdapter{concrete: c.ExportUseCase()}
+
 		c.executeUpgradeUC = upgrade.NewExecuteUpgradeUseCase(
 			proposeUC,
 			voteUC,
 			switchUC,
+			exportAdapter,
 			c.rpcClient,
 			c.devnetRepo,
 			c.healthChecker,
