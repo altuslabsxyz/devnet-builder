@@ -65,7 +65,12 @@ func (c *BinaryCache) Initialize() error {
 }
 
 // loadEntries scans the cache directory and loads all cached binary metadata.
+// Clears existing entries before loading to ensure consistency with filesystem.
 func (c *BinaryCache) loadEntries() error {
+	// Clear existing entries to reload from filesystem
+	// This ensures consistency when called multiple times (e.g., after external changes)
+	c.entries = make(map[string]*CachedBinary)
+
 	entries, err := os.ReadDir(c.cacheDir)
 	if err != nil {
 		if os.IsNotExist(err) {

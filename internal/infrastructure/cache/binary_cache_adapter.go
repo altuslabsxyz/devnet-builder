@@ -83,6 +83,7 @@ func (a *BinaryCacheAdapter) Remove(ref string) error {
 // The ref can be:
 // - A full cache key (49 chars: {commitHash}-{tagsHash})
 // - A commit hash (40 chars) - will search for matching cache entry
+// - A directory name on disk (for entries created by other processes)
 func (a *BinaryCacheAdapter) SetActive(ref string) error {
 	// Determine the cache key to use
 	var cacheKey string
@@ -94,9 +95,23 @@ func (a *BinaryCacheAdapter) SetActive(ref string) error {
 		// Search for a cache entry matching the commit hash prefix
 		cacheKey = a.findCacheKeyByCommit(ref)
 		if cacheKey == "" {
-			return &CacheError{
-				Operation: "set_active",
-				Message:   fmt.Sprintf("ref %s not found in cache", ref),
+			// Cache might be stale - reload from filesystem
+			// This handles cases where another process/instance added entries
+			if err := a.cache.Initialize(); err != nil {
+				return fmt.Errorf("failed to reload cache: %w", err)
+			}
+
+			// Try again after reload
+			if a.cache.IsCached(ref) {
+				cacheKey = ref
+			} else {
+				cacheKey = a.findCacheKeyByCommit(ref)
+				if cacheKey == "" {
+					return &CacheError{
+						Operation: "set_active",
+						Message:   fmt.Sprintf("ref %s not found in cache", ref),
+					}
+				}
 			}
 		}
 	}
