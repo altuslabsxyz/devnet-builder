@@ -109,6 +109,7 @@ func (a *BuilderAdapter) BuildToCache(ctx context.Context, opts ports.BuildOptio
 		Ref:        cached.Ref,
 		CommitHash: cached.CommitHash,
 		CachedPath: cachedPath,
+		CacheRef:   cacheKey, // Cache reference for SetActive
 	}, nil
 }
 
