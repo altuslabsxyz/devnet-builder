@@ -85,10 +85,13 @@ jobs:
           go-version-file: ${{ env.GO_VERSION_FILE }}
           cache: true
 
+      - name: Download dependencies
+        run: go mod download
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.7.2
+          version: v1.62
 
   ci-complete:
     name: CI Complete
