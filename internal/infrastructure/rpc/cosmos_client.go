@@ -502,12 +502,70 @@ func (c *CosmosRPCClient) tryPluginGovernanceParams(ctx context.Context) (*ports
 	}
 
 	// Convert nanoseconds to time.Duration
-	return &ports.GovParams{
+	params := &ports.GovParams{
 		VotingPeriod:          time.Duration(resp.VotingPeriodNs),
 		ExpeditedVotingPeriod: time.Duration(resp.ExpeditedVotingPeriodNs),
 		MinDeposit:            resp.MinDeposit,
 		ExpeditedMinDeposit:   resp.ExpeditedMinDeposit,
-	}, nil
+	}
+
+	// Validate plugin response
+	if err := validateGovParams(params); err != nil {
+		return nil, fmt.Errorf("plugin returned invalid parameters: %w", err)
+	}
+
+	return params, nil
+}
+
+// validateGovParams validates governance parameters for correctness.
+// This ensures plugins return sensible values and prevents runtime errors.
+func validateGovParams(params *ports.GovParams) error {
+	// Validate voting periods
+	if params.VotingPeriod <= 0 {
+		return fmt.Errorf("voting_period must be positive, got %v", params.VotingPeriod)
+	}
+	if params.ExpeditedVotingPeriod < 0 {
+		return fmt.Errorf("expedited_voting_period cannot be negative, got %v", params.ExpeditedVotingPeriod)
+	}
+	// Expedited period should be shorter than regular voting period (if both are set)
+	if params.ExpeditedVotingPeriod > 0 && params.ExpeditedVotingPeriod >= params.VotingPeriod {
+		return fmt.Errorf("expedited_voting_period (%v) must be less than voting_period (%v)",
+			params.ExpeditedVotingPeriod, params.VotingPeriod)
+	}
+
+	// Validate deposit amounts (must be non-empty)
+	if params.MinDeposit == "" {
+		return fmt.Errorf("min_deposit is required")
+	}
+
+	// Validate deposit amounts are numeric strings
+	if !isValidDepositAmount(params.MinDeposit) {
+		return fmt.Errorf("min_deposit must be a numeric string, got %q", params.MinDeposit)
+	}
+	if params.ExpeditedMinDeposit != "" && !isValidDepositAmount(params.ExpeditedMinDeposit) {
+		return fmt.Errorf("expedited_min_deposit must be a numeric string, got %q", params.ExpeditedMinDeposit)
+	}
+
+	return nil
+}
+
+// isValidDepositAmount checks if a deposit amount string is valid (numeric, no decimals).
+func isValidDepositAmount(amount string) bool {
+	if amount == "" {
+		return false
+	}
+	// Must be numeric string with optional suffix (e.g., "10000000" or "10000000uatom")
+	// For simplicity, check that it starts with a digit
+	for i, r := range amount {
+		if i == 0 && (r < '0' || r > '9') {
+			return false
+		}
+		// Allow digits throughout, break on first non-digit (denom suffix)
+		if r < '0' || r > '9' {
+			break
+		}
+	}
+	return true
 }
 
 // queryGovernanceParamsViaREST queries governance parameters directly from Cosmos SDK REST API.
