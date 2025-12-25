@@ -27,6 +27,45 @@ const (
 	DockerStopTimeout = 30 * time.Second
 )
 
+// ResourceLimits defines container resource constraints
+type ResourceLimits struct {
+	Memory string // Memory limit (e.g., "2g", "512m")
+	CPUs   string // CPU limit (e.g., "2.0", "0.5")
+}
+
+// DefaultResourceLimits returns default resource limits for containers
+func DefaultResourceLimits() ResourceLimits {
+	return ResourceLimits{
+		Memory: "2g",
+		CPUs:   "2.0",
+	}
+}
+
+// HealthCheckConfig defines container health check parameters
+type HealthCheckConfig struct {
+	Interval time.Duration // Interval between health checks
+	Timeout  time.Duration // Timeout for each health check
+	Retries  int           // Number of retries before marking unhealthy
+}
+
+// DefaultHealthCheckConfig returns default health check configuration
+func DefaultHealthCheckConfig() HealthCheckConfig {
+	return HealthCheckConfig{
+		Interval: 30 * time.Second,
+		Timeout:  10 * time.Second,
+		Retries:  3,
+	}
+}
+
+// ContainerConfig holds configuration for starting a Docker container
+type ContainerConfig struct {
+	Node           *Node              // Node to start
+	GenesisPath    string             // Path to genesis file
+	NetworkID      string             // Docker network ID (empty = host networking)
+	ResourceLimits *ResourceLimits    // Resource constraints (nil = no limits)
+	HealthCheck    *HealthCheckConfig // Health check config (nil = no health check)
+}
+
 // DockerManager manages nodes running in Docker containers.
 type DockerManager struct {
 	Image      string
@@ -55,8 +94,19 @@ func NewDockerManagerWithEVMChainID(image string, evmChainID string, logger *out
 	return m
 }
 
-// Start starts a node in a Docker container.
+// Start starts a node in a Docker container (backward compatible).
 func (m *DockerManager) Start(ctx context.Context, node *Node, genesisPath string) error {
+	config := &ContainerConfig{
+		Node:        node,
+		GenesisPath: genesisPath,
+		NetworkID:   "", // Use host networking
+	}
+	return m.StartWithConfig(ctx, config)
+}
+
+// StartWithConfig starts a node in a Docker container with advanced configuration.
+func (m *DockerManager) StartWithConfig(ctx context.Context, config *ContainerConfig) error {
+	node := config.Node
 	containerName := ContainerNameForIndex(node.Index)
 
 	// Check if container already exists
@@ -68,30 +118,66 @@ func (m *DockerManager) Start(ctx context.Context, node *Node, genesisPath strin
 	m.removeContainer(ctx, containerName)
 
 	// Build docker run command
-	// Run as current user to ensure files are owned by the host user
-	// This prevents permission issues when cleaning/resetting the devnet
-	// Set HOME env var to /data so stabled doesn't try to write to /.stabled
-	args := []string{
-		"run", "-d",
-		"--name", containerName,
-		"--network", "host", // Use host networking for simplicity
+	args := []string{"run", "-d", "--name", containerName}
+
+	// Network configuration
+	if config.NetworkID != "" {
+		// Use custom bridge network with port mappings
+		args = append(args, "--network", config.NetworkID)
+		args = append(args,
+			"-p", fmt.Sprintf("%d:%d", node.Ports.RPC, node.Ports.RPC),
+			"-p", fmt.Sprintf("%d:%d", node.Ports.P2P, node.Ports.P2P),
+			"-p", fmt.Sprintf("%d:%d", node.Ports.GRPC, node.Ports.GRPC),
+			"-p", fmt.Sprintf("%d:%d", node.Ports.EVMRPC, node.Ports.EVMRPC),
+			"-p", fmt.Sprintf("%d:%d", node.Ports.EVMWS, node.Ports.EVMWS),
+		)
+	} else {
+		// Use host networking (backward compatible)
+		args = append(args, "--network", "host")
+	}
+
+	// Resource limits
+	if config.ResourceLimits != nil {
+		if config.ResourceLimits.Memory != "" {
+			args = append(args, "--memory", config.ResourceLimits.Memory)
+		}
+		if config.ResourceLimits.CPUs != "" {
+			args = append(args, "--cpus", config.ResourceLimits.CPUs)
+		}
+	}
+
+	// Health check configuration
+	if config.HealthCheck != nil {
+		args = append(args,
+			"--health-cmd", fmt.Sprintf("curl -f http://localhost:%d/status || exit 1", node.Ports.RPC),
+			"--health-interval", config.HealthCheck.Interval.String(),
+			"--health-timeout", config.HealthCheck.Timeout.String(),
+			"--health-retries", fmt.Sprintf("%d", config.HealthCheck.Retries),
+		)
+	}
+
+	// User and environment
+	args = append(args,
 		"--user", getCurrentUserID(),
 		"-e", "HOME=/data",
 		"-v", fmt.Sprintf("%s:/data", node.HomeDir),
-		"-v", fmt.Sprintf("%s:/data/config/genesis.json:ro", genesisPath),
+		"-v", fmt.Sprintf("%s:/data/config/genesis.json:ro", config.GenesisPath),
 		m.Image,
-	}
+	)
+
 	// GHCR images have stabled as entrypoint, others need explicit command
 	if !m.isGHCRImage() {
 		args = append(args, "stabled")
 	}
+
+	// Chain start command
 	args = append(args, "start",
 		"--home", "/data",
 		fmt.Sprintf("--rpc.laddr=tcp://0.0.0.0:%d", node.Ports.RPC),
 		fmt.Sprintf("--p2p.laddr=tcp://0.0.0.0:%d", node.Ports.P2P),
 		fmt.Sprintf("--grpc.address=0.0.0.0:%d", node.Ports.GRPC),
-		fmt.Sprintf("--api.enabled-unsafe-cors=true"),
-		fmt.Sprintf("--api.enable=true"),
+		"--api.enabled-unsafe-cors=true",
+		"--api.enable=true",
 		fmt.Sprintf("--json-rpc.address=0.0.0.0:%d", node.Ports.EVMRPC),
 		fmt.Sprintf("--json-rpc.ws-address=0.0.0.0:%d", node.Ports.EVMWS),
 	)

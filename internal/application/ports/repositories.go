@@ -45,6 +45,17 @@ type DevnetMetadata struct {
 	LastProvisioned   *time.Time
 	LastStarted       *time.Time
 	LastStopped       *time.Time
+	DockerConfig      *DockerConfigMetadata // Docker-specific configuration (nil if not Docker mode)
+}
+
+// DockerConfigMetadata contains Docker-specific metadata for devnet
+type DockerConfigMetadata struct {
+	NetworkID      string // Docker network ID
+	NetworkName    string // Docker network name
+	Subnet         string // Subnet CIDR
+	PortRangeStart int    // Start of allocated port range
+	PortRangeEnd   int    // End of allocated port range
+	Image          string // Docker image used
 }
 
 // NodeMetadata represents a single node's configuration.
