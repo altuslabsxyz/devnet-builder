@@ -3,6 +3,8 @@ package devnet
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/dto"
@@ -69,11 +71,33 @@ func (uc *ResetUseCase) softReset(ctx context.Context, input dto.ResetInput, met
 		return nil, fmt.Errorf("failed to load nodes: %w", err)
 	}
 
+	// Define subdirectories to delete
+	subsToDelete := []string{
+		"application.db",
+		"blockstore.db",
+		"cs.wal",
+		"evidence.db",
+		"state.db",
+		"tx_index.db",
+	}
+
 	removed := make([]string, 0)
+	failed := make(map[string]error)
+
 	for _, node := range nodes {
 		dataDir := fmt.Sprintf("%s/data", node.HomeDir)
-		removed = append(removed, dataDir)
-		uc.logger.Debug("Clearing data for node %d", node.Index)
+
+		for _, sub := range subsToDelete {
+			subPath := filepath.Join(dataDir, sub)
+
+			if err := os.RemoveAll(subPath); err != nil {
+				failed[subPath] = err
+				uc.logger.Warn("Failed to delete %s: %v", subPath, err)
+			} else {
+				removed = append(removed, subPath)
+				uc.logger.Debug("Deleted %s for node %d", sub, node.Index)
+			}
+		}
 	}
 
 	// Update metadata status
@@ -86,6 +110,7 @@ func (uc *ResetUseCase) softReset(ctx context.Context, input dto.ResetInput, met
 	return &dto.ResetOutput{
 		Type:    "soft",
 		Removed: removed,
+		Failed:  failed,
 	}, nil
 }
 

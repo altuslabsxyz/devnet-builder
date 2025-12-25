@@ -7,6 +7,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/b-harvest/devnet-builder/internal/application/binary"
 	"github.com/b-harvest/devnet-builder/internal/application/build"
 	appdevnet "github.com/b-harvest/devnet-builder/internal/application/devnet"
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
@@ -48,6 +49,8 @@ type Container struct {
 	networkModule       ports.NetworkModule
 	githubClient        ports.GitHubClient
 	interactiveSelector ports.InteractiveSelector
+	binaryResolver      ports.BinaryResolver
+	binaryExecutor      ports.BinaryExecutor
 
 	// Lazy-initialized UseCases
 	provisionUC      *appdevnet.ProvisionUseCase
@@ -64,6 +67,7 @@ type Container struct {
 	buildUC          *build.BuildUseCase
 	cacheListUC      *build.CacheListUseCase
 	cacheCleanUC     *build.CacheCleanUseCase
+	passthroughUC    *binary.PassthroughUseCase
 }
 
 // Config holds configuration for the container.
@@ -253,6 +257,20 @@ func WithInteractiveSelector(selector ports.InteractiveSelector) Option {
 	}
 }
 
+// WithBinaryResolver sets the binary resolver.
+func WithBinaryResolver(resolver ports.BinaryResolver) Option {
+	return func(c *Container) {
+		c.binaryResolver = resolver
+	}
+}
+
+// WithBinaryExecutor sets the binary executor.
+func WithBinaryExecutor(executor ports.BinaryExecutor) Option {
+	return func(c *Container) {
+		c.binaryExecutor = executor
+	}
+}
+
 // New creates a new dependency injection container with the given options.
 func New(opts ...Option) *Container {
 	c := &Container{
@@ -352,6 +370,15 @@ func (c *Container) InteractiveSelector() ports.InteractiveSelector {
 // BinaryCache returns the binary cache.
 func (c *Container) BinaryCache() ports.BinaryCache {
 	return c.binaryCache
+}
+
+// SetBinaryResolver sets the binary resolver.
+// This is used to inject the resolver after container creation,
+// since it depends on the global plugin loader.
+func (c *Container) SetBinaryResolver(resolver ports.BinaryResolver) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.binaryResolver = resolver
 }
 
 // Builder returns the builder.
@@ -615,6 +642,20 @@ func (c *Container) CacheCleanUseCase() *build.CacheCleanUseCase {
 		)
 	}
 	return c.cacheCleanUC
+}
+
+// PassthroughUseCase returns the binary passthrough use case (lazy init).
+func (c *Container) PassthroughUseCase() *binary.PassthroughUseCase {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.passthroughUC == nil {
+		c.passthroughUC = binary.NewPassthroughUseCase(
+			c.binaryResolver,
+			c.binaryExecutor,
+		)
+	}
+	return c.passthroughUC
 }
 
 // loggerAdapter adapts output.Logger to ports.Logger interface.

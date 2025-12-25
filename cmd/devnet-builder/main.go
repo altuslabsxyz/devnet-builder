@@ -15,15 +15,18 @@ import (
 	"github.com/b-harvest/devnet-builder/pkg/network/plugin"
 )
 
+// Global plugin loader - shared across the application
+var globalLoader *plugin.Loader
+
 func main() {
 	// Enable color output
 	color.NoColor = false
 
 	// Load plugins from ~/.devnet-builder/plugins/
-	loader := plugin.NewLoader()
+	globalLoader = plugin.NewLoader()
 
 	// Discover and load all plugins
-	plugins, _ := loader.LoadAll()
+	plugins, _ := globalLoader.LoadAll()
 
 	// Register loaded plugins with the network registry
 	for _, p := range plugins {
@@ -36,21 +39,34 @@ func main() {
 	homeDir := DefaultHomeDir()
 	if err := checkAndMigrateVersion(homeDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Version migration failed: %v\n", err)
-		loader.Close()
+		globalLoader.Close()
 		os.Exit(1)
 	}
 
 	// Initialize root command
 	rootCmd := NewRootCmd()
+
+	// Enhance root command with binary passthrough commands
+	// This is done after root command initialization but before execution
+	// We pass a nil container here since the container will be initialized
+	// lazily when commands are executed
+	enhanceRootWithBinaryPassthrough(rootCmd, nil)
+
 	err := rootCmd.Execute()
 
 	// Always close plugins before exit (os.Exit skips defers)
-	loader.Close()
+	globalLoader.Close()
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// GetPluginLoader returns the global plugin loader.
+// This is used by commands to access the plugin system.
+func GetPluginLoader() *plugin.Loader {
+	return globalLoader
 }
 
 // checkAndMigrateVersion checks the current version and applies migrations if needed.

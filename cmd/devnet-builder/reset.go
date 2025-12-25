@@ -93,6 +93,15 @@ func runReset(cmd *cobra.Command, args []string) error {
 		return outputResetJSON(result.Type == "hard")
 	}
 
+	// Display warnings for failed deletions
+	if len(result.Failed) > 0 {
+		fmt.Println("\n⚠️  Warning: Some directories failed to delete:")
+		for path, err := range result.Failed {
+			fmt.Printf("  - %s: %v\n", path, err)
+		}
+		fmt.Println("\nYou may need to fix permissions and run reset again.")
+	}
+
 	output.Success("Devnet reset successfully.")
 	if resetHard {
 		fmt.Println("Run 'devnet-builder deploy' to provision a new devnet.")

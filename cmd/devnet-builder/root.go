@@ -213,6 +213,11 @@ Examples:
 		completionCmd,
 	)
 
+	// Add binary passthrough commands dynamically
+	// This must be done after all static commands are added
+	// Note: We can't add them here because we don't have the container yet
+	// Instead, we'll add them lazily on first command execution
+
 	return cmd
 }
 

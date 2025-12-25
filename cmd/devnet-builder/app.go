@@ -87,6 +87,14 @@ func initContainerInternal(cfg AppConfig) (*di.Container, error) {
 		return nil, err
 	}
 
+	// Initialize binary resolver with plugin loader
+	// The plugin loader is global and created in main.go
+	if pluginLoader := GetPluginLoader(); pluginLoader != nil {
+		binaryCache := container.BinaryCache()
+		binaryResolver := factory.CreateBinaryResolver(pluginLoader, binaryCache)
+		container.SetBinaryResolver(binaryResolver)
+	}
+
 	return container, nil
 }
 

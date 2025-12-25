@@ -60,9 +60,9 @@ type RunInput struct {
 
 // RunOutput contains the result of running.
 type RunOutput struct {
-	Nodes         []NodeStatus
-	AllRunning    bool
-	HealthySince  time.Time
+	Nodes        []NodeStatus
+	AllRunning   bool
+	HealthySince time.Time
 }
 
 // NodeStatus contains the status of a running node.
@@ -117,15 +117,16 @@ type NodeHealthStatus struct {
 
 // ResetInput contains the input for resetting a devnet.
 type ResetInput struct {
-	HomeDir  string
-	HardReset bool  // If true, removes all data including genesis
+	HomeDir   string
+	HardReset bool // If true, removes all data including genesis
 }
 
 // ResetOutput contains the result of resetting.
 type ResetOutput struct {
-	Type     string  // "soft" or "hard"
-	Removed  []string
-	Warnings []string
+	Type     string           // "soft" or "hard"
+	Removed  []string         // Successfully removed paths
+	Warnings []string         // Warnings during reset
+	Failed   map[string]error // Failed deletions with error details
 }
 
 // StartInput contains the input for the combined provision+run operation.
@@ -149,9 +150,9 @@ type DestroyInput struct {
 
 // DestroyOutput contains the result of destroying.
 type DestroyOutput struct {
-	RemovedDir    string
-	NodesStopped  int
-	CacheCleared  bool
+	RemovedDir   string
+	NodesStopped int
+	CacheCleared bool
 }
 
 // DevnetInfo contains full devnet information for display.
@@ -189,10 +190,10 @@ type StatusInput struct {
 
 // StatusOutput contains the full status of a devnet.
 type StatusOutput struct {
-	Devnet       *DevnetInfo
+	Devnet        *DevnetInfo
 	OverallStatus string
-	Nodes        []NodeHealthStatus
-	AllHealthy   bool
+	Nodes         []NodeHealthStatus
+	AllHealthy    bool
 }
 
 // LogsInput contains the input for viewing logs.
@@ -205,9 +206,9 @@ type LogsInput struct {
 
 // ExportKeysInput contains the input for exporting keys.
 type ExportKeysInput struct {
-	HomeDir    string
-	OutputDir  string
-	Format     string // json, env, shell
+	HomeDir   string
+	OutputDir string
+	Format    string // json, env, shell
 }
 
 // ExportKeysOutput contains the exported keys.
@@ -242,9 +243,9 @@ type RestartInput struct {
 
 // RestartOutput contains the result of restarting.
 type RestartOutput struct {
-	StoppedNodes  int
-	StartedNodes  int
-	AllRunning    bool
+	StoppedNodes int
+	StartedNodes int
+	AllRunning   bool
 }
 
 // NodeActionInput contains the input for a node action (start/stop).

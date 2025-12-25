@@ -21,8 +21,10 @@ import (
 	infrasnapshot "github.com/b-harvest/devnet-builder/internal/infrastructure/snapshot"
 	infrastateexport "github.com/b-harvest/devnet-builder/internal/infrastructure/stateexport"
 	infraversion "github.com/b-harvest/devnet-builder/internal/infrastructure/version"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/binary"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/b-harvest/devnet-builder/pkg/network/plugin"
 )
 
 // InfrastructureFactory creates infrastructure implementations.
@@ -317,6 +319,11 @@ func (f *InfrastructureFactory) WireContainer(opts ...Option) (*Container, error
 	githubClient := f.CreateGitHubClient()
 	interactiveSelector := f.CreateInteractiveSelector()
 
+	// Binary passthrough components
+	// Note: The plugin loader is passed separately as it's created in main.go
+	// We'll set a placeholder here and update it later via WithBinaryResolver
+	binaryExecutor := f.CreateBinaryExecutor()
+
 	// Create container with all dependencies
 	allOpts := []Option{
 		WithLogger(f.logger),
@@ -335,6 +342,7 @@ func (f *InfrastructureFactory) WireContainer(opts ...Option) (*Container, error
 		WithValidatorKeyLoader(validatorKeyLoader),
 		WithGitHubClient(githubClient),
 		WithInteractiveSelector(interactiveSelector),
+		WithBinaryExecutor(binaryExecutor),
 	}
 
 	// Add network module adapter if available
@@ -533,4 +541,15 @@ func (a *networkModuleAdapter) GetConfigOverrides(nodeIndex int, opts ports.Node
 		},
 	}
 	return a.module.GetConfigOverrides(nodeIndex, networkOpts)
+}
+
+// CreateBinaryResolver creates a BinaryResolver implementation.
+// Requires plugin loader and binary cache to be initialized.
+func (f *InfrastructureFactory) CreateBinaryResolver(loader *plugin.Loader, cache ports.BinaryCache) ports.BinaryResolver {
+	return binary.NewPluginBinaryResolver(loader, cache)
+}
+
+// CreateBinaryExecutor creates a BinaryExecutor implementation.
+func (f *InfrastructureFactory) CreateBinaryExecutor() ports.BinaryExecutor {
+	return binary.NewPassthroughExecutor()
 }
