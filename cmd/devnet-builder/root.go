@@ -165,6 +165,8 @@ Examples:
 	resetCmd.GroupID = GroupAdvanced
 	exportKeysCmd := NewExportKeysCmd()
 	exportKeysCmd.GroupID = GroupAdvanced
+	exportCmd := NewExportCmd()
+	exportCmd.GroupID = GroupAdvanced
 	upgradeCmd := NewUpgradeCmd()
 	upgradeCmd.GroupID = GroupAdvanced
 	replaceCmd := NewReplaceCmd()
@@ -201,6 +203,7 @@ Examples:
 		restartCmd,
 		resetCmd,
 		exportKeysCmd,
+		exportCmd,
 		upgradeCmd,
 		replaceCmd,
 		versionsCmd,
