@@ -1,6 +1,6 @@
 module github.com/b-harvest/devnet-builder
 
-go 1.24.0
+go 1.23
 
 require (
 	cosmossdk.io/log v1.6.0
