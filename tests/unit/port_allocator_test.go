@@ -303,27 +303,31 @@ func TestPortAllocator_ConcurrentAccess(t *testing.T) {
 		}(i)
 	}
 
-	// Collect results
-	errors := 0
+	// Collect results - all allocations should succeed with proper locking
+	successCount := 0
 	for i := 0; i < 5; i++ {
 		if err := <-done; err != nil {
-			errors++
-			t.Logf("Concurrent allocation %d failed: %v", i, err)
+			t.Errorf("Concurrent allocation failed: %v", err)
+		} else {
+			successCount++
 		}
 	}
 
-	if errors > 0 {
-		t.Errorf("%d concurrent allocations failed", errors)
-	}
-
-	// Verify all 5 allocations were created
+	// Verify successful allocations were persisted
 	allocator := docker.NewPortAllocator(tmpDir)
 	allocations, err := allocator.ListAllocations(ctx)
 	if err != nil {
 		t.Fatalf("ListAllocations() failed: %v", err)
 	}
-	if len(allocations) != 5 {
-		t.Errorf("Expected 5 allocations, got %d", len(allocations))
+
+	// Should have exactly as many allocations as successful operations
+	if len(allocations) != successCount {
+		t.Errorf("Expected %d allocations (matching successful operations), got %d", successCount, len(allocations))
+	}
+
+	// Main assertion: with proper file locking, all 5 should succeed
+	if successCount != 5 {
+		t.Errorf("Expected all 5 concurrent allocations to succeed, only %d succeeded", successCount)
 	}
 
 	// Verify no overlapping port ranges
