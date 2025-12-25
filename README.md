@@ -104,6 +104,7 @@ devnet-builder deploy --mode local
 | `devnet-builder logs` | View node logs |
 | `devnet-builder down` | Stop running nodes |
 | `devnet-builder up` | Restart stopped nodes |
+| `devnet-builder export` | Export blockchain state at current height |
 | `devnet-builder destroy` | Remove all devnet data |
 
 For complete command reference, see [docs/commands.md](docs/commands.md).
@@ -139,6 +140,53 @@ devnet-builder export-keys --json
 # Export only accounts (not validators)
 devnet-builder export-keys --type accounts
 ```
+
+### State Export
+
+Export blockchain state at any height for testing upgrades, snapshots, or state analysis:
+
+```bash
+# Export current state
+devnet-builder export
+
+# List all exports
+devnet-builder export list
+
+# Inspect export details
+devnet-builder export inspect <export-path>
+
+# Custom output directory
+devnet-builder export --output-dir /path/to/exports
+
+# Force overwrite existing export
+devnet-builder export --force
+```
+
+**Upgrade workflow with automatic exports:**
+
+```bash
+# Export state before and after upgrade
+devnet-builder upgrade --version v2.0.0 --with-export
+
+# This creates:
+# - Pre-upgrade export at current height
+# - Post-upgrade export after chain resumes
+```
+
+**Export directory structure:**
+
+```
+~/.stable-devnet/exports/
+└── mainnet-a1b2c3d4-1000000-20240115120000/
+    ├── genesis-1000000-a1b2c3d4.json  # Exported state
+    └── metadata.json                   # Export metadata
+```
+
+**Use cases:**
+- **Upgrade testing**: Verify state before/after upgrades
+- **State snapshots**: Create backups at critical heights
+- **Chain forking**: Bootstrap new chains from production state
+- **Debugging**: Analyze state at specific heights
 
 ### Network Configuration
 
