@@ -112,6 +112,57 @@ type Module interface {
 }
 ```
 
+## Optional Methods
+
+Plugins can implement additional optional methods to enable advanced features:
+
+### GetGovernanceParams (Optional)
+
+Query governance parameters from a running blockchain. This method is used during upgrade workflows to determine voting periods and deposit requirements dynamically.
+
+```go
+func (n *MyNetwork) GetGovernanceParams(rpcEndpoint, networkType string) (*plugin.GovernanceParamsResponse, error) {
+    // Query the blockchain's governance module via REST API
+    // Return voting periods and deposit amounts
+    return &plugin.GovernanceParamsResponse{
+        VotingPeriodNs:           int64(48 * time.Hour),  // Regular voting period (nanoseconds)
+        ExpeditedVotingPeriodNs:  int64(24 * time.Hour),  // Expedited voting period (nanoseconds)
+        MinDeposit:               "10000000uatom",        // Minimum deposit for regular proposals
+        ExpeditedMinDeposit:      "50000000uatom",        // Minimum deposit for expedited proposals
+        Error:                    "",                      // Empty = success, populated = error message
+    }, nil
+}
+```
+
+**Parameters:**
+- `rpcEndpoint`: HTTP/HTTPS URL of the blockchain RPC or REST endpoint (e.g., "http://localhost:1317")
+- `networkType`: Network context ("mainnet", "testnet", "devnet", or custom)
+
+**Returns:**
+- `VotingPeriodNs`: Regular voting period in nanoseconds (must be positive)
+- `ExpeditedVotingPeriodNs`: Expedited voting period in nanoseconds (must be < VotingPeriodNs if set)
+- `MinDeposit`: Minimum deposit as numeric string (e.g., "10000000" or "10000000uatom")
+- `ExpeditedMinDeposit`: Minimum deposit for expedited proposals (optional)
+- `Error`: Error message if query fails, empty string on success
+
+**Implementation approach:**
+1. Make HTTP requests to `rpcEndpoint + "/cosmos/gov/v1/params/voting"` and `/cosmos/gov/v1/params/deposit`
+2. Parse JSON responses from the governance module
+3. Extract and validate parameter values
+4. Convert time.Duration to nanoseconds (int64)
+5. Return error in Error field if network/parsing fails
+
+**Error handling:**
+- Network errors: Populate Error field with descriptive message
+- Parsing errors: Populate Error field with parse failure details
+- Success: Leave Error field empty, populate all parameter fields
+
+**Backward compatibility:**
+- If not implemented, devnet-builder falls back to REST API queries
+- Old plugins continue to work without implementing this method
+
+**Example:** See `examples/cosmos-plugin/main.go` for a complete reference implementation.
+
 ## Configuration Types
 
 ### BinarySource

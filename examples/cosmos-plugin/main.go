@@ -295,3 +295,47 @@ func (n *CosmosNetwork) GetConfigOverrides(nodeIndex int, opts network.NodeConfi
 	// For networks with EVM or other special features, return TOML overrides here.
 	return nil, nil, nil
 }
+
+// ============================================
+// Governance Parameters (Plugin-based Query)
+// ============================================
+
+// GetGovernanceParams queries governance parameters from the blockchain via RPC/REST.
+// This method is called by the devnet-builder during upgrade workflows to determine
+// voting periods and deposit requirements dynamically from the running chain.
+//
+// Implementation approach:
+// 1. Query Cosmos SDK governance module via REST API (cosmos/gov/v1/params/*)
+// 2. Parse and validate the response
+// 3. Convert to standardized response format
+// 4. Return error field populated if query fails (network error, parsing error, etc.)
+//
+// This allows each network plugin to:
+// - Use chain-specific RPC/REST endpoints
+// - Handle different governance module versions (v1, v1beta1)
+// - Apply network-specific parameter transformations
+// - Support custom governance modules
+func (n *CosmosNetwork) GetGovernanceParams(rpcEndpoint, networkType string) (*plugin.GovernanceParamsResponse, error) {
+	// In a real implementation, you would:
+	// 1. Make HTTP requests to rpcEndpoint + "/cosmos/gov/v1/params/voting"
+	//    and rpcEndpoint + "/cosmos/gov/v1/params/deposit"
+	// 2. Parse the JSON responses
+	// 3. Extract voting_period, expedited_voting_period, min_deposit, expedited_min_deposit
+	// 4. Convert time.Duration to nanoseconds (int64)
+	// 5. Return the response
+
+	// For this example, return sensible devnet defaults:
+	return &plugin.GovernanceParamsResponse{
+		VotingPeriodNs:           int64(60 * time.Second),  // 60 seconds for devnet
+		ExpeditedVotingPeriodNs:  int64(30 * time.Second),  // 30 seconds for expedited
+		MinDeposit:               "10000000uatom",          // 10 ATOM
+		ExpeditedMinDeposit:      "50000000uatom",          // 50 ATOM
+		Error:                    "",                       // Empty = success
+	}, nil
+
+	// Example error handling:
+	// If network is unreachable, return error in response field:
+	// return &plugin.GovernanceParamsResponse{
+	//     Error: fmt.Sprintf("failed to connect to %s: connection refused", rpcEndpoint),
+	// }, nil
+}

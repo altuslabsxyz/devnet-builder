@@ -15,6 +15,7 @@ import (
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
+	infrarpc "github.com/b-harvest/devnet-builder/internal/infrastructure/rpc"
 	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -41,6 +42,7 @@ var (
 	upgradeBinary        string
 	upgradeMode          string
 	votingPeriod         string
+	forceVotingPeriod    bool
 	heightBuffer         int
 	upgradeHeight        int64
 	exportGenesis        bool
@@ -70,8 +72,11 @@ Examples:
   # Upgrade to a local binary
   devnet-builder upgrade --name v2.0.0-upgrade --binary /path/to/new/stabled
 
-  # Upgrade with custom voting period
+  # Upgrade with custom voting period (fallback if chain query fails)
   devnet-builder upgrade --name v2.0.0-upgrade --image ghcr.io/stablelabs/stable:v2.0.0 --voting-period 120s
+
+  # Force custom voting period (override chain/plugin parameters)
+  devnet-builder upgrade --name v2.0.0-upgrade --image ghcr.io/stablelabs/stable:v2.0.0 --voting-period 30s --force-voting-period
 
   # Upgrade and export genesis snapshots
   devnet-builder upgrade --name v2.0.0-upgrade --image ghcr.io/stablelabs/stable:v2.0.0 --export-genesis
@@ -96,6 +101,7 @@ Examples:
 
 	// Optional flags
 	cmd.Flags().StringVar(&votingPeriod, "voting-period", "60s", "Expedited voting period duration")
+	cmd.Flags().BoolVar(&forceVotingPeriod, "force-voting-period", false, "Force use of --voting-period value, ignoring on-chain parameters")
 	cmd.Flags().IntVar(&heightBuffer, "height-buffer", DefaultHeightBuffer, "Blocks to add after voting period ends (0 = auto-calculate based on block time)")
 	cmd.Flags().Int64Var(&upgradeHeight, "upgrade-height", 0, "Explicit upgrade height (0 = auto-calculate)")
 	cmd.Flags().BoolVar(&exportGenesis, "export-genesis", false, "Export genesis before and after upgrade")
@@ -265,29 +271,56 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Get on-chain governance parameters
-	logger.Info("Fetching governance parameters from chain...")
-	rpcHost := "localhost"
-	rpcPort := 26657
-	tempFactory := di.NewInfrastructureFactory(homeDir, logger)
-	rpcClient := tempFactory.CreateRPCClient(rpcHost, rpcPort)
+	// Get governance parameters (either from chain or forced CLI value)
+	var govParams *ports.GovParams
+	var vp time.Duration
 
-	govParams, err := rpcClient.GetGovParams(ctx)
-	if err != nil {
-		logger.Debug("Failed to fetch gov params, using CLI flag value: %v", err)
-		// Fallback to CLI flag if chain query fails
-		vp, parseErr := time.ParseDuration(votingPeriod)
+	if forceVotingPeriod {
+		// User explicitly wants to override with CLI value
+		logger.Info("Using forced voting period from --voting-period flag...")
+		parsedVP, parseErr := time.ParseDuration(votingPeriod)
 		if parseErr != nil {
 			return fmt.Errorf("invalid voting period: %w", parseErr)
 		}
-		govParams = &ports.GovParams{
-			ExpeditedVotingPeriod: vp,
-		}
-	}
+		vp = parsedVP
+		logger.Info("Forced expedited voting period: %s", vp)
+	} else {
+		// Query from chain (plugin or REST)
+		logger.Info("Fetching governance parameters from chain...")
+		rpcHost := "localhost"
+		rpcPort := 26657
+		tempFactory := di.NewInfrastructureFactory(homeDir, logger).
+			WithNetworkModule(networkModule)
+		rpcClient := tempFactory.CreateRPCClient(rpcHost, rpcPort)
 
-	// Use expedited voting period from chain
-	vp := govParams.ExpeditedVotingPeriod
-	logger.Info("Using expedited voting period: %s", vp)
+		// Configure plugin delegation for governance parameter queries
+		// Type assert to check if network module supports governance parameter queries
+		if cosmosClient, ok := rpcClient.(*infrarpc.CosmosRPCClient); ok {
+			// Check if network module implements GetGovernanceParams (optional interface)
+			if pluginModule, ok := networkModule.(infrarpc.NetworkPluginModule); ok {
+				rpcClient = cosmosClient.WithPlugin(pluginModule, cleanMetadata.NetworkName)
+			}
+			// If plugin doesn't implement GetGovernanceParams, will fall back to REST API
+		}
+
+		var err error
+		govParams, err = rpcClient.GetGovParams(ctx)
+		if err != nil {
+			logger.Debug("Failed to fetch gov params, using CLI flag value: %v", err)
+			// Fallback to CLI flag if chain query fails
+			parsedVP, parseErr := time.ParseDuration(votingPeriod)
+			if parseErr != nil {
+				return fmt.Errorf("invalid voting period: %w", parseErr)
+			}
+			govParams = &ports.GovParams{
+				ExpeditedVotingPeriod: parsedVP,
+			}
+		}
+
+		// Use expedited voting period from chain
+		vp = govParams.ExpeditedVotingPeriod
+		logger.Info("Using expedited voting period: %s", vp)
+	}
 
 	// Determine target binary/image
 	targetBinary := upgradeBinary

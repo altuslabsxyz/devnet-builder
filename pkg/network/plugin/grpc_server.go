@@ -5,6 +5,9 @@ import (
 	"os"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/b-harvest/devnet-builder/pkg/network"
 )
 
@@ -352,6 +355,24 @@ func (s *GRPCServer) ModifyGenesisFile(ctx context.Context, req *ModifyGenesisFi
 	}
 
 	return &ModifyGenesisFileResponse{OutputSize: int64(len(modifiedGenesis))}, nil
+}
+
+// GetGovernanceParams retrieves governance parameters from the blockchain via the plugin.
+// If the plugin doesn't implement GetGovernanceParams, returns Unimplemented error.
+func (s *GRPCServer) GetGovernanceParams(ctx context.Context, req *GovernanceParamsRequest) (*GovernanceParamsResponse, error) {
+	// Check if plugin implements GetGovernanceParams
+	// This is a type assertion to see if the underlying network.Module supports this method
+	type govParamsProvider interface {
+		GetGovernanceParams(rpcEndpoint, networkType string) (*GovernanceParamsResponse, error)
+	}
+
+	if gpp, ok := s.impl.(govParamsProvider); ok {
+		return gpp.GetGovernanceParams(req.RpcEndpoint, req.NetworkType)
+	}
+
+	// Plugin doesn't implement GetGovernanceParams - return Unimplemented
+	// This allows backward compatibility with older plugins
+	return nil, status.Errorf(codes.Unimplemented, "method GetGovernanceParams not implemented")
 }
 
 // Helper to convert Duration

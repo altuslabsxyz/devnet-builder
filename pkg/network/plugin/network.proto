@@ -60,6 +60,12 @@ service NetworkModule {
 
     // Node Configuration
     rpc GetConfigOverrides(NodeConfigRequest) returns (ConfigOverridesResponse);
+
+    // Governance
+    // GetGovernanceParams retrieves governance parameters from the blockchain.
+    // Plugins implement chain-specific logic to query voting periods, deposit amounts,
+    // and other governance settings needed for upgrade workflows.
+    rpc GetGovernanceParams(GovernanceParamsRequest) returns (GovernanceParamsResponse);
 }
 
 message Empty {}
@@ -204,4 +210,46 @@ message BuildConfigResponse {
     map<string, string> env = 3;        // Environment variables (e.g., {"CGO_ENABLED": "0"})
     repeated string extra_args = 4;     // Additional arguments for build tool
     string error = 5;                   // Error message if network type not supported
+}
+
+// GovernanceParamsRequest requests governance parameters from a network plugin.
+// The plugin uses these inputs to query the blockchain and return
+// governance settings (voting periods, deposit requirements, etc.).
+message GovernanceParamsRequest {
+    // rpc_endpoint is the HTTP/HTTPS URL of the blockchain RPC or REST endpoint.
+    // Format: "http://host:port" or "https://host:port"
+    // Examples: "http://localhost:26657", "http://localhost:1317"
+    string rpc_endpoint = 1;
+
+    // network_type indicates the blockchain network context.
+    // Values: "mainnet", "testnet", "devnet", or plugin-specific types
+    string network_type = 2;
+}
+
+// GovernanceParamsResponse contains governance parameters retrieved from a blockchain.
+// Success case: error field is empty (""), all parameter fields are populated
+// Failure case: error field is non-empty, parameter fields may be zero/empty
+message GovernanceParamsResponse {
+    // voting_period_ns is the regular voting period in nanoseconds.
+    // Type: int64 nanoseconds (for precise duration representation)
+    // Example: 172800000000000 ns = 48 hours
+    int64 voting_period_ns = 1;
+
+    // expedited_voting_period_ns is the expedited voting period in nanoseconds.
+    // MAY be 0 if chain doesn't support expedited proposals.
+    // Example: 86400000000000 ns = 24 hours
+    int64 expedited_voting_period_ns = 2;
+
+    // min_deposit is the minimum deposit required for regular proposals.
+    // Format: Numeric string (no decimals) in base denomination units.
+    // Example: "10000000" = 10 tokens (assuming 6 decimal places)
+    string min_deposit = 3;
+
+    // expedited_min_deposit is the minimum deposit for expedited proposals.
+    // MAY be empty/0 if chain doesn't support expedited proposals.
+    string expedited_min_deposit = 4;
+
+    // error contains an error message if the parameter query failed.
+    // Empty string ("") indicates success.
+    string error = 5;
 }

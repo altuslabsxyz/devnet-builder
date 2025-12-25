@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v5.27.2
-// source: pkg/network/plugin/network.proto
+// source: network.proto
 
 package plugin
 
@@ -51,6 +51,7 @@ const (
 	NetworkModule_RPCEndpoint_FullMethodName            = "/network.NetworkModule/RPCEndpoint"
 	NetworkModule_AvailableNetworks_FullMethodName      = "/network.NetworkModule/AvailableNetworks"
 	NetworkModule_GetConfigOverrides_FullMethodName     = "/network.NetworkModule/GetConfigOverrides"
+	NetworkModule_GetGovernanceParams_FullMethodName    = "/network.NetworkModule/GetGovernanceParams"
 )
 
 // NetworkModuleClient is the client API for NetworkModule service.
@@ -103,6 +104,11 @@ type NetworkModuleClient interface {
 	AvailableNetworks(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StringListResponse, error)
 	// Node Configuration
 	GetConfigOverrides(ctx context.Context, in *NodeConfigRequest, opts ...grpc.CallOption) (*ConfigOverridesResponse, error)
+	// Governance
+	// GetGovernanceParams retrieves governance parameters from the blockchain.
+	// Plugins implement chain-specific logic to query voting periods, deposit amounts,
+	// and other governance settings needed for upgrade workflows.
+	GetGovernanceParams(ctx context.Context, in *GovernanceParamsRequest, opts ...grpc.CallOption) (*GovernanceParamsResponse, error)
 }
 
 type networkModuleClient struct {
@@ -433,6 +439,16 @@ func (c *networkModuleClient) GetConfigOverrides(ctx context.Context, in *NodeCo
 	return out, nil
 }
 
+func (c *networkModuleClient) GetGovernanceParams(ctx context.Context, in *GovernanceParamsRequest, opts ...grpc.CallOption) (*GovernanceParamsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GovernanceParamsResponse)
+	err := c.cc.Invoke(ctx, NetworkModule_GetGovernanceParams_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NetworkModuleServer is the server API for NetworkModule service.
 // All implementations must embed UnimplementedNetworkModuleServer
 // for forward compatibility.
@@ -483,6 +499,11 @@ type NetworkModuleServer interface {
 	AvailableNetworks(context.Context, *Empty) (*StringListResponse, error)
 	// Node Configuration
 	GetConfigOverrides(context.Context, *NodeConfigRequest) (*ConfigOverridesResponse, error)
+	// Governance
+	// GetGovernanceParams retrieves governance parameters from the blockchain.
+	// Plugins implement chain-specific logic to query voting periods, deposit amounts,
+	// and other governance settings needed for upgrade workflows.
+	GetGovernanceParams(context.Context, *GovernanceParamsRequest) (*GovernanceParamsResponse, error)
 	mustEmbedUnimplementedNetworkModuleServer()
 }
 
@@ -588,6 +609,9 @@ func (UnimplementedNetworkModuleServer) AvailableNetworks(context.Context, *Empt
 }
 func (UnimplementedNetworkModuleServer) GetConfigOverrides(context.Context, *NodeConfigRequest) (*ConfigOverridesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetConfigOverrides not implemented")
+}
+func (UnimplementedNetworkModuleServer) GetGovernanceParams(context.Context, *GovernanceParamsRequest) (*GovernanceParamsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetGovernanceParams not implemented")
 }
 func (UnimplementedNetworkModuleServer) mustEmbedUnimplementedNetworkModuleServer() {}
 func (UnimplementedNetworkModuleServer) testEmbeddedByValue()                       {}
@@ -1186,6 +1210,24 @@ func _NetworkModule_GetConfigOverrides_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NetworkModule_GetGovernanceParams_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GovernanceParamsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkModuleServer).GetGovernanceParams(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkModule_GetGovernanceParams_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkModuleServer).GetGovernanceParams(ctx, req.(*GovernanceParamsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NetworkModule_ServiceDesc is the grpc.ServiceDesc for NetworkModule service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1321,7 +1363,11 @@ var NetworkModule_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetConfigOverrides",
 			Handler:    _NetworkModule_GetConfigOverrides_Handler,
 		},
+		{
+			MethodName: "GetGovernanceParams",
+			Handler:    _NetworkModule_GetGovernanceParams_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "pkg/network/plugin/network.proto",
+	Metadata: "network.proto",
 }

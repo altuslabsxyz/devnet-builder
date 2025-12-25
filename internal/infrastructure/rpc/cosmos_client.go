@@ -10,8 +10,18 @@ import (
 	"strconv"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	pb "github.com/b-harvest/devnet-builder/pkg/network/plugin"
 )
+
+// NetworkPluginModule defines the interface for plugin-based governance parameter queries.
+// This is a minimal interface that only includes the method we need from the full network.Module.
+type NetworkPluginModule interface {
+	GetGovernanceParams(rpcEndpoint, networkType string) (*pb.GovernanceParamsResponse, error)
+}
 
 const (
 	// DefaultTimeout is the default HTTP timeout.
@@ -31,6 +41,8 @@ type CosmosRPCClient struct {
 	client        *http.Client
 	pollInterval  time.Duration
 	waitTimeout   time.Duration
+	pluginModule  NetworkPluginModule // Optional: for plugin-based parameter queries
+	networkType   string              // Optional: network type for plugin queries
 }
 
 // NewCosmosRPCClient creates a new CosmosRPCClient.
@@ -90,6 +102,14 @@ func (c *CosmosRPCClient) WithPollInterval(interval time.Duration) *CosmosRPCCli
 // WithWaitTimeout sets the wait timeout.
 func (c *CosmosRPCClient) WithWaitTimeout(timeout time.Duration) *CosmosRPCClient {
 	c.waitTimeout = timeout
+	return c
+}
+
+// WithPlugin sets the network plugin module for plugin-based parameter queries.
+// This enables delegation of governance parameter queries to network-specific plugins.
+func (c *CosmosRPCClient) WithPlugin(pluginModule NetworkPluginModule, networkType string) *CosmosRPCClient {
+	c.pluginModule = pluginModule
+	c.networkType = networkType
 	return c
 }
 
@@ -443,6 +463,114 @@ func (c *CosmosRPCClient) GetAppVersion(ctx context.Context) (string, error) {
 
 // GetGovParams retrieves governance parameters from the chain.
 func (c *CosmosRPCClient) GetGovParams(ctx context.Context) (*ports.GovParams, error) {
+	// Phase 1: Try plugin-based query first (if plugin is configured)
+	if c.pluginModule != nil {
+		pluginParams, err := c.tryPluginGovernanceParams(ctx)
+		if err == nil {
+			// Plugin query succeeded
+			return pluginParams, nil
+		}
+
+		// Check if error is Unimplemented (plugin doesn't support GetGovernanceParams)
+		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
+			// Plugin doesn't implement GetGovernanceParams, fall back to REST
+			// This is expected for plugins that haven't been updated yet
+		} else {
+			// Plugin error (network issue, validation error, etc.)
+			// Return the error - don't silently fall back to REST for real errors
+			return nil, &RPCError{Operation: "gov_params_plugin", Message: err.Error()}
+		}
+	}
+
+	// Phase 2: Fall back to direct REST API query
+	// This path is used when:
+	// - No plugin is configured
+	// - Plugin returns Unimplemented (backward compatibility)
+	return c.queryGovernanceParamsViaREST(ctx)
+}
+
+// tryPluginGovernanceParams attempts to query governance parameters via plugin.
+func (c *CosmosRPCClient) tryPluginGovernanceParams(ctx context.Context) (*ports.GovParams, error) {
+	resp, err := c.pluginModule.GetGovernanceParams(c.restBaseURL, c.networkType)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for error in response
+	if resp.Error != "" {
+		return nil, fmt.Errorf("plugin error: %s", resp.Error)
+	}
+
+	// Convert nanoseconds to time.Duration
+	params := &ports.GovParams{
+		VotingPeriod:          time.Duration(resp.VotingPeriodNs),
+		ExpeditedVotingPeriod: time.Duration(resp.ExpeditedVotingPeriodNs),
+		MinDeposit:            resp.MinDeposit,
+		ExpeditedMinDeposit:   resp.ExpeditedMinDeposit,
+	}
+
+	// Validate plugin response
+	if err := validateGovParams(params); err != nil {
+		return nil, fmt.Errorf("plugin returned invalid parameters: %w", err)
+	}
+
+	return params, nil
+}
+
+// validateGovParams validates governance parameters for correctness.
+// This ensures plugins return sensible values and prevents runtime errors.
+func validateGovParams(params *ports.GovParams) error {
+	// Validate voting periods
+	if params.VotingPeriod <= 0 {
+		return fmt.Errorf("voting_period must be positive, got %v", params.VotingPeriod)
+	}
+	if params.ExpeditedVotingPeriod < 0 {
+		return fmt.Errorf("expedited_voting_period cannot be negative, got %v", params.ExpeditedVotingPeriod)
+	}
+	// Expedited period should be shorter than regular voting period (if both are set)
+	if params.ExpeditedVotingPeriod > 0 && params.ExpeditedVotingPeriod >= params.VotingPeriod {
+		return fmt.Errorf("expedited_voting_period (%v) must be less than voting_period (%v)",
+			params.ExpeditedVotingPeriod, params.VotingPeriod)
+	}
+
+	// Validate deposit amounts (must be non-empty)
+	if params.MinDeposit == "" {
+		return fmt.Errorf("min_deposit is required")
+	}
+
+	// Validate deposit amounts are numeric strings
+	if !isValidDepositAmount(params.MinDeposit) {
+		return fmt.Errorf("min_deposit must be a numeric string, got %q", params.MinDeposit)
+	}
+	if params.ExpeditedMinDeposit != "" && !isValidDepositAmount(params.ExpeditedMinDeposit) {
+		return fmt.Errorf("expedited_min_deposit must be a numeric string, got %q", params.ExpeditedMinDeposit)
+	}
+
+	return nil
+}
+
+// isValidDepositAmount checks if a deposit amount string is valid (numeric, no decimals).
+func isValidDepositAmount(amount string) bool {
+	if amount == "" {
+		return false
+	}
+	// Must be numeric string with optional suffix (e.g., "10000000" or "10000000uatom")
+	// For simplicity, check that it starts with a digit
+	for i, r := range amount {
+		if i == 0 && (r < '0' || r > '9') {
+			return false
+		}
+		// Allow digits throughout, break on first non-digit (denom suffix)
+		if r < '0' || r > '9' {
+			break
+		}
+	}
+	return true
+}
+
+// queryGovernanceParamsViaREST queries governance parameters directly from Cosmos SDK REST API.
+// This is the fallback method when plugin-based queries are unavailable.
+func (c *CosmosRPCClient) queryGovernanceParamsViaREST(ctx context.Context) (*ports.GovParams, error) {
 	// Query voting params
 	votingURL := c.restBaseURL + "/cosmos/gov/v1/params/voting"
 	req, err := http.NewRequestWithContext(ctx, "GET", votingURL, nil)
