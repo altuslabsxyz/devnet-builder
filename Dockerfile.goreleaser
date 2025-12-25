@@ -1,0 +1,48 @@
+# Dockerfile for GoReleaser multi-arch builds
+# This Dockerfile is used by GoReleaser to create minimal container images
+# The binary is pre-built by GoReleaser and copied into the image
+
+FROM alpine:3.21
+
+# Install required runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    curl \
+    jq \
+    zstd \
+    lz4 \
+    && rm -rf /var/cache/apk/*
+
+# Create non-root user for security
+RUN addgroup -g 1000 devnet && \
+    adduser -u 1000 -G devnet -s /bin/sh -D devnet
+
+# Create necessary directories
+RUN mkdir -p /home/devnet/.devnet-builder && \
+    chown -R devnet:devnet /home/devnet
+
+# Copy the pre-built binary from GoReleaser
+COPY devnet-builder /usr/local/bin/devnet-builder
+
+# Ensure binary is executable
+RUN chmod +x /usr/local/bin/devnet-builder
+
+# Set working directory
+WORKDIR /home/devnet
+
+# Switch to non-root user
+USER devnet
+
+# Set environment variables
+ENV HOME=/home/devnet
+ENV DEVNET_HOME=/home/devnet/.devnet-builder
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD devnet-builder version || exit 1
+
+# Default entrypoint
+ENTRYPOINT ["devnet-builder"]
+
+# Default command (show help)
+CMD ["--help"]
