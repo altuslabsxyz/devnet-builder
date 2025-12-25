@@ -2,6 +2,7 @@ package devnet
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -71,7 +72,7 @@ func (uc *ResetUseCase) softReset(ctx context.Context, input dto.ResetInput, met
 		return nil, fmt.Errorf("failed to load nodes: %w", err)
 	}
 
-	// Define subdirectories to delete
+	// Define subdirectories and files to delete from data/
 	subsToDelete := []string{
 		"application.db",
 		"blockstore.db",
@@ -79,6 +80,8 @@ func (uc *ResetUseCase) softReset(ctx context.Context, input dto.ResetInput, met
 		"evidence.db",
 		"state.db",
 		"tx_index.db",
+		"snapshots",
+		"upgrade-info.json",
 	}
 
 	removed := make([]string, 0)
@@ -87,6 +90,7 @@ func (uc *ResetUseCase) softReset(ctx context.Context, input dto.ResetInput, met
 	for _, node := range nodes {
 		dataDir := fmt.Sprintf("%s/data", node.HomeDir)
 
+		// Delete chain data files and directories
 		for _, sub := range subsToDelete {
 			subPath := filepath.Join(dataDir, sub)
 
@@ -96,6 +100,27 @@ func (uc *ResetUseCase) softReset(ctx context.Context, input dto.ResetInput, met
 			} else {
 				removed = append(removed, subPath)
 				uc.logger.Debug("Deleted %s for node %d", sub, node.Index)
+			}
+		}
+
+		// Reset priv_validator_state.json to initial state
+		privValStatePath := filepath.Join(dataDir, "priv_validator_state.json")
+		initialState := map[string]interface{}{
+			"height": "0",
+			"round":  0,
+			"step":   0,
+		}
+
+		stateData, err := json.MarshalIndent(initialState, "", "  ")
+		if err != nil {
+			failed[privValStatePath] = fmt.Errorf("failed to marshal initial state: %w", err)
+			uc.logger.Warn("Failed to reset priv_validator_state.json for node %d: %v", node.Index, err)
+		} else {
+			if err := os.WriteFile(privValStatePath, stateData, 0600); err != nil {
+				failed[privValStatePath] = fmt.Errorf("failed to write file: %w", err)
+				uc.logger.Warn("Failed to reset priv_validator_state.json for node %d: %v", node.Index, err)
+			} else {
+				uc.logger.Debug("Reset priv_validator_state.json for node %d", node.Index)
 			}
 		}
 	}
