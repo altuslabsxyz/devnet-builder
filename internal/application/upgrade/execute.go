@@ -1,13 +1,8 @@
 package upgrade
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/dto"
@@ -21,7 +16,6 @@ type ExecuteUpgradeUseCase struct {
 	switchUC      *SwitchBinaryUseCase
 	rpcClient     ports.RPCClient
 	devnetRepo    ports.DevnetRepository
-	nodeRepo      ports.NodeRepository
 	healthChecker ports.HealthChecker
 	logger        ports.Logger
 }
@@ -33,7 +27,6 @@ func NewExecuteUpgradeUseCase(
 	switchUC *SwitchBinaryUseCase,
 	rpcClient ports.RPCClient,
 	devnetRepo ports.DevnetRepository,
-	nodeRepo ports.NodeRepository,
 	healthChecker ports.HealthChecker,
 	logger ports.Logger,
 ) *ExecuteUpgradeUseCase {
@@ -43,7 +36,6 @@ func NewExecuteUpgradeUseCase(
 		switchUC:      switchUC,
 		rpcClient:     rpcClient,
 		devnetRepo:    devnetRepo,
-		nodeRepo:      nodeRepo,
 		healthChecker: healthChecker,
 		logger:        logger,
 	}
@@ -346,103 +338,7 @@ func (uc *ExecuteUpgradeUseCase) waitForChainHalt(ctx context.Context, upgradeHe
 
 func (uc *ExecuteUpgradeUseCase) verifyChainResumed(ctx context.Context, homeDir string) (int64, error) {
 	uc.logger.Info("Waiting for chain to resume...")
-	uc.logger.Info("Streaming node logs (Press Ctrl+C to interrupt):")
-	fmt.Fprintln(uc.logger.Writer())
 
-	// Load all nodes
-	nodes, err := uc.nodeRepo.LoadAll(ctx, homeDir)
-	if err != nil || len(nodes) == 0 {
-		uc.logger.Warn("Could not load nodes for log tailing: %v", err)
-		return uc.verifyChainResumedSimple(ctx)
-	}
-
-	// Start log tailing in background
-	logCtx, logCancel := context.WithCancel(ctx)
-	defer logCancel()
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		uc.tailNodeLogs(logCtx, nodes)
-	}()
-
-	// Monitor chain health
-	deadline := time.Now().Add(5 * time.Minute)
-	var lastHeight int64
-	checkInterval := 3 * time.Second
-
-	for time.Now().Before(deadline) {
-		// Check context
-		select {
-		case <-ctx.Done():
-			logCancel()
-			wg.Wait()
-			fmt.Fprintln(uc.logger.Writer())
-			return 0, ctx.Err()
-		default:
-		}
-
-		// Check chain health
-		rpcCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		currentHeight, err := uc.rpcClient.GetBlockHeight(rpcCtx)
-		cancel()
-
-		if err != nil {
-			if ctx.Err() != nil {
-				logCancel()
-				wg.Wait()
-				fmt.Fprintln(uc.logger.Writer())
-				return 0, ctx.Err()
-			}
-			uc.logger.Debug("RPC not responding yet...")
-			select {
-			case <-ctx.Done():
-				logCancel()
-				wg.Wait()
-				fmt.Fprintln(uc.logger.Writer())
-				return 0, ctx.Err()
-			case <-time.After(checkInterval):
-			}
-			continue
-		}
-
-		// Chain is producing blocks again
-		if lastHeight > 0 && currentHeight > lastHeight {
-			uc.logger.Debug("Chain resumed at height %d", currentHeight)
-
-			// Give it a moment to stabilize
-			time.Sleep(2 * time.Second)
-
-			// Stop log tailing
-			logCancel()
-			wg.Wait()
-
-			fmt.Fprintln(uc.logger.Writer())
-			uc.logger.Success("Chain is healthy and producing blocks!")
-			return currentHeight, nil
-		}
-
-		lastHeight = currentHeight
-
-		select {
-		case <-ctx.Done():
-			logCancel()
-			wg.Wait()
-			fmt.Fprintln(uc.logger.Writer())
-			return 0, ctx.Err()
-		case <-time.After(checkInterval):
-		}
-	}
-
-	logCancel()
-	wg.Wait()
-	fmt.Fprintln(uc.logger.Writer())
-	return 0, fmt.Errorf("timeout waiting for chain to resume")
-}
-
-// verifyChainResumedSimple is a fallback when log tailing is not available
-func (uc *ExecuteUpgradeUseCase) verifyChainResumedSimple(ctx context.Context) (int64, error) {
 	deadline := time.Now().Add(5 * time.Minute)
 	var lastHeight int64
 
@@ -472,6 +368,7 @@ func (uc *ExecuteUpgradeUseCase) verifyChainResumedSimple(ctx context.Context) (
 
 		if lastHeight > 0 && currentHeight > lastHeight {
 			uc.logger.Debug("Chain resumed at height %d", currentHeight)
+			uc.logger.Success("Chain is healthy and producing blocks!")
 			return currentHeight, nil
 		}
 		lastHeight = currentHeight
@@ -484,74 +381,6 @@ func (uc *ExecuteUpgradeUseCase) verifyChainResumedSimple(ctx context.Context) (
 	}
 
 	return 0, fmt.Errorf("timeout waiting for chain to resume")
-}
-
-// tailNodeLogs tails logs from all nodes and outputs to logger
-func (uc *ExecuteUpgradeUseCase) tailNodeLogs(ctx context.Context, nodes []*ports.NodeMetadata) {
-	var wg sync.WaitGroup
-
-	// Tail first node's log (node0) as primary output
-	if len(nodes) > 0 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			uc.tailSingleNodeLog(ctx, nodes[0], true)
-		}()
-	}
-
-	wg.Wait()
-}
-
-// tailSingleNodeLog tails a single node's log file
-func (uc *ExecuteUpgradeUseCase) tailSingleNodeLog(ctx context.Context, node *ports.NodeMetadata, showPrefix bool) {
-	// Construct log file path
-	logPath := filepath.Join(node.HomeDir, fmt.Sprintf("%s.log", node.Name))
-
-	// Open log file
-	file, err := os.Open(logPath)
-	if err != nil {
-		uc.logger.Debug("Could not open log file %s: %v", logPath, err)
-		return
-	}
-	defer file.Close()
-
-	// Seek to end of file to only show new logs
-	_, err = file.Seek(0, io.SeekEnd)
-	if err != nil {
-		uc.logger.Debug("Could not seek log file: %v", err)
-		return
-	}
-
-	reader := bufio.NewReader(file)
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-
-	prefix := ""
-	if showPrefix {
-		prefix = fmt.Sprintf("[%s] ", node.Name)
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			for {
-				line, err := reader.ReadString('\n')
-				if err != nil {
-					if err == io.EOF {
-						break
-					}
-					return
-				}
-
-				// Print log line
-				if line != "" && line != "\n" {
-					fmt.Fprintf(uc.logger.Writer(), "%s%s", prefix, line)
-				}
-			}
-		}
-	}
 }
 
 // MonitorUseCase handles monitoring upgrade progress.

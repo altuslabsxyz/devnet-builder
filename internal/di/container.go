@@ -579,7 +579,6 @@ func (c *Container) ExecuteUpgradeUseCase() *upgrade.ExecuteUpgradeUseCase {
 			switchUC,
 			c.rpcClient,
 			c.devnetRepo,
-			c.nodeRepo,
 			c.healthChecker,
 			c.LoggerPort(),
 		)
