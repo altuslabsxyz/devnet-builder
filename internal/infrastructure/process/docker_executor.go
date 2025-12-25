@@ -116,10 +116,9 @@ func (e *DockerExecutorImpl) RunContainer(ctx context.Context, config ports.Cont
 	// Run as current user
 	uid := os.Getuid()
 	gid := os.Getgid()
-	args = append(args, "--user", fmt.Sprintf("%d:%d", uid, gid))
-
-	// Image
-	args = append(args, config.Image)
+	args = append(args, "--user", fmt.Sprintf("%d:%d", uid, gid),
+		// Image
+		config.Image)
 
 	// Command
 	args = append(args, config.Cmd...)

@@ -20,11 +20,12 @@ import (
 // All arguments after the command name are passed directly to the binary.
 //
 // Example:
-//   devnet-builder stabled status
-//   -> Executes: <active-binary-path> status
 //
-//   devnet-builder stabled tx bank send ...
-//   -> Executes: <active-binary-path> tx bank send ...
+//	devnet-builder stabled status
+//	-> Executes: <active-binary-path> status
+//
+//	devnet-builder stabled tx bank send ...
+//	-> Executes: <active-binary-path> tx bank send ...
 func createBinaryPassthroughCommand(binaryName, pluginName string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:                binaryName,
@@ -56,7 +57,7 @@ func executeBinaryPassthrough(pluginName string, args []string) error {
 	req := binaryapp.ExecuteRequest{
 		PluginName:  pluginName,
 		Args:        args,
-		WorkDir:     "", // Use current directory
+		WorkDir:     "",   // Use current directory
 		Interactive: true, // Enable TTY for interactive commands
 	}
 
@@ -84,8 +85,9 @@ func executeBinaryPassthrough(pluginName string, args []string) error {
 //  4. Add to root command
 //
 // This enables commands like:
-//   devnet-builder stabled status
-//   devnet-builder aultd query bank balances ...
+//
+//	devnet-builder stabled status
+//	devnet-builder aultd query bank balances ...
 func enhanceRootWithBinaryPassthrough(rootCmd *cobra.Command, _ *di.Container) error {
 	// Get plugin loader directly instead of using container
 	loader := GetPluginLoader()
@@ -174,7 +176,9 @@ func parseBinaryNameFromArgs(args []string) (string, []string, bool) {
 // We use this to implement fallback binary passthrough.
 //
 // This enables:
-//   devnet-builder stabled status
+//
+//	devnet-builder stabled status
+//
 // Even if "stabled" wasn't discovered during initialization.
 func handleUnknownCommand(rootCmd *cobra.Command, container *di.Container) {
 	// Cobra doesn't have a built-in unknown command handler,

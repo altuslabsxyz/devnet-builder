@@ -398,7 +398,7 @@ func buildBinaryForReplace(ctx context.Context, blockchainNetwork, ref, networkT
 	return container.BuildUseCase().Execute(ctx, dto.BuildInput{
 		Ref:      ref,
 		Network:  networkType,
-		UseCache: true,  // Check cache first
-		ToCache:  true,  // Store in cache for reuse
+		UseCache: true, // Check cache first
+		ToCache:  true, // Store in cache for reuse
 	})
 }

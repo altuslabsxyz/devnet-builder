@@ -113,7 +113,7 @@ func (b *BuildConfig) validateLDFlags() error {
 		// Check for dangerous flags that could execute arbitrary code
 		dangerousPatterns := []string{
 			"--exec", "--run", "--command", // Command execution
-			"../",                          // Path traversal
+			"../", // Path traversal
 		}
 		for _, pattern := range dangerousPatterns {
 			if strings.Contains(strings.ToLower(flag), pattern) {
@@ -325,7 +325,7 @@ func (b *BuildConfig) Hash() string {
 	}
 	sort.Strings(envKeys)
 	for _, k := range envKeys {
-		h.Write([]byte(fmt.Sprintf("env:%s=%s\n", k, b.Env[k])))
+		fmt.Fprintf(h, "env:%s=%s\n", k, b.Env[k])
 	}
 
 	// Hash extra args (sorted)

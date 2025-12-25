@@ -171,9 +171,9 @@ func (uc *ProposeUseCase) calculateUpgradeHeight(ctx context.Context, input dto.
 // where time_needed is approximately 80 seconds (enough time for validators to prepare).
 func (uc *ProposeUseCase) calculateHeightBuffer(ctx context.Context, currentHeight int64, blockTime time.Duration) int64 {
 	const (
-		defaultBuffer     = 40  // Default buffer when chain height is too low
-		minBuffer         = 10  // Minimum buffer regardless of block time
-		targetBufferTime  = 80 * time.Second // Target time buffer (~80 seconds)
+		defaultBuffer    = 40               // Default buffer when chain height is too low
+		minBuffer        = 10               // Minimum buffer regardless of block time
+		targetBufferTime = 80 * time.Second // Target time buffer (~80 seconds)
 	)
 
 	// If current height is less than 5, use default buffer

@@ -14,8 +14,8 @@ type FileConfig struct {
 	BlockchainNetwork *string `toml:"blockchain_network"` // Network module: "stable", "ault", etc.
 	Validators        *int    `toml:"validators"`
 	Mode              *string `toml:"mode"`
-	StableVersion     *string `toml:"stable_version"`   // Deprecated: use NetworkVersion instead
-	NetworkVersion    *string `toml:"network_version"`  // Version for the selected blockchain network
+	StableVersion     *string `toml:"stable_version"`  // Deprecated: use NetworkVersion instead
+	NetworkVersion    *string `toml:"network_version"` // Version for the selected blockchain network
 	NoCache           *bool   `toml:"no_cache"`
 	Accounts          *int    `toml:"accounts"`
 

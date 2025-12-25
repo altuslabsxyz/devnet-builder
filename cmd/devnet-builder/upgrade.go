@@ -23,8 +23,8 @@ import (
 
 // Default upgrade constants
 const (
-	DefaultHeightBuffer  = 0 // 0 = auto-calculate based on block time
-	DefaultVotingPeriod  = 60 * time.Second
+	DefaultHeightBuffer = 0 // 0 = auto-calculate based on block time
+	DefaultVotingPeriod = 60 * time.Second
 )
 
 // ExecutionMode for upgrade command
@@ -364,7 +364,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		input.CachePath = cachedBuildResult.BinaryPath
 		input.CommitHash = cachedBuildResult.CommitHash // Deprecated, kept for compatibility
 		input.CacheRef = cachedBuildResult.CacheRef     // Use CacheRef for SetActive
-		input.TargetBinary = "" // Clear since we're using cache
+		input.TargetBinary = ""                         // Clear since we're using cache
 	}
 
 	// Execute the upgrade using the UseCase

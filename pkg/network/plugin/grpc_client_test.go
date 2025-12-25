@@ -38,11 +38,11 @@ func TestGRPCClient_GetGovernanceParams_Success(t *testing.T) {
 
 			// Return successful response
 			return &GovernanceParamsResponse{
-				VotingPeriodNs:           172800000000000, // 48 hours in nanoseconds
-				ExpeditedVotingPeriodNs:  86400000000000,  // 24 hours in nanoseconds
-				MinDeposit:               "10000000",
-				ExpeditedMinDeposit:      "50000000",
-				Error:                    "",
+				VotingPeriodNs:          172800000000000, // 48 hours in nanoseconds
+				ExpeditedVotingPeriodNs: 86400000000000,  // 24 hours in nanoseconds
+				MinDeposit:              "10000000",
+				ExpeditedMinDeposit:     "50000000",
+				Error:                   "",
 			}, nil
 		},
 	}

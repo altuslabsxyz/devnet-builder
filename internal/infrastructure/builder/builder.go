@@ -311,8 +311,8 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, e
 		CommitHash:  commitHash,
 		Ref:         opts.Ref,
 		BuildTime:   time.Now(),
-		NetworkType: networkType,       // Network-aware caching
-		BuildConfig: buildConfig,       // Full build configuration
+		NetworkType: networkType, // Network-aware caching
+		BuildConfig: buildConfig, // Full build configuration
 	}
 	if err := binaryCache.Store(binaryPath, cached); err != nil {
 		// Graceful degradation: log warning but continue (FR-008)

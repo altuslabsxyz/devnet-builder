@@ -140,14 +140,14 @@ func (r *NodeFileRepository) Delete(ctx context.Context, homeDir string, index i
 
 // storedNodeMetadata is the JSON storage format.
 type storedNodeMetadata struct {
-	Index       int                `json:"index"`
-	Name        string             `json:"name"`
-	HomeDir     string             `json:"home_dir"`
-	ChainID     string             `json:"chain_id"`
-	NodeID      string             `json:"node_id"`
-	PID         *int               `json:"pid,omitempty"`
-	ContainerID string             `json:"container_id,omitempty"`
-	Ports       storedPortConfig   `json:"ports"`
+	Index       int              `json:"index"`
+	Name        string           `json:"name"`
+	HomeDir     string           `json:"home_dir"`
+	ChainID     string           `json:"chain_id"`
+	NodeID      string           `json:"node_id"`
+	PID         *int             `json:"pid,omitempty"`
+	ContainerID string           `json:"container_id,omitempty"`
+	Ports       storedPortConfig `json:"ports"`
 }
 
 type storedPortConfig struct {

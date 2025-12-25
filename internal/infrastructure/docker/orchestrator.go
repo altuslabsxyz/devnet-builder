@@ -15,14 +15,14 @@ import (
 
 // Orchestrator errors
 var (
-	ErrValidationFailed     = errors.New("deployment configuration validation failed")
-	ErrPortAllocationFailed = errors.New("failed to allocate port range")
-	ErrPortConflictDetected = errors.New("allocated ports conflict with host services")
-	ErrImagePullFailed      = errors.New("failed to pull Docker image")
-	ErrCustomBuildFailed    = errors.New("failed to build custom Docker image")
-	ErrContainerStartFailed = errors.New("failed to start container")
-	ErrHealthCheckTimeout   = errors.New("container health check timeout")
-	ErrPartialDeployment    = errors.New("partial deployment (some containers failed)")
+	ErrValidationFailed           = errors.New("deployment configuration validation failed")
+	ErrPortAllocationFailed       = errors.New("failed to allocate port range")
+	ErrPortConflictDetected       = errors.New("allocated ports conflict with host services")
+	ErrImagePullFailed            = errors.New("failed to pull Docker image")
+	ErrCustomBuildFailed          = errors.New("failed to build custom Docker image")
+	ErrContainerStartFailed       = errors.New("failed to start container")
+	ErrHealthCheckTimeout         = errors.New("container health check timeout")
+	ErrPartialDeployment          = errors.New("partial deployment (some containers failed)")
 	ErrOrchestratorRollbackFailed = errors.New("rollback encountered errors")
 )
 

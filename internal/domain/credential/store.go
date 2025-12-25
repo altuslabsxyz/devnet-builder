@@ -39,10 +39,10 @@ type Credential struct {
 type Source string
 
 const (
-	SourceKeychain    Source = "keychain"     // System keychain (most secure)
-	SourceEnvironment Source = "environment"  // Environment variable
-	SourceConfigFile  Source = "config-file"  // Config file (least secure)
-	SourceNone        Source = "none"         // Not found
+	SourceKeychain    Source = "keychain"    // System keychain (most secure)
+	SourceEnvironment Source = "environment" // Environment variable
+	SourceConfigFile  Source = "config-file" // Config file (least secure)
+	SourceNone        Source = "none"        // Not found
 )
 
 // SecurityLevel returns the security level of the source (higher is better).

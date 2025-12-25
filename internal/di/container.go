@@ -11,8 +11,8 @@ import (
 
 	"github.com/b-harvest/devnet-builder/internal/application/binary"
 	"github.com/b-harvest/devnet-builder/internal/application/build"
-	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	appdevnet "github.com/b-harvest/devnet-builder/internal/application/devnet"
+	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	"github.com/b-harvest/devnet-builder/internal/application/upgrade"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"

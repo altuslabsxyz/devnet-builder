@@ -15,14 +15,14 @@ import (
 //  3. Handle errors and return exit codes
 //
 // This use case follows Clean Architecture principles:
-//  - Depends only on abstractions (ports interfaces)
-//  - Contains core business logic
-//  - Independent of infrastructure details
+//   - Depends only on abstractions (ports interfaces)
+//   - Contains core business logic
+//   - Independent of infrastructure details
 //
 // SOLID Compliance:
-//  - SRP: Single responsibility of orchestrating binary passthrough
-//  - DIP: Depends on abstractions (BinaryResolver, BinaryExecutor)
-//  - OCP: Can be extended without modification (e.g., add logging, metrics)
+//   - SRP: Single responsibility of orchestrating binary passthrough
+//   - DIP: Depends on abstractions (BinaryResolver, BinaryExecutor)
+//   - OCP: Can be extended without modification (e.g., add logging, metrics)
 type PassthroughUseCase struct {
 	resolver ports.BinaryResolver
 	executor ports.BinaryExecutor
@@ -85,10 +85,10 @@ type ExecuteResponse struct {
 //  5. Return result with exit code
 //
 // Error Handling:
-//  - Returns error if plugin not found
-//  - Returns error if binary not cached/available
-//  - Returns error if binary execution fails to start
-//  - Returns exit code if binary runs but returns non-zero
+//   - Returns error if plugin not found
+//   - Returns error if binary not cached/available
+//   - Returns error if binary execution fails to start
+//   - Returns exit code if binary runs but returns non-zero
 func (uc *PassthroughUseCase) Execute(ctx context.Context, req ExecuteRequest) (*ExecuteResponse, error) {
 	// Validate request
 	if err := uc.validateRequest(req); err != nil {

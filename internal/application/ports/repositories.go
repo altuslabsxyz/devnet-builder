@@ -28,9 +28,9 @@ const (
 type DevnetMetadata struct {
 	HomeDir           string
 	ChainID           string
-	NetworkName       string        // e.g., "mainnet", "testnet"
-	NetworkVersion    string        // stable version
-	BlockchainNetwork string        // e.g., "stable", "ault"
+	NetworkName       string // e.g., "mainnet", "testnet"
+	NetworkVersion    string // stable version
+	BlockchainNetwork string // e.g., "stable", "ault"
 	NumValidators     int
 	NumAccounts       int
 	ExecutionMode     ExecutionMode

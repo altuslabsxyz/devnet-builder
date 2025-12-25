@@ -10,7 +10,7 @@ import (
 type ProposeInput struct {
 	HomeDir       string
 	UpgradeName   string
-	UpgradeHeight int64      // 0 for auto-calculate
+	UpgradeHeight int64 // 0 for auto-calculate
 	VotingPeriod  time.Duration
 	HeightBuffer  int
 	DepositAmount string
@@ -44,20 +44,20 @@ type VoteOutput struct {
 // SwitchBinaryInput contains the input for switching binaries.
 type SwitchBinaryInput struct {
 	HomeDir       string
-	TargetBinary  string        // Local binary path
-	TargetImage   string        // Docker image
-	TargetVersion string        // Version string
-	CachePath     string        // Pre-built cached binary
-	CommitHash    string        // Commit hash of cached binary (deprecated, use CacheRef)
-	CacheRef      string        // Cache key for SetActive
+	TargetBinary  string // Local binary path
+	TargetImage   string // Docker image
+	TargetVersion string // Version string
+	CachePath     string // Pre-built cached binary
+	CommitHash    string // Commit hash of cached binary (deprecated, use CacheRef)
+	CacheRef      string // Cache key for SetActive
 	Mode          ports.ExecutionMode
-	UpgradeHeight int64         // Height to skip via --unsafe-skip-upgrades
+	UpgradeHeight int64 // Height to skip via --unsafe-skip-upgrades
 }
 
 // SwitchBinaryOutput contains the result of switching.
 type SwitchBinaryOutput struct {
-	OldBinary  string
-	NewBinary  string
+	OldBinary      string
+	NewBinary      string
 	NodesRestarted int
 }
 
@@ -82,15 +82,15 @@ type MonitorProgress struct {
 
 // ExecuteUpgradeInput contains the full upgrade workflow input.
 type ExecuteUpgradeInput struct {
-	HomeDir       string
-	UpgradeName   string
+	HomeDir     string
+	UpgradeName string
 
 	// Binary target (one of these)
-	TargetBinary  string
-	TargetImage   string
-	CachePath     string
-	CommitHash    string // Deprecated, use CacheRef
-	CacheRef      string // Cache key for SetActive
+	TargetBinary string
+	TargetImage  string
+	CachePath    string
+	CommitHash   string // Deprecated, use CacheRef
+	CacheRef     string // Cache key for SetActive
 
 	// Options
 	TargetVersion string

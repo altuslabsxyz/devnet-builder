@@ -7,12 +7,12 @@ import (
 
 // Command represents a command to be executed.
 type Command struct {
-	Binary    string
-	Args      []string
-	WorkDir   string
-	Env       []string
-	LogPath   string
-	PIDPath   string
+	Binary  string
+	Args    []string
+	WorkDir string
+	Env     []string
+	LogPath string
+	PIDPath string
 }
 
 // ProcessHandle represents a running process.

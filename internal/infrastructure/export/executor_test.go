@@ -118,7 +118,7 @@ func TestExtractGenesisJSON_Valid(t *testing.T) {
 			valid:  true,
 		},
 		{
-			name:   "JSON with prefix",
+			name: "JSON with prefix",
 			output: []byte(`INFO: Starting export...
 {"chain_id":"stable-1","app_state":{}}`),
 			valid: true,

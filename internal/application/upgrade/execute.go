@@ -188,7 +188,7 @@ func (uc *ExecuteUpgradeUseCase) waitForUpgradeHeight(ctx context.Context, targe
 		lastHeight     int64
 		lastUpdateTime time.Time
 		blockRate      float64 // blocks per second (EMA)
-		alpha          = 0.3    // smoothing factor for EMA
+		alpha          = 0.3   // smoothing factor for EMA
 	)
 
 	// Progress bar configuration

@@ -111,7 +111,9 @@ func (r *PortRegistryFile) WithLock(ctx context.Context, fn func() error) error 
 	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
 		return fmt.Errorf("failed to acquire registry lock: %w", err)
 	}
-	defer syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+	defer func() {
+		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+	}()
 
 	// Execute function with lock held
 	return fn()

@@ -416,4 +416,3 @@ func (a *pluginStateExporterAdapter) SnapshotFormat(networkType string) internal
 	format := a.module.SnapshotFormat(networkType)
 	return internalNetwork.SnapshotFormat(format)
 }
-

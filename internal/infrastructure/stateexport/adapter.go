@@ -21,7 +21,7 @@ import (
 type Adapter struct {
 	homeDir   string
 	logger    *output.Logger
-	exporter  pkgNetwork.StateExporter // Optional: network-specific exporter from plugin
+	exporter  pkgNetwork.StateExporter      // Optional: network-specific exporter from plugin
 	binaryCmd func(homeDir string) []string // Default export command builder
 }
 

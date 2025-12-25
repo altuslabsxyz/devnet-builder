@@ -15,10 +15,10 @@ import (
 // It provides both standard execution and interactive (TTY) execution modes.
 //
 // This implementation:
-//  - Streams output in real-time to stdout/stderr
-//  - Supports context cancellation
-//  - Handles exit codes properly
-//  - Provides TTY support for interactive commands
+//   - Streams output in real-time to stdout/stderr
+//   - Supports context cancellation
+//   - Handles exit codes properly
+//   - Provides TTY support for interactive commands
 //
 // Thread-safety: Each Execute call is independent and can be called concurrently.
 type PassthroughExecutor struct {
@@ -34,11 +34,11 @@ func NewPassthroughExecutor() *PassthroughExecutor {
 // Output is streamed to the configured writers (or os.Stdout/Stderr if not set).
 //
 // Implementation details:
-//  - Creates exec.Cmd with the binary and arguments
-//  - Connects stdin/stdout/stderr
-//  - Starts the process
-//  - Waits for completion or context cancellation
-//  - Returns exit code
+//   - Creates exec.Cmd with the binary and arguments
+//   - Connects stdin/stdout/stderr
+//   - Starts the process
+//   - Waits for completion or context cancellation
+//   - Returns exit code
 func (e *PassthroughExecutor) Execute(ctx context.Context, cmd ports.BinaryPassthroughCommand) (int, error) {
 	// Validate binary path is not empty
 	if cmd.PluginName == "" {
@@ -105,9 +105,9 @@ func (e *PassthroughExecutor) Execute(ctx context.Context, cmd ports.BinaryPasst
 // This is used for commands that require user interaction (prompts, editors, etc.).
 //
 // On Unix systems, this properly sets up the TTY to allow interactive features:
-//  - Terminal raw mode
-//  - Signal handling (Ctrl+C, etc.)
-//  - Terminal size
+//   - Terminal raw mode
+//   - Signal handling (Ctrl+C, etc.)
+//   - Terminal size
 //
 // On Windows, this falls back to standard execution.
 func (e *PassthroughExecutor) ExecuteInteractive(ctx context.Context, cmd ports.BinaryPassthroughCommand) (int, error) {

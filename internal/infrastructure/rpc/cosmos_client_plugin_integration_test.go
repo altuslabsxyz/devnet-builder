@@ -93,11 +93,11 @@ func TestCosmosRPCClient_PluginDelegation_Success(t *testing.T) {
 			}
 
 			return &pb.GovernanceParamsResponse{
-				VotingPeriodNs:           int64(48 * time.Hour),
-				ExpeditedVotingPeriodNs:  int64(24 * time.Hour),
-				MinDeposit:               "10000000",
-				ExpeditedMinDeposit:      "50000000",
-				Error:                    "",
+				VotingPeriodNs:          int64(48 * time.Hour),
+				ExpeditedVotingPeriodNs: int64(24 * time.Hour),
+				MinDeposit:              "10000000",
+				ExpeditedMinDeposit:     "50000000",
+				Error:                   "",
 			}, nil
 		},
 	}

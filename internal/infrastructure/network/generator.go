@@ -73,4 +73,3 @@ type GeneratorFactory interface {
 	// Returns: Generator instance, or error if creation fails
 	NewGenerator(config *GeneratorConfig, logger log.Logger) (Generator, error)
 }
-

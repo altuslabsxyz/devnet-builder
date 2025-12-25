@@ -141,7 +141,7 @@ func extractCommitHashFromPath(path string) string {
 	// Path format: ../cache/binaries/{networkType}/{commitHash}-{configHash}/{binaryName}
 	// or absolute: /home/user/.devnet-builder/cache/binaries/{networkType}/{commitHash}-{configHash}/{binaryName}
 
-	dir := filepath.Dir(path)         // ../cache/binaries/{networkType}/{commitHash}-{configHash}
+	dir := filepath.Dir(path)           // ../cache/binaries/{networkType}/{commitHash}-{configHash}
 	binaryDirName := filepath.Base(dir) // {commitHash}-{configHash}
 
 	// Validate format: {commitHash}-{configHash}

@@ -100,25 +100,25 @@ changelog:
       - typo
   groups:
     - title: "Breaking Changes"
-      regexp: '^.*?!:.+$'
+      regexp: '^.*?!:+.*$'
       order: 0
     - title: "Features"
-      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:+.*$'
       order: 1
     - title: "Bug Fixes"
-      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:+.*$'
       order: 2
     - title: "Security"
-      regexp: '^.*?sec(\([[:word:]]+\))??!?:.+$'
+      regexp: '^.*?sec(\([[:word:]]+\))??!?:+.*$'
       order: 3
     - title: "Performance"
-      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:+.*$'
       order: 4
     - title: "Refactoring"
-      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
+      regexp: '^.*?refactor(\([[:word:]]+\))??!?:+.*$'
       order: 5
     - title: "Dependencies"
-      regexp: '^.*?(deps|chore\(deps\))(\([[:word:]]+\))??!?:.+$'
+      regexp: '^.*?(deps|chore\(deps\))(\([[:word:]]+\))??!?:+.*$'
       order: 6
     - title: "Other"
       order: 999

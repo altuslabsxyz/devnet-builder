@@ -102,7 +102,7 @@ func (s *GRPCServer) GetBuildConfig(ctx context.Context, req *BuildConfigRequest
 
 // Chain methods
 
-// DEPRECATED: DefaultChainID will be removed in v2.0.0
+// Deprecated: DefaultChainID will be removed in v2.0.0
 func (s *GRPCServer) DefaultChainID(ctx context.Context, req *Empty) (*StringResponse, error) {
 	return &StringResponse{Value: s.impl.DefaultChainID()}, nil
 }

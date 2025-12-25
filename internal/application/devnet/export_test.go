@@ -82,9 +82,9 @@ func (m *mockNodeRepository) Delete(ctx context.Context, homeDir string, index i
 }
 
 type mockExportRepository struct {
-	saveFunc         func(ctx context.Context, export interface{}) error
+	saveFunc          func(ctx context.Context, export interface{}) error
 	listForDevnetFunc func(ctx context.Context, homeDir string) (interface{}, error)
-	validateFunc     func(ctx context.Context, exportPath string) (interface{}, error)
+	validateFunc      func(ctx context.Context, exportPath string) (interface{}, error)
 }
 
 func (m *mockExportRepository) Save(ctx context.Context, export interface{}) error {
@@ -120,18 +120,18 @@ func (m *mockExportRepository) Validate(ctx context.Context, exportPath string) 
 
 type mockLogger struct{}
 
-func (m *mockLogger) Debug(format string, args ...interface{})    {}
-func (m *mockLogger) Info(format string, args ...interface{})     {}
-func (m *mockLogger) Warn(format string, args ...interface{})     {}
-func (m *mockLogger) Error(format string, args ...interface{})    {}
-func (m *mockLogger) Fatal(format string, args ...interface{})    {}
-func (m *mockLogger) Success(format string, args ...interface{})  {}
-func (m *mockLogger) Print(format string, args ...interface{})    {}
-func (m *mockLogger) Println(format string, args ...interface{})  {}
-func (m *mockLogger) Writer() io.Writer                           { return os.Stdout }
-func (m *mockLogger) ErrWriter() io.Writer                        { return os.Stderr }
-func (m *mockLogger) IsVerbose() bool                             { return false }
-func (m *mockLogger) SetVerbose(verbose bool)                     {}
+func (m *mockLogger) Debug(format string, args ...interface{})   {}
+func (m *mockLogger) Info(format string, args ...interface{})    {}
+func (m *mockLogger) Warn(format string, args ...interface{})    {}
+func (m *mockLogger) Error(format string, args ...interface{})   {}
+func (m *mockLogger) Fatal(format string, args ...interface{})   {}
+func (m *mockLogger) Success(format string, args ...interface{}) {}
+func (m *mockLogger) Print(format string, args ...interface{})   {}
+func (m *mockLogger) Println(format string, args ...interface{}) {}
+func (m *mockLogger) Writer() io.Writer                          { return os.Stdout }
+func (m *mockLogger) ErrWriter() io.Writer                       { return os.Stderr }
+func (m *mockLogger) IsVerbose() bool                            { return false }
+func (m *mockLogger) SetVerbose(verbose bool)                    {}
 
 // Tests
 

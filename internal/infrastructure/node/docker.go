@@ -123,8 +123,7 @@ func (m *DockerManager) StartWithConfig(ctx context.Context, config *ContainerCo
 	// Network configuration
 	if config.NetworkID != "" {
 		// Use custom bridge network with port mappings
-		args = append(args, "--network", config.NetworkID)
-		args = append(args,
+		args = append(args, "--network", config.NetworkID,
 			"-p", fmt.Sprintf("%d:%d", node.Ports.RPC, node.Ports.RPC),
 			"-p", fmt.Sprintf("%d:%d", node.Ports.P2P, node.Ports.P2P),
 			"-p", fmt.Sprintf("%d:%d", node.Ports.GRPC, node.Ports.GRPC),

@@ -344,7 +344,8 @@ func outputDeployTextClean(result *dto.RunOutput, devnetInfo *dto.DevnetInfo) er
 	fmt.Println()
 	output.Bold("Endpoints:")
 
-	for _, n := range devnetInfo.Nodes {
+	for i := range devnetInfo.Nodes {
+		n := &devnetInfo.Nodes[i]
 		status := "running"
 		for _, ns := range result.Nodes {
 			if ns.Index == n.Index && !ns.IsRunning {
@@ -379,7 +380,8 @@ func outputDeployJSONClean(result *dto.RunOutput, devnetInfo *dto.DevnetInfo) er
 		jsonResult.Status = "partial"
 	}
 
-	for i, n := range devnetInfo.Nodes {
+	for i := range devnetInfo.Nodes {
+		n := &devnetInfo.Nodes[i]
 		status := "running"
 		for _, ns := range result.Nodes {
 			if ns.Index == n.Index && !ns.IsRunning {

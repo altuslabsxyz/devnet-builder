@@ -92,4 +92,3 @@ func isCancellation(err error) bool {
 		errMsg == "^C" ||
 		errMsg == "interrupt"
 }
-

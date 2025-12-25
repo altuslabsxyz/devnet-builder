@@ -41,11 +41,11 @@ type HealthStatus struct {
 type NodeStatus string
 
 const (
-	NodeStatusRunning  NodeStatus = "running"
-	NodeStatusSyncing  NodeStatus = "syncing"
-	NodeStatusStopped  NodeStatus = "stopped"
-	NodeStatusError    NodeStatus = "error"
-	NodeStatusUnknown  NodeStatus = "unknown"
+	NodeStatusRunning NodeStatus = "running"
+	NodeStatusSyncing NodeStatus = "syncing"
+	NodeStatusStopped NodeStatus = "stopped"
+	NodeStatusError   NodeStatus = "error"
+	NodeStatusUnknown NodeStatus = "unknown"
 )
 
 // GenesisModifier defines operations for modifying genesis files.
