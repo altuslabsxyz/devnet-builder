@@ -136,6 +136,8 @@ func (uc *RunUseCase) buildStartCommand(node *ports.NodeMetadata, metadata *port
 		args = []string{"start", "--home", node.HomeDir}
 	}
 
+	args = append(args, "--chain-id", metadata.ChainID)
+
 	// Determine log and PID file names
 	logFileName := "node.log"
 	pidFileName := "node.pid"
