@@ -1,6 +1,5 @@
-# GoReleaser v2 configuration for devnet-builder
-# https://goreleaser.com/customization/
-# Triggered on tags: v*
+# GoReleaser v2 Configuration
+# Triggered by pushing v* tags (e.g., v1.0.0)
 
 version: 2
 
@@ -9,7 +8,7 @@ project_name: devnet-builder
 before:
   hooks:
     - go mod tidy
-    - go mod verify
+    - go mod download
 
 builds:
   - id: devnet-builder
@@ -20,39 +19,15 @@ builds:
     goos:
       - linux
       - darwin
-      - windows
     goarch:
       - amd64
       - arm64
-    goarm:
-      - "7"
-    ignore:
-      - goos: windows
-        goarch: arm64
     ldflags:
       - -s -w
       - -X github.com/b-harvest/devnet-builder/internal.Version={{.Version}}
       - -X github.com/b-harvest/devnet-builder/internal.GitCommit={{.FullCommit}}
       - -X github.com/b-harvest/devnet-builder/internal.BuildDate={{.Date}}
     mod_timestamp: "{{ .CommitTimestamp }}"
-
-archives:
-  - id: devnet-builder-archive
-    builds:
-      - devnet-builder
-    name_template: >-
-      {{ .ProjectName }}_
-      {{- .Version }}_
-      {{- .Os }}_
-      {{- .Arch }}
-      {{- if .Arm }}v{{ .Arm }}{{ end }}
-    format_overrides:
-      - goos: windows
-        format: zip
-    files:
-      - README.md
-      - LICENSE*
-      - docs/*
 
 universal_binaries:
   - id: devnet-builder-universal
@@ -61,8 +36,18 @@ universal_binaries:
     replace: false
     name_template: "{{ .ProjectName }}_{{ .Version }}_darwin_universal"
 
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    files:
+      - README.md
+      - LICENSE*
+      - docs/*
+
 checksum:
-  name_template: "checksums.txt"
+  name_template: 'checksums.txt'
   algorithm: sha256
 
 sboms:
@@ -82,119 +67,72 @@ signs:
     artifacts: checksum
     output: true
 
+dockers_v2:
+  - id: devnet-builder-docker
+    ids:
+      - devnet-builder
+    dockerfile: Dockerfile.goreleaser
+    images:
+      - "ghcr.io/b-harvest/devnet-builder"
+    tags:
+      - "{{ .Tag }}"
+      - "v{{ .Major }}"
+      - "v{{ .Major }}.{{ .Minor }}"
+      - "latest"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      "org.opencontainers.image.title": "{{ .ProjectName }}"
+      "org.opencontainers.image.description": "Build and manage local blockchain development networks"
+      "org.opencontainers.image.url": "https://github.com/b-harvest/devnet-builder"
+      "org.opencontainers.image.source": "https://github.com/b-harvest/devnet-builder"
+      "org.opencontainers.image.version": "{{ .Version }}"
+      "org.opencontainers.image.created": "{{ .Date }}"
+      "org.opencontainers.image.revision": "{{ .FullCommit }}"
+      "org.opencontainers.image.licenses": "MIT"
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
+
 changelog:
   sort: asc
-  use: github
+  use: git
   abbrev: 0
   filters:
     exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore\\(deps\\):"
-      - "^ci:"
-      - "^Merge pull request"
-      - "^Merge branch"
-      - typo
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+      - '^Merge pull request'
+      - '^Merge branch'
   groups:
-    - title: "Breaking Changes"
-      regexp: '^.*?!:.+$'
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:+.*$'
       order: 0
-    - title: "Features"
-      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:+.*$'
       order: 1
-    - title: "Bug Fixes"
-      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+    - title: Security
+      regexp: '^.*?sec(\([[:word:]]+\))??!?:+.*$'
       order: 2
-    - title: "Security"
-      regexp: '^.*?sec(\([[:word:]]+\))??!?:.+$'
+    - title: Performance
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:+.*$'
       order: 3
-    - title: "Performance"
-      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+    - title: Dependencies
+      regexp: '^.*?deps(\([[:word:]]+\))??!?:+.*$'
       order: 4
-    - title: "Refactoring"
-      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
-      order: 5
-    - title: "Dependencies"
-      regexp: '^.*?(deps|chore\(deps\))(\([[:word:]]+\))??!?:.+$'
-      order: 6
-    - title: "Other"
+    - title: Other
       order: 999
 
-dockers:
-  - id: devnet-builder-amd64
-    ids:
-      - devnet-builder
-    goos: linux
-    goarch: amd64
-    image_templates:
-      - "ghcr.io/b-harvest/devnet-builder:{{ .Tag }}-amd64"
-      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}-amd64"
-      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}.{{ .Minor }}-amd64"
-      - "ghcr.io/b-harvest/devnet-builder:latest-amd64"
-    dockerfile: Dockerfile.goreleaser
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
-      - "--label=org.opencontainers.image.description=Build and manage local blockchain development networks"
-      - "--label=org.opencontainers.image.url=https://github.com/b-harvest/devnet-builder"
-      - "--label=org.opencontainers.image.source=https://github.com/b-harvest/devnet-builder"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.created={{ .Date }}"
-      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
-      - "--label=org.opencontainers.image.licenses=MIT"
-
-  - id: devnet-builder-arm64
-    ids:
-      - devnet-builder
-    goos: linux
-    goarch: arm64
-    image_templates:
-      - "ghcr.io/b-harvest/devnet-builder:{{ .Tag }}-arm64"
-      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}-arm64"
-      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}.{{ .Minor }}-arm64"
-      - "ghcr.io/b-harvest/devnet-builder:latest-arm64"
-    dockerfile: Dockerfile.goreleaser
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
-      - "--label=org.opencontainers.image.description=Build and manage local blockchain development networks"
-      - "--label=org.opencontainers.image.url=https://github.com/b-harvest/devnet-builder"
-      - "--label=org.opencontainers.image.source=https://github.com/b-harvest/devnet-builder"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.created={{ .Date }}"
-      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
-      - "--label=org.opencontainers.image.licenses=MIT"
-
-docker_manifests:
-  - name_template: "ghcr.io/b-harvest/devnet-builder:{{ .Tag }}"
-    image_templates:
-      - "ghcr.io/b-harvest/devnet-builder:{{ .Tag }}-amd64"
-      - "ghcr.io/b-harvest/devnet-builder:{{ .Tag }}-arm64"
-
-  - name_template: "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}"
-    image_templates:
-      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}-amd64"
-      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}-arm64"
-
-  - name_template: "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}.{{ .Minor }}"
-    image_templates:
-      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}.{{ .Minor }}-amd64"
-      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}.{{ .Minor }}-arm64"
-
-  - name_template: "ghcr.io/b-harvest/devnet-builder:latest"
-    image_templates:
-      - "ghcr.io/b-harvest/devnet-builder:latest-amd64"
-      - "ghcr.io/b-harvest/devnet-builder:latest-arm64"
 
 release:
   github:
     owner: b-harvest
     name: devnet-builder
+  name_template: "{{ .Tag }}"
   draft: false
   prerelease: auto
   mode: replace
@@ -230,22 +168,11 @@ release:
 
   footer: |
     ---
-
-    ### Contributors
-
-    {{ range .Contributors -}}
-    - @{{ .Name }}
-    {{ end }}
-
     **Full Changelog**: https://github.com/b-harvest/devnet-builder/compare/{{ .PreviousTag }}...{{ .Tag }}
 
     ---
 
     _Built with [GoReleaser](https://goreleaser.com)_
-
-  name_template: "{{ .Tag }}"
-  extra_files:
-    - glob: ./dist/*.txt
 
 announce:
   skip: true

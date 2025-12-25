@@ -1,4 +1,4 @@
-# Dockerfile for GoReleaser multi-arch builds
+# Dockerfile for GoReleaser v2 multi-arch builds (dockers_v2)
 # This Dockerfile is used by GoReleaser to create minimal container images
 # The binary is pre-built by GoReleaser and copied into the image
 
@@ -21,8 +21,11 @@ RUN addgroup -g 1000 devnet && \
 RUN mkdir -p /home/devnet/.devnet-builder && \
     chown -R devnet:devnet /home/devnet
 
-# Copy the pre-built binary from GoReleaser
-COPY devnet-builder /usr/local/bin/devnet-builder
+# Copy the pre-built binary from GoReleaser v2 (dockers_v2 path)
+# For dockers_v2, the binary is at {os}/{arch}/binary_name
+ARG TARGETARCH
+ARG TARGETOS
+COPY ${TARGETOS}/${TARGETARCH}/devnet-builder /usr/local/bin/devnet-builder
 
 # Ensure binary is executable
 RUN chmod +x /usr/local/bin/devnet-builder
