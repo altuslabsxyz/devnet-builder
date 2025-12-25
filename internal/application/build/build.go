@@ -70,6 +70,7 @@ func (uc *BuildUseCase) Execute(ctx context.Context, input dto.BuildInput) (*dto
 		Ref:        result.Ref,
 		CommitHash: result.CommitHash,
 		CachedPath: result.CachedPath,
+		CacheRef:   result.CacheRef,
 		FromCache:  false,
 	}
 
