@@ -93,6 +93,7 @@ type Module interface {
 	// ============================================
 
 	// DefaultChainID returns the default chain ID for the devnet.
+	//
 	// Deprecated: Chain ID is extracted from genesis files and stored in metadata.
 	// This method will be removed in v2.0.0. Return empty string for new plugins.
 	// Examples: "stabledevnet_2200-1", "osmosis-devnet-1"

@@ -202,6 +202,7 @@ func (n *Node) IsRunning() bool {
 }
 
 // ContainerNameForIndex returns the Docker container name for a node index.
+//
 // Deprecated: Use ContainerNameForNetwork instead for multi-network support.
 func ContainerNameForIndex(index int) string {
 	return fmt.Sprintf("stable-devnet-node%d", index)

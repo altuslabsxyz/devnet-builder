@@ -198,6 +198,7 @@ func NewLoader(opts ...LoaderOption) *Loader {
 }
 
 // NewLoaderWithDirs creates a new plugin loader with specific directories (legacy API).
+//
 // Deprecated: Use NewLoader with WithPluginDirs option instead.
 func NewLoaderWithDirs(pluginDirs ...string) *Loader {
 	if len(pluginDirs) == 0 {
