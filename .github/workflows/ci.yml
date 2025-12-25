@@ -91,7 +91,7 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v1.62
+          version: latest
 
   ci-complete:
     name: CI Complete
