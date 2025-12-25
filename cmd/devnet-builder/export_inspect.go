@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	domainExport "github.com/b-harvest/devnet-builder/internal/domain/export"
 	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -59,13 +60,19 @@ func runExportInspect(cmd *cobra.Command, args []string) error {
 	}
 
 	// Calculate genesis checksum - construct path from metadata
+	// result.Metadata is interface{}, need to cast to *export.ExportMetadata
+	metadata, ok := result.Metadata.(*domainExport.ExportMetadata)
+	if !ok {
+		return fmt.Errorf("invalid metadata type")
+	}
+
 	genesisPath := filepath.Join(exportPath, fmt.Sprintf("genesis-%d-%s.json",
-		result.Metadata.BlockHeight,
-		result.Metadata.BinaryHashPrefix))
+		metadata.BlockHeight,
+		metadata.BinaryHashPrefix))
 
 	genesisChecksum, err := calculateFileChecksum(genesisPath)
 	if err != nil {
-		output.Warning("Failed to calculate genesis checksum: %v", err)
+		output.Warn("Failed to calculate genesis checksum: %v", err)
 		genesisChecksum = "N/A"
 	}
 

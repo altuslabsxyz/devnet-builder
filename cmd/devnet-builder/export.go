@@ -95,7 +95,7 @@ func runExport(cmd *cobra.Command, args []string) error {
 
 	if len(result.Warnings) > 0 {
 		fmt.Println()
-		output.Warning("Warnings:")
+		output.Warn("Warnings:")
 		for _, warning := range result.Warnings {
 			fmt.Printf("  - %s\n", warning)
 		}
