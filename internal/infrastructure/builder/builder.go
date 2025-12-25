@@ -311,9 +311,8 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, e
 		CommitHash:  commitHash,
 		Ref:         opts.Ref,
 		BuildTime:   time.Now(),
-		NetworkType: networkType,       // New: network-aware caching
-		BuildConfig: buildConfig,       // New: full build configuration
-		BuildTags:   buildTags,          // Legacy: for backward compatibility
+		NetworkType: networkType,       // Network-aware caching
+		BuildConfig: buildConfig,       // Full build configuration
 	}
 	if err := binaryCache.Store(binaryPath, cached); err != nil {
 		// Graceful degradation: log warning but continue (FR-008)
@@ -572,13 +571,24 @@ func (b *Builder) BuildToCache(ctx context.Context, opts BuildOptions, binaryCac
 	src := b.module.BinarySource()
 	buildTags := src.BuildTags
 
+	// Determine network type
+	networkType := opts.Network
+	if networkType == "" {
+		networkType = "default"
+	}
+
+	// Create build configuration for cache key
+	buildConfig := &sdknetwork.BuildConfig{
+		Tags: buildTags,
+	}
+
 	// Try to resolve commit hash first to check cache without cloning
 	commitHash, resolveErr := b.ResolveCommitHash(ctx, opts.Ref)
 	if resolveErr == nil && commitHash != "" {
-		// Check if already cached with matching build tags (fast path - no clone needed)
-		if binaryCache.IsCachedWithTags(commitHash, buildTags) {
-			b.logger.Success("Using cached binary for commit %s (tags: %v)", commitHash[:12], buildTags)
-			return binaryCache.LookupWithTags(commitHash, buildTags), nil
+		// Check if already cached with matching build config (fast path - no clone needed)
+		if binaryCache.IsCachedWithConfig(networkType, commitHash, buildConfig) {
+			b.logger.Success("Using cached binary for commit %s (network: %s)", commitHash[:12], networkType)
+			return binaryCache.LookupWithConfig(networkType, commitHash, buildConfig), nil
 		}
 	}
 
@@ -602,10 +612,10 @@ func (b *Builder) BuildToCache(ctx context.Context, opts BuildOptions, binaryCac
 		commitHash = opts.Ref
 	}
 
-	// Check if already cached with build tags (double-check after clone in case ls-remote failed)
-	if binaryCache.IsCachedWithTags(commitHash, buildTags) {
-		b.logger.Success("Using cached binary for commit %s (tags: %v)", commitHash[:12], buildTags)
-		return binaryCache.LookupWithTags(commitHash, buildTags), nil
+	// Check if already cached with build config (double-check after clone in case ls-remote failed)
+	if binaryCache.IsCachedWithConfig(networkType, commitHash, buildConfig) {
+		b.logger.Success("Using cached binary for commit %s (network: %s)", commitHash[:12], networkType)
+		return binaryCache.LookupWithConfig(networkType, commitHash, buildConfig), nil
 	}
 
 	// Read toolchain version from go.mod and create devnet-specific goreleaser config
@@ -638,13 +648,13 @@ func (b *Builder) BuildToCache(ctx context.Context, opts BuildOptions, binaryCac
 		return nil, fmt.Errorf("failed to find built binary: %w", err)
 	}
 
-	// Store in cache with build tags
+	// Store in cache with build config
 	cached := &cache.CachedBinary{
 		CommitHash:  commitHash,
 		Ref:         opts.Ref,
 		BuildTime:   time.Now(),
-		NetworkType: opts.Network,
-		BuildTags:   buildTags,
+		NetworkType: networkType,
+		BuildConfig: buildConfig,
 	}
 
 	if err := binaryCache.Store(binaryPath, cached); err != nil {
@@ -655,7 +665,7 @@ func (b *Builder) BuildToCache(ctx context.Context, opts BuildOptions, binaryCac
 		return cached, nil
 	}
 
-	cacheKey := cache.MakeCacheKeyLegacy(commitHash, buildTags)
+	cacheKey := cache.MakeCacheKey(networkType, commitHash, buildConfig)
 	b.logger.Success("Binary built and cached: %s (commit: %s)", binaryCache.GetBinaryPath(cacheKey), commitHash[:12])
 
 	return cached, nil

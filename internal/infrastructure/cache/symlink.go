@@ -110,13 +110,6 @@ func (m *SymlinkManager) SwitchToCache(cache *BinaryCache, cacheKey string) erro
 	return m.Switch(relativePath)
 }
 
-// SwitchToCacheWithTags switches the symlink to point to a cached binary by commit hash and build tags.
-// DEPRECATED: Uses legacy cache key format. New code should use SwitchToCacheWithConfig.
-func (m *SymlinkManager) SwitchToCacheWithTags(cache *BinaryCache, commitHash string, buildTags []string) error {
-	cacheKey := MakeCacheKeyLegacy(commitHash, buildTags)
-	return m.SwitchToCache(cache, cacheKey)
-}
-
 // SwitchToCacheWithConfig switches the symlink to point to a cached binary by network type, commit hash, and build config.
 // This is the preferred method for network-aware caching.
 func (m *SymlinkManager) SwitchToCacheWithConfig(cache *BinaryCache, networkType, commitHash string, buildConfig *network.BuildConfig) error {
@@ -142,56 +135,19 @@ func (m *SymlinkManager) IsRegularFile() bool {
 	return info.Mode().IsRegular()
 }
 
-// MigrateToSymlink converts a regular binary file to a cached entry and creates a symlink.
-// This is used for backward compatibility with devnets that have a direct binary.
-func (m *SymlinkManager) MigrateToSymlink(cache *BinaryCache, commitHash, ref, network string, buildTags []string) error {
-	if !m.IsRegularFile() {
-		return fmt.Errorf("no regular file to migrate at %s", m.symlinkPath)
-	}
-
-	// Check if already cached with same build tags
-	if cache.IsCachedWithTags(commitHash, buildTags) {
-		// Just create symlink, binary already in cache
-		return m.SwitchToCacheWithTags(cache, commitHash, buildTags)
-	}
-
-	// Store current binary in cache
-	cached := &CachedBinary{
-		CommitHash:  commitHash,
-		Ref:         ref,
-		NetworkType: network, // Use NetworkType instead of deprecated Network
-		BuildTags:   buildTags,
-	}
-
-	if err := cache.Store(m.symlinkPath, cached); err != nil {
-		return fmt.Errorf("failed to store binary in cache: %w", err)
-	}
-
-	// Remove original file
-	if err := os.Remove(m.symlinkPath); err != nil {
-		return fmt.Errorf("failed to remove original binary: %w", err)
-	}
-
-	// Create symlink
-	return m.SwitchToCacheWithTags(cache, commitHash, buildTags)
-}
-
 // extractCommitHashFromPath extracts the commit hash from a cache path.
+// NEW FORMAT: binaries/{networkType}/{commitHash}-{configHash}/{binaryName}
 func extractCommitHashFromPath(path string) string {
-	// Path format: ../cache/binaries/{cacheKey}/{binaryName}
-	// or absolute: /home/user/.devnet-builder/cache/binaries/{cacheKey}/{binaryName}
-	// cacheKey format: {commitHash}-{tagsHash} (49 chars) or just {commitHash} (40 chars, legacy)
-	dir := filepath.Dir(path)      // ../cache/binaries/{cacheKey}
-	cacheKey := filepath.Base(dir) // {cacheKey}
+	// Path format: ../cache/binaries/{networkType}/{commitHash}-{configHash}/{binaryName}
+	// or absolute: /home/user/.devnet-builder/cache/binaries/{networkType}/{commitHash}-{configHash}/{binaryName}
 
-	// Handle new format: commitHash-tagsHash
-	if isValidCacheKey(cacheKey) {
-		return cacheKey[:40] // Extract just the commit hash part
+	dir := filepath.Dir(path)         // ../cache/binaries/{networkType}/{commitHash}-{configHash}
+	binaryDirName := filepath.Base(dir) // {commitHash}-{configHash}
+
+	// Validate format: {commitHash}-{configHash}
+	if isValidBinaryDirName(binaryDirName) {
+		return binaryDirName[:40] // Extract just the commit hash part (first 40 chars)
 	}
 
-	// Handle legacy format: just commitHash
-	if isValidCommitHash(cacheKey) {
-		return cacheKey
-	}
 	return ""
 }

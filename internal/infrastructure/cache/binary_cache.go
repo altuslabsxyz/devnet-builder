@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/b-harvest/devnet-builder/pkg/network"
@@ -66,12 +67,14 @@ func (c *BinaryCache) Initialize() error {
 
 // loadEntries scans the cache directory and loads all cached binary metadata.
 // Clears existing entries before loading to ensure consistency with filesystem.
+// NEW FORMAT ONLY: binaries/{networkType}/{commitHash}-{configHash}/
 func (c *BinaryCache) loadEntries() error {
 	// Clear existing entries to reload from filesystem
 	// This ensures consistency when called multiple times (e.g., after external changes)
 	c.entries = make(map[string]*CachedBinary)
 
-	entries, err := os.ReadDir(c.cacheDir)
+	// Level 1: Scan network type directories (testnet, mainnet, devnet, etc.)
+	networkDirs, err := os.ReadDir(c.cacheDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -79,50 +82,78 @@ func (c *BinaryCache) loadEntries() error {
 		return fmt.Errorf("failed to read cache directory: %w", err)
 	}
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
+	for _, networkDir := range networkDirs {
+		if !networkDir.IsDir() {
 			continue
 		}
 
-		cacheKey := entry.Name()
-		// Accept both old format (commit hash only) and new format (commit-taghash)
-		if !isValidCacheKey(cacheKey) && !isValidCommitHash(cacheKey) {
-			continue
-		}
+		networkType := networkDir.Name()
+		networkPath := filepath.Join(c.cacheDir, networkType)
 
-		// Try to load metadata
-		metadataPath := filepath.Join(c.cacheDir, cacheKey, MetadataFile)
-		metadata, err := ReadMetadata(metadataPath)
+		// Level 2: Scan binary directories within each network type
+		binaryDirs, err := os.ReadDir(networkPath)
 		if err != nil {
-			c.logger.Debug("Skipping cache entry %s: %v", cacheKey, err)
+			c.logger.Debug("Skipping network directory %s: %v", networkType, err)
 			continue
 		}
 
-		// Compute the correct cache key from metadata
-		var actualCacheKey string
-		if metadata.NetworkType != "" && metadata.BuildConfig != nil {
-			// New format with network type
-			actualCacheKey = MakeCacheKey(metadata.NetworkType, metadata.CommitHash, metadata.BuildConfig)
-		} else if metadata.Network != "" && len(metadata.BuildTags) > 0 {
-			// Legacy format with old Network field
-			actualCacheKey = MakeCacheKeyLegacy(metadata.CommitHash, metadata.BuildTags)
-		} else {
-			// Fallback to legacy format
-			actualCacheKey = MakeCacheKeyLegacy(metadata.CommitHash, metadata.BuildTags)
-		}
+		for _, binaryDir := range binaryDirs {
+			if !binaryDir.IsDir() {
+				continue
+			}
 
-		binaryPath := filepath.Join(c.cacheDir, cacheKey, c.binaryName)
-		c.entries[actualCacheKey] = &CachedBinary{
-			CommitHash:  metadata.CommitHash,
-			Ref:         metadata.Ref,
-			BuildTime:   metadata.BuildTime,
-			Size:        metadata.Size,
-			NetworkType: metadata.NetworkType,
-			BuildConfig: metadata.BuildConfig,
-			BuildTags:   metadata.BuildTags, // For backward compat
-			BinaryPath:  binaryPath,
-			DirKey:      cacheKey, // Store actual directory name for symlink creation
+			binaryDirName := binaryDir.Name()
+			// Validate format: {commitHash}-{configHash}
+			if !isValidBinaryDirName(binaryDirName) {
+				c.logger.Debug("Skipping invalid binary directory: %s/%s", networkType, binaryDirName)
+				continue
+			}
+
+			// Load the cache entry
+			cacheKeyPath := filepath.Join(networkType, binaryDirName)
+			if err := c.loadCacheEntry(cacheKeyPath, networkType, binaryDirName); err != nil {
+				c.logger.Debug("Skipping cache entry %s: %v", cacheKeyPath, err)
+				continue
+			}
 		}
+	}
+
+	return nil
+}
+
+// loadCacheEntry loads a single cache entry from metadata.
+// Single Responsibility: Load one cache entry.
+func (c *BinaryCache) loadCacheEntry(cacheKeyPath, networkType, binaryDirName string) error {
+	metadataPath := filepath.Join(c.cacheDir, cacheKeyPath, MetadataFile)
+	metadata, err := ReadMetadata(metadataPath)
+	if err != nil {
+		return fmt.Errorf("failed to read metadata: %w", err)
+	}
+
+	// Validate metadata
+	if metadata.CommitHash == "" {
+		return fmt.Errorf("metadata missing commit_hash")
+	}
+	if metadata.NetworkType == "" {
+		return fmt.Errorf("metadata missing network_type")
+	}
+	if metadata.BuildConfig == nil {
+		return fmt.Errorf("metadata missing build_config")
+	}
+
+	// Compute cache key from metadata
+	actualCacheKey := MakeCacheKey(metadata.NetworkType, metadata.CommitHash, metadata.BuildConfig)
+
+	binaryPath := filepath.Join(c.cacheDir, cacheKeyPath, c.binaryName)
+	c.entries[actualCacheKey] = &CachedBinary{
+		CommitHash:  metadata.CommitHash,
+		Ref:         metadata.Ref,
+		BuildTime:   metadata.BuildTime,
+		Size:        metadata.Size,
+		NetworkType: metadata.NetworkType,
+		BuildConfig: metadata.BuildConfig,
+		BinaryPath:  binaryPath,
+		DirKey:      cacheKeyPath, // Store actual directory path (networkType/hash-config)
 	}
 
 	return nil
@@ -143,13 +174,6 @@ func (c *BinaryCache) GetBinaryPath(cacheKey string) string {
 	return filepath.Join(c.cacheDir, cacheKey, c.binaryName)
 }
 
-// GetBinaryPathWithTags returns the full path to a cached binary by commit hash and build tags.
-// DEPRECATED: Use GetBinaryPathWithConfig instead. This method uses legacy cache key format.
-func (c *BinaryCache) GetBinaryPathWithTags(commitHash string, buildTags []string) string {
-	cacheKey := MakeCacheKeyLegacy(commitHash, buildTags)
-	return c.GetBinaryPath(cacheKey)
-}
-
 // GetBinaryPathWithConfig returns the full path to a cached binary by network type, commit hash, and build config.
 func (c *BinaryCache) GetBinaryPathWithConfig(networkType, commitHash string, buildConfig *network.BuildConfig) string {
 	cacheKey := MakeCacheKey(networkType, commitHash, buildConfig)
@@ -158,13 +182,6 @@ func (c *BinaryCache) GetBinaryPathWithConfig(networkType, commitHash string, bu
 
 // Lookup returns the cached binary for the given cache key, or nil if not cached.
 func (c *BinaryCache) Lookup(cacheKey string) *CachedBinary {
-	return c.entries[cacheKey]
-}
-
-// LookupWithTags returns the cached binary for the given commit hash and build tags.
-// DEPRECATED: Use LookupWithConfig instead. This method uses legacy cache key format.
-func (c *BinaryCache) LookupWithTags(commitHash string, buildTags []string) *CachedBinary {
-	cacheKey := MakeCacheKeyLegacy(commitHash, buildTags)
 	return c.entries[cacheKey]
 }
 
@@ -180,15 +197,13 @@ func (c *BinaryCache) IsCached(cacheKey string) bool {
 	if entry == nil {
 		return false
 	}
-	// Also verify the binary file actually exists
-	return c.ValidateKey(cacheKey) == nil
-}
-
-// IsCachedWithTags checks if a binary for the given commit hash and build tags exists in cache.
-// DEPRECATED: Use IsCachedWithConfig instead. This method uses legacy cache key format.
-func (c *BinaryCache) IsCachedWithTags(commitHash string, buildTags []string) bool {
-	cacheKey := MakeCacheKeyLegacy(commitHash, buildTags)
-	return c.IsCached(cacheKey)
+	// Verify the binary file actually exists using the stored binary path
+	info, err := os.Stat(entry.BinaryPath)
+	if err != nil {
+		return false
+	}
+	// Check if executable
+	return info.Mode()&0111 != 0
 }
 
 // IsCachedWithConfig checks if a binary for the given network type, commit hash, and build config exists in cache.
@@ -262,13 +277,6 @@ func (c *BinaryCache) ValidateKey(cacheKey string) error {
 	return nil
 }
 
-// ValidateWithTags checks if a cached binary exists and is executable by commit hash and build tags.
-// DEPRECATED: Use ValidateWithConfig instead. This method uses legacy cache key format.
-func (c *BinaryCache) ValidateWithTags(commitHash string, buildTags []string) error {
-	cacheKey := MakeCacheKeyLegacy(commitHash, buildTags)
-	return c.ValidateKey(cacheKey)
-}
-
 // ValidateWithConfig checks if a cached binary exists and is executable by network type, commit hash, and build config.
 func (c *BinaryCache) ValidateWithConfig(networkType, commitHash string, buildConfig *network.BuildConfig) error {
 	cacheKey := MakeCacheKey(networkType, commitHash, buildConfig)
@@ -283,13 +291,6 @@ func (c *BinaryCache) Remove(cacheKey string) error {
 	}
 	delete(c.entries, cacheKey)
 	return nil
-}
-
-// RemoveWithTags deletes a cached binary entry by commit hash and build tags.
-// DEPRECATED: Use RemoveWithConfig instead. This method uses legacy cache key format.
-func (c *BinaryCache) RemoveWithTags(commitHash string, buildTags []string) error {
-	cacheKey := MakeCacheKeyLegacy(commitHash, buildTags)
-	return c.Remove(cacheKey)
 }
 
 // RemoveWithConfig deletes a cached binary entry by network type, commit hash, and build config.
@@ -327,12 +328,31 @@ func (c *BinaryCache) Clean() error {
 	return c.Initialize()
 }
 
-// isValidCommitHash checks if a string is a valid 40-character hex commit hash.
-func isValidCommitHash(s string) bool {
-	if len(s) != 40 {
+// isValidBinaryDirName checks if a string is a valid binary directory name.
+// Format: {commitHash}-{configHash} where commitHash is 40 hex chars and configHash is 8 hex chars.
+// This is the directory name within the network type directory.
+func isValidBinaryDirName(s string) bool {
+	// Must be 49 characters: 40 (commit) + 1 (-) + 8 (config hash)
+	if len(s) != 49 {
 		return false
 	}
-	for _, c := range s {
+	// Check for dash separator at position 40
+	if s[40] != '-' {
+		return false
+	}
+	// Validate commit hash part (40 hex chars)
+	commitHash := s[:40]
+	for _, c := range commitHash {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	// Validate config hash part (8 hex chars)
+	configHash := s[41:]
+	if len(configHash) != 8 {
+		return false
+	}
+	for _, c := range configHash {
 		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
 			return false
 		}
@@ -341,28 +361,31 @@ func isValidCommitHash(s string) bool {
 }
 
 // isValidCacheKey checks if a string is a valid cache key format.
-// Format: {commitHash}-{tagsHash} where commitHash is 40 hex chars and tagsHash is 8 hex chars.
+// NEW FORMAT: {networkType}/{commitHash}-{configHash}
+// Example: "testnet/80ad31b432a96fb2297881a054f4476d9310c6c7-790d3b6d"
 func isValidCacheKey(s string) bool {
-	// Must be 49 characters: 40 (commit) + 1 (-) + 8 (tags hash)
-	if len(s) != 49 {
+	// Find the slash separator
+	slashIdx := strings.Index(s, "/")
+	if slashIdx == -1 {
 		return false
 	}
-	// Check for dash separator at position 40
-	if s[40] != '-' {
+
+	// Extract network type and binary dir name
+	networkType := s[:slashIdx]
+	binaryDirName := s[slashIdx+1:]
+
+	// Validate network type (alphanumeric + hyphen, 1-20 chars)
+	if len(networkType) == 0 || len(networkType) > 20 {
 		return false
 	}
-	// Validate commit hash part
-	if !isValidCommitHash(s[:40]) {
-		return false
-	}
-	// Validate tags hash part (8 hex chars)
-	tagsHash := s[41:]
-	for _, c := range tagsHash {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+	for _, c := range networkType {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-') {
 			return false
 		}
 	}
-	return true
+
+	// Validate binary directory name
+	return isValidBinaryDirName(binaryDirName)
 }
 
 // copyFile copies a file from src to dst.
