@@ -6,16 +6,9 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/b-harvest/devnet-builder/internal"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/spf13/cobra"
-)
-
-// Version information - set at build time via ldflags
-var (
-	Version       = "dev"
-	GitCommit     = "unknown"
-	BuildDate     = "unknown"
-	BuildNetworks = "all" // Networks included at build time (e.g., "stable", "ault", "stable,ault", or "all")
 )
 
 // VersionInfo contains version details.
@@ -45,12 +38,12 @@ func runVersion(cmd *cobra.Command, args []string) error {
 	registeredNetworks := network.List()
 
 	info := VersionInfo{
-		Version:       Version,
-		GitCommit:     GitCommit,
-		BuildDate:     BuildDate,
+		Version:       internal.Version,
+		GitCommit:     internal.GitCommit,
+		BuildDate:     internal.BuildDate,
 		GoVersion:     runtime.Version(),
 		Platform:      fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
-		BuildNetworks: BuildNetworks,
+		BuildNetworks: "plugin-based",
 		Networks:      registeredNetworks,
 	}
 
