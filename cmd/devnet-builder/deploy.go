@@ -30,6 +30,7 @@ var (
 	deployStartVersion      string
 	deployImage             string
 	deployFork              bool // Fork live network state via snapshot export
+	deployTestMnemonic      bool // Use deterministic test mnemonics for validators
 )
 
 // DeployResult represents the JSON output for the deploy command.
@@ -57,6 +58,9 @@ This command will:
 4. Generate devnet configuration for all validators
 5. Start all validator nodes
 
+Docker mode supports 1-100 validators with network isolation and automatic port management.
+Local mode supports 1-4 validators for testing and development.
+
 Examples:
   # Deploy with default settings (4 validators, mainnet, docker mode)
   devnet-builder deploy
@@ -64,14 +68,17 @@ Examples:
   # Deploy with testnet data
   devnet-builder deploy --network testnet
 
-  # Deploy with 2 validators
-  devnet-builder deploy --validators 2
+  # Deploy with 10 validators in docker mode (isolated network, auto port allocation)
+  devnet-builder deploy --validators 10
 
-  # Deploy with local binary mode
-  devnet-builder deploy --mode local
+  # Deploy with 2 validators in local binary mode
+  devnet-builder deploy --mode local --validators 2
 
   # Deploy with specific stable version
-  devnet-builder deploy --stable-version v1.2.3`,
+  devnet-builder deploy --stable-version v1.2.3
+
+  # Large-scale deployment with 100 validators (docker mode only)
+  devnet-builder deploy --validators 100`,
 		RunE: runDeploy,
 	}
 
@@ -79,15 +86,17 @@ Examples:
 	cmd.Flags().StringVarP(&deployNetwork, "network", "n", "mainnet",
 		"Network source (mainnet, testnet)")
 	cmd.Flags().IntVar(&deployValidators, "validators", 4,
-		"Number of validators (1-4)")
+		"Number of validators (1-100 for docker mode, 1-4 for local mode)")
 	cmd.Flags().StringVarP(&deployMode, "mode", "m", "docker",
 		"Execution mode (docker, local)")
 	cmd.Flags().StringVar(&deployStableVersion, "stable-version", "latest",
 		"Stable repository version")
 	cmd.Flags().BoolVar(&deployNoCache, "no-cache", false,
 		"Skip snapshot cache")
-	cmd.Flags().IntVar(&deployAccounts, "accounts", 0,
+	cmd.Flags().IntVar(&deployAccounts, "accounts", 4,
 		"Additional funded accounts")
+	cmd.Flags().BoolVar(&deployTestMnemonic, "test-mnemonic", true,
+		"Use deterministic test mnemonics for validators (disable for production-like testing)")
 
 	// Interactive mode flags (controls version/docker image selection prompts)
 	// Note: Base config prompts (network, validators, mode) are handled by config.toml
@@ -231,10 +240,16 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if deployNetwork != "mainnet" && deployNetwork != "testnet" {
 		return fmt.Errorf("invalid network: %s (must be 'mainnet' or 'testnet')", deployNetwork)
 	}
-	if deployValidators < 1 || deployValidators > 4 {
-		return fmt.Errorf("invalid validators: %d (must be 1-4)", deployValidators)
-	}
-	if deployMode != "docker" && deployMode != "local" {
+	// Validate validator count based on mode
+	if deployMode == "docker" {
+		if deployValidators < 1 || deployValidators > 100 {
+			return fmt.Errorf("invalid validators: %d (must be 1-100 for docker mode)", deployValidators)
+		}
+	} else if deployMode == "local" {
+		if deployValidators < 1 || deployValidators > 4 {
+			return fmt.Errorf("invalid validators: %d (must be 1-4 for local mode)", deployValidators)
+		}
+	} else {
 		return fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", deployMode)
 	}
 	// Validate blockchain network module exists
@@ -286,6 +301,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		CustomBinaryPath:  customBinaryPath,
 		UseSnapshot:       deployFork,
 		BinaryPath:        customBinaryPath,
+		UseTestMnemonic:   deployTestMnemonic,
 	}
 
 	_, err = svc.Provision(ctx, provisionInput)

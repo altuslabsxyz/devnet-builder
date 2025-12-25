@@ -1,0 +1,254 @@
+# GoReleaser v2 configuration for devnet-builder
+# https://goreleaser.com/customization/
+# Triggered on tags: v*
+
+version: 2
+
+project_name: devnet-builder
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod verify
+
+builds:
+  - id: devnet-builder
+    main: ./cmd/devnet-builder
+    binary: devnet-builder
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    goarm:
+      - "7"
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/b-harvest/devnet-builder/internal.Version={{.Version}}
+      - -X github.com/b-harvest/devnet-builder/internal.GitCommit={{.FullCommit}}
+      - -X github.com/b-harvest/devnet-builder/internal.BuildDate={{.Date}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: devnet-builder-archive
+    builds:
+      - devnet-builder
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE*
+      - docs/*
+
+universal_binaries:
+  - id: devnet-builder-universal
+    ids:
+      - devnet-builder
+    replace: false
+    name_template: "{{ .ProjectName }}_{{ .Version }}_darwin_universal"
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+sboms:
+  - artifacts: archive
+
+signs:
+  - cmd: cosign
+    env:
+      - COSIGN_EXPERIMENTAL=1
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  abbrev: 0
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore\\(deps\\):"
+      - "^ci:"
+      - "^Merge pull request"
+      - "^Merge branch"
+      - typo
+  groups:
+    - title: "Breaking Changes"
+      regexp: '^.*?!:.+$'
+      order: 0
+    - title: "Features"
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: "Bug Fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: "Security"
+      regexp: '^.*?sec(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: "Performance"
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 4
+    - title: "Refactoring"
+      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
+      order: 5
+    - title: "Dependencies"
+      regexp: '^.*?(deps|chore\(deps\))(\([[:word:]]+\))??!?:.+$'
+      order: 6
+    - title: "Other"
+      order: 999
+
+dockers:
+  - id: devnet-builder-amd64
+    ids:
+      - devnet-builder
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/b-harvest/devnet-builder:{{ .Tag }}-amd64"
+      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}-amd64"
+      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}.{{ .Minor }}-amd64"
+      - "ghcr.io/b-harvest/devnet-builder:latest-amd64"
+    dockerfile: Dockerfile.goreleaser
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=Build and manage local blockchain development networks"
+      - "--label=org.opencontainers.image.url=https://github.com/b-harvest/devnet-builder"
+      - "--label=org.opencontainers.image.source=https://github.com/b-harvest/devnet-builder"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+  - id: devnet-builder-arm64
+    ids:
+      - devnet-builder
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "ghcr.io/b-harvest/devnet-builder:{{ .Tag }}-arm64"
+      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}-arm64"
+      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}.{{ .Minor }}-arm64"
+      - "ghcr.io/b-harvest/devnet-builder:latest-arm64"
+    dockerfile: Dockerfile.goreleaser
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=Build and manage local blockchain development networks"
+      - "--label=org.opencontainers.image.url=https://github.com/b-harvest/devnet-builder"
+      - "--label=org.opencontainers.image.source=https://github.com/b-harvest/devnet-builder"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+docker_manifests:
+  - name_template: "ghcr.io/b-harvest/devnet-builder:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/b-harvest/devnet-builder:{{ .Tag }}-amd64"
+      - "ghcr.io/b-harvest/devnet-builder:{{ .Tag }}-arm64"
+
+  - name_template: "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}"
+    image_templates:
+      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}-amd64"
+      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}-arm64"
+
+  - name_template: "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}.{{ .Minor }}"
+    image_templates:
+      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}.{{ .Minor }}-amd64"
+      - "ghcr.io/b-harvest/devnet-builder:v{{ .Major }}.{{ .Minor }}-arm64"
+
+  - name_template: "ghcr.io/b-harvest/devnet-builder:latest"
+    image_templates:
+      - "ghcr.io/b-harvest/devnet-builder:latest-amd64"
+      - "ghcr.io/b-harvest/devnet-builder:latest-arm64"
+
+release:
+  github:
+    owner: b-harvest
+    name: devnet-builder
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## devnet-builder {{ .Tag }}
+
+    Build and manage local blockchain development networks with production state.
+
+    ### Installation
+
+    **Download binary:**
+    ```bash
+    # Linux (amd64)
+    curl -LO https://github.com/b-harvest/devnet-builder/releases/download/{{ .Tag }}/devnet-builder_{{ .Version }}_linux_amd64.tar.gz
+    tar -xzf devnet-builder_{{ .Version }}_linux_amd64.tar.gz
+    sudo mv devnet-builder /usr/local/bin/
+
+    # macOS (Apple Silicon)
+    curl -LO https://github.com/b-harvest/devnet-builder/releases/download/{{ .Tag }}/devnet-builder_{{ .Version }}_darwin_arm64.tar.gz
+    tar -xzf devnet-builder_{{ .Version }}_darwin_arm64.tar.gz
+    sudo mv devnet-builder /usr/local/bin/
+    ```
+
+    **Docker:**
+    ```bash
+    docker pull ghcr.io/b-harvest/devnet-builder:{{ .Tag }}
+    ```
+
+    ### Verify Installation
+    ```bash
+    devnet-builder version
+    ```
+
+  footer: |
+    ---
+
+    ### Contributors
+
+    {{ range .Contributors -}}
+    - @{{ .Name }}
+    {{ end }}
+
+    **Full Changelog**: https://github.com/b-harvest/devnet-builder/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+    ---
+
+    _Built with [GoReleaser](https://goreleaser.com)_
+
+  name_template: "{{ .Tag }}"
+  extra_files:
+    - glob: ./dist/*.txt
+
+announce:
+  skip: true
+
+metadata:
+  mod_timestamp: "{{ .CommitTimestamp }}"

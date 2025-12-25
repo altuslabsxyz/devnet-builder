@@ -17,10 +17,21 @@ import (
 	pb "github.com/b-harvest/devnet-builder/pkg/network/plugin"
 )
 
-// NetworkPluginModule defines the interface for plugin-based governance parameter queries.
-// This is a minimal interface that only includes the method we need from the full network.Module.
+// NetworkPluginModule defines the interface for plugin-based RPC operations.
+// Plugins implement chain-specific logic for all blockchain RPC operations.
+// This follows the Open-Closed Principle - new chains can be added by implementing this interface.
 type NetworkPluginModule interface {
+	// Governance Parameters
 	GetGovernanceParams(rpcEndpoint, networkType string) (*pb.GovernanceParamsResponse, error)
+
+	// RPC Operations - delegated to plugins for chain-specific implementations
+	GetBlockHeight(ctx context.Context, rpcEndpoint string) (*pb.BlockHeightResponse, error)
+	GetBlockTime(ctx context.Context, rpcEndpoint string, sampleSize int) (*pb.BlockTimeResponse, error)
+	IsChainRunning(ctx context.Context, rpcEndpoint string) (*pb.ChainStatusResponse, error)
+	WaitForBlock(ctx context.Context, rpcEndpoint string, targetHeight int64, timeoutMs int64) (*pb.WaitForBlockResponse, error)
+	GetProposal(ctx context.Context, rpcEndpoint string, proposalID uint64) (*pb.ProposalResponse, error)
+	GetUpgradePlan(ctx context.Context, rpcEndpoint string) (*pb.UpgradePlanResponse, error)
+	GetAppVersion(ctx context.Context, rpcEndpoint string) (*pb.AppVersionResponse, error)
 }
 
 const (
@@ -128,7 +139,31 @@ type statusResponse struct {
 }
 
 // GetBlockHeight returns the current block height.
+// Strategy: Plugin first, REST fallback for backward compatibility.
 func (c *CosmosRPCClient) GetBlockHeight(ctx context.Context) (int64, error) {
+	// Phase 1: Try plugin-based query first
+	if c.pluginModule != nil {
+		resp, err := c.pluginModule.GetBlockHeight(ctx, c.baseURL)
+		if err == nil {
+			if resp.Error != "" {
+				return 0, &RPCError{Operation: "get_block_height", Message: resp.Error}
+			}
+			return resp.Height, nil
+		}
+		// Check if plugin doesn't implement this method
+		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
+			// Fall through to REST
+		} else {
+			return 0, &RPCError{Operation: "get_block_height", Message: err.Error()}
+		}
+	}
+
+	// Phase 2: REST fallback
+	return c.getBlockHeightViaREST(ctx)
+}
+
+// getBlockHeightViaREST queries block height via direct REST API call.
+func (c *CosmosRPCClient) getBlockHeightViaREST(ctx context.Context) (int64, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/status", nil)
 	if err != nil {
 		return 0, &RPCError{Operation: "status", Message: err.Error()}
@@ -149,12 +184,12 @@ func (c *CosmosRPCClient) GetBlockHeight(ctx context.Context) (int64, error) {
 		return 0, &RPCError{Operation: "status", Message: err.Error()}
 	}
 
-	var status statusResponse
-	if err := json.Unmarshal(body, &status); err != nil {
+	var statusResp statusResponse
+	if err := json.Unmarshal(body, &statusResp); err != nil {
 		return 0, &RPCError{Operation: "status", Message: "failed to parse response"}
 	}
 
-	height, err := strconv.ParseInt(status.Result.SyncInfo.LatestBlockHeight, 10, 64)
+	height, err := strconv.ParseInt(statusResp.Result.SyncInfo.LatestBlockHeight, 10, 64)
 	if err != nil {
 		return 0, &RPCError{Operation: "status", Message: "failed to parse height"}
 	}
@@ -163,12 +198,36 @@ func (c *CosmosRPCClient) GetBlockHeight(ctx context.Context) (int64, error) {
 }
 
 // GetBlockTime estimates the average block time from recent blocks.
+// Strategy: Plugin first, REST fallback for backward compatibility.
 func (c *CosmosRPCClient) GetBlockTime(ctx context.Context, sampleSize int) (time.Duration, error) {
 	if sampleSize < 2 {
 		sampleSize = 10
 	}
 
-	currentHeight, err := c.GetBlockHeight(ctx)
+	// Phase 1: Try plugin-based query first
+	if c.pluginModule != nil {
+		resp, err := c.pluginModule.GetBlockTime(ctx, c.baseURL, sampleSize)
+		if err == nil {
+			if resp.Error != "" {
+				return 0, &RPCError{Operation: "get_block_time", Message: resp.Error}
+			}
+			return time.Duration(resp.BlockTimeNs), nil
+		}
+		// Check if plugin doesn't implement this method
+		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
+			// Fall through to REST
+		} else {
+			return 0, &RPCError{Operation: "get_block_time", Message: err.Error()}
+		}
+	}
+
+	// Phase 2: REST fallback
+	return c.getBlockTimeViaREST(ctx, sampleSize)
+}
+
+// getBlockTimeViaREST estimates block time via direct REST API calls.
+func (c *CosmosRPCClient) getBlockTimeViaREST(ctx context.Context, sampleSize int) (time.Duration, error) {
+	currentHeight, err := c.getBlockHeightViaREST(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -249,13 +308,60 @@ func (c *CosmosRPCClient) getBlockTimestamp(ctx context.Context, height int64) (
 }
 
 // IsChainRunning checks if the chain is responding.
+// Strategy: Plugin first, REST fallback for backward compatibility.
 func (c *CosmosRPCClient) IsChainRunning(ctx context.Context) bool {
-	_, err := c.GetBlockHeight(ctx)
+	// Phase 1: Try plugin-based query first
+	if c.pluginModule != nil {
+		resp, err := c.pluginModule.IsChainRunning(ctx, c.baseURL)
+		if err == nil {
+			return resp.IsRunning
+		}
+		// Check if plugin doesn't implement this method
+		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
+			// Fall through to REST
+		} else {
+			return false
+		}
+	}
+
+	// Phase 2: REST fallback
+	_, err := c.getBlockHeightViaREST(ctx)
 	return err == nil
 }
 
 // WaitForBlock waits until the chain reaches the specified height.
+// Strategy: Plugin first, REST fallback for backward compatibility.
 func (c *CosmosRPCClient) WaitForBlock(ctx context.Context, height int64) error {
+	// Phase 1: Try plugin-based query first
+	if c.pluginModule != nil {
+		timeoutMs := int64(c.waitTimeout.Milliseconds())
+		resp, err := c.pluginModule.WaitForBlock(ctx, c.baseURL, height, timeoutMs)
+		if err == nil {
+			if resp.Error != "" {
+				return &RPCError{Operation: "wait_for_block", Message: resp.Error}
+			}
+			if resp.Reached {
+				return nil
+			}
+			return &RPCError{
+				Operation: "wait_for_block",
+				Message:   fmt.Sprintf("timeout waiting for height %d, current: %d", height, resp.CurrentHeight),
+			}
+		}
+		// Check if plugin doesn't implement this method
+		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
+			// Fall through to REST
+		} else {
+			return &RPCError{Operation: "wait_for_block", Message: err.Error()}
+		}
+	}
+
+	// Phase 2: REST fallback
+	return c.waitForBlockViaREST(ctx, height)
+}
+
+// waitForBlockViaREST waits for block via direct REST API calls.
+func (c *CosmosRPCClient) waitForBlockViaREST(ctx context.Context, height int64) error {
 	ticker := time.NewTicker(c.pollInterval)
 	defer ticker.Stop()
 
@@ -272,7 +378,7 @@ func (c *CosmosRPCClient) WaitForBlock(ctx context.Context, height int64) error 
 				Message:   fmt.Sprintf("timeout waiting for height %d", height),
 			}
 		case <-ticker.C:
-			currentHeight, err := c.GetBlockHeight(ctx)
+			currentHeight, err := c.getBlockHeightViaREST(ctx)
 			if err != nil {
 				// Chain might be halted for upgrade, continue waiting
 				continue
@@ -286,7 +392,48 @@ func (c *CosmosRPCClient) WaitForBlock(ctx context.Context, height int64) error 
 }
 
 // GetProposal retrieves a governance proposal by ID.
+// Strategy: Plugin first, REST fallback for backward compatibility.
 func (c *CosmosRPCClient) GetProposal(ctx context.Context, id uint64) (*ports.Proposal, error) {
+	// Phase 1: Try plugin-based query first
+	if c.pluginModule != nil {
+		resp, err := c.pluginModule.GetProposal(ctx, c.restBaseURL, id)
+		if err == nil {
+			if resp.Error != "" {
+				return nil, &RPCError{Operation: "get_proposal", Message: resp.Error}
+			}
+			return convertProposalFromProto(resp), nil
+		}
+		// Check if plugin doesn't implement this method
+		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
+			// Fall through to REST
+		} else {
+			return nil, &RPCError{Operation: "get_proposal", Message: err.Error()}
+		}
+	}
+
+	// Phase 2: REST fallback
+	return c.getProposalViaREST(ctx, id)
+}
+
+// convertProposalFromProto converts a protobuf ProposalResponse to ports.Proposal.
+func convertProposalFromProto(resp *pb.ProposalResponse) *ports.Proposal {
+	return &ports.Proposal{
+		ID:                resp.Id,
+		Title:             resp.Title,
+		Description:       resp.Description,
+		Status:            ports.ProposalStatus(resp.Status),
+		VotingEndTime:     time.Unix(resp.VotingEndTimeUnix, 0),
+		SubmitTime:        time.Unix(resp.SubmitTimeUnix, 0),
+		DepositEndTime:    time.Unix(resp.DepositEndTimeUnix, 0),
+		TotalDeposit:      resp.TotalDeposit,
+		FinalTallyYes:     resp.FinalTallyYes,
+		FinalTallyNo:      resp.FinalTallyNo,
+		FinalTallyAbstain: resp.FinalTallyAbstain,
+	}
+}
+
+// getProposalViaREST retrieves a proposal via direct REST API call.
+func (c *CosmosRPCClient) getProposalViaREST(ctx context.Context, id uint64) (*ports.Proposal, error) {
 	url := fmt.Sprintf("%s/cosmos/gov/v1/proposals/%d", c.restURL(), id)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -362,7 +509,47 @@ func (c *CosmosRPCClient) GetProposal(ctx context.Context, id uint64) (*ports.Pr
 }
 
 // GetUpgradePlan retrieves the current upgrade plan.
+// Strategy: Plugin first, REST fallback for backward compatibility.
 func (c *CosmosRPCClient) GetUpgradePlan(ctx context.Context) (*ports.UpgradePlan, error) {
+	// Phase 1: Try plugin-based query first
+	if c.pluginModule != nil {
+		resp, err := c.pluginModule.GetUpgradePlan(ctx, c.restBaseURL)
+		if err == nil {
+			if resp.Error != "" {
+				return nil, &RPCError{Operation: "get_upgrade_plan", Message: resp.Error}
+			}
+			if !resp.HasPlan {
+				return nil, nil // No upgrade scheduled
+			}
+			return convertUpgradePlanFromProto(resp), nil
+		}
+		// Check if plugin doesn't implement this method
+		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
+			// Fall through to REST
+		} else {
+			return nil, &RPCError{Operation: "get_upgrade_plan", Message: err.Error()}
+		}
+	}
+
+	// Phase 2: REST fallback
+	return c.getUpgradePlanViaREST(ctx)
+}
+
+// convertUpgradePlanFromProto converts a protobuf UpgradePlanResponse to ports.UpgradePlan.
+func convertUpgradePlanFromProto(resp *pb.UpgradePlanResponse) *ports.UpgradePlan {
+	plan := &ports.UpgradePlan{
+		Name:   resp.Name,
+		Height: resp.Height,
+		Info:   resp.Info,
+	}
+	if resp.TimeUnix > 0 {
+		plan.Time = time.Unix(resp.TimeUnix, 0)
+	}
+	return plan
+}
+
+// getUpgradePlanViaREST retrieves upgrade plan via direct REST API call.
+func (c *CosmosRPCClient) getUpgradePlanViaREST(ctx context.Context) (*ports.UpgradePlan, error) {
 	url := fmt.Sprintf("%s/cosmos/upgrade/v1beta1/current_plan", c.restURL())
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -424,8 +611,31 @@ func (c *CosmosRPCClient) restURL() string {
 }
 
 // GetAppVersion returns the application version from /abci_info.
-// This is set by the application during InitChain and can be updated via upgrades.
+// Strategy: Plugin first, REST fallback for backward compatibility.
 func (c *CosmosRPCClient) GetAppVersion(ctx context.Context) (string, error) {
+	// Phase 1: Try plugin-based query first
+	if c.pluginModule != nil {
+		resp, err := c.pluginModule.GetAppVersion(ctx, c.baseURL)
+		if err == nil {
+			if resp.Error != "" {
+				return "", &RPCError{Operation: "get_app_version", Message: resp.Error}
+			}
+			return resp.Version, nil
+		}
+		// Check if plugin doesn't implement this method
+		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
+			// Fall through to REST
+		} else {
+			return "", &RPCError{Operation: "get_app_version", Message: err.Error()}
+		}
+	}
+
+	// Phase 2: REST fallback
+	return c.getAppVersionViaREST(ctx)
+}
+
+// getAppVersionViaREST retrieves app version via direct REST API call.
+func (c *CosmosRPCClient) getAppVersionViaREST(ctx context.Context) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/abci_info", nil)
 	if err != nil {
 		return "", &RPCError{Operation: "abci_info", Message: err.Error()}

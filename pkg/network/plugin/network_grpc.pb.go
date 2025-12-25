@@ -52,6 +52,13 @@ const (
 	NetworkModule_AvailableNetworks_FullMethodName      = "/network.NetworkModule/AvailableNetworks"
 	NetworkModule_GetConfigOverrides_FullMethodName     = "/network.NetworkModule/GetConfigOverrides"
 	NetworkModule_GetGovernanceParams_FullMethodName    = "/network.NetworkModule/GetGovernanceParams"
+	NetworkModule_GetBlockHeight_FullMethodName         = "/network.NetworkModule/GetBlockHeight"
+	NetworkModule_GetBlockTime_FullMethodName           = "/network.NetworkModule/GetBlockTime"
+	NetworkModule_IsChainRunning_FullMethodName         = "/network.NetworkModule/IsChainRunning"
+	NetworkModule_WaitForBlock_FullMethodName           = "/network.NetworkModule/WaitForBlock"
+	NetworkModule_GetProposal_FullMethodName            = "/network.NetworkModule/GetProposal"
+	NetworkModule_GetUpgradePlan_FullMethodName         = "/network.NetworkModule/GetUpgradePlan"
+	NetworkModule_GetAppVersion_FullMethodName          = "/network.NetworkModule/GetAppVersion"
 )
 
 // NetworkModuleClient is the client API for NetworkModule service.
@@ -109,6 +116,16 @@ type NetworkModuleClient interface {
 	// Plugins implement chain-specific logic to query voting periods, deposit amounts,
 	// and other governance settings needed for upgrade workflows.
 	GetGovernanceParams(ctx context.Context, in *GovernanceParamsRequest, opts ...grpc.CallOption) (*GovernanceParamsResponse, error)
+	// RPC Operations
+	// All blockchain RPC operations are delegated to plugins to allow chain-specific implementations.
+	// Each plugin implements these methods using their chain's specific RPC/REST endpoints.
+	GetBlockHeight(ctx context.Context, in *BlockHeightRequest, opts ...grpc.CallOption) (*BlockHeightResponse, error)
+	GetBlockTime(ctx context.Context, in *BlockTimeRequest, opts ...grpc.CallOption) (*BlockTimeResponse, error)
+	IsChainRunning(ctx context.Context, in *ChainStatusRequest, opts ...grpc.CallOption) (*ChainStatusResponse, error)
+	WaitForBlock(ctx context.Context, in *WaitForBlockRequest, opts ...grpc.CallOption) (*WaitForBlockResponse, error)
+	GetProposal(ctx context.Context, in *ProposalRequest, opts ...grpc.CallOption) (*ProposalResponse, error)
+	GetUpgradePlan(ctx context.Context, in *UpgradePlanRequest, opts ...grpc.CallOption) (*UpgradePlanResponse, error)
+	GetAppVersion(ctx context.Context, in *AppVersionRequest, opts ...grpc.CallOption) (*AppVersionResponse, error)
 }
 
 type networkModuleClient struct {
@@ -449,6 +466,76 @@ func (c *networkModuleClient) GetGovernanceParams(ctx context.Context, in *Gover
 	return out, nil
 }
 
+func (c *networkModuleClient) GetBlockHeight(ctx context.Context, in *BlockHeightRequest, opts ...grpc.CallOption) (*BlockHeightResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BlockHeightResponse)
+	err := c.cc.Invoke(ctx, NetworkModule_GetBlockHeight_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *networkModuleClient) GetBlockTime(ctx context.Context, in *BlockTimeRequest, opts ...grpc.CallOption) (*BlockTimeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BlockTimeResponse)
+	err := c.cc.Invoke(ctx, NetworkModule_GetBlockTime_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *networkModuleClient) IsChainRunning(ctx context.Context, in *ChainStatusRequest, opts ...grpc.CallOption) (*ChainStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ChainStatusResponse)
+	err := c.cc.Invoke(ctx, NetworkModule_IsChainRunning_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *networkModuleClient) WaitForBlock(ctx context.Context, in *WaitForBlockRequest, opts ...grpc.CallOption) (*WaitForBlockResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WaitForBlockResponse)
+	err := c.cc.Invoke(ctx, NetworkModule_WaitForBlock_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *networkModuleClient) GetProposal(ctx context.Context, in *ProposalRequest, opts ...grpc.CallOption) (*ProposalResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProposalResponse)
+	err := c.cc.Invoke(ctx, NetworkModule_GetProposal_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *networkModuleClient) GetUpgradePlan(ctx context.Context, in *UpgradePlanRequest, opts ...grpc.CallOption) (*UpgradePlanResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpgradePlanResponse)
+	err := c.cc.Invoke(ctx, NetworkModule_GetUpgradePlan_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *networkModuleClient) GetAppVersion(ctx context.Context, in *AppVersionRequest, opts ...grpc.CallOption) (*AppVersionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AppVersionResponse)
+	err := c.cc.Invoke(ctx, NetworkModule_GetAppVersion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NetworkModuleServer is the server API for NetworkModule service.
 // All implementations must embed UnimplementedNetworkModuleServer
 // for forward compatibility.
@@ -504,6 +591,16 @@ type NetworkModuleServer interface {
 	// Plugins implement chain-specific logic to query voting periods, deposit amounts,
 	// and other governance settings needed for upgrade workflows.
 	GetGovernanceParams(context.Context, *GovernanceParamsRequest) (*GovernanceParamsResponse, error)
+	// RPC Operations
+	// All blockchain RPC operations are delegated to plugins to allow chain-specific implementations.
+	// Each plugin implements these methods using their chain's specific RPC/REST endpoints.
+	GetBlockHeight(context.Context, *BlockHeightRequest) (*BlockHeightResponse, error)
+	GetBlockTime(context.Context, *BlockTimeRequest) (*BlockTimeResponse, error)
+	IsChainRunning(context.Context, *ChainStatusRequest) (*ChainStatusResponse, error)
+	WaitForBlock(context.Context, *WaitForBlockRequest) (*WaitForBlockResponse, error)
+	GetProposal(context.Context, *ProposalRequest) (*ProposalResponse, error)
+	GetUpgradePlan(context.Context, *UpgradePlanRequest) (*UpgradePlanResponse, error)
+	GetAppVersion(context.Context, *AppVersionRequest) (*AppVersionResponse, error)
 	mustEmbedUnimplementedNetworkModuleServer()
 }
 
@@ -612,6 +709,27 @@ func (UnimplementedNetworkModuleServer) GetConfigOverrides(context.Context, *Nod
 }
 func (UnimplementedNetworkModuleServer) GetGovernanceParams(context.Context, *GovernanceParamsRequest) (*GovernanceParamsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetGovernanceParams not implemented")
+}
+func (UnimplementedNetworkModuleServer) GetBlockHeight(context.Context, *BlockHeightRequest) (*BlockHeightResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBlockHeight not implemented")
+}
+func (UnimplementedNetworkModuleServer) GetBlockTime(context.Context, *BlockTimeRequest) (*BlockTimeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBlockTime not implemented")
+}
+func (UnimplementedNetworkModuleServer) IsChainRunning(context.Context, *ChainStatusRequest) (*ChainStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method IsChainRunning not implemented")
+}
+func (UnimplementedNetworkModuleServer) WaitForBlock(context.Context, *WaitForBlockRequest) (*WaitForBlockResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method WaitForBlock not implemented")
+}
+func (UnimplementedNetworkModuleServer) GetProposal(context.Context, *ProposalRequest) (*ProposalResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetProposal not implemented")
+}
+func (UnimplementedNetworkModuleServer) GetUpgradePlan(context.Context, *UpgradePlanRequest) (*UpgradePlanResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetUpgradePlan not implemented")
+}
+func (UnimplementedNetworkModuleServer) GetAppVersion(context.Context, *AppVersionRequest) (*AppVersionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAppVersion not implemented")
 }
 func (UnimplementedNetworkModuleServer) mustEmbedUnimplementedNetworkModuleServer() {}
 func (UnimplementedNetworkModuleServer) testEmbeddedByValue()                       {}
@@ -1228,6 +1346,132 @@ func _NetworkModule_GetGovernanceParams_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NetworkModule_GetBlockHeight_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BlockHeightRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkModuleServer).GetBlockHeight(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkModule_GetBlockHeight_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkModuleServer).GetBlockHeight(ctx, req.(*BlockHeightRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NetworkModule_GetBlockTime_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BlockTimeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkModuleServer).GetBlockTime(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkModule_GetBlockTime_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkModuleServer).GetBlockTime(ctx, req.(*BlockTimeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NetworkModule_IsChainRunning_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ChainStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkModuleServer).IsChainRunning(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkModule_IsChainRunning_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkModuleServer).IsChainRunning(ctx, req.(*ChainStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NetworkModule_WaitForBlock_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WaitForBlockRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkModuleServer).WaitForBlock(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkModule_WaitForBlock_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkModuleServer).WaitForBlock(ctx, req.(*WaitForBlockRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NetworkModule_GetProposal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProposalRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkModuleServer).GetProposal(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkModule_GetProposal_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkModuleServer).GetProposal(ctx, req.(*ProposalRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NetworkModule_GetUpgradePlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpgradePlanRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkModuleServer).GetUpgradePlan(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkModule_GetUpgradePlan_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkModuleServer).GetUpgradePlan(ctx, req.(*UpgradePlanRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NetworkModule_GetAppVersion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AppVersionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkModuleServer).GetAppVersion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkModule_GetAppVersion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkModuleServer).GetAppVersion(ctx, req.(*AppVersionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NetworkModule_ServiceDesc is the grpc.ServiceDesc for NetworkModule service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1366,6 +1610,34 @@ var NetworkModule_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetGovernanceParams",
 			Handler:    _NetworkModule_GetGovernanceParams_Handler,
+		},
+		{
+			MethodName: "GetBlockHeight",
+			Handler:    _NetworkModule_GetBlockHeight_Handler,
+		},
+		{
+			MethodName: "GetBlockTime",
+			Handler:    _NetworkModule_GetBlockTime_Handler,
+		},
+		{
+			MethodName: "IsChainRunning",
+			Handler:    _NetworkModule_IsChainRunning_Handler,
+		},
+		{
+			MethodName: "WaitForBlock",
+			Handler:    _NetworkModule_WaitForBlock_Handler,
+		},
+		{
+			MethodName: "GetProposal",
+			Handler:    _NetworkModule_GetProposal_Handler,
+		},
+		{
+			MethodName: "GetUpgradePlan",
+			Handler:    _NetworkModule_GetUpgradePlan_Handler,
+		},
+		{
+			MethodName: "GetAppVersion",
+			Handler:    _NetworkModule_GetAppVersion_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

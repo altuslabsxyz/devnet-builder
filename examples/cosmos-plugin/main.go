@@ -339,3 +339,120 @@ func (n *CosmosNetwork) GetGovernanceParams(rpcEndpoint, networkType string) (*p
 	//     Error: fmt.Sprintf("failed to connect to %s: connection refused", rpcEndpoint),
 	// }, nil
 }
+
+// ============================================
+// RPC Operations (Plugin-based Delegation)
+// ============================================
+// These methods implement chain-specific RPC queries.
+// Each method should query the blockchain via its RPC/REST endpoints.
+// This allows full delegation of RPC operations to the plugin.
+
+// GetBlockHeight returns the current block height from the chain.
+// Plugins should query the RPC endpoint's /status endpoint.
+func (n *CosmosNetwork) GetBlockHeight(ctx context.Context, rpcEndpoint string) (*plugin.BlockHeightResponse, error) {
+	// In a real implementation:
+	// 1. Make HTTP GET request to rpcEndpoint + "/status"
+	// 2. Parse JSON response to get result.sync_info.latest_block_height
+	// 3. Return the height
+	//
+	// For this example, return a sample response:
+	return &plugin.BlockHeightResponse{
+		Height: 12345,
+		Error:  "",
+	}, nil
+}
+
+// GetBlockTime estimates the average block time from recent blocks.
+// Plugins should calculate this by sampling recent blocks.
+func (n *CosmosNetwork) GetBlockTime(ctx context.Context, rpcEndpoint string, sampleSize int) (*plugin.BlockTimeResponse, error) {
+	// In a real implementation:
+	// 1. Get current block height
+	// 2. Get timestamps for blocks from (height - sampleSize) to height
+	// 3. Calculate average time between consecutive blocks
+	// 4. Return as nanoseconds
+	//
+	// For Cosmos Hub, typical block time is ~6 seconds
+	return &plugin.BlockTimeResponse{
+		BlockTimeNs: int64(6 * time.Second),
+		Error:       "",
+	}, nil
+}
+
+// IsChainRunning checks if the chain is responding to RPC requests.
+func (n *CosmosNetwork) IsChainRunning(ctx context.Context, rpcEndpoint string) (*plugin.ChainStatusResponse, error) {
+	// In a real implementation:
+	// 1. Attempt to query /status endpoint
+	// 2. Return true if successful, false otherwise
+	return &plugin.ChainStatusResponse{
+		IsRunning: true,
+		Error:     "",
+	}, nil
+}
+
+// WaitForBlock waits until the chain reaches the specified height.
+// Plugins should poll the chain until the target height is reached or timeout.
+func (n *CosmosNetwork) WaitForBlock(ctx context.Context, rpcEndpoint string, targetHeight int64, timeoutMs int64) (*plugin.WaitForBlockResponse, error) {
+	// In a real implementation:
+	// 1. Poll /status every few seconds
+	// 2. Check if latest_block_height >= targetHeight
+	// 3. Return when reached or on timeout
+	return &plugin.WaitForBlockResponse{
+		CurrentHeight: targetHeight,
+		Reached:       true,
+		Error:         "",
+	}, nil
+}
+
+// GetProposal retrieves a governance proposal by ID.
+// Plugins should query /cosmos/gov/v1/proposals/{id} endpoint.
+func (n *CosmosNetwork) GetProposal(ctx context.Context, rpcEndpoint string, proposalID uint64) (*plugin.ProposalResponse, error) {
+	// In a real implementation:
+	// 1. Make HTTP GET request to rpcEndpoint + "/cosmos/gov/v1/proposals/{id}"
+	// 2. Parse JSON response to extract proposal details
+	// 3. Convert timestamps to Unix seconds
+	return &plugin.ProposalResponse{
+		Id:                 proposalID,
+		Title:              "Example Proposal",
+		Description:        "This is an example proposal",
+		Status:             "PROPOSAL_STATUS_VOTING_PERIOD",
+		VotingEndTimeUnix:  time.Now().Add(60 * time.Second).Unix(),
+		SubmitTimeUnix:     time.Now().Add(-60 * time.Second).Unix(),
+		DepositEndTimeUnix: time.Now().Add(-30 * time.Second).Unix(),
+		TotalDeposit:       "10000000uatom",
+		FinalTallyYes:      "0",
+		FinalTallyNo:       "0",
+		FinalTallyAbstain:  "0",
+		Error:              "",
+	}, nil
+}
+
+// GetUpgradePlan retrieves the current upgrade plan if any.
+// Plugins should query /cosmos/upgrade/v1beta1/current_plan endpoint.
+func (n *CosmosNetwork) GetUpgradePlan(ctx context.Context, rpcEndpoint string) (*plugin.UpgradePlanResponse, error) {
+	// In a real implementation:
+	// 1. Make HTTP GET request to rpcEndpoint + "/cosmos/upgrade/v1beta1/current_plan"
+	// 2. Check if plan exists (response.plan != null)
+	// 3. Parse and return plan details
+	//
+	// For this example, return no upgrade scheduled:
+	return &plugin.UpgradePlanResponse{
+		Name:     "",
+		Height:   0,
+		Info:     "",
+		TimeUnix: 0,
+		HasPlan:  false,
+		Error:    "",
+	}, nil
+}
+
+// GetAppVersion returns the application version from ABCI info.
+// Plugins should query /abci_info endpoint.
+func (n *CosmosNetwork) GetAppVersion(ctx context.Context, rpcEndpoint string) (*plugin.AppVersionResponse, error) {
+	// In a real implementation:
+	// 1. Make HTTP GET request to rpcEndpoint + "/abci_info"
+	// 2. Parse JSON response to get result.response.version
+	return &plugin.AppVersionResponse{
+		Version: "v18.1.0",
+		Error:   "",
+	}, nil
+}

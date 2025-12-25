@@ -375,6 +375,77 @@ func (s *GRPCServer) GetGovernanceParams(ctx context.Context, req *GovernancePar
 	return nil, status.Errorf(codes.Unimplemented, "method GetGovernanceParams not implemented")
 }
 
+// RPC Operations - All blockchain RPC operations delegated to plugins.
+// These methods use type assertions to check if the plugin implements the optional interface,
+// returning Unimplemented error for backward compatibility with older plugins.
+
+// RPCProvider defines the interface for RPC operations that plugins can implement.
+type RPCProvider interface {
+	GetBlockHeight(ctx context.Context, rpcEndpoint string) (*BlockHeightResponse, error)
+	GetBlockTime(ctx context.Context, rpcEndpoint string, sampleSize int) (*BlockTimeResponse, error)
+	IsChainRunning(ctx context.Context, rpcEndpoint string) (*ChainStatusResponse, error)
+	WaitForBlock(ctx context.Context, rpcEndpoint string, targetHeight int64, timeoutMs int64) (*WaitForBlockResponse, error)
+	GetProposal(ctx context.Context, rpcEndpoint string, proposalID uint64) (*ProposalResponse, error)
+	GetUpgradePlan(ctx context.Context, rpcEndpoint string) (*UpgradePlanResponse, error)
+	GetAppVersion(ctx context.Context, rpcEndpoint string) (*AppVersionResponse, error)
+}
+
+// GetBlockHeight retrieves the current block height via the plugin.
+func (s *GRPCServer) GetBlockHeight(ctx context.Context, req *BlockHeightRequest) (*BlockHeightResponse, error) {
+	if rpc, ok := s.impl.(RPCProvider); ok {
+		return rpc.GetBlockHeight(ctx, req.RpcEndpoint)
+	}
+	return nil, status.Errorf(codes.Unimplemented, "method GetBlockHeight not implemented")
+}
+
+// GetBlockTime retrieves the average block time via the plugin.
+func (s *GRPCServer) GetBlockTime(ctx context.Context, req *BlockTimeRequest) (*BlockTimeResponse, error) {
+	if rpc, ok := s.impl.(RPCProvider); ok {
+		return rpc.GetBlockTime(ctx, req.RpcEndpoint, int(req.SampleSize))
+	}
+	return nil, status.Errorf(codes.Unimplemented, "method GetBlockTime not implemented")
+}
+
+// IsChainRunning checks if the chain is responding via the plugin.
+func (s *GRPCServer) IsChainRunning(ctx context.Context, req *ChainStatusRequest) (*ChainStatusResponse, error) {
+	if rpc, ok := s.impl.(RPCProvider); ok {
+		return rpc.IsChainRunning(ctx, req.RpcEndpoint)
+	}
+	return nil, status.Errorf(codes.Unimplemented, "method IsChainRunning not implemented")
+}
+
+// WaitForBlock waits until the chain reaches the specified height via the plugin.
+func (s *GRPCServer) WaitForBlock(ctx context.Context, req *WaitForBlockRequest) (*WaitForBlockResponse, error) {
+	if rpc, ok := s.impl.(RPCProvider); ok {
+		return rpc.WaitForBlock(ctx, req.RpcEndpoint, req.TargetHeight, req.TimeoutMs)
+	}
+	return nil, status.Errorf(codes.Unimplemented, "method WaitForBlock not implemented")
+}
+
+// GetProposal retrieves a governance proposal by ID via the plugin.
+func (s *GRPCServer) GetProposal(ctx context.Context, req *ProposalRequest) (*ProposalResponse, error) {
+	if rpc, ok := s.impl.(RPCProvider); ok {
+		return rpc.GetProposal(ctx, req.RpcEndpoint, req.ProposalId)
+	}
+	return nil, status.Errorf(codes.Unimplemented, "method GetProposal not implemented")
+}
+
+// GetUpgradePlan retrieves the current upgrade plan via the plugin.
+func (s *GRPCServer) GetUpgradePlan(ctx context.Context, req *UpgradePlanRequest) (*UpgradePlanResponse, error) {
+	if rpc, ok := s.impl.(RPCProvider); ok {
+		return rpc.GetUpgradePlan(ctx, req.RpcEndpoint)
+	}
+	return nil, status.Errorf(codes.Unimplemented, "method GetUpgradePlan not implemented")
+}
+
+// GetAppVersion retrieves the application version via the plugin.
+func (s *GRPCServer) GetAppVersion(ctx context.Context, req *AppVersionRequest) (*AppVersionResponse, error) {
+	if rpc, ok := s.impl.(RPCProvider); ok {
+		return rpc.GetAppVersion(ctx, req.RpcEndpoint)
+	}
+	return nil, status.Errorf(codes.Unimplemented, "method GetAppVersion not implemented")
+}
+
 // Helper to convert Duration
 func durationToSeconds(d time.Duration) int64 {
 	return int64(d.Seconds())

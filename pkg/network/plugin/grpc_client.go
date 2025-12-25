@@ -463,3 +463,86 @@ func (c *GRPCClient) GetGovernanceParams(rpcEndpoint, networkType string) (*Gove
 
 	return resp, nil
 }
+
+// RPC Operations - All blockchain RPC operations delegated to plugins
+
+// GetBlockHeight retrieves the current block height from the plugin.
+func (c *GRPCClient) GetBlockHeight(ctx context.Context, rpcEndpoint string) (*BlockHeightResponse, error) {
+	resp, err := c.client.GetBlockHeight(ctx, &BlockHeightRequest{
+		RpcEndpoint: rpcEndpoint,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// GetBlockTime retrieves the average block time from the plugin.
+func (c *GRPCClient) GetBlockTime(ctx context.Context, rpcEndpoint string, sampleSize int) (*BlockTimeResponse, error) {
+	resp, err := c.client.GetBlockTime(ctx, &BlockTimeRequest{
+		RpcEndpoint: rpcEndpoint,
+		SampleSize:  int32(sampleSize),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// IsChainRunning checks if the chain is responding via the plugin.
+func (c *GRPCClient) IsChainRunning(ctx context.Context, rpcEndpoint string) (*ChainStatusResponse, error) {
+	resp, err := c.client.IsChainRunning(ctx, &ChainStatusRequest{
+		RpcEndpoint: rpcEndpoint,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// WaitForBlock waits until the chain reaches the specified height via the plugin.
+func (c *GRPCClient) WaitForBlock(ctx context.Context, rpcEndpoint string, targetHeight int64, timeoutMs int64) (*WaitForBlockResponse, error) {
+	resp, err := c.client.WaitForBlock(ctx, &WaitForBlockRequest{
+		RpcEndpoint:  rpcEndpoint,
+		TargetHeight: targetHeight,
+		TimeoutMs:    timeoutMs,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// GetProposal retrieves a governance proposal by ID via the plugin.
+func (c *GRPCClient) GetProposal(ctx context.Context, rpcEndpoint string, proposalID uint64) (*ProposalResponse, error) {
+	resp, err := c.client.GetProposal(ctx, &ProposalRequest{
+		RpcEndpoint: rpcEndpoint,
+		ProposalId:  proposalID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// GetUpgradePlan retrieves the current upgrade plan via the plugin.
+func (c *GRPCClient) GetUpgradePlan(ctx context.Context, rpcEndpoint string) (*UpgradePlanResponse, error) {
+	resp, err := c.client.GetUpgradePlan(ctx, &UpgradePlanRequest{
+		RpcEndpoint: rpcEndpoint,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// GetAppVersion retrieves the application version via the plugin.
+func (c *GRPCClient) GetAppVersion(ctx context.Context, rpcEndpoint string) (*AppVersionResponse, error) {
+	resp, err := c.client.GetAppVersion(ctx, &AppVersionRequest{
+		RpcEndpoint: rpcEndpoint,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}

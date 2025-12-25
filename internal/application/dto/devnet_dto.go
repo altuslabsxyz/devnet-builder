@@ -4,6 +4,7 @@
 package dto
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
@@ -25,6 +26,7 @@ type ProvisionInput struct {
 	CustomBinaryPath  string // For local mode with custom binary
 	UseSnapshot       bool   // If true, export genesis from snapshot state instead of RPC genesis
 	BinaryPath        string // Path to binary for state export (required when UseSnapshot=true)
+	UseTestMnemonic   bool   // If true, use deterministic test mnemonics for validators
 }
 
 // ProvisionOutput contains the result of provisioning.
@@ -321,4 +323,90 @@ type ExportInspectOutput struct {
 	IsComplete      bool        // All required files present
 	MissingFiles    []string    // List of missing files if incomplete
 	SizeBytes       int64       // Total size
+}
+
+// DockerConfig contains Docker-specific configuration for devnet deployment
+type DockerConfig struct {
+	NetworkID      string              // Docker network ID
+	NetworkName    string              // Docker network name
+	Subnet         string              // Subnet CIDR
+	PortRangeStart int                 // Start of allocated port range
+	PortRangeEnd   int                 // End of allocated port range
+	ResourceLimits *ResourceLimits     // Container resource limits
+	Image          string              // Docker image reference
+	CustomBuild    *CustomBuildConfig  // Optional custom image build config
+}
+
+// ResourceLimits defines container resource constraints
+type ResourceLimits struct {
+	Memory string // Memory limit (e.g., "2g", "512m")
+	CPUs   string // CPU limit (e.g., "2.0", "0.5")
+}
+
+// CustomBuildConfig specifies parameters for building custom chain images
+type CustomBuildConfig struct {
+	PluginPath  string            // Path to plugin source code
+	ChainBinary string            // Name of chain binary to build
+	BuildArgs   map[string]string // Docker build args
+}
+
+// DeploymentInput contains the input for Docker-based deployment
+type DeploymentInput struct {
+	HomeDir        string              // Base directory for devnet data
+	DevnetName     string              // Unique devnet identifier
+	ValidatorCount int                 // Number of validators (1-100)
+	Image          string              // Docker image reference
+	ChainID        string              // Blockchain chain ID
+	ResourceLimits *ResourceLimits     // Container resource limits
+	CustomBuild    *CustomBuildConfig  // Optional custom image build
+}
+
+// Validate validates the deployment input
+func (d *DeploymentInput) Validate() error {
+	if d.DevnetName == "" {
+		return ErrInvalidParameter{Field: "DevnetName", Reason: "cannot be empty"}
+	}
+	if d.ValidatorCount < 1 || d.ValidatorCount > 100 {
+		return ErrInvalidParameter{Field: "ValidatorCount", Reason: "must be 1-100"}
+	}
+	if d.Image == "" && d.CustomBuild == nil {
+		return ErrInvalidParameter{Field: "Image", Reason: "must specify image or custom build"}
+	}
+	if d.ChainID == "" {
+		return ErrInvalidParameter{Field: "ChainID", Reason: "cannot be empty"}
+	}
+	return nil
+}
+
+// ErrInvalidParameter is returned when a parameter validation fails
+type ErrInvalidParameter struct {
+	Field  string
+	Reason string
+}
+
+func (e ErrInvalidParameter) Error() string {
+	return fmt.Sprintf("invalid parameter %s: %s", e.Field, e.Reason)
+}
+
+// DeploymentOutput contains the result of deployment
+type DeploymentOutput struct {
+	DevnetName     string              // Devnet identifier
+	NetworkID      string              // Created Docker network ID
+	Subnet         string              // Allocated subnet
+	Containers     []*ContainerInfo    // Started container details
+	PortRangeStart int                 // Start of allocated port range
+	PortRangeEnd   int                 // End of allocated port range
+	Success        bool                // Whether deployment succeeded
+}
+
+// ContainerInfo represents a deployed container
+type ContainerInfo struct {
+	ID         string // Docker container ID
+	Name       string // Container name
+	NodeIndex  int    // Validator index
+	RPCPort    int    // RPC port
+	P2PPort    int    // P2P port
+	GRPCPort   int    // gRPC port
+	EVMRPCPort int    // EVM RPC port
+	EVMWSPort  int    // EVM WebSocket port
 }

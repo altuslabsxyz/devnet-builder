@@ -120,7 +120,7 @@ func (uc *ProvisionUseCase) Execute(ctx context.Context, input dto.ProvisionInpu
 	// Step 1: Create account keys for validators (for transaction signing)
 	uc.logger.Info("Creating validator account keys...")
 	accountsDir := filepath.Join(input.HomeDir, "devnet", "accounts")
-	accountKeys, err := uc.createAccountKeys(ctx, accountsDir, input.NumValidators)
+	accountKeys, err := uc.createAccountKeys(ctx, accountsDir, input.NumValidators, input.UseTestMnemonic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create account keys: %w", err)
 	}
@@ -395,19 +395,34 @@ func hexToBytes(hexStr string) ([]byte, error) {
 // createAccountKeys creates secp256k1 account keys for validators.
 // These keys are used for signing transactions (proposals, votes, etc.).
 // The keys are stored in the accounts directory keyring.
-func (uc *ProvisionUseCase) createAccountKeys(ctx context.Context, accountsDir string, numValidators int) ([]*ports.AccountKeyInfo, error) {
+// If useTestMnemonic is true, deterministic test mnemonics are used for reproducible testing.
+func (uc *ProvisionUseCase) createAccountKeys(ctx context.Context, accountsDir string, numValidators int, useTestMnemonic bool) ([]*ports.AccountKeyInfo, error) {
 	keys := make([]*ports.AccountKeyInfo, numValidators)
 
 	for i := 0; i < numValidators; i++ {
 		keyName := fmt.Sprintf("validator%d", i)
 
-		keyInfo, err := uc.nodeInitializer.CreateAccountKey(ctx, accountsDir, keyName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create account key for %s: %w", keyName, err)
+		var keyInfo *ports.AccountKeyInfo
+		var err error
+
+		if useTestMnemonic {
+			// Use deterministic test mnemonic for reproducible testing
+			mnemonic := uc.nodeInitializer.GetTestMnemonic(i)
+			keyInfo, err = uc.nodeInitializer.CreateAccountKeyFromMnemonic(ctx, accountsDir, keyName, mnemonic)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create account key from test mnemonic for %s: %w", keyName, err)
+			}
+			uc.logger.Debug("Created account key %s from test mnemonic: %s", keyName, keyInfo.Address)
+		} else {
+			// Generate new random mnemonic
+			keyInfo, err = uc.nodeInitializer.CreateAccountKey(ctx, accountsDir, keyName)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create account key for %s: %w", keyName, err)
+			}
+			uc.logger.Debug("Created account key %s: %s", keyName, keyInfo.Address)
 		}
 
 		keys[i] = keyInfo
-		uc.logger.Debug("Created account key %s: %s", keyName, keyInfo.Address)
 	}
 
 	return keys, nil

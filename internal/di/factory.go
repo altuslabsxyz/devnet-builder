@@ -175,6 +175,14 @@ func (a *nodeInitializerAdapter) GetAccountKey(ctx context.Context, keyringDir, 
 	return a.inner.GetAccountKey(ctx, keyringDir, keyName)
 }
 
+func (a *nodeInitializerAdapter) CreateAccountKeyFromMnemonic(ctx context.Context, keyringDir, keyName, mnemonic string) (*ports.AccountKeyInfo, error) {
+	return a.inner.CreateAccountKeyFromMnemonic(ctx, keyringDir, keyName, mnemonic)
+}
+
+func (a *nodeInitializerAdapter) GetTestMnemonic(validatorIndex int) string {
+	return a.inner.GetTestMnemonic(validatorIndex)
+}
+
 // CreateNodeManagerFactory creates a NodeManagerFactory.
 func (f *InfrastructureFactory) CreateNodeManagerFactory() *infranode.NodeManagerFactory {
 	mode := infranode.ModeLocal

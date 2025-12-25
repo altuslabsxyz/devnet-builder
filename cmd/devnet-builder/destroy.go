@@ -21,6 +21,7 @@ func NewDestroyCmd() *cobra.Command {
 		Long: `Remove all devnet data from the home directory.
 
 This command removes the devnet directory and optionally the snapshot cache.
+For Docker mode deployments, this also cleans up Docker networks and releases port allocations.
 Use with caution as this is irreversible.
 
 Examples:
