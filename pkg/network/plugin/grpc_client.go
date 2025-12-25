@@ -445,3 +445,21 @@ func (c *GRPCClient) ModifyGenesisFile(inputPath, outputPath string, opts networ
 	}
 	return resp.OutputSize, nil
 }
+
+// GetGovernanceParams retrieves governance parameters from the plugin.
+// This allows each network plugin to implement chain-specific parameter query logic.
+func (c *GRPCClient) GetGovernanceParams(rpcEndpoint, networkType string) (*GovernanceParamsResponse, error) {
+	// Use 5-second timeout for governance parameter queries
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resp, err := c.client.GetGovernanceParams(ctx, &GovernanceParamsRequest{
+		RpcEndpoint: rpcEndpoint,
+		NetworkType: networkType,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
