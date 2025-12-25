@@ -163,8 +163,8 @@ func TestMultiDevnetIsolation_ConcurrentDeployment(t *testing.T) {
 			networkManager := docker.NewNetworkManager()
 			portAllocator := docker.NewPortAllocator(tmpDir)
 
-			// Add small stagger to reduce concurrent network creation conflicts
-			time.Sleep(time.Duration(index) * 100 * time.Millisecond)
+			// Add stagger to reduce concurrent network creation conflicts
+			time.Sleep(time.Duration(index) * 500 * time.Millisecond)
 
 			netID, _, err := networkManager.CreateNetwork(ctx, name)
 			if err != nil {
@@ -270,6 +270,10 @@ func TestMultiDevnetIsolation_PortConflictDetection(t *testing.T) {
 func startTestContainer(t *testing.T, ctx context.Context, name, networkID string) string {
 	t.Helper()
 
+	// Ensure alpine image is available (pull if needed)
+	pullCmd := exec.CommandContext(ctx, "docker", "pull", "-q", "alpine:latest")
+	pullCmd.Run() // Ignore errors - if image exists, this will be fast
+
 	// Use alpine:latest for lightweight test container
 	cmd := exec.CommandContext(ctx, "docker", "run", "-d",
 		"--name", name,
@@ -283,7 +287,15 @@ func startTestContainer(t *testing.T, ctx context.Context, name, networkID strin
 		t.Fatalf("Failed to start test container: %v\nOutput: %s", err, string(output))
 	}
 
-	containerID := strings.TrimSpace(string(output))
+	// Get the last line which contains the container ID
+	// (docker pull output may be included in stderr when using CombinedOutput)
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	containerID := strings.TrimSpace(lines[len(lines)-1])
+
+	if len(containerID) < 12 {
+		t.Fatalf("Invalid container ID: %s (full output: %s)", containerID, string(output))
+	}
+
 	t.Logf("Started test container: %s (ID: %s)", name, containerID[:12])
 	return containerID
 }
