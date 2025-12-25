@@ -195,8 +195,16 @@ type NodeInitializer interface {
 	// Keys are stored in keyringDir with the test backend.
 	CreateAccountKey(ctx context.Context, keyringDir, keyName string) (*AccountKeyInfo, error)
 
+	// CreateAccountKeyFromMnemonic creates/recovers an account key from a specific mnemonic.
+	// This is used for deterministic testing with well-known mnemonics.
+	CreateAccountKeyFromMnemonic(ctx context.Context, keyringDir, keyName, mnemonic string) (*AccountKeyInfo, error)
+
 	// GetAccountKey retrieves information about an existing account key.
 	GetAccountKey(ctx context.Context, keyringDir, keyName string) (*AccountKeyInfo, error)
+
+	// GetTestMnemonic returns a deterministic test mnemonic for the given validator index.
+	// These are well-known BIP39 mnemonics for reproducible testing.
+	GetTestMnemonic(validatorIndex int) string
 }
 
 // GenesisModifyOptions holds options for modifying genesis.

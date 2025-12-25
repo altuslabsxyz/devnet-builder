@@ -393,3 +393,95 @@ func (i *NodeInitializer) GetAccountKey(ctx context.Context, keyringDir, keyName
 
 	return &result, nil
 }
+
+// TestMnemonics contains well-known BIP39 mnemonics for deterministic testing.
+// These are the same mnemonics used by popular development tools (Ganache, Hardhat, etc.)
+// DO NOT use these for any real funds - they are publicly known test mnemonics.
+var TestMnemonics = []string{
+	// Validator 0 - Standard test mnemonic used by many tools
+	"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+	// Validator 1
+	"test test test test test test test test test test test junk",
+	// Validator 2
+	"zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong",
+	// Validator 3
+	"option option option option option option option option option option option pudding",
+}
+
+// GetTestMnemonic returns a deterministic test mnemonic for the given validator index.
+// If the index exceeds available test mnemonics, it wraps around.
+func (i *NodeInitializer) GetTestMnemonic(validatorIndex int) string {
+	if len(TestMnemonics) == 0 {
+		return TestMnemonics[0]
+	}
+	return TestMnemonics[validatorIndex%len(TestMnemonics)]
+}
+
+// CreateAccountKeyFromMnemonic creates/recovers an account key from a specific mnemonic.
+// This is used for deterministic testing with well-known mnemonics.
+func (i *NodeInitializer) CreateAccountKeyFromMnemonic(ctx context.Context, keyringDir, keyName, mnemonic string) (*ports.AccountKeyInfo, error) {
+	i.logger.Debug("Recovering account key %s from mnemonic in %s", keyName, keyringDir)
+
+	// Ensure keyring directory exists
+	if err := os.MkdirAll(keyringDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create keyring directory: %w", err)
+	}
+
+	// Determine binary path
+	binaryPath := i.binaryPath
+	if binaryPath == "" {
+		binaryPath = "stabled"
+	}
+
+	// Delete existing key first to avoid interactive prompt
+	deleteArgs := []string{
+		"keys", "delete", keyName,
+		"--keyring-backend", "test",
+		"--home", keyringDir,
+		"-y",
+	}
+	_ = exec.CommandContext(ctx, binaryPath, deleteArgs...).Run()
+
+	// Recover key from mnemonic using --recover flag
+	// The mnemonic is passed via stdin
+	args := []string{
+		"keys", "add", keyName,
+		"--keyring-backend", "test",
+		"--home", keyringDir,
+		"--recover",
+		"--output", "json",
+	}
+
+	cmd := exec.CommandContext(ctx, binaryPath, args...)
+	// Pass mnemonic via stdin
+	cmd.Stdin = strings.NewReader(mnemonic + "\n")
+
+	cmdOutput, err := cmd.CombinedOutput()
+	if err != nil {
+		i.logger.PrintCommandError(&output.CommandErrorInfo{
+			Command:  binaryPath,
+			Args:     args,
+			WorkDir:  keyringDir,
+			Stderr:   string(cmdOutput),
+			ExitCode: getExitCode(err),
+			Error:    err,
+		})
+		return nil, fmt.Errorf("failed to recover account key from mnemonic: %w", err)
+	}
+
+	// Parse the JSON output
+	var result ports.AccountKeyInfo
+	if err := json.Unmarshal(cmdOutput, &result); err != nil {
+		// Try to get key info if output parsing fails
+		keyInfo, getErr := i.GetAccountKey(ctx, keyringDir, keyName)
+		if getErr != nil {
+			return nil, fmt.Errorf("failed to parse key info and get key: %w", err)
+		}
+		keyInfo.Mnemonic = mnemonic
+		return keyInfo, nil
+	}
+
+	// Set the mnemonic in the result (recover doesn't output mnemonic)
+	result.Mnemonic = mnemonic
+	return &result, nil
+}
