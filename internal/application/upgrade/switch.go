@@ -69,7 +69,11 @@ func (uc *SwitchBinaryUseCase) Execute(ctx context.Context, input dto.SwitchBina
 
 	// For local mode, activate the new binary
 	if input.Mode == ports.ModeLocal && newBinary != "" {
-		if err := uc.binaryCache.SetActive(input.CommitHash); err != nil {
+		cacheRef := input.CacheRef
+		if cacheRef == "" {
+			cacheRef = input.CommitHash // Fallback for backward compatibility
+		}
+		if err := uc.binaryCache.SetActive(cacheRef); err != nil {
 			return nil, fmt.Errorf("failed to activate binary: %w", err)
 		}
 	}

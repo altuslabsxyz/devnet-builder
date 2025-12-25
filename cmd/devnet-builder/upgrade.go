@@ -329,7 +329,8 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	// If we have a cached binary, use cache mode for atomic symlink switch
 	if cachedBuildResult != nil {
 		input.CachePath = cachedBuildResult.BinaryPath
-		input.CommitHash = cachedBuildResult.CommitHash
+		input.CommitHash = cachedBuildResult.CommitHash // Deprecated, kept for compatibility
+		input.CacheRef = cachedBuildResult.CacheRef     // Use CacheRef for SetActive
 		input.TargetBinary = "" // Clear since we're using cache
 	}
 

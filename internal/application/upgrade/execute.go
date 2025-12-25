@@ -112,7 +112,8 @@ func (uc *ExecuteUpgradeUseCase) Execute(ctx context.Context, input dto.ExecuteU
 		TargetImage:   input.TargetImage,
 		TargetVersion: input.TargetVersion,
 		CachePath:     input.CachePath,
-		CommitHash:    input.CommitHash,
+		CommitHash:    input.CommitHash, // Deprecated, kept for compatibility
+		CacheRef:      input.CacheRef,   // Use CacheRef for SetActive
 		Mode:          input.Mode,
 		UpgradeHeight: proposeResult.UpgradeHeight,
 	})
