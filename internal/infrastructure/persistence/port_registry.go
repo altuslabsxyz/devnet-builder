@@ -108,6 +108,9 @@ func (r *PortRegistryFile) Save(ctx context.Context, allocations []*ports.PortAl
 
 // WithLock executes a function with an exclusive file lock
 // This prevents race conditions when multiple processes access the registry
+//
+// Uses a separate .lock file to avoid issues with atomic rename operations
+// replacing the registry file while holding a lock on the old file descriptor.
 func (r *PortRegistryFile) WithLock(ctx context.Context, fn func() error) error {
 	// Ensure registry directory exists
 	dir := filepath.Dir(r.registryPath)
@@ -115,19 +118,20 @@ func (r *PortRegistryFile) WithLock(ctx context.Context, fn func() error) error 
 		return fmt.Errorf("failed to create registry directory: %w", err)
 	}
 
-	// Open or create registry file
-	file, err := os.OpenFile(r.registryPath, os.O_RDWR|os.O_CREATE, 0644)
+	// Use a separate lock file to avoid race conditions with atomic rename
+	lockPath := r.registryPath + ".lock"
+	lockFile, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to open registry file: %w", err)
+		return fmt.Errorf("failed to open lock file: %w", err)
 	}
-	defer file.Close()
+	defer lockFile.Close()
 
 	// Acquire exclusive lock (blocks until available)
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
 		return fmt.Errorf("failed to acquire registry lock: %w", err)
 	}
 	defer func() {
-		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
 	}()
 
 	// Execute function with lock held
