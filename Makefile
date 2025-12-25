@@ -22,9 +22,6 @@ LDFLAGS = -X main.Version=$(VERSION) \
           -X main.GitCommit=$(GIT_COMMIT) \
           -X main.BuildDate=$(BUILD_DATE)
 
-# Go environment
-export GOPRIVATE = github.com/stablelabs/*
-
 # Default target
 .DEFAULT_GOAL := build
 
