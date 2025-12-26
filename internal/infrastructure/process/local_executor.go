@@ -156,7 +156,7 @@ func (e *LocalExecutor) Start(ctx context.Context, cmd ports.Command) (ports.Pro
 			// Process exited normally
 		case <-ctx.Done():
 			// Context cancelled - kill process and wait for cleanup
-			execCmd.Process.Kill()
+			_ = execCmd.Process.Kill()
 			handle.err = ctx.Err()
 		}
 
