@@ -48,7 +48,7 @@ curl -s http://localhost:26657/status | jq '.result.sync_info.latest_block_heigh
 
 ```bash
 # Start upgrade to new version
-devnet-builder upgrade \
+devnet-builder startgrade \
   --name v2-upgrade \
   --image <docker-registry>/<network-image>:v2.0.0
 ```
@@ -84,7 +84,7 @@ curl -s http://localhost:26657/abci_info | jq '.result.response.version'
 For debugging upgrade issues, export genesis before and after:
 
 ```bash
-devnet-builder upgrade \
+devnet-builder startgrade \
   --name v2-upgrade \
   --image v2.0.0-mainnet \
   --export-genesis
@@ -104,7 +104,7 @@ cd /path/to/network
 make build
 
 # Upgrade using local binary
-devnet-builder upgrade \
+devnet-builder startgrade \
   --name v2-upgrade \
   --binary /path/to/network/build/<binary-name> \
   --mode local
@@ -194,13 +194,13 @@ Reset chain data but keep keys and configuration:
 
 ```bash
 # Stop nodes
-devnet-builder down
+devnet-builder stop
 
 # Reset state
 devnet-builder reset
 
 # Restart
-devnet-builder up
+devnet-builder start
 ```
 
 This preserves:
@@ -308,10 +308,10 @@ You can switch modes for an existing devnet:
 devnet-builder deploy --mode docker
 
 # Stop nodes
-devnet-builder down
+devnet-builder stop
 
 # Restart with local binary (for debugging)
-devnet-builder up --mode local --binary-ref /path/to/debug-<binary-name>
+devnet-builder start --mode local --binary-ref /path/to/debug-<binary-name>
 ```
 
 ### Mode Comparison

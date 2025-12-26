@@ -191,8 +191,8 @@ devnet-builder destroy --force
 devnet-builder deploy --mode docker  # or --mode local
 
 # Or restart with correct mode
-devnet-builder down
-devnet-builder up --mode docker
+devnet-builder stop
+devnet-builder start --mode docker
 ```
 
 ---
@@ -228,7 +228,7 @@ devnet-builder restart
 
 # If persistent, reset state
 devnet-builder reset --force
-devnet-builder up
+devnet-builder start
 ```
 
 ---
@@ -257,8 +257,8 @@ devnet-builder logs --tail 100 | grep -i "panic\|upgrade"
 devnet-builder logs node0 | grep "upgrade"
 
 # Manually restart with correct binary
-devnet-builder down
-devnet-builder up --image <correct-image>
+devnet-builder stop
+devnet-builder start --image <correct-image>
 
 # If completely stuck, export genesis and restart
 devnet-builder destroy --force

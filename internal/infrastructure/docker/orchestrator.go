@@ -2,7 +2,6 @@ package docker
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -11,19 +10,6 @@ import (
 	"github.com/b-harvest/devnet-builder/internal/domain/ports"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/node"
 	"github.com/b-harvest/devnet-builder/internal/output"
-)
-
-// Orchestrator errors
-var (
-	ErrValidationFailed           = errors.New("deployment configuration validation failed")
-	ErrPortAllocationFailed       = errors.New("failed to allocate port range")
-	ErrPortConflictDetected       = errors.New("allocated ports conflict with host services")
-	ErrImagePullFailed            = errors.New("failed to pull Docker image")
-	ErrCustomBuildFailed          = errors.New("failed to build custom Docker image")
-	ErrContainerStartFailed       = errors.New("failed to start container")
-	ErrHealthCheckTimeout         = errors.New("container health check timeout")
-	ErrPartialDeployment          = errors.New("partial deployment (some containers failed)")
-	ErrOrchestratorRollbackFailed = errors.New("rollback encountered errors")
 )
 
 // OrchestratorImpl implements the DeploymentOrchestrator interface
