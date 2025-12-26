@@ -28,6 +28,7 @@ type dockerHandle struct {
 	containerID   string
 	containerName string
 	logPath       string
+	ctx           context.Context
 }
 
 // PID returns 0 for Docker containers (no direct PID).
@@ -51,13 +52,24 @@ func (h *dockerHandle) IsRunning() bool {
 
 // Wait blocks until the container exits.
 func (h *dockerHandle) Wait() error {
-	cmd := exec.Command("docker", "wait", h.containerID)
+	ctx := h.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cmd := exec.CommandContext(ctx, "docker", "wait", h.containerID)
 	return cmd.Run()
 }
 
 // Kill terminates the container.
 func (h *dockerHandle) Kill() error {
-	cmd := exec.Command("docker", "kill", h.containerID)
+	ctx := h.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// Use short timeout for kill operation
+	killCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(killCtx, "docker", "kill", h.containerID)
 	return cmd.Run()
 }
 
@@ -138,6 +150,7 @@ func (e *DockerExecutorImpl) RunContainer(ctx context.Context, config ports.Cont
 	return &dockerHandle{
 		containerID:   containerID,
 		containerName: config.Name,
+		ctx:           ctx,
 	}, nil
 }
 
@@ -261,7 +274,14 @@ func (e *DockerExecutorImpl) IsRunning(handle ports.ProcessHandle) bool {
 // Logs retrieves logs from a process.
 func (e *DockerExecutorImpl) Logs(handle ports.ProcessHandle, lines int) ([]string, error) {
 	if dh, ok := handle.(*dockerHandle); ok {
-		return e.ContainerLogs(context.Background(), dh.containerID, lines)
+		ctx := dh.ctx
+		if ctx == nil {
+			// Use default timeout if no context available
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+		}
+		return e.ContainerLogs(ctx, dh.containerID, lines)
 	}
 	return e.LocalExecutor.Logs(handle, lines)
 }
@@ -308,6 +328,7 @@ func (e *DockerExecutorImpl) FindContainerByName(ctx context.Context, name strin
 	return &dockerHandle{
 		containerID:   containerID,
 		containerName: name,
+		ctx:           ctx,
 	}, nil
 }
 

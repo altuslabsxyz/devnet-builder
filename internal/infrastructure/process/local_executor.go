@@ -31,6 +31,7 @@ type localHandle struct {
 	logPath string
 	done    chan struct{}
 	err     error
+	ctx     context.Context
 }
 
 // PID returns the process ID.
@@ -132,6 +133,7 @@ func (e *LocalExecutor) Start(ctx context.Context, cmd ports.Command) (ports.Pro
 		cmd:     execCmd,
 		logPath: cmd.LogPath,
 		done:    make(chan struct{}),
+		ctx:     ctx,
 	}
 
 	// Write PID file if specified
@@ -142,9 +144,22 @@ func (e *LocalExecutor) Start(ctx context.Context, cmd ports.Command) (ports.Pro
 		}
 	}
 
-	// Wait for process in background
+	// Wait for process in background with context monitoring
 	go func() {
-		handle.err = execCmd.Wait()
+		waitDone := make(chan error, 1)
+		go func() {
+			waitDone <- execCmd.Wait()
+		}()
+
+		select {
+		case handle.err = <-waitDone:
+			// Process exited normally
+		case <-ctx.Done():
+			// Context cancelled - kill process and wait for cleanup
+			execCmd.Process.Kill()
+			handle.err = ctx.Err()
+		}
+
 		if logFile != nil {
 			logFile.Close()
 		}

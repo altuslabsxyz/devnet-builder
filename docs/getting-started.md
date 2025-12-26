@@ -154,10 +154,10 @@ curl -s http://localhost:8545 \
 
 ```bash
 # Stop nodes (preserves data)
-./build/devnet-builder down
+./build/devnet-builder stop
 
 # Restart later
-./build/devnet-builder up
+./build/devnet-builder start
 
 # Remove everything
 ./build/devnet-builder destroy --force

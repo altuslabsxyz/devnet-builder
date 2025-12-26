@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -130,13 +131,17 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
 
 	go func() {
 		<-sigChan
 		fmt.Println()
 		output.Warn("Upgrade interrupted. Current state:")
-		if lastUpgradeStage != "" {
-			fmt.Printf("  Last stage: %s\n", lastUpgradeStage)
+		lastUpgradeStageMu.RLock()
+		stage := lastUpgradeStage
+		lastUpgradeStageMu.RUnlock()
+		if stage != "" {
+			fmt.Printf("  Last stage: %s\n", stage)
 		}
 		output.Warn("The devnet may be in an intermediate state.")
 		output.Info("Run 'devnet-builder status' to check chain health.")
@@ -463,7 +468,10 @@ func printUpgradePlan(name, mode, targetImage, targetBinary string, cached *dto.
 	fmt.Println()
 }
 
-var lastUpgradeStage string
+var (
+	lastUpgradeStage   string
+	lastUpgradeStageMu sync.RWMutex
+)
 
 func outputUpgradeText(result *dto.ExecuteUpgradeOutput) error {
 	if result.Error != nil {

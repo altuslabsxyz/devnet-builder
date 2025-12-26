@@ -74,7 +74,7 @@ make build
 ./build/devnet-builder logs -f
 
 # Stop when done
-./build/devnet-builder down
+./build/devnet-builder stop
 ```
 
 ### Common Variations
@@ -102,8 +102,8 @@ devnet-builder deploy --mode local
 | `devnet-builder deploy` | Deploy a new devnet |
 | `devnet-builder status` | Show devnet status |
 | `devnet-builder logs` | View node logs |
-| `devnet-builder down` | Stop running nodes |
-| `devnet-builder up` | Restart stopped nodes |
+| `devnet-builder stop` | Stop running nodes |
+| `devnet-builder start` | Restart stopped nodes |
 | `devnet-builder export` | Export blockchain state at current height |
 | `devnet-builder destroy` | Remove all devnet data |
 

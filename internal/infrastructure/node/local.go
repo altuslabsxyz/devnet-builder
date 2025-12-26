@@ -106,6 +106,14 @@ func (m *LocalManager) Start(ctx context.Context, node *Node, genesisPath string
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
 
+	// Ensure log file is closed on error paths
+	var logFileClosed bool
+	defer func() {
+		if !logFileClosed {
+			logFile.Close()
+		}
+	}()
+
 	// Build start command
 	args := []string{
 		"start",
@@ -133,7 +141,6 @@ func (m *LocalManager) Start(ctx context.Context, node *Node, genesisPath string
 
 	// Start process in background
 	if err := cmd.Start(); err != nil {
-		logFile.Close()
 		// Print command error info for debugging
 		m.Logger.PrintCommandError(&output.CommandErrorInfo{
 			Command:  binaryPath,
@@ -154,6 +161,9 @@ func (m *LocalManager) Start(ctx context.Context, node *Node, genesisPath string
 	node.PID = &pid
 	node.LogFile = node.LogFilePath()
 	node.Status = NodeStatusStarting
+
+	// Transfer ownership of logFile to the background goroutine
+	logFileClosed = true
 
 	// Don't wait for the process - let it run in background
 	go func() {
@@ -259,7 +269,9 @@ func (m *LocalManager) readPIDFile(path string) (int, error) {
 
 // cleanupPIDFile removes the PID file.
 func (m *LocalManager) cleanupPIDFile(node *Node) {
-	os.Remove(node.PIDFilePath())
+	if err := os.Remove(node.PIDFilePath()); err != nil && !os.IsNotExist(err) {
+		m.Logger.Warn("Failed to remove PID file %s: %v", node.PIDFilePath(), err)
+	}
 }
 
 // GetLogs reads logs from the log file.

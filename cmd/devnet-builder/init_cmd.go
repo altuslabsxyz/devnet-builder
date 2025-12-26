@@ -121,13 +121,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Apply environment variables (env overrides config.toml but not flags)
-	if networkEnv := os.Getenv("STABLE_DEVNET_NETWORK"); networkEnv != "" && !cmd.Flags().Changed("network") {
+	if networkEnv := os.Getenv("DEVNET_NETWORK"); networkEnv != "" && !cmd.Flags().Changed("network") {
 		fileCfg.Network = &networkEnv
 	}
-	if modeEnv := os.Getenv("STABLE_DEVNET_MODE"); modeEnv != "" && !cmd.Flags().Changed("mode") {
+	if modeEnv := os.Getenv("DEVNET_MODE"); modeEnv != "" && !cmd.Flags().Changed("mode") {
 		fileCfg.Mode = &modeEnv
 	}
-	if versionEnv := os.Getenv("STABLE_VERSION"); versionEnv != "" && !cmd.Flags().Changed("stable-version") {
+	if versionEnv := os.Getenv("DEVNET_NETWORK_VERSION"); versionEnv != "" && !cmd.Flags().Changed("stable-version") {
 		fileCfg.StableVersion = &versionEnv
 	}
 

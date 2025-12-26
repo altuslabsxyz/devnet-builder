@@ -3,7 +3,6 @@ package docker
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -11,17 +10,6 @@ import (
 	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/domain/ports"
-)
-
-// NetworkManager errors
-var (
-	ErrDockerDaemonUnavailable = errors.New("docker daemon not accessible")
-	ErrInvalidDevnetName       = errors.New("devnet name contains invalid characters")
-	ErrNoAvailableSubnets      = errors.New("no available subnets in 172.x.0.0/16 range")
-	ErrNetworkCreationFailed   = errors.New("docker network create command failed")
-	ErrNetworkNotFound         = errors.New("docker network not found")
-	ErrNetworkHasContainers    = errors.New("network has attached containers, cannot delete")
-	ErrNetworkDeletionFailed   = errors.New("docker network rm command failed")
 )
 
 // NetworkManagerImpl implements the NetworkManager interface

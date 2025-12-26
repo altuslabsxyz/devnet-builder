@@ -51,8 +51,8 @@ home = "~/.devnet-builder"
 validators = 4
 
 # Number of additional funded accounts
-# Default: 0
-accounts = 0
+# Default: 4
+accounts = 4
 
 # Network source for snapshot data
 # Options: "mainnet", "testnet"
@@ -92,7 +92,7 @@ no_color = false
 |--------|------|---------|-------------|
 | `home` | string | `~/.devnet-builder` | Base directory for devnet data, cache, and configs |
 | `validators` | int | 4 | Number of validator nodes (1-10) |
-| `accounts` | int | 0 | Additional funded test accounts |
+| `accounts` | int | 4 | Additional funded test accounts |
 | `network` | string | mainnet | Network source: mainnet or testnet |
 | `mode` | string | docker | Execution mode: docker or local |
 | `network_version` | string | latest | Version tag for network binary |

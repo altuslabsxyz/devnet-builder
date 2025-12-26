@@ -7,8 +7,8 @@ Complete reference for all devnet-builder commands.
 - [Main Commands](#main-commands)
   - [deploy](#deploy)
   - [init](#init)
-  - [up](#up)
-  - [down](#down)
+  - [start](#start)
+  - [stop](#stop)
   - [destroy](#destroy)
 - [Monitoring Commands](#monitoring-commands)
   - [status](#status)
@@ -43,7 +43,7 @@ devnet-builder deploy [flags]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--validators` | int | 4 | Number of validator nodes |
-| `--accounts` | int | 0 | Number of additional funded accounts |
+| `--accounts` | int | 4 | Number of additional funded accounts |
 | `-n, --network` | string | mainnet | Network source (mainnet, testnet) |
 | `-m, --mode` | string | docker | Execution mode (docker, local) |
 | `--image` | string | | Docker image tag (e.g., 1.1.3-mainnet) |
@@ -87,7 +87,17 @@ devnet-builder init [flags]
 
 #### Flags
 
-Same flags as `deploy`.
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--validators` | int | 4 | Number of validator nodes (1-4) |
+| `--accounts` | int | 4 | Number of additional funded accounts |
+| `-n, --network` | string | mainnet | Network source (mainnet, testnet) |
+| `-m, --mode` | string | docker | Execution mode (docker, local) |
+| `--stable-version` | string | latest | Network version to use |
+| `--no-cache` | bool | false | Skip snapshot cache, download fresh |
+| `--test-mnemonic` | bool | true | Use deterministic test mnemonics |
+
+**Note:** The `init` command supports 1-4 validators only, regardless of mode. Use `deploy` directly for more validators in docker mode (up to 100).
 
 #### Examples
 
@@ -98,17 +108,17 @@ devnet-builder init
 # Initialize, then customize config before starting
 devnet-builder init --validators 2
 # Edit ~/.devnet-builder/devnet/node0/config/config.toml
-devnet-builder up
+devnet-builder start
 ```
 
 ---
 
-### up
+### start
 
-Start nodes from existing configuration. Use after `init` or `down`.
+Start nodes from existing configuration. Use after `init` or `stop`.
 
 ```bash
-devnet-builder up [flags]
+devnet-builder start [flags]
 ```
 
 #### Flags
@@ -124,26 +134,26 @@ devnet-builder up [flags]
 
 ```bash
 # Start all nodes
-devnet-builder up
+devnet-builder start
 
 # Start with longer health timeout
-devnet-builder up --health-timeout 10m
+devnet-builder start --health-timeout 10m
 
 # Start in local mode (overrides original)
-devnet-builder up --mode local
+devnet-builder start --mode local
 
 # Start with specific binary from cache
-devnet-builder up --binary-ref v1.2.3
+devnet-builder start --binary-ref v1.2.3
 ```
 
 ---
 
-### down
+### stop
 
-Stop running nodes without removing data. Use `up` to restart.
+Stop running nodes without removing data. Use `start` to restart.
 
 ```bash
-devnet-builder down [flags]
+devnet-builder stop [flags]
 ```
 
 #### Flags
@@ -156,10 +166,10 @@ devnet-builder down [flags]
 
 ```bash
 # Stop all nodes gracefully
-devnet-builder down
+devnet-builder stop
 
 # Stop with longer timeout for busy nodes
-devnet-builder down --timeout 60s
+devnet-builder stop --timeout 60s
 ```
 
 ---
