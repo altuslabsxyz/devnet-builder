@@ -92,6 +92,8 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: latest
+          skip-cache: true
+          args: --timeout=5m
 
   ci-complete:
     name: CI Complete

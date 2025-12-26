@@ -131,6 +131,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
 
 	go func() {
 		<-sigChan

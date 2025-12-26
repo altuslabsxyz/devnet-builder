@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
@@ -101,7 +102,10 @@ func outputDestroyJSON(cacheCleared bool) error {
 		"cache_cleared": cacheCleared,
 	}
 
-	data, _ := json.MarshalIndent(result, "", "  ")
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON output: %w", err)
+	}
 	fmt.Println(string(data))
 	return nil
 }
@@ -113,7 +117,12 @@ func outputDestroyError(err error) error {
 		"message": err.Error(),
 	}
 
-	data, _ := json.MarshalIndent(result, "", "  ")
+	data, marshalErr := json.MarshalIndent(result, "", "  ")
+	if marshalErr != nil {
+		// Fallback to simple output if marshal fails
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return err
+	}
 	fmt.Println(string(data))
 	return err
 }
