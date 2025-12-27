@@ -1,0 +1,26 @@
+Devnet deployed successfully
+
+Configuration:
+  Network: testnet
+  Mode: local
+  Validators: 2
+  Home: /path/to/home
+
+Validator Endpoints:
+  validator0:
+    RPC:    http://localhost:26657
+    P2P:    localhost:26656
+    GRPC:   localhost:9090
+    API:    http://localhost:1317
+
+  validator1:
+    RPC:    http://localhost:36657
+    P2P:    localhost:36656
+    GRPC:   localhost:19090
+    API:    http://localhost:11317
+
+Next steps:
+  - Check status: devnet-builder status
+  - View logs: devnet-builder logs
+  - Stop devnet: devnet-builder stop
+  - Destroy devnet: devnet-builder destroy

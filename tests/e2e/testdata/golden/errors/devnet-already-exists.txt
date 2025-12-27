@@ -1,0 +1,7 @@
+Error: devnet already exists at /path/to/home
+
+A devnet is already deployed. Please destroy it first.
+
+Commands:
+  devnet-builder destroy       # Destroy existing devnet
+  devnet-builder destroy --force  # Skip confirmation

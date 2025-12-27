@@ -1,0 +1,7 @@
+{
+  "version": "v1.0.0",
+  "commit": "abc123def456",
+  "go_version": "go1.24.2",
+  "build_tags": "netgo,ledger",
+  "build_date": "2024-01-01T00:00:00Z"
+}

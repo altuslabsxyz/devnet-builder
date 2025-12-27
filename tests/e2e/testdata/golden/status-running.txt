@@ -1,0 +1,26 @@
+Network Status: Running
+Validators: 4
+
+Validator 0:
+  Status: Running
+  RPC: http://localhost:26657
+  P2P: localhost:26656
+  Home: /path/to/validator0
+
+Validator 1:
+  Status: Running
+  RPC: http://localhost:36657
+  P2P: localhost:36656
+  Home: /path/to/validator1
+
+Validator 2:
+  Status: Running
+  RPC: http://localhost:46657
+  P2P: localhost:46656
+  Home: /path/to/validator2
+
+Validator 3:
+  Status: Running
+  RPC: http://localhost:56657
+  P2P: localhost:56656
+  Home: /path/to/validator3
