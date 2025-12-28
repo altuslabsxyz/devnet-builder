@@ -136,6 +136,11 @@ func (b *Builder) getRepoURL() (string, error) {
 	}
 	src := b.module.BinarySource()
 	if src.IsGitHub() {
+		// Check if GITHUB_TOKEN is set for authentication
+		if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+			// Include token in URL for private repositories
+			return fmt.Sprintf("https://%s@github.com/%s/%s.git", token, src.Owner, src.Repo), nil
+		}
 		return fmt.Sprintf("https://github.com/%s/%s.git", src.Owner, src.Repo), nil
 	}
 	if src.LocalPath != "" {
@@ -332,6 +337,19 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, e
 		Ref:        opts.Ref,
 		CommitHash: commitHash,
 	}, nil
+}
+
+// sanitizeURL removes sensitive tokens from URLs for safe logging.
+func sanitizeURL(url string) string {
+	// Match pattern: https://TOKEN@github.com/...
+	// Replace TOKEN with ***
+	if strings.Contains(url, "@github.com") {
+		parts := strings.Split(url, "@")
+		if len(parts) == 2 && strings.HasPrefix(parts[0], "https://") {
+			return "https://***@" + parts[1]
+		}
+	}
+	return url
 }
 
 // prepareGitCommand configures a git command with proper authentication environment.
