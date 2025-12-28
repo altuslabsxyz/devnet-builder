@@ -86,7 +86,12 @@ func setupTest(t *testing.T) (*helpers.TestContext, *helpers.CommandRunner, *hel
 	githubAPI := helpers.NewMockGitHubAPI(t)
 
 	// Configure environment to use mock servers and skip real downloads
-	ctx.WithEnv("GITHUB_TOKEN", "mock-token-for-testing")
+	// Use real GITHUB_TOKEN if available (from system env), otherwise use mock
+	githubToken := os.Getenv("GITHUB_TOKEN")
+	if githubToken == "" {
+		githubToken = "mock-token-for-testing"
+	}
+	ctx.WithEnv("GITHUB_TOKEN", githubToken)
 	ctx.WithEnv("SNAPSHOT_URL", snapshotServer.URL())
 	ctx.WithEnv("GITHUB_API_URL", githubAPI.URL())
 
@@ -134,10 +139,14 @@ func createDefaultConfig(t *testing.T, ctx *helpers.TestContext) {
 	setupTestPlugins(t, ctx)
 
 	// Create minimal config file with required blockchain_network setting
-	// Using mock GitHub token to prevent authentication errors in tests
+	// Use real GITHUB_TOKEN if available, otherwise use mock
+	githubToken := os.Getenv("GITHUB_TOKEN")
+	if githubToken == "" {
+		githubToken = "mock-token-for-testing"
+	}
 	configContent := `# Auto-generated test configuration
 blockchain_network = "stable"
-github_token = "mock-token-for-testing"
+github_token = "` + githubToken + `"
 `
 
 	configPath := filepath.Join(configDir, "config.toml")

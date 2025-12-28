@@ -130,12 +130,19 @@ func NewBuilder(homeDir string, logger *output.Logger, networkModule network.Net
 }
 
 // getRepoURL returns the repository URL for the current network module.
+// If GITHUB_TOKEN is set in the environment, it will be included in the URL for authentication.
 func (b *Builder) getRepoURL() (string, error) {
 	if b.module == nil {
 		return "", fmt.Errorf("no network module configured - use a network plugin")
 	}
 	src := b.module.BinarySource()
 	if src.IsGitHub() {
+		// Check for GITHUB_TOKEN environment variable
+		if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+			// Use authenticated URL with token
+			return fmt.Sprintf("https://x:%s@github.com/%s/%s.git", token, src.Owner, src.Repo), nil
+		}
+		// No token, use unauthenticated URL
 		return fmt.Sprintf("https://github.com/%s/%s.git", src.Owner, src.Repo), nil
 	}
 	if src.LocalPath != "" {
