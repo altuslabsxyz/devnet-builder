@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -86,7 +87,12 @@ func setupTest(t *testing.T) (*helpers.TestContext, *helpers.CommandRunner, *hel
 	githubAPI := helpers.NewMockGitHubAPI(t)
 
 	// Configure environment to use mock servers and skip real downloads
-	ctx.WithEnv("GITHUB_TOKEN", "mock-token-for-testing")
+	// Use real GITHUB_TOKEN if available (from make e2e-test), otherwise use mock
+	githubToken := os.Getenv("GITHUB_TOKEN")
+	if githubToken == "" {
+		githubToken = "mock-token-for-testing"
+	}
+	ctx.WithEnv("GITHUB_TOKEN", githubToken)
 	ctx.WithEnv("SNAPSHOT_URL", snapshotServer.URL())
 	ctx.WithEnv("GITHUB_API_URL", githubAPI.URL())
 
@@ -133,12 +139,19 @@ func createDefaultConfig(t *testing.T, ctx *helpers.TestContext) {
 	// The binary loads plugins from ~/.devnet-builder/plugins/
 	setupTestPlugins(t, ctx)
 
+	// Copy blockchain binary if available to avoid building from source
+	setupTestBinaries(t, ctx)
+
 	// Create minimal config file with required blockchain_network setting
-	// Using mock GitHub token to prevent authentication errors in tests
-	configContent := `# Auto-generated test configuration
+	// Use real GITHUB_TOKEN if available, otherwise use mock token
+	githubToken := os.Getenv("GITHUB_TOKEN")
+	if githubToken == "" {
+		githubToken = "mock-token-for-testing"
+	}
+	configContent := fmt.Sprintf(`# Auto-generated test configuration
 blockchain_network = "stable"
-github_token = "mock-token-for-testing"
-`
+github_token = "%s"
+`, githubToken)
 
 	configPath := filepath.Join(configDir, "config.toml")
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
@@ -184,6 +197,47 @@ func setupTestPlugins(t *testing.T, ctx *helpers.TestContext) {
 	}
 
 	t.Logf("Copied stable-plugin to test environment: %s", destPlugin)
+}
+
+// setupTestBinaries copies blockchain binaries to the test environment if available
+func setupTestBinaries(t *testing.T, ctx *helpers.TestContext) {
+	t.Helper()
+
+	// Create bin directory in test environment
+	binDir := filepath.Join(ctx.HomeDir, ".devnet-builder", "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatalf("failed to create bin directory: %v", err)
+	}
+
+	// Copy stabled binary from user's home directory if it exists
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		t.Logf("WARNING: failed to get user home directory: %v", err)
+		return
+	}
+
+	sourceBinary := filepath.Join(userHome, ".devnet-builder", "bin", "stabled")
+	destBinary := filepath.Join(binDir, "stabled")
+
+	// Check if source binary exists
+	if _, err := os.Stat(sourceBinary); os.IsNotExist(err) {
+		t.Logf("INFO: stabled binary not found at %s, will build from source if needed", sourceBinary)
+		return
+	}
+
+	// Copy binary
+	input, err := os.ReadFile(sourceBinary)
+	if err != nil {
+		t.Logf("WARNING: failed to read binary: %v", err)
+		return
+	}
+
+	if err := os.WriteFile(destBinary, input, 0755); err != nil {
+		t.Logf("WARNING: failed to write binary: %v", err)
+		return
+	}
+
+	t.Logf("Copied stabled binary to test environment: %s", destBinary)
 }
 
 // getFixturePath returns the absolute path to a fixture file

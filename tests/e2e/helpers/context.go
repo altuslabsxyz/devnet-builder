@@ -83,11 +83,44 @@ func (ctx *TestContext) RunCleanups() {
 }
 
 // GetEnv returns all environment variables as a slice
+// Test-specific environment variables (ctx.Env) override system environment
 func (ctx *TestContext) GetEnv() []string {
-	env := os.Environ()
+	// Start with system environment
+	baseEnv := os.Environ()
+
+	// Create map to track which keys to override
+	overrideKeys := make(map[string]bool)
+	for key := range ctx.Env {
+		overrideKeys[key] = true
+	}
+
+	// Filter out system env vars that will be overridden
+	env := make([]string, 0, len(baseEnv)+len(ctx.Env))
+	for _, envVar := range baseEnv {
+		// Split on first '=' to get key
+		idx := -1
+		for i, c := range envVar {
+			if c == '=' {
+				idx = i
+				break
+			}
+		}
+		if idx == -1 {
+			continue
+		}
+		key := envVar[:idx]
+
+		// Skip if this key will be overridden by ctx.Env
+		if !overrideKeys[key] {
+			env = append(env, envVar)
+		}
+	}
+
+	// Add test-specific environment variables (these take precedence)
 	for key, value := range ctx.Env {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
+
 	return env
 }
 
