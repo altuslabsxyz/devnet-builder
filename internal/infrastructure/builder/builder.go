@@ -139,8 +139,12 @@ func (b *Builder) getRepoURL() (string, error) {
 		// Check if GITHUB_TOKEN is set for authentication
 		if token := os.Getenv("GITHUB_TOKEN"); token != "" {
 			// Include token in URL for private repositories
-			return fmt.Sprintf("https://%s@github.com/%s/%s.git", token, src.Owner, src.Repo), nil
+			// Format: https://USERNAME:TOKEN@github.com/owner/repo.git
+			// For GitHub, username can be anything (using 'x' as placeholder)
+			b.logger.Info("Using GITHUB_TOKEN for git authentication (length: %d chars)", len(token))
+			return fmt.Sprintf("https://x:%s@github.com/%s/%s.git", token, src.Owner, src.Repo), nil
 		}
+		b.logger.Info("GITHUB_TOKEN not set, using public repository URL")
 		return fmt.Sprintf("https://github.com/%s/%s.git", src.Owner, src.Repo), nil
 	}
 	if src.LocalPath != "" {
@@ -341,12 +345,16 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, e
 
 // sanitizeURL removes sensitive tokens from URLs for safe logging.
 func sanitizeURL(url string) string {
-	// Match pattern: https://TOKEN@github.com/...
+	// Match pattern: https://x:TOKEN@github.com/...
 	// Replace TOKEN with ***
 	if strings.Contains(url, "@github.com") {
 		parts := strings.Split(url, "@")
-		if len(parts) == 2 && strings.HasPrefix(parts[0], "https://") {
-			return "https://***@" + parts[1]
+		if len(parts) == 2 && strings.Contains(parts[0], ":") {
+			// Format: https://x:TOKEN
+			credParts := strings.Split(parts[0], ":")
+			if len(credParts) >= 2 {
+				return credParts[0] + ":***@" + parts[1]
+			}
 		}
 	}
 	return url
