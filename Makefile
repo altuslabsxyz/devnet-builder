@@ -179,6 +179,57 @@ test-coverage:
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
 
+# E2E test environment setup
+e2e-setup:
+	@echo "Setting up E2E test environment..."
+	@chmod +x tests/e2e/scripts/setup-test-env.sh
+	@bash tests/e2e/scripts/setup-test-env.sh
+
+# Run E2E tests
+e2e-test: build
+	@echo "==================================================================="
+	@echo "Running E2E Test Suite"
+	@echo "==================================================================="
+	@echo ""
+	@chmod +x tests/e2e/scripts/setup-test-env.sh
+	@chmod +x tests/e2e/scripts/generate-test-report.sh
+	@bash tests/e2e/scripts/setup-test-env.sh
+	@echo ""
+	@echo "Executing E2E tests..."
+	@mkdir -p tests/e2e/results
+	@go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log
+	@echo ""
+	@echo "Generating test report..."
+	@bash tests/e2e/scripts/generate-test-report.sh tests/e2e/results/test-output.log tests/e2e/TEST_RESULTS.md
+	@echo ""
+	@echo "==================================================================="
+	@echo "E2E Test Suite Complete"
+	@echo "==================================================================="
+	@echo "Report: tests/e2e/TEST_RESULTS.md"
+	@echo "Full log: tests/e2e/results/test-output.log"
+
+# Run E2E tests with specific binary
+e2e-test-with-binary: build
+	@if [ -z "$(BINARY)" ]; then \
+		echo "Error: BINARY path not specified"; \
+		echo "Usage: make e2e-test-with-binary BINARY=/path/to/stabled"; \
+		exit 1; \
+	fi
+	@echo "Running E2E tests with binary: $(BINARY)"
+	@E2E_BINARY_SOURCE=$(BINARY) $(MAKE) e2e-test
+
+# Run E2E tests (quick - skip deploy tests)
+e2e-test-quick: build
+	@echo "Running quick E2E tests (config, cache, error handling only)..."
+	@go test -v -timeout 10m ./tests/e2e/config_test.go ./tests/e2e/errors_test.go -run "TestConfig|TestCache|TestVersions|TestNetworks|TestDeploy_DockerNotRunning|TestEdgeCase"
+
+# Clean E2E test artifacts
+e2e-clean:
+	@echo "Cleaning E2E test artifacts..."
+	@rm -rf tests/e2e/results/
+	@rm -f tests/e2e/TEST_RESULTS.md
+	@echo "E2E test artifacts cleaned"
+
 # =============================================================================
 # Protobuf Targets
 # =============================================================================
@@ -311,9 +362,14 @@ help:
 	@echo "  list-plugins    - List available plugins"
 	@echo ""
 	@echo "Test Targets:"
-	@echo "  test            - Run public tests"
-	@echo "  test-private    - Run all tests including private"
-	@echo "  test-coverage   - Run tests with coverage report"
+	@echo "  test                 - Run public tests"
+	@echo "  test-private         - Run all tests including private"
+	@echo "  test-coverage        - Run tests with coverage report"
+	@echo "  e2e-setup            - Setup E2E test environment"
+	@echo "  e2e-test             - Run full E2E test suite"
+	@echo "  e2e-test-quick       - Run quick E2E tests (skip deploy)"
+	@echo "  e2e-test-with-binary - Run E2E with specific binary (BINARY=/path)"
+	@echo "  e2e-clean            - Clean E2E test artifacts"
 	@echo ""
 	@echo "Protobuf Targets:"
 	@echo "  proto-gen       - Generate Go code from protobuf"
@@ -338,6 +394,7 @@ help:
 .PHONY: build build-private build-stable build-ault install install-private \
         plugins plugins-private plugins-all \
         test test-private test-coverage \
+        e2e-setup e2e-test e2e-test-quick e2e-test-with-binary e2e-clean \
         proto-gen proto-clean \
         clean fmt lint verify \
         build-versioned list-plugins help
