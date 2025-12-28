@@ -18,6 +18,10 @@ var (
 
 	// testdataDir points to the testdata directory with fixtures
 	testdataDir string
+
+	// sharedBlockchainBinary is the pre-built blockchain binary path
+	// Built once in TestMain and reused across all tests
+	sharedBlockchainBinary string
 )
 
 // TestMain sets up the test suite and runs all tests
@@ -44,6 +48,24 @@ func TestMain(m *testing.M) {
 		// We don't auto-build here to keep TestMain simple
 		println("WARNING: devnet-builder binary not found at", binaryPath)
 		println("Run 'go build' in project root before running E2E tests")
+	}
+
+	// Verify blockchain binary exists (built once, reused across all tests)
+	// This avoids rebuilding from source for every test (60+ seconds each)
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		println("WARNING: Cannot determine user home directory:", err.Error())
+	} else {
+		// For stable network, binary should be at ~/.devnet-builder/bin/stabled
+		sharedBlockchainBinary = filepath.Join(userHome, ".devnet-builder", "bin", "stabled")
+		if _, err := os.Stat(sharedBlockchainBinary); os.IsNotExist(err) {
+			println("WARNING: Blockchain binary not found at", sharedBlockchainBinary)
+			println("Deploy tests will build from source (slow). Pre-build binary for faster tests:")
+			println("  devnet-builder deploy --mode local --validators 1")
+			sharedBlockchainBinary = "" // Clear if not found
+		} else {
+			println("✓ Using pre-built blockchain binary:", sharedBlockchainBinary)
+		}
 	}
 
 	// Run tests
@@ -97,6 +119,10 @@ func setupTest(t *testing.T) (*helpers.TestContext, *helpers.CommandRunner, *hel
 
 	// Create default config file to avoid "missing required configuration" errors
 	createDefaultConfig(t, ctx)
+
+	// Copy pre-built blockchain binary to test environment (if available)
+	// This avoids rebuilding from source for every test
+	setupTestBinaries(t, ctx)
 
 	// Create test helpers
 	runner := helpers.NewCommandRunner(t, ctx)
@@ -193,6 +219,41 @@ func setupTestPlugins(t *testing.T, ctx *helpers.TestContext) {
 	}
 
 	t.Logf("Copied stable-plugin to test environment: %s", destPlugin)
+}
+
+// setupTestBinaries copies pre-built blockchain binary to test environment
+// This avoids rebuilding from source for every test (60+ seconds each)
+func setupTestBinaries(t *testing.T, ctx *helpers.TestContext) {
+	t.Helper()
+
+	// Skip if no shared binary available
+	if sharedBlockchainBinary == "" {
+		t.Logf("No pre-built blockchain binary available, deploy will build from source")
+		return
+	}
+
+	// Create bin directory in test environment
+	binDir := filepath.Join(ctx.HomeDir, ".devnet-builder", "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatalf("failed to create bin directory: %v", err)
+	}
+
+	// Determine destination binary name from source
+	binaryName := filepath.Base(sharedBlockchainBinary)
+	destBinary := filepath.Join(binDir, binaryName)
+
+	// Copy blockchain binary
+	input, err := os.ReadFile(sharedBlockchainBinary)
+	if err != nil {
+		t.Logf("WARNING: failed to read blockchain binary: %v", err)
+		return
+	}
+
+	if err := os.WriteFile(destBinary, input, 0755); err != nil {
+		t.Fatalf("failed to write blockchain binary: %v", err)
+	}
+
+	t.Logf("Using pre-built blockchain binary: %s", sharedBlockchainBinary)
 }
 
 // getFixturePath returns the absolute path to a fixture file
