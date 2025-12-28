@@ -47,7 +47,15 @@ func NewCommandRunner(t *testing.T, ctx *TestContext) *CommandRunner {
 // Example: Run("deploy", "--validators", "4", "--mode", "docker")
 func (r *CommandRunner) Run(args ...string) *CommandResult {
 	r.t.Helper()
-	return r.RunWithTimeout(30*time.Second, args...)
+
+	// Use longer timeout for commands that build binaries from source
+	// Deploy builds blockchain binaries which takes ~60s
+	timeout := 30 * time.Second
+	if len(args) > 0 && args[0] == "deploy" {
+		timeout = 3 * time.Minute
+	}
+
+	return r.RunWithTimeout(timeout, args...)
 }
 
 // RunWithTimeout executes a command with a custom timeout
