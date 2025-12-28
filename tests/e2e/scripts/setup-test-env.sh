@@ -6,6 +6,10 @@
 # and GitHub authentication in a clean, predictable way.
 # =============================================================================
 
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=""
+export SSH_ASKPASS=""
+
 set -e
 
 # Colors for output
@@ -137,27 +141,31 @@ EOF
 setup_github_auth() {
     info "Checking GitHub authentication..."
 
-    # Check if git credentials already exist
-    if [ -f "$HOME/.git-credentials" ]; then
-        success "Git credentials found at: $HOME/.git-credentials"
-        info "If GitHub authentication fails, please review your credentials file:"
-        info "  cat $HOME/.git-credentials"
+    # Disable interactive prompts
+    export GIT_TERMINAL_PROMPT=0
 
-        # Configure git to use existing credentials
-        git config --global credential.helper store
+    # If GITHUB_TOKEN is set, configure git
+    if [ -n "$GITHUB_TOKEN" ]; then
+        info "Configuring GitHub authentication via GITHUB_TOKEN"
 
-        success "Using existing GitHub credentials"
+        # Use --replace-all to avoid "multiple values" error
+        git config --global --replace-all url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/" 2>/dev/null || \
+        git config --global --add url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+        # Also configure for Go private modules
+        export GOPRIVATE="github.com/*"
+
+        success "GitHub authentication configured"
         return 0
     fi
 
-    # No credentials found
-    warning "No GitHub credentials found"
-    warning "If tests require GitHub access, configure credentials:"
-    warning "  1. Create ~/.git-credentials with format:"
-    warning "     https://USERNAME:TOKEN@github.com"
-    warning "  2. Or run: git config --global credential.helper store"
-    warning "     Then perform a git operation to save credentials"
+    # Check if git can already access github without prompting
+    if git ls-remote https://github.com/stablelabs/stable-plugin.git HEAD &>/dev/null; then
+        success "GitHub authentication already working"
+        return 0
+    fi
 
+    warning "No GitHub authentication available"
     return 0
 }
 
