@@ -382,21 +382,39 @@ func (b *Builder) cloneRepo(ctx context.Context, repoDir, ref string) error {
 
 	cmd := exec.CommandContext(ctx, "git", args...)
 	prepareGitCommand(cmd)
+
+	// Capture stderr for detailed error reporting
+	var stderrBuf strings.Builder
 	cmd.Stdout = b.logger.Writer()
-	cmd.Stderr = b.logger.Writer()
+	cmd.Stderr = &stderrBuf
+
 	if err := cmd.Run(); err != nil {
+		// Log git stderr for debugging
+		if stderrBuf.Len() > 0 {
+			b.logger.Debug("Git clone stderr: %s", stderrBuf.String())
+		}
+
 		// If shallow clone failed (maybe branch doesn't exist), try full clone
 		if !isCommitHash(ref) {
 			b.logger.Debug("Shallow clone failed, trying full clone...")
 			args = []string{"clone", repoURL, repoDir}
 			cmd = exec.CommandContext(ctx, "git", args...)
 			prepareGitCommand(cmd)
+
+			stderrBuf.Reset()
 			cmd.Stdout = b.logger.Writer()
-			cmd.Stderr = b.logger.Writer()
+			cmd.Stderr = &stderrBuf
+
 			if err := cmd.Run(); err != nil {
+				if stderrBuf.Len() > 0 {
+					return fmt.Errorf("git clone failed: %w (stderr: %s)", err, stderrBuf.String())
+				}
 				return fmt.Errorf("git clone failed: %w", err)
 			}
 		} else {
+			if stderrBuf.Len() > 0 {
+				return fmt.Errorf("git clone failed: %w (stderr: %s)", err, stderrBuf.String())
+			}
 			return fmt.Errorf("git clone failed: %w", err)
 		}
 	}
