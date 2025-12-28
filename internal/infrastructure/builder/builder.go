@@ -334,6 +334,32 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*BuildResult, e
 	}, nil
 }
 
+// prepareGitCommand configures a git command with proper authentication environment.
+// This ensures git commands can authenticate even in test/CI environments where
+// interactive prompts are disabled.
+func prepareGitCommand(cmd *exec.Cmd) {
+	// Start with current environment
+	env := os.Environ()
+
+	// Add/override git-specific authentication environment variables
+	gitEnv := []string{
+		"GIT_TERMINAL_PROMPT=0", // Disable interactive prompts
+	}
+
+	// Preserve authentication credentials if set
+	if askpass := os.Getenv("GIT_ASKPASS"); askpass != "" {
+		gitEnv = append(gitEnv, "GIT_ASKPASS="+askpass)
+	}
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		gitEnv = append(gitEnv, "GITHUB_TOKEN="+token)
+	}
+	if sshAskpass := os.Getenv("SSH_ASKPASS"); sshAskpass != "" {
+		gitEnv = append(gitEnv, "SSH_ASKPASS="+sshAskpass)
+	}
+
+	cmd.Env = append(env, gitEnv...)
+}
+
 // cloneRepo clones the repository and checks out the given ref.
 func (b *Builder) cloneRepo(ctx context.Context, repoDir, ref string) error {
 	// Remove existing directory if exists
@@ -355,6 +381,7 @@ func (b *Builder) cloneRepo(ctx context.Context, repoDir, ref string) error {
 	args = append(args, repoURL, repoDir)
 
 	cmd := exec.CommandContext(ctx, "git", args...)
+	prepareGitCommand(cmd)
 	cmd.Stdout = b.logger.Writer()
 	cmd.Stderr = b.logger.Writer()
 	if err := cmd.Run(); err != nil {
@@ -363,6 +390,7 @@ func (b *Builder) cloneRepo(ctx context.Context, repoDir, ref string) error {
 			b.logger.Debug("Shallow clone failed, trying full clone...")
 			args = []string{"clone", repoURL, repoDir}
 			cmd = exec.CommandContext(ctx, "git", args...)
+			prepareGitCommand(cmd)
 			cmd.Stdout = b.logger.Writer()
 			cmd.Stderr = b.logger.Writer()
 			if err := cmd.Run(); err != nil {
@@ -377,6 +405,7 @@ func (b *Builder) cloneRepo(ctx context.Context, repoDir, ref string) error {
 	if isCommitHash(ref) {
 		cmd = exec.CommandContext(ctx, "git", "checkout", ref)
 		cmd.Dir = repoDir
+		prepareGitCommand(cmd)
 		cmd.Stdout = b.logger.Writer()
 		cmd.Stderr = b.logger.Writer()
 		if err := cmd.Run(); err != nil {
@@ -391,6 +420,7 @@ func (b *Builder) cloneRepo(ctx context.Context, repoDir, ref string) error {
 func (b *Builder) getCommitHash(ctx context.Context, repoDir string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
 	cmd.Dir = repoDir
+	prepareGitCommand(cmd)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -695,6 +725,7 @@ func (b *Builder) ResolveCommitHash(ctx context.Context, ref string) (string, er
 	// Query for all refs matching the pattern
 	// Use wildcards to catch both exact matches and annotated tag dereferences
 	cmd := exec.CommandContext(ctx, "git", "ls-remote", repoURL)
+	prepareGitCommand(cmd)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve ref: %w", err)
