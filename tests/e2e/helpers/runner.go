@@ -64,6 +64,11 @@ func (r *CommandRunner) RunWithTimeout(timeout time.Duration, args ...string) *C
 func (r *CommandRunner) RunWithContext(ctx context.Context, args ...string) *CommandResult {
 	r.t.Helper()
 
+	// Prepend --config flag if ConfigPath is set
+	if r.ctx.ConfigPath != "" {
+		args = append([]string{"--config", r.ctx.ConfigPath}, args...)
+	}
+
 	// Build command
 	cmd := exec.CommandContext(ctx, r.ctx.BinaryPath, args...)
 	cmd.Env = r.ctx.GetEnv()

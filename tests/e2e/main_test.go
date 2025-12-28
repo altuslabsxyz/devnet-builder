@@ -81,6 +81,9 @@ func setupTest(t *testing.T) (*helpers.TestContext, *helpers.CommandRunner, *hel
 	// Create test context
 	ctx := helpers.NewTestContext(t)
 
+	// Create default config file to avoid "missing required configuration" errors
+	createDefaultConfig(t, ctx)
+
 	// Create test helpers
 	runner := helpers.NewCommandRunner(t, ctx)
 	validator := helpers.NewStateValidator(t, ctx)
@@ -105,6 +108,35 @@ func setupTestWithMocks(t *testing.T) (*helpers.TestContext, *helpers.CommandRun
 	ctx.WithEnv("GITHUB_API_URL", githubSrv.URL())
 
 	return ctx, runner, validator, cleanup, snapshotSrv, githubSrv
+}
+
+// createDefaultConfig creates a minimal config file with required settings
+func createDefaultConfig(t *testing.T, ctx *helpers.TestContext) {
+	t.Helper()
+
+	// Create .devnet-builder directory
+	configDir := filepath.Join(ctx.HomeDir, ".devnet-builder")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("failed to create config directory: %v", err)
+	}
+
+	// Create minimal config file with required blockchain_network setting
+	configContent := `# Auto-generated test configuration
+blockchain_network = "stable"
+
+[local]
+mode = "local"
+
+[docker]
+mode = "docker"
+`
+
+	configPath := filepath.Join(configDir, "config.toml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	ctx.WithConfig(configPath)
 }
 
 // getFixturePath returns the absolute path to a fixture file

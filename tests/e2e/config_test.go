@@ -16,9 +16,9 @@ func TestConfig_Init(t *testing.T) {
 	ctx, runner, validator, cleanup := setupTest(t)
 	defer cleanup.CleanupDevnet()
 
-	// Execute config init
+	// Execute config init with --force for non-interactive mode
 	t.Log("Initializing configuration...")
-	result := runner.MustRun("config", "init", "--home", ctx.HomeDir)
+	result := runner.MustRun("config", "init", "--force", "--home", ctx.HomeDir)
 
 	assert.Contains(t, result.Stdout, "config",
 		"should show config initialization message")
@@ -44,8 +44,8 @@ func TestConfig_Set(t *testing.T) {
 	ctx, runner, _, cleanup := setupTest(t)
 	defer cleanup.CleanupDevnet()
 
-	// Initialize config first
-	runner.MustRun("config", "init", "--home", ctx.HomeDir)
+	// Initialize config first with --force for non-interactive mode
+	runner.MustRun("config", "init", "--force", "--home", ctx.HomeDir)
 
 	// Set a config value
 	t.Log("Setting config value...")
@@ -76,8 +76,8 @@ func TestConfig_Get(t *testing.T) {
 	ctx, runner, _, cleanup := setupTest(t)
 	defer cleanup.CleanupDevnet()
 
-	// Initialize config
-	runner.MustRun("config", "init", "--home", ctx.HomeDir)
+	// Initialize config with --force for non-interactive mode
+	runner.MustRun("config", "init", "--force", "--home", ctx.HomeDir)
 
 	// Get a config value
 	t.Log("Getting config value...")
@@ -297,8 +297,8 @@ func TestConfig_JSONOutput(t *testing.T) {
 	ctx, runner, _, cleanup := setupTest(t)
 	defer cleanup.CleanupDevnet()
 
-	// Initialize config
-	runner.MustRun("config", "init", "--home", ctx.HomeDir)
+	// Initialize config with --force for non-interactive mode
+	runner.MustRun("config", "init", "--force", "--home", ctx.HomeDir)
 
 	// Get config in JSON format
 	t.Log("Getting config as JSON...")
