@@ -135,22 +135,30 @@ EOF
 # =============================================================================
 
 setup_github_auth() {
-    # Only set up if GITHUB_TOKEN is provided
-    if [ -z "$GITHUB_TOKEN" ]; then
-        info "No GITHUB_TOKEN provided (tests using existing binaries only)"
+    info "Checking GitHub authentication..."
+
+    # Check if git credentials already exist
+    if [ -f "$HOME/.git-credentials" ]; then
+        success "Git credentials found at: $HOME/.git-credentials"
+        info "If GitHub authentication fails, please review your credentials file:"
+        info "  cat $HOME/.git-credentials"
+
+        # Configure git to use existing credentials
+        git config --global credential.helper store
+
+        success "Using existing GitHub credentials"
         return 0
     fi
 
-    info "Setting up GitHub authentication..."
+    # No credentials found
+    warning "No GitHub credentials found"
+    warning "If tests require GitHub access, configure credentials:"
+    warning "  1. Create ~/.git-credentials with format:"
+    warning "     https://USERNAME:TOKEN@github.com"
+    warning "  2. Or run: git config --global credential.helper store"
+    warning "     Then perform a git operation to save credentials"
 
-    # Configure git to use token
-    git config --global credential.helper store
-
-    # Create credential file
-    mkdir -p "$HOME/.git-credentials"
-    echo "https://${GITHUB_TOKEN}@github.com" > "$HOME/.git-credentials"
-
-    success "GitHub authentication configured"
+    return 0
 }
 
 # =============================================================================
@@ -203,7 +211,7 @@ main() {
     validate_environment
     echo ""
 
-    # Setup GitHub authentication if token provided
+    # Check GitHub authentication
     setup_github_auth
     echo ""
 
@@ -217,7 +225,7 @@ main() {
     info "==================================================================="
     info "DEVNET_HOME:        $DEVNET_HOME"
     info "BINARY_PATH:        $BINARY_PATH"
-    info "GITHUB_TOKEN:       ${GITHUB_TOKEN:+[SET]}${GITHUB_TOKEN:-[NOT SET]}"
+    info "Git Credentials:    $([ -f "$HOME/.git-credentials" ] && echo "FOUND" || echo "NOT FOUND")"
     info "E2E_BINARY_SOURCE:  ${E2E_BINARY_SOURCE:-[NOT SET]}"
 
     if [ -f "$BINARY_PATH" ]; then

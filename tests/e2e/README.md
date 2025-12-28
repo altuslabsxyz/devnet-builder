@@ -219,19 +219,34 @@ go test -v -parallel 4 ./tests/e2e/...
 
 Control test behavior and authentication through environment variables:
 
-### GitHub Authentication (Optional)
+### GitHub Authentication (Automatic)
 
-Required only if tests need to build blockchain binaries from source:
+Tests automatically use existing Git credentials if available.
+
+**Setup Git credentials** (if not already configured):
 
 ```bash
-# Provide GitHub token for authentication
-export GITHUB_TOKEN=ghp_your_token_here
+# Configure git to store credentials
+git config --global credential.helper store
 
-# Run tests (will use token for git operations)
-make e2e-test
+# Perform any git operation (e.g., clone, pull)
+# Git will prompt for credentials once and save them to ~/.git-credentials
+git clone https://github.com/your-private-repo
 ```
 
-**Note**: Most tests don't need GitHub authentication. Tests will skip binary building if authentication fails.
+**Check if credentials exist**:
+```bash
+# Credentials file should exist
+ls -la ~/.git-credentials
+
+# View credentials (format: https://USERNAME:TOKEN@github.com)
+cat ~/.git-credentials
+```
+
+**Note**:
+- Tests will automatically detect and use `~/.git-credentials` if present
+- Most tests don't need GitHub authentication (only binary building from source)
+- If GitHub access fails, tests will skip binary building
 
 ### Binary Path (Recommended)
 
