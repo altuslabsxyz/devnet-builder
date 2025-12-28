@@ -1,0 +1,38 @@
+# =============================================================================
+# E2E Test Configuration: Docker Mode with 4 Validators
+# =============================================================================
+# This configuration is used for E2E testing of devnet-builder in docker mode
+# with a 4-validator network setup.
+#
+# Port Allocation (10000 offset per validator):
+#   Node0: RPC 26657, P2P 26656, GRPC 9090, EVMRPC 8545, EVMWS 8546, API 1317
+#   Node1: RPC 36657, P2P 36656, GRPC 19090, EVMRPC 18545, EVMWS 18546, API 11317
+#   Node2: RPC 46657, P2P 46656, GRPC 29090, EVMRPC 28545, EVMWS 28546, API 21317
+#   Node3: RPC 56657, P2P 56656, GRPC 39090, EVMRPC 38545, EVMWS 38546, API 31317
+# =============================================================================
+
+# =============================================================================
+# Global Settings (apply to all commands)
+# =============================================================================
+home = "~/.stable-devnet-e2e-docker-4val"
+verbose = true
+json = false
+no_color = false
+
+# =============================================================================
+# Start Command Settings
+# =============================================================================
+network = "mainnet"           # Valid: "mainnet", "testnet"
+blockchain_network = "stable" # Network module to use
+validators = 4                # Valid: 1-4
+mode = "docker"               # Valid: "docker", "local"
+stable_version = "v1.0.0"     # Version for testing
+network_version = "v1.0.0"    # Network version for testing
+no_cache = false              # Use cache for faster testing
+accounts = 2                  # Additional funded accounts (0-100)
+
+# =============================================================================
+# GitHub API Settings (Optional)
+# =============================================================================
+github_token = ""             # Not required for E2E tests with mocked snapshots
+cache_ttl = "1h"              # Cache TTL for version info

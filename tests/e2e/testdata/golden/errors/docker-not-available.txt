@@ -1,0 +1,10 @@
+Error: Docker daemon is not running or not accessible
+
+Docker is required for --mode docker
+
+Please ensure:
+  1. Docker is installed
+  2. Docker daemon is running
+  3. Current user has Docker permissions
+
+Check: docker ps

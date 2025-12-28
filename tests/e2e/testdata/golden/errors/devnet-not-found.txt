@@ -1,0 +1,7 @@
+Error: devnet not found at /path/to/home
+
+No devnet has been deployed yet.
+
+Commands:
+  devnet-builder deploy        # Deploy a new devnet
+  devnet-builder init          # Initialize devnet structure only

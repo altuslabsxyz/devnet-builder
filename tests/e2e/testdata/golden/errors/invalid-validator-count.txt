@@ -1,0 +1,8 @@
+Error: validator count must be between 1 and 4
+Received: 0
+
+Usage:
+  devnet-builder deploy [flags]
+
+Flags:
+  --validators int   Number of validators (1-4) (default 4)

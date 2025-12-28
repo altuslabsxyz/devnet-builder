@@ -1,0 +1,7 @@
+Error: conflicting flags detected
+Cannot use --network and --genesis-file together
+
+Please specify either:
+  --network mainnet|testnet   (use pre-configured network)
+OR
+  --genesis-file PATH         (use custom genesis file)

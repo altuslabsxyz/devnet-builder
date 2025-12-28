@@ -1,0 +1,79 @@
+{
+  "genesis_time": "2024-01-01T00:00:00.000000Z",
+  "chain_id": "test-testnet-1",
+  "initial_height": "1",
+  "consensus_params": {
+    "block": {
+      "max_bytes": "22020096",
+      "max_gas": "-1"
+    },
+    "evidence": {
+      "max_age_num_blocks": "100000",
+      "max_age_duration": "172800000000000",
+      "max_bytes": "1048576"
+    },
+    "validator": {
+      "pub_key_types": [
+        "ed25519"
+      ]
+    },
+    "version": {
+      "app": "0"
+    }
+  },
+  "validators": [
+    {
+      "address": "A1B2C3D4E5F6",
+      "pub_key": {
+        "type": "tendermint/PubKeyEd25519",
+        "value": "test1234567890abcdefghijklmnopqrstuvwxyz"
+      },
+      "power": "100",
+      "name": "validator0"
+    }
+  ],
+  "app_hash": "",
+  "app_state": {
+    "bank": {
+      "params": {
+        "send_enabled": [],
+        "default_send_enabled": true
+      },
+      "balances": [
+        {
+          "address": "test1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqnrql8a",
+          "coins": [
+            {
+              "denom": "stake",
+              "amount": "100000000000"
+            }
+          ]
+        }
+      ],
+      "supply": [
+        {
+          "denom": "stake",
+          "amount": "100000000000"
+        }
+      ],
+      "denom_metadata": []
+    },
+    "staking": {
+      "params": {
+        "unbonding_time": "1814400s",
+        "max_validators": 100,
+        "max_entries": 7,
+        "historical_entries": 10000,
+        "bond_denom": "stake",
+        "min_commission_rate": "0.000000000000000000"
+      },
+      "last_total_power": "0",
+      "last_validator_powers": [],
+      "validators": [],
+      "delegations": [],
+      "unbonding_delegations": [],
+      "redelegations": [],
+      "exported": false
+    }
+  }
+}
