@@ -197,7 +197,14 @@ e2e-test: build
 	@echo ""
 	@echo "Executing E2E tests..."
 	@mkdir -p tests/e2e/results
-	@go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log
+	@if [ -f .e2e-test.env ]; then \
+		echo "Loading E2E test environment..."; \
+		set -a; source .e2e-test.env; set +a; \
+		go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
+	else \
+		echo "Warning: .e2e-test.env not found, running without environment"; \
+		go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
+	fi
 	@echo ""
 	@echo "Generating test report..."
 	@bash tests/e2e/scripts/generate-test-report.sh tests/e2e/results/test-output.log tests/e2e/TEST_RESULTS.md
@@ -207,6 +214,7 @@ e2e-test: build
 	@echo "==================================================================="
 	@echo "Report: tests/e2e/TEST_RESULTS.md"
 	@echo "Full log: tests/e2e/results/test-output.log"
+	@rm -f .e2e-test.env .git-askpass.sh
 
 # Run E2E tests with specific binary
 e2e-test-with-binary: build
@@ -228,6 +236,7 @@ e2e-clean:
 	@echo "Cleaning E2E test artifacts..."
 	@rm -rf tests/e2e/results/
 	@rm -f tests/e2e/TEST_RESULTS.md
+	@rm -f .e2e-test.env .git-askpass.sh
 	@echo "E2E test artifacts cleaned"
 
 # =============================================================================
