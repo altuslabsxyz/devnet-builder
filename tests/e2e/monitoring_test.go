@@ -13,6 +13,7 @@ import (
 // Verifies: status shows all validators, ports, and running state
 func TestStatus_RunningDevnet(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy devnet
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -54,6 +55,7 @@ func TestStatus_RunningDevnet(t *testing.T) {
 // Verifies: JSON output is valid and contains all required fields
 func TestStatus_JSONOutput(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy devnet
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -104,6 +106,7 @@ func TestStatus_JSONOutput(t *testing.T) {
 // Verifies: logs are streamed in real-time
 func TestLogs_FollowMode(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy devnet
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -158,6 +161,7 @@ func TestLogs_FollowMode(t *testing.T) {
 // Verifies: only requested number of lines are returned
 func TestLogs_TailLines(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy devnet
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -203,6 +207,7 @@ func TestLogs_TailLines(t *testing.T) {
 // Verifies: can stop and start individual validators
 func TestNode_StopAndStart(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy devnet
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -261,6 +266,7 @@ func TestNode_StopAndStart(t *testing.T) {
 // Verifies: status correctly shows stopped state
 func TestStatus_StoppedDevnet(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup, deploy, and stop devnet
 	ctx, runner, validator, cleanup := setupTest(t)

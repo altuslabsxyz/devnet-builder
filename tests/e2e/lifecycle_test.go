@@ -12,6 +12,8 @@ import (
 func TestDeploy_DefaultSettings(t *testing.T) {
 	// Skip if binary not built
 	skipIfBinaryNotBuilt(t)
+	// Skip if blockchain binary not available
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup test environment
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -87,6 +89,8 @@ func TestDeploy_DefaultSettings(t *testing.T) {
 func TestInit_FollowedByStart(t *testing.T) {
 	// Skip if binary not built
 	skipIfBinaryNotBuilt(t)
+	// Skip if blockchain binary not available
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup test environment
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -148,6 +152,8 @@ func TestInit_FollowedByStart(t *testing.T) {
 func TestStop_GracefulShutdown(t *testing.T) {
 	// Skip if binary not built
 	skipIfBinaryNotBuilt(t)
+	// Skip if blockchain binary not available
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy a devnet first
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -198,6 +204,8 @@ func TestStop_GracefulShutdown(t *testing.T) {
 func TestStart_ResumeFromStopped(t *testing.T) {
 	// Skip if binary not built
 	skipIfBinaryNotBuilt(t)
+	// Skip if blockchain binary not available
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup, deploy, and stop a devnet
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -256,6 +264,8 @@ func TestStart_ResumeFromStopped(t *testing.T) {
 func TestDestroy_WithForceFlag(t *testing.T) {
 	// Skip if binary not built
 	skipIfBinaryNotBuilt(t)
+	// Skip if blockchain binary not available
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy a devnet
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -315,6 +325,8 @@ func TestDestroy_WithForceFlag(t *testing.T) {
 func TestDeploy_AlreadyExists_Error(t *testing.T) {
 	// Skip if binary not built
 	skipIfBinaryNotBuilt(t)
+	// Skip if blockchain binary not available
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy initial devnet
 	ctx, runner, validator, cleanup := setupTest(t)

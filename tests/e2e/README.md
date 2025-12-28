@@ -2,6 +2,17 @@
 
 Comprehensive end-to-end test suite covering all 32 devnet-builder commands with mocked external dependencies for fast, reliable testing.
 
+## Current Status
+
+**Test Results**: 14 passing, 36 failing, 2 skipped (as of 2025-12-27)
+
+**Passing Tests** (26.9%):
+- Configuration & Utilities: 9/9 tests
+- Error Handling: 4/8 tests
+- Monitoring: 1/7 tests
+
+**Known Limitation**: Deploy tests require pre-built blockchain binaries. See [Setting Up Blockchain Binaries](#setting-up-blockchain-binaries) below.
+
 ## Overview
 
 This test suite validates all devnet-builder functionality through integration tests that:
@@ -92,6 +103,69 @@ This test suite validates all devnet-builder functionality through integration t
    ```bash
    docker --version
    ```
+
+### Setting Up Blockchain Binaries
+
+**Required for deploy tests only**. Configuration, cache, version, and error handling tests work without this.
+
+Deploy tests need a pre-built blockchain binary to start validator nodes. Without this, deploy tests will be skipped automatically.
+
+#### Option 1: Use Existing Binary (Recommended)
+
+If you already have the stable blockchain binary installed:
+
+```bash
+# Check if binary exists
+ls ~/.devnet-builder/bin/stabled
+
+# If it exists, you're ready - deploy tests will run
+```
+
+#### Option 2: Build from Source
+
+Build the stable blockchain binary and place it in the expected location:
+
+```bash
+# Clone and build the blockchain
+git clone https://github.com/stablelabs/stable-network
+cd stable-network
+make install
+
+# Move binary to expected location
+mkdir -p ~/.devnet-builder/bin
+cp $(which stabled) ~/.devnet-builder/bin/stabled
+
+# Verify
+~/.devnet-builder/bin/stabled version
+```
+
+#### Option 3: Download Pre-built Binary
+
+If pre-built binaries are available:
+
+```bash
+# Download binary (adjust URL for your network)
+wget https://releases.example.com/stabled-v1.0.0 -O ~/.devnet-builder/bin/stabled
+
+# Make executable
+chmod +x ~/.devnet-builder/bin/stabled
+
+# Verify
+~/.devnet-builder/bin/stabled version
+```
+
+#### Option 4: Run Partial Test Suite
+
+Run only tests that don't require blockchain binaries:
+
+```bash
+# Run non-deploy tests (config, cache, version, error handling)
+go test -v ./tests/e2e/config_test.go
+go test -v ./tests/e2e/errors_test.go -run "TestDeploy_DockerNotRunning|TestEdgeCase_SnapshotDownloadInterrupt"
+
+# All tests - deploy tests auto-skip if binary missing
+go test -v ./tests/e2e/...
+```
 
 ### Running Tests
 
@@ -258,6 +332,23 @@ func TestWithMocks(t *testing.T) {
 Error: devnet-builder binary not found
 Solution: Run 'go build -o devnet-builder ./cmd/devnet-builder' from project root
 ```
+
+### Blockchain Binary Not Found (Deploy Tests Skipped)
+```
+Warning: Blockchain binary not found. Deploy tests require pre-built binary at ~/.devnet-builder/bin/stabled
+Solution: See "Setting Up Blockchain Binaries" section above
+```
+
+**Symptoms**:
+- Deploy tests show as "SKIP" in test output
+- Error: "Building binary from source (ref: latest)... fatal: could not read Username for 'https://github.com'"
+- Error: "failed to build from source: build failed"
+
+**Why this happens**: The deploy command needs actual blockchain binaries to start validator nodes. When the binary isn't found, it tries to build from source by cloning the GitHub repository, which fails in test environments.
+
+**Solution**: Provide a pre-built blockchain binary at `~/.devnet-builder/bin/stabled` using one of the options in the "Setting Up Blockchain Binaries" section.
+
+**Alternative**: Run only non-deploy tests (14 tests still pass without blockchain binaries).
 
 ### Port Conflicts
 ```

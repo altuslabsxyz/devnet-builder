@@ -13,6 +13,7 @@ import (
 func TestDockerMode_Deploy(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
 	skipIfDockerNotAvailable(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup test environment
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -56,6 +57,7 @@ func TestDockerMode_Deploy(t *testing.T) {
 // Verifies: local processes created, validators running as processes
 func TestLocalMode_Deploy(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup test environment
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -92,6 +94,7 @@ func TestLocalMode_Deploy(t *testing.T) {
 // Verifies: single validator network can be created
 func TestValidatorCount_1Validator(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	ctx, runner, validator, cleanup := setupTest(t)
 	defer cleanup.CleanupDevnet()
@@ -121,6 +124,7 @@ func TestValidatorCount_1Validator(t *testing.T) {
 // Verifies: 4 validator network can be created
 func TestValidatorCount_4Validators(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	ctx, runner, validator, cleanup := setupTest(t)
 	defer cleanup.CleanupDevnet()
@@ -169,6 +173,7 @@ func TestValidatorCount_4Validators(t *testing.T) {
 // Verifies: mainnet network can be deployed
 func TestNetworkType_Mainnet(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	ctx, runner, validator, cleanup := setupTest(t)
 	defer cleanup.CleanupDevnet()
@@ -199,6 +204,7 @@ func TestNetworkType_Mainnet(t *testing.T) {
 // Verifies: testnet network can be deployed
 func TestNetworkType_Testnet(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	ctx, runner, validator, cleanup := setupTest(t)
 	defer cleanup.CleanupDevnet()

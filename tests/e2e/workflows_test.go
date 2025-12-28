@@ -11,6 +11,7 @@ import (
 // Verifies: deploy → status → logs → stop → start → destroy workflow
 func TestWorkflow_FullLifecycle(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	ctx, runner, validator, cleanup := setupTest(t)
 	defer cleanup.CleanupDevnet()
@@ -72,6 +73,7 @@ func TestWorkflow_FullLifecycle(t *testing.T) {
 // Verifies: deploy → export → destroy → deploy with exported genesis
 func TestWorkflow_ExportAndRestore(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	ctx, runner, validator, cleanup := setupTest(t)
 	defer cleanup.CleanupDevnet()
@@ -129,6 +131,7 @@ func TestWorkflow_ExportAndRestore(t *testing.T) {
 // Verifies: deploy → upgrade → verify → rollback (if needed)
 func TestWorkflow_UpgradeAndRollback(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	ctx, runner, validator, cleanup := setupTest(t)
 	defer cleanup.CleanupDevnet()
@@ -181,6 +184,7 @@ func TestWorkflow_UpgradeAndRollback(t *testing.T) {
 // Verifies: deploy → stop one validator → verify network continues → restart validator
 func TestWorkflow_MultiValidator(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	ctx, runner, validator, cleanup := setupTest(t)
 	defer cleanup.CleanupDevnet()

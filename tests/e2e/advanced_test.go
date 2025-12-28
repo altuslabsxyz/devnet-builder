@@ -13,6 +13,7 @@ import (
 // Verifies: binary upgrade workflow, validators restart with new version
 func TestUpgrade_WithBinary(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy devnet
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -62,6 +63,7 @@ func TestUpgrade_WithBinary(t *testing.T) {
 // Verifies: export creates genesis file with current state
 func TestExport_CurrentState(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy devnet
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -116,6 +118,7 @@ func TestExport_CurrentState(t *testing.T) {
 // Verifies: exported genesis can be used to create new devnet
 func TestBuild_FromExportedGenesis(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy initial devnet
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -183,6 +186,7 @@ func TestBuild_FromExportedGenesis(t *testing.T) {
 // Verifies: soft reset preserves validator keys but resets chain state
 func TestReset_SoftReset(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy devnet
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -229,6 +233,7 @@ func TestReset_SoftReset(t *testing.T) {
 // Verifies: hard reset removes validator directories completely
 func TestReset_HardReset(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy devnet
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -277,6 +282,7 @@ func TestReset_HardReset(t *testing.T) {
 // Verifies: binary replacement and validator restart
 func TestReplace_BinaryVersion(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy devnet
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -321,6 +327,7 @@ func TestReplace_BinaryVersion(t *testing.T) {
 // Verifies: key export creates backup files
 func TestExportKeys_ValidatorsOnly(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy devnet
 	ctx, runner, validator, cleanup := setupTest(t)
@@ -370,6 +377,7 @@ func TestExportKeys_ValidatorsOnly(t *testing.T) {
 // Verifies: snapshot command creates valid archive
 func TestBuildSnapshot_CreateArchive(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
+	skipIfBlockchainBinaryNotAvailable(t)
 
 	// Setup and deploy devnet
 	ctx, runner, validator, cleanup := setupTest(t)

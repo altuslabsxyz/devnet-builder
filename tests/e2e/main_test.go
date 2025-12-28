@@ -254,3 +254,41 @@ func requireBinary(t *testing.T) {
 		t.Fatal("devnet-builder binary not built. Run 'go build' first.")
 	}
 }
+
+// skipIfBlockchainBinaryNotAvailable skips the test if blockchain binary is not available
+// Deploy tests require pre-built blockchain binaries at ~/.devnet-builder/bin/stabled
+func skipIfBlockchainBinaryNotAvailable(t *testing.T) {
+	t.Helper()
+
+	// Check user's home directory for blockchain binary
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("Cannot determine user home directory")
+		return
+	}
+
+	// For stable network, binary should be at ~/.devnet-builder/bin/stabled
+	binaryPath := filepath.Join(userHome, ".devnet-builder", "bin", "stabled")
+	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
+		t.Skip("Blockchain binary not found. Deploy tests require pre-built binary at ~/.devnet-builder/bin/stabled")
+		return
+	}
+
+	t.Logf("Using blockchain binary: %s", binaryPath)
+}
+
+// requireBlockchainBinary fails the test if blockchain binary is not available
+func requireBlockchainBinary(t *testing.T) {
+	t.Helper()
+
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal("Cannot determine user home directory")
+	}
+
+	binaryPath := filepath.Join(userHome, ".devnet-builder", "bin", "stabled")
+	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
+		t.Fatalf("Blockchain binary not found. Deploy tests require pre-built binary at: %s\n"+
+			"See tests/e2e/README.md for setup instructions.", binaryPath)
+	}
+}
