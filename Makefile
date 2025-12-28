@@ -199,7 +199,7 @@ e2e-test: build
 	@mkdir -p tests/e2e/results
 	@if [ -f .e2e-test.env ]; then \
 		echo "Loading E2E test environment..."; \
-		set -a; source .e2e-test.env; set +a; \
+		set -a; . ./.e2e-test.env; set +a; \
 		go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
 	else \
 		echo "Warning: .e2e-test.env not found, running without environment"; \
