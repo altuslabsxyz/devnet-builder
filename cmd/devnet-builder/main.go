@@ -85,6 +85,7 @@ func checkAndMigrateVersion(homeDir string) error {
 
 	// Register all migrations
 	migrationSvc.RegisterMigration(migrations.NewCacheKeyMigration())
+	migrationSvc.RegisterMigration(migrations.NewNoOpMigration())
 
 	// Check and migrate to current version
 	ctx := context.Background()
