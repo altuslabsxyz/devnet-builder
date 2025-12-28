@@ -81,6 +81,15 @@ func setupTest(t *testing.T) (*helpers.TestContext, *helpers.CommandRunner, *hel
 	// Create test context
 	ctx := helpers.NewTestContext(t)
 
+	// Create mock servers
+	snapshotServer := helpers.NewMockSnapshotServer(t)
+	githubAPI := helpers.NewMockGitHubAPI(t)
+
+	// Configure environment to use mock servers and skip real downloads
+	ctx.WithEnv("GITHUB_TOKEN", "mock-token-for-testing")
+	ctx.WithEnv("SNAPSHOT_URL", snapshotServer.URL())
+	ctx.WithEnv("GITHUB_API_URL", githubAPI.URL())
+
 	// Create default config file to avoid "missing required configuration" errors
 	createDefaultConfig(t, ctx)
 
@@ -120,15 +129,15 @@ func createDefaultConfig(t *testing.T, ctx *helpers.TestContext) {
 		t.Fatalf("failed to create config directory: %v", err)
 	}
 
+	// Copy stable plugin to test environment
+	// The binary loads plugins from ~/.devnet-builder/plugins/
+	setupTestPlugins(t, ctx)
+
 	// Create minimal config file with required blockchain_network setting
+	// Using mock GitHub token to prevent authentication errors in tests
 	configContent := `# Auto-generated test configuration
 blockchain_network = "stable"
-
-[local]
-mode = "local"
-
-[docker]
-mode = "docker"
+github_token = "mock-token-for-testing"
 `
 
 	configPath := filepath.Join(configDir, "config.toml")
@@ -137,6 +146,44 @@ mode = "docker"
 	}
 
 	ctx.WithConfig(configPath)
+}
+
+// setupTestPlugins copies required plugins to the test environment
+func setupTestPlugins(t *testing.T, ctx *helpers.TestContext) {
+	t.Helper()
+
+	// Create plugins directory in test environment
+	pluginsDir := filepath.Join(ctx.HomeDir, ".devnet-builder", "plugins")
+	if err := os.MkdirAll(pluginsDir, 0755); err != nil {
+		t.Fatalf("failed to create plugins directory: %v", err)
+	}
+
+	// Copy stable plugin from user's home directory
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("failed to get user home directory: %v", err)
+	}
+
+	sourcePlugin := filepath.Join(userHome, ".devnet-builder", "plugins", "stable-plugin")
+	destPlugin := filepath.Join(pluginsDir, "stable-plugin")
+
+	// Check if source plugin exists
+	if _, err := os.Stat(sourcePlugin); os.IsNotExist(err) {
+		t.Logf("WARNING: stable-plugin not found at %s, tests may fail", sourcePlugin)
+		return
+	}
+
+	// Copy plugin binary
+	input, err := os.ReadFile(sourcePlugin)
+	if err != nil {
+		t.Fatalf("failed to read plugin: %v", err)
+	}
+
+	if err := os.WriteFile(destPlugin, input, 0755); err != nil {
+		t.Fatalf("failed to write plugin: %v", err)
+	}
+
+	t.Logf("Copied stable-plugin to test environment: %s", destPlugin)
 }
 
 // getFixturePath returns the absolute path to a fixture file

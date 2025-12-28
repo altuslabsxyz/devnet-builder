@@ -64,6 +64,57 @@ func (r *CommandRunner) RunWithTimeout(timeout time.Duration, args ...string) *C
 func (r *CommandRunner) RunWithContext(ctx context.Context, args ...string) *CommandResult {
 	r.t.Helper()
 
+	// Add test-specific flags to deploy commands
+	// - --fork=false: Create fresh genesis instead of downloading from GitHub
+	// - --no-interactive: Skip version selection prompts
+	// - --export-version/--start-version: Provide versions for non-interactive mode
+	// - --no-cache: Skip snapshot cache
+	if len(args) > 0 && args[0] == "deploy" {
+		hasFork := false
+		hasNoCache := false
+		hasNoInteractive := false
+		hasExportVersion := false
+		hasStartVersion := false
+
+		for _, arg := range args {
+			if strings.HasPrefix(arg, "--fork") {
+				hasFork = true
+			}
+			if arg == "--no-cache" {
+				hasNoCache = true
+			}
+			if arg == "--no-interactive" {
+				hasNoInteractive = true
+			}
+			if strings.HasPrefix(arg, "--export-version") {
+				hasExportVersion = true
+			}
+			if strings.HasPrefix(arg, "--start-version") {
+				hasStartVersion = true
+			}
+		}
+
+		// Add --fork=false to skip GitHub downloads entirely
+		if !hasFork {
+			args = append(args, "--fork=false")
+		}
+		// Add --no-cache for safety
+		if !hasNoCache {
+			args = append(args, "--no-cache")
+		}
+		// Add --no-interactive to skip prompts
+		if !hasNoInteractive {
+			args = append(args, "--no-interactive")
+		}
+		// Add version flags for non-interactive mode (use latest as default)
+		if !hasExportVersion {
+			args = append(args, "--export-version=latest")
+		}
+		if !hasStartVersion {
+			args = append(args, "--start-version=latest")
+		}
+	}
+
 	// Prepend --config flag if ConfigPath is set
 	if r.ctx.ConfigPath != "" {
 		args = append([]string{"--config", r.ctx.ConfigPath}, args...)
