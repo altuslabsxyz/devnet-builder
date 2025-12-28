@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/dto"
@@ -277,14 +278,24 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Build binary for local mode (all versions need to be built/cached)
+	// Skip build if binary already exists (for test performance)
 	var customBinaryPath string
 	if deployMode == "local" {
-		buildResult, err := buildBinaryForDeploy(ctx, deployBlockchainNetwork, startVersion, deployNetwork, logger)
-		if err != nil {
-			return fmt.Errorf("failed to build from source: %w", err)
+		// Check if binary already exists
+		expectedBinaryPath := filepath.Join(homeDir, ".devnet-builder", "bin", "stabled")
+		if _, err := os.Stat(expectedBinaryPath); err == nil {
+			// Binary exists, skip build
+			customBinaryPath = expectedBinaryPath
+			logger.Info("Using existing binary: %s", expectedBinaryPath)
+		} else {
+			// Binary doesn't exist, build it
+			buildResult, err := buildBinaryForDeploy(ctx, deployBlockchainNetwork, startVersion, deployNetwork, logger)
+			if err != nil {
+				return fmt.Errorf("failed to build from source: %w", err)
+			}
+			customBinaryPath = buildResult.BinaryPath
+			logger.Success("Binary built: %s (commit: %s)", buildResult.BinaryPath, buildResult.CommitHash)
 		}
-		customBinaryPath = buildResult.BinaryPath
-		logger.Success("Binary built: %s (commit: %s)", buildResult.BinaryPath, buildResult.CommitHash)
 	}
 
 	// Phase 1: Provision using CleanDevnetService

@@ -232,25 +232,33 @@ func setupTestBinaries(t *testing.T, ctx *helpers.TestContext) {
 		return
 	}
 
-	// Create bin directory in test environment
-	binDir := filepath.Join(ctx.HomeDir, ".devnet-builder", "bin")
-	if err := os.MkdirAll(binDir, 0755); err != nil {
-		t.Fatalf("failed to create bin directory: %v", err)
-	}
-
-	// Determine destination binary name from source
-	binaryName := filepath.Base(sharedBlockchainBinary)
-	destBinary := filepath.Join(binDir, binaryName)
-
-	// Copy blockchain binary
+	// Read blockchain binary once
 	input, err := os.ReadFile(sharedBlockchainBinary)
 	if err != nil {
 		t.Logf("WARNING: failed to read blockchain binary: %v", err)
 		return
 	}
 
-	if err := os.WriteFile(destBinary, input, 0755); err != nil {
-		t.Fatalf("failed to write blockchain binary: %v", err)
+	binaryName := filepath.Base(sharedBlockchainBinary)
+
+	// Copy to ~/.devnet-builder/bin/ (standard location)
+	devnetBuilderBinDir := filepath.Join(ctx.HomeDir, ".devnet-builder", "bin")
+	if err := os.MkdirAll(devnetBuilderBinDir, 0755); err != nil {
+		t.Fatalf("failed to create .devnet-builder/bin directory: %v", err)
+	}
+	devnetBuilderBinary := filepath.Join(devnetBuilderBinDir, binaryName)
+	if err := os.WriteFile(devnetBuilderBinary, input, 0755); err != nil {
+		t.Fatalf("failed to write blockchain binary to .devnet-builder/bin: %v", err)
+	}
+
+	// Also copy to ~/bin/ (used by provision/key creation)
+	homeBinDir := filepath.Join(ctx.HomeDir, "bin")
+	if err := os.MkdirAll(homeBinDir, 0755); err != nil {
+		t.Fatalf("failed to create bin directory: %v", err)
+	}
+	homeBinary := filepath.Join(homeBinDir, binaryName)
+	if err := os.WriteFile(homeBinary, input, 0755); err != nil {
+		t.Fatalf("failed to write blockchain binary to bin: %v", err)
 	}
 
 	t.Logf("Using pre-built blockchain binary: %s", sharedBlockchainBinary)
