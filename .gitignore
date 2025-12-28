@@ -36,3 +36,7 @@ docker/devnet/
 *.tmp
 *.swp
 *~
+
+# E2E test artifacts (auto-generated)
+tests/e2e/results/
+tests/e2e/TEST_RESULTS.md
