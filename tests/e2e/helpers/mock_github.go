@@ -19,13 +19,13 @@ type MockGitHubAPI struct {
 
 // GitHubRelease represents a GitHub release
 type GitHubRelease struct {
-	TagName    string       `json:"tag_name"`
-	Name       string       `json:"name"`
-	Draft      bool         `json:"draft"`
-	Prerelease bool         `json:"prerelease"`
-	CreatedAt  string       `json:"created_at"`
-	PublishedAt string      `json:"published_at"`
-	Assets     []GitHubAsset `json:"assets"`
+	TagName     string        `json:"tag_name"`
+	Name        string        `json:"name"`
+	Draft       bool          `json:"draft"`
+	Prerelease  bool          `json:"prerelease"`
+	CreatedAt   string        `json:"created_at"`
+	PublishedAt string        `json:"published_at"`
+	Assets      []GitHubAsset `json:"assets"`
 }
 
 // GitHubAsset represents a release asset
@@ -73,11 +73,11 @@ func (m *MockGitHubAPI) AddRelease(release GitHubRelease) {
 func (m *MockGitHubAPI) AddDefaultReleases() {
 	// Add v1.0.0 release (latest stable)
 	m.AddRelease(GitHubRelease{
-		TagName:    "v1.0.0",
-		Name:       "Release v1.0.0",
-		Draft:      false,
-		Prerelease: false,
-		CreatedAt:  "2024-01-01T00:00:00Z",
+		TagName:     "v1.0.0",
+		Name:        "Release v1.0.0",
+		Draft:       false,
+		Prerelease:  false,
+		CreatedAt:   "2024-01-01T00:00:00Z",
 		PublishedAt: "2024-01-01T00:00:00Z",
 		Assets: []GitHubAsset{
 			{
@@ -90,11 +90,11 @@ func (m *MockGitHubAPI) AddDefaultReleases() {
 
 	// Add v1.1.0-rc1 release (prerelease)
 	m.AddRelease(GitHubRelease{
-		TagName:    "v1.1.0-rc1",
-		Name:       "Release v1.1.0-rc1",
-		Draft:      false,
-		Prerelease: true,
-		CreatedAt:  "2024-02-01T00:00:00Z",
+		TagName:     "v1.1.0-rc1",
+		Name:        "Release v1.1.0-rc1",
+		Draft:       false,
+		Prerelease:  true,
+		CreatedAt:   "2024-02-01T00:00:00Z",
 		PublishedAt: "2024-02-01T00:00:00Z",
 		Assets: []GitHubAsset{
 			{
@@ -107,11 +107,11 @@ func (m *MockGitHubAPI) AddDefaultReleases() {
 
 	// Add v0.9.0 release (older stable)
 	m.AddRelease(GitHubRelease{
-		TagName:    "v0.9.0",
-		Name:       "Release v0.9.0",
-		Draft:      false,
-		Prerelease: false,
-		CreatedAt:  "2023-12-01T00:00:00Z",
+		TagName:     "v0.9.0",
+		Name:        "Release v0.9.0",
+		Draft:       false,
+		Prerelease:  false,
+		CreatedAt:   "2023-12-01T00:00:00Z",
 		PublishedAt: "2023-12-01T00:00:00Z",
 		Assets: []GitHubAsset{
 			{
@@ -207,11 +207,9 @@ func (m *MockGitHubAPI) handleGetLatestRelease(w http.ResponseWriter, r *http.Re
 		if !release.Draft && !release.Prerelease {
 			if latest == nil {
 				latest = release
-			} else {
+			} else if release.TagName > latest.TagName {
 				// Compare versions (simple string comparison for testing)
-				if release.TagName > latest.TagName {
-					latest = release
-				}
+				latest = release
 			}
 		}
 	}
@@ -286,10 +284,8 @@ func (m *MockGitHubAPI) GetLatestRelease() *GitHubRelease {
 		if !release.Draft && !release.Prerelease {
 			if latest == nil {
 				latest = release
-			} else {
-				if release.TagName > latest.TagName {
-					latest = release
-				}
+			} else if release.TagName > latest.TagName {
+				latest = release
 			}
 		}
 	}

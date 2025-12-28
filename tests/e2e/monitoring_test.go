@@ -140,7 +140,7 @@ func TestLogs_FollowMode(t *testing.T) {
 
 	// Common log patterns in Cosmos SDK chains
 	logPatterns := []string{
-		"INF",  // Info level logs
+		"INF", // Info level logs
 		"validator",
 		"block",
 	}

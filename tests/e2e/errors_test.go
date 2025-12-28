@@ -12,27 +12,27 @@ func TestDeploy_InvalidValidatorCount(t *testing.T) {
 	skipIfBinaryNotBuilt(t)
 
 	testCases := []struct {
-		name          string
+		name           string
 		validatorCount string
-		expectedError string
+		expectedError  string
 	}{
 		{
-			name:          "zero validators",
+			name:           "zero validators",
 			validatorCount: "0",
 			expectedError:  "validator count must be between 1 and 4",
 		},
 		{
-			name:          "too many validators",
+			name:           "too many validators",
 			validatorCount: "5",
 			expectedError:  "validator count must be between 1 and 4",
 		},
 		{
-			name:          "negative validators",
+			name:           "negative validators",
 			validatorCount: "-1",
 			expectedError:  "invalid",
 		},
 		{
-			name:          "non-numeric validators",
+			name:           "non-numeric validators",
 			validatorCount: "abc",
 			expectedError:  "invalid",
 		},
