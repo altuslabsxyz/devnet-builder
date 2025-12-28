@@ -44,9 +44,16 @@ func (v *StateValidator) AssertFileNotExists(subpath string) {
 }
 
 // AssertDirectoryExists asserts that a directory exists
+// For validator directories, automatically checks under .devnet-builder/
 func (v *StateValidator) AssertDirectoryExists(subpath string) {
 	v.t.Helper()
-	path := filepath.Join(v.ctx.HomeDir, subpath)
+	// If subpath starts with "validator", check under .devnet-builder/
+	var path string
+	if strings.HasPrefix(subpath, "validator") {
+		path = filepath.Join(v.ctx.HomeDir, ".devnet-builder", subpath)
+	} else {
+		path = filepath.Join(v.ctx.HomeDir, subpath)
+	}
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		v.t.Fatalf("expected directory to exist but it doesn't: %s", path)
@@ -170,7 +177,9 @@ func (v *StateValidator) AssertDockerContainerNotExists(containerName string) {
 // AssertValidatorCount asserts the number of validator directories
 func (v *StateValidator) AssertValidatorCount(expected int) {
 	v.t.Helper()
-	pattern := filepath.Join(v.ctx.HomeDir, "validator*")
+	// Validators are created in .devnet-builder directory
+	devnetDir := filepath.Join(v.ctx.HomeDir, ".devnet-builder")
+	pattern := filepath.Join(devnetDir, "validator*")
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		v.t.Fatalf("failed to glob validator directories: %v", err)
