@@ -148,8 +148,9 @@ setup_github_auth() {
     if [ -n "$GITHUB_TOKEN" ]; then
         info "Configuring GitHub authentication via GITHUB_TOKEN"
 
-        # Create GIT_ASKPASS script for authentication
-        GIT_ASKPASS_SCRIPT="$(pwd)/.git-askpass.sh"
+        # Create GIT_ASKPASS script for authentication (use absolute path)
+        REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+        GIT_ASKPASS_SCRIPT="${REPO_ROOT}/.git-askpass.sh"
         cat > "$GIT_ASKPASS_SCRIPT" <<'ASKPASS_EOF'
 #!/bin/sh
 echo "$GITHUB_TOKEN"
