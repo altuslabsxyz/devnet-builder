@@ -197,14 +197,16 @@ e2e-test: build
 	@echo ""
 	@echo "Executing E2E tests..."
 	@mkdir -p tests/e2e/results
-	@if [ -f .e2e-test.env ]; then \
-		echo "Loading E2E test environment..."; \
-		set -a; . ./.e2e-test.env; set +a; \
-		go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
-	else \
-		echo "Warning: .e2e-test.env not found, running without environment"; \
-		go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
-	fi
+	@bash -c ' \
+		if [ -f .e2e-test.env ]; then \
+			echo "Loading E2E test environment..."; \
+			export $$(grep -v "^\#" .e2e-test.env | xargs); \
+			go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
+		else \
+			echo "Warning: .e2e-test.env not found, running without environment"; \
+			go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
+		fi \
+	'
 	@echo ""
 	@echo "Generating test report..."
 	@bash tests/e2e/scripts/generate-test-report.sh tests/e2e/results/test-output.log tests/e2e/TEST_RESULTS.md
