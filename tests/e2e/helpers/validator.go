@@ -294,7 +294,9 @@ func (v *StateValidator) WaitForDockerContainer(containerName string, timeout ti
 // GetValidatorDirs returns all validator directory paths
 func (v *StateValidator) GetValidatorDirs() []string {
 	v.t.Helper()
-	pattern := filepath.Join(v.ctx.HomeDir, "validator*")
+	// Validators are created in .devnet-builder directory
+	devnetDir := filepath.Join(v.ctx.HomeDir, ".devnet-builder")
+	pattern := filepath.Join(devnetDir, "validator*")
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		v.t.Fatalf("failed to glob validator directories: %v", err)

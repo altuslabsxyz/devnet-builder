@@ -281,8 +281,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Skip build if binary already exists (for test performance)
 	var customBinaryPath string
 	if deployMode == "local" {
-		// Check if binary already exists
-		expectedBinaryPath := filepath.Join(homeDir, ".devnet-builder", "bin", "stabled")
+		// Check if binary already exists - use blockchain network name for binary
+		binaryName := deployBlockchainNetwork + "d" // e.g., "stable" -> "stabled", "ault" -> "aultd"
+		expectedBinaryPath := filepath.Join(homeDir, ".devnet-builder", "bin", binaryName)
 		if _, err := os.Stat(expectedBinaryPath); err == nil {
 			// Binary exists, skip build
 			customBinaryPath = expectedBinaryPath
