@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -150,28 +151,40 @@ func (cm *CleanupManager) killProcess(process *os.Process) error {
 func (cm *CleanupManager) CleanupDevnet() error {
 	cm.t.Helper()
 
+	// Cleanup orphaned processes FIRST (before destroy command)
+	// This ensures we kill any stuck processes before trying graceful shutdown
+	if err := cm.cleanupOrphanedProcesses(); err != nil {
+		cm.t.Logf("WARNING: failed to cleanup orphaned processes: %v", err)
+	}
+
 	// Run devnet-builder destroy command if binary exists
 	if _, err := os.Stat(cm.ctx.BinaryPath); err == nil {
 		cm.t.Log("Running devnet-builder destroy...")
-		cmd := exec.Command(cm.ctx.BinaryPath, "destroy", "--home", cm.ctx.HomeDir)
+		cmd := exec.Command(cm.ctx.BinaryPath, "destroy", "--force", "--home", cm.ctx.HomeDir)
 		cmd.Env = cm.ctx.GetEnv()
-		// Ignore error - devnet might not be running
-		_ = cmd.Run()
+
+		// Capture output for debugging
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			cm.t.Logf("WARNING: destroy command failed: %v\nOutput: %s", err, string(output))
+		} else {
+			cm.t.Logf("Destroy output: %s", string(output))
+		}
+	}
+
+	// Force kill any remaining processes after destroy attempt
+	if err := cm.cleanupOrphanedProcesses(); err != nil {
+		cm.t.Logf("WARNING: failed to cleanup remaining processes: %v", err)
+	}
+
+	// Cleanup Docker containers
+	if err := cm.cleanupDockerContainers(); err != nil {
+		cm.t.Logf("WARNING: failed to cleanup Docker containers: %v", err)
 	}
 
 	// Remove home directory
 	if err := os.RemoveAll(cm.ctx.HomeDir); err != nil {
 		return fmt.Errorf("failed to remove devnet home directory: %w", err)
-	}
-
-	// Cleanup orphaned Docker containers
-	if err := cm.cleanupDockerContainers(); err != nil {
-		cm.t.Logf("WARNING: failed to cleanup Docker containers: %v", err)
-	}
-
-	// Cleanup orphaned processes
-	if err := cm.cleanupOrphanedProcesses(); err != nil {
-		cm.t.Logf("WARNING: failed to cleanup orphaned processes: %v", err)
 	}
 
 	return nil
@@ -200,24 +213,52 @@ func (cm *CleanupManager) cleanupDockerContainers() error {
 
 // cleanupOrphanedProcesses finds and kills processes matching devnet patterns
 func (cm *CleanupManager) cleanupOrphanedProcesses() error {
-	// Find processes running from the test home directory
 	homeDir := cm.ctx.HomeDir
-	pidFiles, err := filepath.Glob(filepath.Join(homeDir, "*.pid"))
-	if err != nil {
-		return fmt.Errorf("failed to find PID files: %w", err)
+
+	// Search for PID files in multiple locations
+	pidFilePatterns := []string{
+		filepath.Join(homeDir, "*.pid"),                    // Legacy: validator0.pid
+		filepath.Join(homeDir, "devnet", "node*", "*.pid"), // Current: devnet/node0/stabled.pid
+		filepath.Join(homeDir, "devnet", "*.pid"),          // Possible: devnet/stabled.pid
 	}
 
-	for _, pidFile := range pidFiles {
+	allPidFiles := make([]string, 0)
+	for _, pattern := range pidFilePatterns {
+		pidFiles, err := filepath.Glob(pattern)
+		if err != nil {
+			cm.t.Logf("WARNING: failed to glob pattern %s: %v", pattern, err)
+			continue
+		}
+		allPidFiles = append(allPidFiles, pidFiles...)
+	}
+
+	if len(allPidFiles) == 0 {
+		cm.t.Log("No PID files found for cleanup")
+		return nil
+	}
+
+	cm.t.Logf("Found %d PID file(s) to cleanup", len(allPidFiles))
+
+	for _, pidFile := range allPidFiles {
 		cm.t.Logf("Reading PID file: %s", pidFile)
 		data, err := os.ReadFile(pidFile)
 		if err != nil {
 			cm.t.Logf("WARNING: failed to read PID file %s: %v", pidFile, err)
+			_ = os.Remove(pidFile) // Remove unreadable PID file
 			continue
 		}
 
 		var pid int
 		if _, err := fmt.Sscanf(string(data), "%d", &pid); err != nil {
 			cm.t.Logf("WARNING: invalid PID in file %s: %v", pidFile, err)
+			_ = os.Remove(pidFile) // Remove invalid PID file
+			continue
+		}
+
+		// Skip if PID is 0 or negative
+		if pid <= 0 {
+			cm.t.Logf("WARNING: invalid PID %d in file %s", pid, pidFile)
+			_ = os.Remove(pidFile)
 			continue
 		}
 
@@ -225,16 +266,26 @@ func (cm *CleanupManager) cleanupOrphanedProcesses() error {
 		process, err := os.FindProcess(pid)
 		if err != nil {
 			cm.t.Logf("WARNING: failed to find process %d: %v", pid, err)
+			_ = os.Remove(pidFile) // Process doesn't exist, remove PID file
 			continue
 		}
 
-		cm.t.Logf("Killing orphaned process: %d", pid)
+		// Check if process is actually running (signal 0)
+		if err := process.Signal(syscall.Signal(0)); err != nil {
+			cm.t.Logf("Process %d not running (already exited), removing PID file", pid)
+			_ = os.Remove(pidFile)
+			continue
+		}
+
+		cm.t.Logf("Killing orphaned process: %d from %s", pid, pidFile)
 		if err := cm.killProcess(process); err != nil {
 			cm.t.Logf("WARNING: failed to kill process %d: %v", pid, err)
 		}
 
 		// Remove PID file
-		_ = os.Remove(pidFile)
+		if err := os.Remove(pidFile); err != nil {
+			cm.t.Logf("WARNING: failed to remove PID file %s: %v", pidFile, err)
+		}
 	}
 
 	return nil
@@ -254,11 +305,22 @@ func (cm *CleanupManager) AssertNoLeaks() {
 		cm.t.Errorf("LEAK: Found running Docker containers after cleanup: %s", output)
 	}
 
-	// Check for processes from test home directory
+	// Check for PID files in all possible locations
 	homeDir := cm.ctx.HomeDir
-	pidFiles, _ := filepath.Glob(filepath.Join(homeDir, "*.pid"))
-	if len(pidFiles) > 0 {
-		cm.t.Errorf("LEAK: Found PID files after cleanup: %v", pidFiles)
+	pidFilePatterns := []string{
+		filepath.Join(homeDir, "*.pid"),
+		filepath.Join(homeDir, "devnet", "node*", "*.pid"),
+		filepath.Join(homeDir, "devnet", "*.pid"),
+	}
+
+	allPidFiles := make([]string, 0)
+	for _, pattern := range pidFilePatterns {
+		pidFiles, _ := filepath.Glob(pattern)
+		allPidFiles = append(allPidFiles, pidFiles...)
+	}
+
+	if len(allPidFiles) > 0 {
+		cm.t.Errorf("LEAK: Found %d PID file(s) after cleanup: %v", len(allPidFiles), allPidFiles)
 	}
 
 	// Check for leftover files (excluding go test temp dirs which are auto-cleaned)
