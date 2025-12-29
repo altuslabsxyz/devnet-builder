@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -100,8 +101,8 @@ func (v *StateValidator) AssertProcessRunning(pid int) {
 	if err != nil {
 		v.t.Fatalf("failed to find process %d: %v", pid, err)
 	}
-	// Send signal 0 to check if process exists
-	if err := process.Signal(os.Signal(nil)); err != nil {
+	// Send signal 0 to check if process exists (use syscall.Signal for macOS compatibility)
+	if err := process.Signal(syscall.Signal(0)); err != nil {
 		v.t.Fatalf("process %d is not running: %v", pid, err)
 	}
 }
@@ -114,8 +115,8 @@ func (v *StateValidator) AssertProcessNotRunning(pid int) {
 		// Process doesn't exist - success
 		return
 	}
-	// Send signal 0 to check if process exists
-	if err := process.Signal(os.Signal(nil)); err == nil {
+	// Send signal 0 to check if process exists (use syscall.Signal for macOS compatibility)
+	if err := process.Signal(syscall.Signal(0)); err == nil {
 		v.t.Fatalf("expected process %d to not be running but it is", pid)
 	}
 }
@@ -241,7 +242,8 @@ func (v *StateValidator) WaitForProcess(pidFile string, timeout time.Duration) (
 				time.Sleep(100 * time.Millisecond)
 				continue
 			}
-			if err := process.Signal(os.Signal(nil)); err == nil {
+			// Send signal 0 to check if process is alive (use syscall.Signal for macOS compatibility)
+			if err := process.Signal(syscall.Signal(0)); err == nil {
 				return pid, nil
 			}
 		}
