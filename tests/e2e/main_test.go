@@ -100,6 +100,9 @@ func findProjectRoot() string {
 func setupTest(t *testing.T) (*helpers.TestContext, *helpers.CommandRunner, *helpers.StateValidator, *helpers.CleanupManager) {
 	t.Helper()
 
+	// GITHUB_TOKEN is required for E2E tests
+	skipIfGitHubTokenNotSet(t)
+
 	// Create test context
 	ctx := helpers.NewTestContext(t)
 
@@ -108,11 +111,8 @@ func setupTest(t *testing.T) (*helpers.TestContext, *helpers.CommandRunner, *hel
 	githubAPI := helpers.NewMockGitHubAPI(t)
 
 	// Configure environment to use mock servers and skip real downloads
-	// Use real GITHUB_TOKEN if available (from system env), otherwise use mock
+	// Use GITHUB_TOKEN from environment (already validated above)
 	githubToken := os.Getenv("GITHUB_TOKEN")
-	if githubToken == "" {
-		githubToken = "mock-token-for-testing"
-	}
 	ctx.WithEnv("GITHUB_TOKEN", githubToken)
 	ctx.WithEnv("SNAPSHOT_URL", snapshotServer.URL())
 	ctx.WithEnv("GITHUB_API_URL", githubAPI.URL())
@@ -165,11 +165,8 @@ func createDefaultConfig(t *testing.T, ctx *helpers.TestContext) {
 	setupTestPlugins(t, ctx)
 
 	// Create minimal config file with required blockchain_network setting
-	// Use real GITHUB_TOKEN if available, otherwise use mock
+	// Use GITHUB_TOKEN from environment (required for E2E tests)
 	githubToken := os.Getenv("GITHUB_TOKEN")
-	if githubToken == "" {
-		githubToken = "mock-token-for-testing"
-	}
 	configContent := `# Auto-generated test configuration
 blockchain_network = "stable"
 github_token = "` + githubToken + `"
@@ -353,6 +350,17 @@ func skipIfBlockchainBinaryNotAvailable(t *testing.T) {
 	}
 
 	t.Logf("Using blockchain binary: %s", binaryPath)
+}
+
+// skipIfGitHubTokenNotSet skips the test if GITHUB_TOKEN environment variable is not set
+// E2E tests require a valid GitHub token for API access
+func skipIfGitHubTokenNotSet(t *testing.T) {
+	t.Helper()
+
+	githubToken := os.Getenv("GITHUB_TOKEN")
+	if githubToken == "" {
+		t.Skip("GITHUB_TOKEN environment variable not set. E2E tests require a valid GitHub token.")
+	}
 }
 
 // requireBlockchainBinary fails the test if blockchain binary is not available
