@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -37,8 +38,8 @@ func TestWorkflow_FullLifecycle(t *testing.T) {
 	// Step 3: View logs
 	t.Log("Step 3: View logs...")
 	result = runner.MustRun("logs",
-		"--validator", "0",
-		"--lines", "10",
+		"0",
+		"--tail", "10",
 		"--home", ctx.HomeDir,
 	)
 	assert.NotEmpty(t, result.Stdout, "logs should show output")
@@ -49,7 +50,7 @@ func TestWorkflow_FullLifecycle(t *testing.T) {
 	assert.Contains(t, result.Stdout, "stopped", "stop should succeed")
 
 	time.Sleep(2 * time.Second)
-	validator.AssertFileNotExists("validator0.pid")
+	validator.AssertFileNotExists("devnet/node0/stabled.pid")
 
 	// Step 5: Start again
 	t.Log("Step 5: Start devnet...")
@@ -97,7 +98,7 @@ func TestWorkflow_ExportAndRestore(t *testing.T) {
 	t.Log("Step 2: Export state...")
 	exportPath := ctx.HomeDir + "/exported.json"
 	result := runner.MustRun("export",
-		"--output", exportPath,
+		"--output-dir", exportPath,
 		"--home", ctx.HomeDir,
 	)
 	assert.Contains(t, result.Stdout, "exported", "export should succeed")
@@ -201,18 +202,15 @@ func TestWorkflow_MultiValidator(t *testing.T) {
 	// Wait for all validators to start
 	pids := make([]int, 4)
 	for i := 0; i < 4; i++ {
-		pid, err := validator.WaitForProcess(
-			ctx.HomeDir+"/validator"+string(rune('0'+i))+".pid",
-			30*time.Second,
-		)
+		pidFile := fmt.Sprintf("devnet/node%d/stabled.pid", i)
+		pid, err := validator.WaitForProcess(pidFile, 30*time.Second)
 		assert.NoError(t, err, "validator%d should start", i)
 		pids[i] = pid
 	}
 
 	// Step 2: Stop validator 2
 	t.Log("Step 2: Stop validator 2...")
-	result := runner.MustRun("node", "stop",
-		"--validator", "2",
+	result := runner.MustRun("node", "stop", "2",
 		"--home", ctx.HomeDir,
 	)
 	assert.Contains(t, result.Stdout, "stopped", "node stop should succeed")
@@ -228,14 +226,13 @@ func TestWorkflow_MultiValidator(t *testing.T) {
 
 	// Step 4: Restart validator 2
 	t.Log("Step 4: Restart validator 2...")
-	result = runner.MustRun("node", "start",
-		"--validator", "2",
+	result = runner.MustRun("node", "start", "2",
 		"--home", ctx.HomeDir,
 	)
 	assert.Contains(t, result.Stdout, "started", "node start should succeed")
 
 	newPid2, err := validator.WaitForProcess(
-		ctx.HomeDir+"/validator2.pid",
+		"devnet/node2/stabled.pid",
 		30*time.Second,
 	)
 	assert.NoError(t, err, "validator2 should restart")

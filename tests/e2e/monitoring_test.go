@@ -182,10 +182,10 @@ func TestLogs_TailLines(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	// Execute logs command with specific line count
-	t.Log("Testing logs --lines flag...")
+	t.Log("Testing logs --tail flag...")
 	result := runner.MustRun("logs",
-		"--validator", "0",
-		"--lines", "5",
+		"0",
+		"--tail", "5",
 		"--home", ctx.HomeDir,
 	)
 
