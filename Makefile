@@ -205,12 +205,12 @@ e2e-test: build
 			export $$(grep -v "^\#" .e2e-test.env | xargs); \
 			echo "[INFO] Starting test execution with 30m timeout..."; \
 			echo ""; \
-			stdbuf -oL -eL go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
+			go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
 		else \
 			echo "[WARN] .e2e-test.env not found, running without environment"; \
 			echo "[INFO] Starting test execution with 30m timeout..."; \
 			echo ""; \
-			stdbuf -oL -eL go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
+			go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
 		fi \
 	'
 	@echo ""
