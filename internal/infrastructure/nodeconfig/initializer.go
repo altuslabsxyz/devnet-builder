@@ -404,8 +404,8 @@ var TestMnemonics = []string{
 	"test test test test test test test test test test test junk",
 	// Validator 2
 	"zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong",
-	// Validator 3
-	"option option option option option option option option option option option pudding",
+	// Validator 3 - Another standard test mnemonic
+	"myth like bonus scare over problem client lizard pioneer submit female collect",
 }
 
 // GetTestMnemonic returns a deterministic test mnemonic for the given validator index.
