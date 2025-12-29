@@ -196,15 +196,21 @@ e2e-test: build
 	@bash tests/e2e/scripts/setup-test-env.sh
 	@echo ""
 	@echo "Executing E2E tests..."
+	@echo "Note: Test output will appear below (this may take several minutes)"
+	@echo ""
 	@mkdir -p tests/e2e/results
-	@bash -c ' \
+	bash -c ' \
 		if [ -f .e2e-test.env ]; then \
-			echo "Loading E2E test environment..."; \
+			echo "[INFO] Loading E2E test environment from .e2e-test.env"; \
 			export $$(grep -v "^\#" .e2e-test.env | xargs); \
-			go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
+			echo "[INFO] Starting test execution with 30m timeout..."; \
+			echo ""; \
+			stdbuf -oL -eL go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
 		else \
-			echo "Warning: .e2e-test.env not found, running without environment"; \
-			go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
+			echo "[WARN] .e2e-test.env not found, running without environment"; \
+			echo "[INFO] Starting test execution with 30m timeout..."; \
+			echo ""; \
+			stdbuf -oL -eL go test -v -timeout 30m ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
 		fi \
 	'
 	@echo ""
