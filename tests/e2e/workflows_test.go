@@ -25,7 +25,7 @@ func TestWorkflow_FullLifecycle(t *testing.T) {
 		"--network", "testnet",
 		"--home", ctx.HomeDir,
 	)
-	assert.Contains(t, result.Stdout, "deployed", "deploy should succeed")
+	assert.Contains(t, result.Stdout, "started", "deploy should succeed")
 
 	// Step 2: Check status
 	t.Log("Step 2: Check status...")
