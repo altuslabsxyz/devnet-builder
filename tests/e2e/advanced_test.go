@@ -27,7 +27,7 @@ func TestUpgrade_WithBinary(t *testing.T) {
 	)
 
 	// Wait for initial deployment
-	pid0, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	pid0, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should start")
 
 	// Execute upgrade command
@@ -51,7 +51,7 @@ func TestUpgrade_WithBinary(t *testing.T) {
 			"should show upgrade message")
 
 		// Verify processes were restarted (new PIDs)
-		newPid0, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+		newPid0, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 		assert.NoError(t, err, "validator0 should restart after upgrade")
 		assert.NotEqual(t, pid0, newPid0, "PID should change after upgrade")
 
@@ -77,7 +77,7 @@ func TestExport_CurrentState(t *testing.T) {
 	)
 
 	// Wait for devnet to be running
-	_, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	_, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should be running")
 
 	// Wait a bit for some blocks to be produced
@@ -132,7 +132,7 @@ func TestBuild_FromExportedGenesis(t *testing.T) {
 	)
 
 	// Wait for devnet to be running
-	_, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	_, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should be running")
 
 	// Export current state
@@ -200,15 +200,15 @@ func TestReset_SoftReset(t *testing.T) {
 	)
 
 	// Wait for devnet to be running
-	_, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	_, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should be running")
 
 	// Let some blocks be produced
 	time.Sleep(10 * time.Second)
 
 	// Verify validator keys exist
-	validator.AssertFileExists("validator0/config/priv_validator_key.json")
-	validator.AssertFileExists("validator0/config/node_key.json")
+	validator.AssertFileExists("devnet/node0/config/priv_validator_key.json")
+	validator.AssertFileExists("devnet/node0/config/node_key.json")
 
 	// Execute soft reset
 	t.Log("Executing soft reset...")
@@ -221,8 +221,8 @@ func TestReset_SoftReset(t *testing.T) {
 		"should show reset message")
 
 	// Verify validator keys still exist (soft reset preserves them)
-	validator.AssertFileExists("validator0/config/priv_validator_key.json")
-	validator.AssertFileExists("validator0/config/node_key.json")
+	validator.AssertFileExists("devnet/node0/config/priv_validator_key.json")
+	validator.AssertFileExists("devnet/node0/config/node_key.json")
 
 	// Verify data directory was reset
 	// (exact behavior depends on implementation)
@@ -247,13 +247,13 @@ func TestReset_HardReset(t *testing.T) {
 	)
 
 	// Wait for devnet to be running
-	_, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	_, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should be running")
 
 	// Verify validators exist
 	validator.AssertValidatorCount(2)
-	validator.AssertDirectoryExists("validator0")
-	validator.AssertDirectoryExists("validator1")
+	validator.AssertDirectoryExists("devnet/node0")
+	validator.AssertDirectoryExists("devnet/node1")
 
 	// Execute hard reset
 	t.Log("Executing hard reset...")
@@ -296,7 +296,7 @@ func TestReplace_BinaryVersion(t *testing.T) {
 	)
 
 	// Wait for initial deployment
-	pid0, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	pid0, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should start")
 
 	// Execute replace command with new binary
@@ -315,7 +315,7 @@ func TestReplace_BinaryVersion(t *testing.T) {
 		t.Log("Replace command may not be implemented")
 	} else {
 		// Verify validators restarted
-		newPid0, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+		newPid0, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 		assert.NoError(t, err, "validator0 should restart")
 		assert.NotEqual(t, pid0, newPid0, "PID should change after replace")
 
@@ -353,10 +353,10 @@ func TestExportKeys_ValidatorsOnly(t *testing.T) {
 		t.Log("Export-keys command may not be implemented, verifying manual key access...")
 
 		// Verify we can at least access the keys manually
-		validator.AssertFileExists("validator0/config/priv_validator_key.json")
-		validator.AssertFileExists("validator0/config/node_key.json")
-		validator.AssertFileExists("validator1/config/priv_validator_key.json")
-		validator.AssertFileExists("validator1/config/node_key.json")
+		validator.AssertFileExists("devnet/node0/config/priv_validator_key.json")
+		validator.AssertFileExists("devnet/node0/config/node_key.json")
+		validator.AssertFileExists("devnet/node1/config/priv_validator_key.json")
+		validator.AssertFileExists("devnet/node1/config/node_key.json")
 
 		t.Log("Validator keys exist and are accessible")
 	} else {
@@ -391,7 +391,7 @@ func TestBuildSnapshot_CreateArchive(t *testing.T) {
 	)
 
 	// Wait for devnet to be running
-	_, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	_, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should be running")
 
 	// Let some blocks be produced

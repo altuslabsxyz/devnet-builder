@@ -28,7 +28,7 @@ func TestWorkflow_FullLifecycle(t *testing.T) {
 
 	// Step 2: Check status
 	t.Log("Step 2: Check status...")
-	_, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	_, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validators should start")
 
 	result = runner.MustRun("status", "--home", ctx.HomeDir)
@@ -56,7 +56,7 @@ func TestWorkflow_FullLifecycle(t *testing.T) {
 	result = runner.MustRun("start", "--home", ctx.HomeDir)
 	assert.Contains(t, result.Stdout, "started", "start should succeed")
 
-	_, err = validator.WaitForProcess("validator0.pid", 30*time.Second)
+	_, err = validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validators should restart")
 
 	// Step 6: Destroy
@@ -87,7 +87,7 @@ func TestWorkflow_ExportAndRestore(t *testing.T) {
 		"--home", ctx.HomeDir,
 	)
 
-	_, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	_, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validators should start")
 
 	// Let some blocks be produced
@@ -145,7 +145,7 @@ func TestWorkflow_UpgradeAndRollback(t *testing.T) {
 		"--home", ctx.HomeDir,
 	)
 
-	pid0, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	pid0, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validators should start")
 
 	// Step 2: Upgrade to new version
@@ -163,7 +163,7 @@ func TestWorkflow_UpgradeAndRollback(t *testing.T) {
 
 	// Step 3: Verify validators restarted
 	t.Log("Step 3: Verify upgrade...")
-	newPid0, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	newPid0, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validators should restart after upgrade")
 	assert.NotEqual(t, pid0, newPid0, "PID should change after upgrade")
 

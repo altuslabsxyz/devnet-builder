@@ -76,11 +76,11 @@ func TestLocalMode_Deploy(t *testing.T) {
 
 	// Verify processes are running (not Docker containers)
 	t.Log("Verifying local processes...")
-	pid0, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	pid0, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 process should start")
 	assert.Greater(t, pid0, 0, "PID should be valid")
 
-	pid1, err := validator.WaitForProcess("validator1.pid", 30*time.Second)
+	pid1, err := validator.WaitForProcess("devnet/node1/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator1 process should start")
 	assert.Greater(t, pid1, 0, "PID should be valid")
 
@@ -109,11 +109,11 @@ func TestValidatorCount_1Validator(t *testing.T) {
 
 	// Verify exactly 1 validator created
 	validator.AssertValidatorCount(1)
-	validator.AssertDirectoryExists("validator0")
+	validator.AssertDirectoryExists("devnet/node0")
 	validator.AssertDirectoryNotExists("validator1")
 
 	// Verify process running
-	pid0, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	pid0, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should start")
 	validator.AssertProcessRunning(pid0)
 
@@ -139,10 +139,10 @@ func TestValidatorCount_4Validators(t *testing.T) {
 
 	// Verify exactly 4 validators created
 	validator.AssertValidatorCount(4)
-	validator.AssertDirectoryExists("validator0")
-	validator.AssertDirectoryExists("validator1")
-	validator.AssertDirectoryExists("validator2")
-	validator.AssertDirectoryExists("validator3")
+	validator.AssertDirectoryExists("devnet/node0")
+	validator.AssertDirectoryExists("devnet/node1")
+	validator.AssertDirectoryExists("devnet/node2")
+	validator.AssertDirectoryExists("devnet/node3")
 
 	// Verify all processes running
 	for i := 0; i < 4; i++ {
@@ -190,7 +190,7 @@ func TestNetworkType_Mainnet(t *testing.T) {
 	validator.AssertValidatorCount(2)
 
 	// Verify genesis file has mainnet chain ID
-	validator.AssertFileExists("validator0/config/genesis.json")
+	validator.AssertFileExists("devnet/node0/config/genesis.json")
 	content := ctx.ReadFile("validator0/config/genesis.json")
 
 	// Mainnet should have different chain ID than testnet
@@ -221,7 +221,7 @@ func TestNetworkType_Testnet(t *testing.T) {
 	validator.AssertValidatorCount(2)
 
 	// Verify genesis file has testnet chain ID
-	validator.AssertFileExists("validator0/config/genesis.json")
+	validator.AssertFileExists("devnet/node0/config/genesis.json")
 	content := ctx.ReadFile("validator0/config/genesis.json")
 
 	// Testnet should have different chain ID than mainnet

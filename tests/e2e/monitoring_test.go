@@ -28,9 +28,9 @@ func TestStatus_RunningDevnet(t *testing.T) {
 	)
 
 	// Wait for validators to start
-	_, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	_, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should start")
-	_, err = validator.WaitForProcess("validator1.pid", 30*time.Second)
+	_, err = validator.WaitForProcess("devnet/node1/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator1 should start")
 
 	// Execute status command
@@ -69,7 +69,7 @@ func TestStatus_JSONOutput(t *testing.T) {
 	)
 
 	// Wait for validators to start
-	_, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	_, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should start")
 
 	// Execute status command with JSON output
@@ -120,7 +120,7 @@ func TestLogs_FollowMode(t *testing.T) {
 	)
 
 	// Wait for validators to start
-	_, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	_, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should start")
 
 	// Execute logs command (without --follow to avoid hanging)
@@ -175,7 +175,7 @@ func TestLogs_TailLines(t *testing.T) {
 	)
 
 	// Wait for validators to start and generate logs
-	_, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	_, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should start")
 
 	// Wait a bit for logs to be generated
@@ -221,9 +221,9 @@ func TestNode_StopAndStart(t *testing.T) {
 	)
 
 	// Wait for validators to start
-	pid0, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	pid0, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should start")
-	pid1, err := validator.WaitForProcess("validator1.pid", 30*time.Second)
+	pid1, err := validator.WaitForProcess("devnet/node1/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator1 should start")
 
 	// Stop validator0
@@ -250,7 +250,7 @@ func TestNode_StopAndStart(t *testing.T) {
 	assert.Contains(t, result.Stdout, "started", "should show started message")
 
 	// Wait for validator0 to restart
-	newPid0, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	newPid0, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should restart")
 	assert.Greater(t, newPid0, 0, "new PID should be valid")
 	assert.NotEqual(t, pid0, newPid0, "new PID should be different")
@@ -280,7 +280,7 @@ func TestStatus_StoppedDevnet(t *testing.T) {
 	)
 
 	// Wait for start
-	_, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	_, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should start")
 
 	// Stop devnet

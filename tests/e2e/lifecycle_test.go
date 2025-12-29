@@ -35,32 +35,32 @@ func TestDeploy_DefaultSettings(t *testing.T) {
 
 	// Verify command succeeded
 	assert.True(t, result.Success(), "deploy command should succeed")
-	assert.Contains(t, result.Stdout, "deployed successfully", "should show success message")
+	assert.Contains(t, result.Stdout, "✓ Devnet started!", "should show success message")
 
 	// Verify validators were created
 	t.Log("Verifying validator directories were created...")
 	validator.AssertValidatorCount(2)
-	validator.AssertDirectoryExists("validator0")
-	validator.AssertDirectoryExists("validator1")
+	validator.AssertDirectoryExists("devnet/node0")
+	validator.AssertDirectoryExists("devnet/node1")
 
 	// Verify configuration files exist
 	t.Log("Verifying configuration files...")
-	validator.AssertFileExists("validator0/config/config.toml")
-	validator.AssertFileExists("validator0/config/genesis.json")
-	validator.AssertFileExists("validator1/config/config.toml")
-	validator.AssertFileExists("validator1/config/genesis.json")
+	validator.AssertFileExists("devnet/node0/config/config.toml")
+	validator.AssertFileExists("devnet/node0/config/genesis.json")
+	validator.AssertFileExists("devnet/node1/config/config.toml")
+	validator.AssertFileExists("devnet/node1/config/genesis.json")
 
 	// Verify genesis files are valid JSON
-	validator.AssertJSONFileValid("validator0/config/genesis.json")
-	validator.AssertJSONFileValid("validator1/config/genesis.json")
+	validator.AssertJSONFileValid("devnet/node0/config/genesis.json")
+	validator.AssertJSONFileValid("devnet/node1/config/genesis.json")
 
 	// Wait for processes to start (with timeout)
 	t.Log("Waiting for validator processes to start...")
-	pid0, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	pid0, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should start within 30 seconds")
 	assert.Greater(t, pid0, 0, "validator0 PID should be valid")
 
-	pid1, err := validator.WaitForProcess("validator1.pid", 30*time.Second)
+	pid1, err := validator.WaitForProcess("devnet/node1/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator1 should start within 30 seconds")
 	assert.Greater(t, pid1, 0, "validator1 PID should be valid")
 
@@ -115,8 +115,8 @@ func TestInit_FollowedByStart(t *testing.T) {
 	// Verify structure was created but processes not started
 	t.Log("Verifying initialization created structure...")
 	validator.AssertValidatorCount(2)
-	validator.AssertFileExists("validator0/config/genesis.json")
-	validator.AssertFileExists("validator1/config/genesis.json")
+	validator.AssertFileExists("devnet/node0/config/genesis.json")
+	validator.AssertFileExists("devnet/node1/config/genesis.json")
 
 	// Verify no processes are running yet
 	t.Log("Verifying processes are not started yet...")
@@ -132,11 +132,11 @@ func TestInit_FollowedByStart(t *testing.T) {
 
 	// Wait for processes to start
 	t.Log("Waiting for processes to start...")
-	pid0, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	pid0, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should start")
 	assert.Greater(t, pid0, 0, "validator0 PID should be valid")
 
-	pid1, err := validator.WaitForProcess("validator1.pid", 30*time.Second)
+	pid1, err := validator.WaitForProcess("devnet/node1/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator1 should start")
 	assert.Greater(t, pid1, 0, "validator1 PID should be valid")
 
@@ -169,9 +169,9 @@ func TestStop_GracefulShutdown(t *testing.T) {
 	)
 
 	// Wait for processes to start
-	pid0, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	pid0, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should be running")
-	pid1, err := validator.WaitForProcess("validator1.pid", 30*time.Second)
+	pid1, err := validator.WaitForProcess("devnet/node1/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator1 should be running")
 
 	// Execute stop command
@@ -221,7 +221,7 @@ func TestStart_ResumeFromStopped(t *testing.T) {
 	)
 
 	// Wait for initial startup
-	_, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	_, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "initial deploy should start validators")
 
 	// Stop devnet
@@ -239,11 +239,11 @@ func TestStart_ResumeFromStopped(t *testing.T) {
 	assert.True(t, result.Success(), "start (resume) command should succeed")
 
 	// Wait for processes to restart
-	newPid0, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	newPid0, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should restart")
 	assert.Greater(t, newPid0, 0, "validator0 new PID should be valid")
 
-	newPid1, err := validator.WaitForProcess("validator1.pid", 30*time.Second)
+	newPid1, err := validator.WaitForProcess("devnet/node1/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator1 should restart")
 	assert.Greater(t, newPid1, 0, "validator1 new PID should be valid")
 
@@ -281,9 +281,9 @@ func TestDestroy_WithForceFlag(t *testing.T) {
 	)
 
 	// Wait for processes to start
-	pid0, err := validator.WaitForProcess("validator0.pid", 30*time.Second)
+	pid0, err := validator.WaitForProcess("devnet/node0/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator0 should be running")
-	pid1, err := validator.WaitForProcess("validator1.pid", 30*time.Second)
+	pid1, err := validator.WaitForProcess("devnet/node1/stabled.pid", 30*time.Second)
 	assert.NoError(t, err, "validator1 should be running")
 
 	// Execute destroy command
@@ -359,8 +359,8 @@ func TestDeploy_AlreadyExists_Error(t *testing.T) {
 	// Verify original devnet is unchanged
 	t.Log("Verifying original devnet unchanged...")
 	validator.AssertValidatorCount(2)
-	validator.AssertDirectoryExists("validator0")
-	validator.AssertDirectoryExists("validator1")
+	validator.AssertDirectoryExists("devnet/node0")
+	validator.AssertDirectoryExists("devnet/node1")
 
 	t.Log("Duplicate deploy error test completed successfully")
 }

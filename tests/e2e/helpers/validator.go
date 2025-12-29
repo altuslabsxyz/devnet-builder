@@ -44,16 +44,9 @@ func (v *StateValidator) AssertFileNotExists(subpath string) {
 }
 
 // AssertDirectoryExists asserts that a directory exists
-// For validator directories, automatically checks under .devnet-builder/
 func (v *StateValidator) AssertDirectoryExists(subpath string) {
 	v.t.Helper()
-	// If subpath starts with "validator", check under .devnet-builder/
-	var path string
-	if strings.HasPrefix(subpath, "validator") {
-		path = filepath.Join(v.ctx.HomeDir, ".devnet-builder", subpath)
-	} else {
-		path = filepath.Join(v.ctx.HomeDir, subpath)
-	}
+	path := filepath.Join(v.ctx.HomeDir, subpath)
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		v.t.Fatalf("expected directory to exist but it doesn't: %s", path)
@@ -177,9 +170,9 @@ func (v *StateValidator) AssertDockerContainerNotExists(containerName string) {
 // AssertValidatorCount asserts the number of validator directories
 func (v *StateValidator) AssertValidatorCount(expected int) {
 	v.t.Helper()
-	// Validators are created in .devnet-builder directory
-	devnetDir := filepath.Join(v.ctx.HomeDir, ".devnet-builder")
-	pattern := filepath.Join(devnetDir, "validator*")
+	// Validators are created in devnet/node* directories
+	devnetDir := filepath.Join(v.ctx.HomeDir, "devnet")
+	pattern := filepath.Join(devnetDir, "node*")
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		v.t.Fatalf("failed to glob validator directories: %v", err)
@@ -294,9 +287,9 @@ func (v *StateValidator) WaitForDockerContainer(containerName string, timeout ti
 // GetValidatorDirs returns all validator directory paths
 func (v *StateValidator) GetValidatorDirs() []string {
 	v.t.Helper()
-	// Validators are created in .devnet-builder directory
-	devnetDir := filepath.Join(v.ctx.HomeDir, ".devnet-builder")
-	pattern := filepath.Join(devnetDir, "validator*")
+	// Validators are created in devnet/node* directories
+	devnetDir := filepath.Join(v.ctx.HomeDir, "devnet")
+	pattern := filepath.Join(devnetDir, "node*")
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		v.t.Fatalf("failed to glob validator directories: %v", err)
