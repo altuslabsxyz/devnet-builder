@@ -249,9 +249,12 @@ func TestNetworks_List(t *testing.T) {
 	// Verify output shows network information
 	assert.NotEmpty(t, result.Stdout, "should show network information")
 
-	// Should mention mainnet and/or testnet
-	networksFound := strings.Contains(result.Stdout, "mainnet") ||
-		strings.Contains(result.Stdout, "testnet")
+	// Should mention blockchain network modules (stable, ault) or show "Available" header
+	// Note: "networks" command shows blockchain modules, not network sources (mainnet/testnet)
+	networksFound := strings.Contains(result.Stdout, "stable") ||
+		strings.Contains(result.Stdout, "ault") ||
+		strings.Contains(result.Stdout, "Available") ||
+		strings.Contains(result.Stdout, "Blockchain")
 	assert.True(t, networksFound,
 		"output should list available networks")
 

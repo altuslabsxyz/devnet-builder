@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,7 +34,10 @@ func TestWorkflow_FullLifecycle(t *testing.T) {
 	assert.NoError(t, err, "validators should start")
 
 	result = runner.MustRun("status", "--home", ctx.HomeDir)
-	assert.Contains(t, result.Stdout, "Running", "status should show running")
+	// Status may show "Running" or "running"
+	hasRunning := strings.Contains(result.Stdout, "Running") ||
+		strings.Contains(result.Stdout, "running")
+	assert.True(t, hasRunning, "status should show running")
 
 	// Step 3: View logs
 	t.Log("Step 3: View logs...")

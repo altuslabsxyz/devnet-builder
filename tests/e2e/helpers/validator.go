@@ -313,3 +313,44 @@ func (v *StateValidator) ReadPIDFile(pidFile string) int {
 	}
 	return pid
 }
+
+// WaitForRPC waits for RPC endpoint to be ready (responding to status query)
+// This ensures the node is fully started and can accept RPC requests
+func (v *StateValidator) WaitForRPC(port int, timeout time.Duration) error {
+	v.t.Helper()
+	deadline := time.Now().Add(timeout)
+	rpcURL := fmt.Sprintf("http://localhost:%d/status", port)
+
+	for time.Now().Before(deadline) {
+		// Try to connect to RPC endpoint
+		cmd := exec.Command("curl", "-sf", "--max-time", "2", rpcURL)
+		if err := cmd.Run(); err == nil {
+			return nil
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	return fmt.Errorf("timeout waiting for RPC at port %d to be ready", port)
+}
+
+// WaitForNodeReady waits for a node to be fully ready (process running + RPC responding)
+func (v *StateValidator) WaitForNodeReady(nodeIndex int, timeout time.Duration) (int, error) {
+	v.t.Helper()
+
+	pidFile := fmt.Sprintf("devnet/node%d/stabled.pid", nodeIndex)
+	// Port offset is 100 per node in local mode: 26657, 26757, 26857, 26957
+	rpcPort := 26657 + (nodeIndex * 100)
+
+	// First wait for process
+	pid, err := v.WaitForProcess(pidFile, timeout/2)
+	if err != nil {
+		return 0, err
+	}
+
+	// Then wait for RPC to be ready
+	if err := v.WaitForRPC(rpcPort, timeout/2); err != nil {
+		return pid, err
+	}
+
+	return pid, nil
+}

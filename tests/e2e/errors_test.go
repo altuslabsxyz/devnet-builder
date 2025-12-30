@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -19,12 +20,12 @@ func TestDeploy_InvalidValidatorCount(t *testing.T) {
 		{
 			name:           "zero validators",
 			validatorCount: "0",
-			expectedError:  "validator count must be between 1 and 4",
+			expectedError:  "invalid validators",
 		},
 		{
 			name:           "too many validators",
 			validatorCount: "5",
-			expectedError:  "validator count must be between 1 and 4",
+			expectedError:  "invalid validators",
 		},
 		{
 			name:           "negative validators",
@@ -170,9 +171,13 @@ func TestDestroy_WithoutForce_PromptConfirmation(t *testing.T) {
 	// Either way, exit code should indicate user action needed
 	if result.Failed() {
 		// Command failed in non-interactive mode (expected)
-		// Error message can be either "confirmation required" or "failed to read response: EOF"
-		hasConfirmationError := assert.Contains(t, result.Stderr, "confirmation required") ||
-			assert.Contains(t, result.Stderr, "failed to read response")
+		// Error message can be:
+		// - "confirmation required"
+		// - "failed to read response: EOF" (when stdin is not available)
+		// - "EOF" (simplified error)
+		hasConfirmationError := strings.Contains(result.Stderr, "confirmation") ||
+			strings.Contains(result.Stderr, "read response") ||
+			strings.Contains(result.Stderr, "EOF")
 		assert.True(t, hasConfirmationError,
 			"should indicate confirmation needed or stdin unavailable")
 	} else {

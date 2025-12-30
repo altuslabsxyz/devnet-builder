@@ -195,27 +195,25 @@ e2e-test: build
 	@chmod +x tests/e2e/scripts/generate-test-report.sh
 	@bash tests/e2e/scripts/setup-test-env.sh
 	@echo ""
-	@echo "Executing E2E tests..."
-	@echo "Note: Test output will appear below (this may take several minutes)"
+	@echo "Executing E2E tests (real-time output)..."
+	@echo "Note: Tests run sequentially with verbose output"
 	@echo ""
 	@mkdir -p tests/e2e/results
-	bash -c ' \
+	@bash -c ' \
+		set -o pipefail; \
 		if [ -f .e2e-test.env ]; then \
 			echo "[INFO] Loading E2E test environment from .e2e-test.env"; \
 			export $$(grep -v "^\#" .e2e-test.env | xargs); \
-			echo "[INFO] Starting test execution with 30m timeout..."; \
-			echo ""; \
-			script -q -e -c "go test -v -timeout 30m ./tests/e2e/..." tests/e2e/results/test-output.log; \
-		else \
-			echo "[WARN] .e2e-test.env not found, running without environment"; \
-			echo "[INFO] Starting test execution with 30m timeout..."; \
-			echo ""; \
-			script -q -e -c "go test -v -timeout 30m ./tests/e2e/..." tests/e2e/results/test-output.log; \
-		fi \
+		fi; \
+		echo "[INFO] Starting test execution with 30m timeout..."; \
+		echo ""; \
+		go test -v -timeout 30m -p 1 ./tests/e2e/... 2>&1 | tee tests/e2e/results/test-output.log; \
+		exit_code=$$?; \
+		echo ""; \
+		echo "Generating test report..."; \
+		bash tests/e2e/scripts/generate-test-report.sh tests/e2e/results/test-output.log tests/e2e/TEST_RESULTS.md; \
+		exit $$exit_code; \
 	'
-	@echo ""
-	@echo "Generating test report..."
-	@bash tests/e2e/scripts/generate-test-report.sh tests/e2e/results/test-output.log tests/e2e/TEST_RESULTS.md
 	@echo ""
 	@echo "==================================================================="
 	@echo "E2E Test Suite Complete"

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -38,6 +39,11 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 	// Build effective config from current state
 	cfg := buildEffectiveConfig(cmd)
 
+	// JSON output mode
+	if jsonMode {
+		return outputConfigShowJSON(cfg)
+	}
+
 	// Print table
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "KEY\tVALUE\tSOURCE")
@@ -63,6 +69,33 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 		fmt.Println("\nNo config file loaded")
 	}
 
+	return nil
+}
+
+// outputConfigShowJSON outputs the effective configuration as JSON.
+func outputConfigShowJSON(cfg *config.EffectiveConfig) error {
+	result := map[string]interface{}{
+		"home":           cfg.Home.Value,
+		"verbose":        cfg.Verbose.Value,
+		"json":           cfg.JSON.Value,
+		"no_color":       cfg.NoColor.Value,
+		"network":        cfg.Network.Value,
+		"validators":     cfg.Validators.Value,
+		"mode":           cfg.Mode.Value,
+		"stable_version": cfg.StableVersion.Value,
+		"no_cache":       cfg.NoCache.Value,
+		"accounts":       cfg.Accounts.Value,
+		"github_token":   maskConfigToken(cfg.GitHubToken.Value),
+		"cache_ttl":      cfg.CacheTTL.Value,
+		"config_file":    cfg.ConfigFilePath,
+	}
+
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(string(data))
 	return nil
 }
 
