@@ -221,6 +221,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	var selectedName string
 
 	// Interactive mode: run selection flow if not disabled
+	// Skip interactive selection if --image or --binary flags are provided
 	if !upgradeNoInteractive && !jsonMode && upgradeImage == "" && upgradeBinary == "" {
 		selection, err := runUpgradeInteractiveSelection(ctx, cmd)
 		if err != nil {
@@ -233,7 +234,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		selectedName = selection.UpgradeName
 		selectedVersion = selection.UpgradeVersion
 	} else {
-		// Non-interactive mode
+		// Non-interactive mode: use explicit flags
 		selectedName = upgradeName
 		selectedVersion = upgradeVersion
 	}
@@ -327,8 +328,50 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		logger.Info("Using expedited voting period: %s", vp)
 	}
 
+	// Import custom binary if --binary flag is provided
+	// This ensures the binary is properly cached and validated
+	var customBinarySymlinkPath string
+	if upgradeBinary != "" {
+		// Validate binary path exists
+		if _, err := os.Stat(upgradeBinary); err != nil {
+			return fmt.Errorf("binary not found at path %s: %w", upgradeBinary, err)
+		}
+
+		// Import custom binary into cache system
+		importInput := &dto.CustomBinaryImportInput{
+			BinaryPath:  upgradeBinary,
+			NetworkType: cleanMetadata.NetworkName, // e.g., "mainnet", "testnet"
+			BuildConfig: nil,                       // No build config for custom binaries
+			Ref:         "custom",                  // Mark as custom import
+		}
+
+		// Create temporary DI container for import operation
+		tempFactory := di.NewInfrastructureFactory(homeDir, logger).
+			WithNetworkModule(networkModule)
+		tempContainer, err := tempFactory.WireContainer()
+		if err != nil {
+			return fmt.Errorf("failed to initialize for binary import: %w", err)
+		}
+
+		importResult, err := tempContainer.ImportCustomBinaryUseCase().Execute(ctx, importInput)
+		if err != nil {
+			return fmt.Errorf("failed to import custom binary: %w", err)
+		}
+
+		// Use the symlink path which points to the cached binary
+		customBinarySymlinkPath = importResult.SymlinkPath
+		logger.Success("Custom binary imported to cache")
+		logger.Info("  Version: %s", importResult.Version)
+		logger.Info("  Commit: %s", importResult.CommitHash)
+		logger.Info("  Cache key: %s", importResult.CacheKey)
+		logger.Info("  Binary path: %s", customBinarySymlinkPath)
+	}
+
 	// Determine target binary/image
-	targetBinary := upgradeBinary
+	targetBinary := customBinarySymlinkPath // Use imported binary if available
+	if targetBinary == "" {
+		targetBinary = upgradeBinary // Fallback to raw path (should not happen)
+	}
 	targetImage := upgradeImage
 	if versionResolvedImage != "" {
 		targetImage = versionResolvedImage

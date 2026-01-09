@@ -109,6 +109,11 @@ func (f *InfrastructureFactory) CreateBinaryCache() (ports.BinaryCache, error) {
 	return infracache.NewBinaryCacheAdapter(f.homeDir, binaryName, f.logger)
 }
 
+// CreateBinaryVersionDetector creates a BinaryVersionDetector implementation.
+func (f *InfrastructureFactory) CreateBinaryVersionDetector() ports.BinaryVersionDetector {
+	return binary.NewBinaryVersionDetector()
+}
+
 // CreateBuilder creates a Builder implementation.
 func (f *InfrastructureFactory) CreateBuilder() ports.Builder {
 	return infrabuilder.NewBuilderAdapter(f.homeDir, f.logger, f.module)
@@ -320,6 +325,9 @@ func (f *InfrastructureFactory) WireContainer(opts ...Option) (*Container, error
 		return nil, err
 	}
 
+	// Binary version detector for custom binary imports
+	binaryVersionDetector := f.CreateBinaryVersionDetector()
+
 	// Default RPC client (node0)
 	rpcClient := f.CreateRPCClient("localhost", 26657)
 	healthChecker := f.CreateHealthChecker(26657)
@@ -347,6 +355,7 @@ func (f *InfrastructureFactory) WireContainer(opts ...Option) (*Container, error
 		WithExportRepository(exportRepo),
 		WithExecutor(executor),
 		WithBinaryCache(binaryCache),
+		WithBinaryVersionDetector(binaryVersionDetector),
 		WithRPCClient(rpcClient),
 		WithEVMClient(evmClient),
 		WithSnapshotFetcher(snapshotFetcher),

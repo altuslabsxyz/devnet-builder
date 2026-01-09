@@ -67,9 +67,10 @@ type Container struct {
 	networkModule       ports.NetworkModule
 	githubClient        ports.GitHubClient
 	interactiveSelector ports.InteractiveSelector
-	binaryResolver      ports.BinaryResolver
-	binaryExecutor      ports.BinaryExecutor
-	exportRepo          ports.ExportRepository
+	binaryResolver       ports.BinaryResolver
+	binaryExecutor       ports.BinaryExecutor
+	exportRepo           ports.ExportRepository
+	binaryVersionDetector ports.BinaryVersionDetector
 
 	// Lazy-initialized UseCases
 	provisionUC      *appdevnet.ProvisionUseCase
@@ -85,9 +86,10 @@ type Container struct {
 	monitorUC        *upgrade.MonitorUseCase
 	buildUC          *build.BuildUseCase
 	cacheListUC      *build.CacheListUseCase
-	cacheCleanUC     *build.CacheCleanUseCase
-	passthroughUC    *binary.PassthroughUseCase
-	exportUC         *appdevnet.ExportUseCase
+	cacheCleanUC         *build.CacheCleanUseCase
+	passthroughUC        *binary.PassthroughUseCase
+	importCustomBinaryUC *binary.ImportCustomBinaryUseCase
+	exportUC             *appdevnet.ExportUseCase
 }
 
 // Config holds configuration for the container.
@@ -295,6 +297,13 @@ func WithBinaryExecutor(executor ports.BinaryExecutor) Option {
 func WithExportRepository(repo ports.ExportRepository) Option {
 	return func(c *Container) {
 		c.exportRepo = repo
+	}
+}
+
+// WithBinaryVersionDetector sets the binary version detector.
+func WithBinaryVersionDetector(detector ports.BinaryVersionDetector) Option {
+	return func(c *Container) {
+		c.binaryVersionDetector = detector
 	}
 }
 
@@ -691,6 +700,28 @@ func (c *Container) PassthroughUseCase() *binary.PassthroughUseCase {
 		)
 	}
 	return c.passthroughUC
+}
+
+// ImportCustomBinaryUseCase returns the import custom binary use case (lazy init).
+func (c *Container) ImportCustomBinaryUseCase() *binary.ImportCustomBinaryUseCase {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.importCustomBinaryUC == nil {
+		// Get binary name from network module
+		binaryName := ""
+		if c.networkModule != nil {
+			binaryName = c.networkModule.BinaryName()
+		}
+
+		c.importCustomBinaryUC = binary.NewImportCustomBinaryUseCase(
+			c.binaryVersionDetector,
+			c.binaryCache,
+			c.config.HomeDir,
+			binaryName,
+		)
+	}
+	return c.importCustomBinaryUC
 }
 
 // ExportUseCase returns the export use case (lazy init).

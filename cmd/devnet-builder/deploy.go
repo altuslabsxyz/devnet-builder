@@ -30,8 +30,9 @@ var (
 	deployExportVersion     string
 	deployStartVersion      string
 	deployImage             string
-	deployFork              bool // Fork live network state via snapshot export
-	deployTestMnemonic      bool // Use deterministic test mnemonics for validators
+	deployFork              bool   // Fork live network state via snapshot export
+	deployTestMnemonic      bool   // Use deterministic test mnemonics for validators
+	deployBinary            string // Custom binary path for local mode
 )
 
 // DeployResult represents the JSON output for the deploy command.
@@ -79,7 +80,13 @@ Examples:
   devnet-builder deploy --stable-version v1.2.3
 
   # Large-scale deployment with 100 validators (docker mode only)
-  devnet-builder deploy --validators 100`,
+  devnet-builder deploy --validators 100
+
+  # Deploy with custom binary in local mode
+  devnet-builder deploy --mode local --binary /path/to/custom/stabled
+
+  # Deploy with custom binary and fork mode (binary needed for genesis export)
+  devnet-builder deploy --mode local --binary /path/to/stabled --fork`,
 		RunE: runDeploy,
 	}
 
@@ -111,6 +118,10 @@ Examples:
 	// Docker image flag
 	cmd.Flags().StringVar(&deployImage, "image", "",
 		"Docker image for docker mode (e.g., v1.0.0 or ghcr.io/org/image:tag)")
+
+	// Custom binary flag for local mode
+	cmd.Flags().StringVarP(&deployBinary, "binary", "b", "",
+		"Custom binary path for local mode (skips build)")
 
 	// Blockchain network module flag
 	cmd.Flags().StringVar(&deployBlockchainNetwork, "blockchain", "stable",
@@ -201,7 +212,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Determine if running in interactive mode for version selection
 	// Note: Base config interactive prompts are handled above via RunPartial
-	isInteractive := !deployNoInteractive && !jsonMode
+	// Skip interactive version selection if --binary flag is provided
+	isInteractive := !deployNoInteractive && !jsonMode && deployBinary == ""
 
 	// Docker mode uses GHCR package versions, not GitHub releases
 	if deployMode == "docker" {
@@ -214,6 +226,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		startVersion = deployStableVersion
 	} else {
 		// Local mode: run interactive selection flow for GitHub releases
+		// Skip if --binary flag is provided (custom binary doesn't need version selection)
 		if isInteractive {
 			selection, err := runDeployInteractiveSelection(ctx, cmd, deployNetwork)
 			if err != nil {
@@ -253,6 +266,23 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	} else {
 		return fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", deployMode)
 	}
+
+	// Validate --binary flag with mode
+	if deployBinary != "" && deployMode == "docker" {
+		return fmt.Errorf("--binary flag is only supported in local mode, use --image for docker mode")
+	}
+
+	// Validate and normalize --binary path if provided
+	var validatedBinaryPath string
+	if deployBinary != "" {
+		var err error
+		validatedBinaryPath, err = validateBinaryPath(deployBinary)
+		if err != nil {
+			return err
+		}
+		logger.Info("Using custom binary: %s", validatedBinaryPath)
+	}
+
 	// Validate blockchain network module exists
 	if !network.Has(deployBlockchainNetwork) {
 		available := network.List()
@@ -278,24 +308,48 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Build binary for local mode (all versions need to be built/cached)
-	// Skip build if binary already exists (for test performance)
+	// Priority: --binary flag > cached binary > build from source
 	var customBinaryPath string
 	if deployMode == "local" {
-		// Check if binary already exists - use blockchain network name for binary
-		binaryName := deployBlockchainNetwork + "d" // e.g., "stable" -> "stabled", "ault" -> "aultd"
-		expectedBinaryPath := filepath.Join(homeDir, ".devnet-builder", "bin", binaryName)
-		if _, err := os.Stat(expectedBinaryPath); err == nil {
-			// Binary exists, skip build
-			customBinaryPath = expectedBinaryPath
-			logger.Info("Using existing binary: %s", expectedBinaryPath)
-		} else {
-			// Binary doesn't exist, build it
-			buildResult, err := buildBinaryForDeploy(ctx, deployBlockchainNetwork, startVersion, deployNetwork, logger)
-			if err != nil {
-				return fmt.Errorf("failed to build from source: %w", err)
+		// Priority 1: Use --binary flag if provided (already validated)
+		if validatedBinaryPath != "" {
+			// Import custom binary into cache system
+			importInput := &dto.CustomBinaryImportInput{
+				BinaryPath:  validatedBinaryPath,
+				NetworkType: deployNetwork, // "mainnet", "testnet", etc.
+				BuildConfig: nil,           // No build config for custom binaries
+				Ref:         "custom",      // Mark as custom import
 			}
-			customBinaryPath = buildResult.BinaryPath
-			logger.Success("Binary built: %s (commit: %s)", buildResult.BinaryPath, buildResult.CommitHash)
+
+			importResult, err := svc.Container().ImportCustomBinaryUseCase().Execute(ctx, importInput)
+			if err != nil {
+				return fmt.Errorf("failed to import custom binary: %w", err)
+			}
+
+			// Use the symlink path which points to the cached binary
+			customBinaryPath = importResult.SymlinkPath
+			logger.Success("Custom binary imported to cache")
+			logger.Info("  Version: %s", importResult.Version)
+			logger.Info("  Commit: %s", importResult.CommitHash)
+			logger.Info("  Cache key: %s", importResult.CacheKey)
+			logger.Info("  Binary path: %s", customBinaryPath)
+		} else {
+			// Priority 2: Check if binary already exists in cache
+			binaryName := deployBlockchainNetwork + "d" // e.g., "stable" -> "stabled", "ault" -> "aultd"
+			expectedBinaryPath := filepath.Join(homeDir, ".devnet-builder", "bin", binaryName)
+			if _, err := os.Stat(expectedBinaryPath); err == nil {
+				// Binary exists, skip build
+				customBinaryPath = expectedBinaryPath
+				logger.Info("Using existing binary: %s", expectedBinaryPath)
+			} else {
+				// Priority 3: Build binary from source
+				buildResult, err := buildBinaryForDeploy(ctx, deployBlockchainNetwork, startVersion, deployNetwork, logger)
+				if err != nil {
+					return fmt.Errorf("failed to build from source: %w", err)
+				}
+				customBinaryPath = buildResult.BinaryPath
+				logger.Success("Binary built: %s (commit: %s)", buildResult.BinaryPath, buildResult.CommitHash)
+			}
 		}
 	}
 
@@ -568,4 +622,36 @@ func buildBinaryForDeploy(ctx context.Context, blockchainNetwork, ref, networkTy
 		UseCache: true,  // Check cache first
 		ToCache:  false, // Use Build() to create symlink at bin/stabled
 	})
+}
+
+// validateBinaryPath checks if the provided binary path exists and is executable.
+// Returns absolute path if valid, error otherwise.
+func validateBinaryPath(binaryPath string) (string, error) {
+	// Convert to absolute path
+	absPath, err := filepath.Abs(binaryPath)
+	if err != nil {
+		return "", fmt.Errorf("invalid binary path: %w", err)
+	}
+
+	// Check if file exists
+	info, err := os.Stat(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("binary not found at path: %s", absPath)
+		}
+		return "", fmt.Errorf("failed to check binary: %w", err)
+	}
+
+	// Check if it's a regular file (not a directory)
+	if info.IsDir() {
+		return "", fmt.Errorf("path is a directory, not a binary: %s", absPath)
+	}
+
+	// Check if executable (Unix permissions)
+	mode := info.Mode()
+	if mode&0111 == 0 {
+		return "", fmt.Errorf("binary is not executable: %s (use chmod +x)", absPath)
+	}
+
+	return absPath, nil
 }
