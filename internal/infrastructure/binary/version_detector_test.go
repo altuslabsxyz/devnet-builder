@@ -18,7 +18,7 @@ func TestDetectVersion_Success(t *testing.T) {
 	// Create a shell script that outputs version info
 	scriptContent := `#!/bin/sh
 echo "version: v1.2.3"
-echo "commit: 80ad31b1234567890abcdef1234567890abcdef"
+echo "commit: 80ad31b1234567890abcdef1234567890abcdef0"
 `
 	if err := os.WriteFile(mockBinary, []byte(scriptContent), 0755); err != nil {
 		t.Fatalf("Failed to create mock binary: %v", err)
@@ -41,7 +41,7 @@ echo "commit: 80ad31b1234567890abcdef1234567890abcdef"
 	}
 
 	// Verify commit hash
-	expectedCommit := "80ad31b1234567890abcdef1234567890abcdef"
+	expectedCommit := "80ad31b1234567890abcdef1234567890abcdef0"
 	if result.CommitHash != expectedCommit {
 		t.Errorf("Expected commit '%s', got: %s", expectedCommit, result.CommitHash)
 	}
@@ -60,7 +60,7 @@ func TestDetectVersion_VersionWithoutPrefix(t *testing.T) {
 	// Version without 'v' prefix
 	scriptContent := `#!/bin/sh
 echo "version: 1.2.3"
-echo "commit: 80ad31b1234567890abcdef1234567890abcdef"
+echo "commit: 80ad31b1234567890abcdef1234567890abcdef0"
 `
 	if err := os.WriteFile(mockBinary, []byte(scriptContent), 0755); err != nil {
 		t.Fatalf("Failed to create mock binary: %v", err)
@@ -87,7 +87,7 @@ func TestDetectVersion_CaseInsensitive(t *testing.T) {
 	// Mixed case labels
 	scriptContent := `#!/bin/sh
 echo "Version: v1.2.3"
-echo "Commit: 80ad31b1234567890abcdef1234567890abcdef"
+echo "Commit: 80ad31b1234567890abcdef1234567890abcdef0"
 `
 	if err := os.WriteFile(mockBinary, []byte(scriptContent), 0755); err != nil {
 		t.Fatalf("Failed to create mock binary: %v", err)
@@ -104,7 +104,7 @@ echo "Commit: 80ad31b1234567890abcdef1234567890abcdef"
 		t.Errorf("Expected version 'v1.2.3', got: %s", result.Version)
 	}
 
-	if result.CommitHash != "80ad31b1234567890abcdef1234567890abcdef" {
+	if result.CommitHash != "80ad31b1234567890abcdef1234567890abcdef0" {
 		t.Errorf("Commit hash mismatch")
 	}
 }
@@ -117,7 +117,7 @@ func TestDetectVersion_ExtraWhitespace(t *testing.T) {
 	// Extra spaces around values
 	scriptContent := `#!/bin/sh
 echo "version:    v1.2.3   "
-echo "commit:    80ad31b1234567890abcdef1234567890abcdef   "
+echo "commit:    80ad31b1234567890abcdef1234567890abcdef0   "
 `
 	if err := os.WriteFile(mockBinary, []byte(scriptContent), 0755); err != nil {
 		t.Fatalf("Failed to create mock binary: %v", err)
@@ -156,7 +156,7 @@ func TestDetectVersion_MissingVersion(t *testing.T) {
 
 	// Output without version
 	scriptContent := `#!/bin/sh
-echo "commit: 80ad31b1234567890abcdef1234567890abcdef"
+echo "commit: 80ad31b1234567890abcdef1234567890abcdef0"
 `
 	if err := os.WriteFile(mockBinary, []byte(scriptContent), 0755); err != nil {
 		t.Fatalf("Failed to create mock binary: %v", err)
@@ -328,14 +328,14 @@ func TestParseCommitHash(t *testing.T) {
 	}{
 		{
 			name:     "Valid 40-char hash",
-			output:   "version: v1.0.0\ncommit: 80ad31b1234567890abcdef1234567890abcdef",
-			expected: "80ad31b1234567890abcdef1234567890abcdef",
+			output:   "version: v1.0.0\ncommit: 80ad31b1234567890abcdef1234567890abcdef0",
+			expected: "80ad31b1234567890abcdef1234567890abcdef0",
 			wantErr:  false,
 		},
 		{
 			name:     "Case insensitive label",
-			output:   "version: v1.0.0\nCommit: 80ad31b1234567890abcdef1234567890abcdef",
-			expected: "80ad31b1234567890abcdef1234567890abcdef",
+			output:   "version: v1.0.0\nCommit: 80ad31b1234567890abcdef1234567890abcdef0",
+			expected: "80ad31b1234567890abcdef1234567890abcdef0",
 			wantErr:  false,
 		},
 		{

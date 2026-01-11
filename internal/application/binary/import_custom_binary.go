@@ -166,4 +166,3 @@ func (u *ImportCustomBinaryUseCase) validateInput(input *dto.CustomBinaryImportI
 
 	return nil
 }
-

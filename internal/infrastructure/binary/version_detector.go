@@ -111,7 +111,8 @@ func (d *versionDetector) parseCommitHash(output string) (string, error) {
 	// (?i) - case insensitive
 	// commit:\s* - matches "commit:" followed by optional whitespace
 	// ([a-f0-9]{40}) - captures exactly 40 hexadecimal characters (git SHA-1 hash)
-	commitRegex := regexp.MustCompile(`(?i)commit:\s*([a-f0-9]{40})`)
+	// \s* - allow trailing whitespace after the hash
+	commitRegex := regexp.MustCompile(`(?i)commit:\s*([a-f0-9]{40})\s*`)
 	matches := commitRegex.FindStringSubmatch(output)
 
 	if len(matches) < 2 {

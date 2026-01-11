@@ -381,7 +381,8 @@ func prepareGitCommand(cmd *exec.Cmd) {
 		gitEnv = append(gitEnv, "SSH_ASKPASS="+sshAskpass)
 	}
 
-	cmd.Env = append(env, gitEnv...)
+	env = append(env, gitEnv...)
+	cmd.Env = env
 }
 
 // cloneRepo clones the repository and checks out the given ref.

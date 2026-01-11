@@ -50,42 +50,42 @@ type Container struct {
 	pluginMgr  *plugin.PluginManager
 
 	// Infrastructure implementations (injected)
-	devnetRepo          ports.DevnetRepository
-	nodeRepo            ports.NodeRepository
-	binaryCache         ports.BinaryCache
-	executor            ports.ProcessExecutor
-	rpcClient           ports.RPCClient
-	evmClient           ports.EVMClient
-	snapshotSvc         ports.SnapshotFetcher
-	genesisSvc          ports.GenesisFetcher
-	stateExportSvc      ports.StateExportService
-	nodeInitializer     ports.NodeInitializer
-	keyManager          ports.KeyManager
-	validatorKeyLoader  ports.ValidatorKeyLoader
-	healthChecker       ports.HealthChecker
-	builder             ports.Builder
-	networkModule       ports.NetworkModule
-	githubClient        ports.GitHubClient
-	interactiveSelector ports.InteractiveSelector
-	binaryResolver       ports.BinaryResolver
-	binaryExecutor       ports.BinaryExecutor
-	exportRepo           ports.ExportRepository
+	devnetRepo            ports.DevnetRepository
+	nodeRepo              ports.NodeRepository
+	binaryCache           ports.BinaryCache
+	executor              ports.ProcessExecutor
+	rpcClient             ports.RPCClient
+	evmClient             ports.EVMClient
+	snapshotSvc           ports.SnapshotFetcher
+	genesisSvc            ports.GenesisFetcher
+	stateExportSvc        ports.StateExportService
+	nodeInitializer       ports.NodeInitializer
+	keyManager            ports.KeyManager
+	validatorKeyLoader    ports.ValidatorKeyLoader
+	healthChecker         ports.HealthChecker
+	builder               ports.Builder
+	networkModule         ports.NetworkModule
+	githubClient          ports.GitHubClient
+	interactiveSelector   ports.InteractiveSelector
+	binaryResolver        ports.BinaryResolver
+	binaryExecutor        ports.BinaryExecutor
+	exportRepo            ports.ExportRepository
 	binaryVersionDetector ports.BinaryVersionDetector
 
 	// Lazy-initialized UseCases
-	provisionUC      *appdevnet.ProvisionUseCase
-	runUC            *appdevnet.RunUseCase
-	stopUC           *appdevnet.StopUseCase
-	healthUC         *appdevnet.HealthUseCase
-	resetUC          *appdevnet.ResetUseCase
-	destroyUC        *appdevnet.DestroyUseCase
-	proposeUC        *upgrade.ProposeUseCase
-	voteUC           *upgrade.VoteUseCase
-	switchUC         *upgrade.SwitchBinaryUseCase
-	executeUpgradeUC *upgrade.ExecuteUpgradeUseCase
-	monitorUC        *upgrade.MonitorUseCase
-	buildUC          *build.BuildUseCase
-	cacheListUC      *build.CacheListUseCase
+	provisionUC          *appdevnet.ProvisionUseCase
+	runUC                *appdevnet.RunUseCase
+	stopUC               *appdevnet.StopUseCase
+	healthUC             *appdevnet.HealthUseCase
+	resetUC              *appdevnet.ResetUseCase
+	destroyUC            *appdevnet.DestroyUseCase
+	proposeUC            *upgrade.ProposeUseCase
+	voteUC               *upgrade.VoteUseCase
+	switchUC             *upgrade.SwitchBinaryUseCase
+	executeUpgradeUC     *upgrade.ExecuteUpgradeUseCase
+	monitorUC            *upgrade.MonitorUseCase
+	buildUC              *build.BuildUseCase
+	cacheListUC          *build.CacheListUseCase
 	cacheCleanUC         *build.CacheCleanUseCase
 	passthroughUC        *binary.PassthroughUseCase
 	importCustomBinaryUC *binary.ImportCustomBinaryUseCase

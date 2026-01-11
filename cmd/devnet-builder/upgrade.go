@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"sort"
 	"sync"
 	"syscall"
 	"time"
@@ -13,7 +15,10 @@ import (
 	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	"github.com/b-harvest/devnet-builder/internal/di"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/binary"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/cache"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/executor"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/filesystem"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	infrarpc "github.com/b-harvest/devnet-builder/internal/infrastructure/rpc"
@@ -70,8 +75,9 @@ Examples:
   # Upgrade to a new Docker image
   devnet-builder upgrade --name v2.0.0-upgrade --image ghcr.io/stablelabs/stable:v2.0.0
 
-  # Upgrade to a local binary
-  devnet-builder upgrade --name v2.0.0-upgrade --binary /path/to/new/stabled
+  # Upgrade to a local binary (interactive selection)
+  devnet-builder upgrade --name v2.0.0-upgrade --version v2.0.0
+  → Then select "Use local binary" and browse to your binary
 
   # Upgrade with custom voting period (fallback if chain query fails)
   devnet-builder upgrade --name v2.0.0-upgrade --image ghcr.io/stablelabs/stable:v2.0.0 --voting-period 120s
@@ -93,7 +99,8 @@ Examples:
 	// Version selection flags
 	cmd.Flags().StringVarP(&upgradeName, "name", "n", "", "Upgrade handler name")
 	cmd.Flags().StringVarP(&upgradeImage, "image", "i", "", "Target Docker image for upgrade")
-	cmd.Flags().StringVarP(&upgradeBinary, "binary", "b", "", "Target local binary path for upgrade")
+	// T047: Removed --binary flag (replaced by interactive selection)
+	// cmd.Flags().StringVarP(&upgradeBinary, "binary", "b", "", "Target local binary path for upgrade")
 	cmd.Flags().StringVar(&upgradeVersion, "version", "", "Target version (tag or branch/commit for building)")
 	cmd.Flags().StringVarP(&upgradeMode, "mode", "m", "", "Execution mode: docker or local (default: from devnet metadata)")
 
@@ -220,10 +227,15 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	var selectedVersion string
 	var selectedName string
 
+	// Variable to store custom binary path (set by unified selection or selectBinaryForUpgrade)
+	var customBinarySymlinkPath string
+
 	// Interactive mode: run selection flow if not disabled
 	// Skip interactive selection if --image or --binary flags are provided
 	if !upgradeNoInteractive && !jsonMode && upgradeImage == "" && upgradeBinary == "" {
-		selection, err := runUpgradeInteractiveSelection(ctx, cmd)
+		// T049: Use unified selection function for upgrade command (same as deploy)
+		// includeNetworkSelection = true (upgrade needs network selection)
+		selection, err := runInteractiveVersionSelection(ctx, cmd, true)
 		if err != nil {
 			if interactive.IsCancellation(err) {
 				fmt.Println("Operation cancelled.")
@@ -231,20 +243,58 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 			}
 			return err
 		}
-		selectedName = selection.UpgradeName
-		selectedVersion = selection.UpgradeVersion
+
+		// Extract version information
+		// For upgrade, we use the start version (same as export version in unified selection)
+		selectedVersion = selection.StartVersion
+
+		// Generate upgrade name from version if not explicitly set
+		// This maintains compatibility with the old flow where name was prompted separately
+		if upgradeName != "" {
+			selectedName = upgradeName
+		} else {
+			// Auto-generate upgrade name from version (e.g., "v2.0.0" -> "v2.0.0-upgrade")
+			selectedName = selection.StartVersion + "-upgrade"
+		}
+
+		// T049: If user selected a local binary, store it for later use
+		// This prevents the need to call selectBinaryForUpgrade() again
+		if selection.BinarySource.IsLocal() && selection.BinarySource.SelectedPath != "" {
+			customBinarySymlinkPath = selection.BinarySource.SelectedPath
+		}
 	} else {
 		// Non-interactive mode: use explicit flags
 		selectedName = upgradeName
 		selectedVersion = upgradeVersion
 	}
 
-	// Validate that we have either image, binary, or version to build
-	if upgradeImage == "" && upgradeBinary == "" && selectedVersion == "" {
-		return fmt.Errorf("either --image, --binary, or --version must be provided (or use interactive mode)")
+	// T049: Check for deprecated --binary flag usage
+	if upgradeBinary != "" {
+		return fmt.Errorf(`the --binary flag has been removed in favor of interactive binary selection
+
+When you run 'devnet-builder upgrade' in interactive mode, you will be prompted to:
+1. Choose between using a local binary or downloading from GitHub releases
+2. If you select "local binary", you can browse your filesystem with Tab autocomplete
+
+Migration guide:
+  • Interactive mode (recommended):
+      devnet-builder upgrade
+      → Select "Use local binary (browse filesystem)"
+      → Navigate to your binary using Tab autocomplete
+
+  • Non-interactive mode with environment variable:
+      export DEVNET_BINARY_PATH=/path/to/your/binary
+      devnet-builder upgrade --no-interactive --name upgrade-name --version v1.2.3
+
+  • Docker mode (unchanged):
+      devnet-builder upgrade --mode docker --image your-image:tag --name upgrade-name
+
+For more information, see: https://github.com/b-harvest/devnet-builder/blob/main/docs/MIGRATION.md`)
 	}
-	if upgradeImage != "" && upgradeBinary != "" {
-		return fmt.Errorf("cannot specify both --image and --binary")
+
+	// Validate that we have either image or version to build (binary flag removed)
+	if upgradeImage == "" && selectedVersion == "" {
+		return fmt.Errorf("either --image or --version must be provided (or use interactive mode)")
 	}
 
 	// Validate that name is provided
@@ -328,49 +378,36 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		logger.Info("Using expedited voting period: %s", vp)
 	}
 
-	// Import custom binary if --binary flag is provided
-	// This ensures the binary is properly cached and validated
-	var customBinarySymlinkPath string
-	if upgradeBinary != "" {
-		// Validate binary path exists
-		if _, err := os.Stat(upgradeBinary); err != nil {
-			return fmt.Errorf("binary not found at path %s: %w", upgradeBinary, err)
-		}
+	// Binary resolution for local mode upgrades (T049: --binary flag removed)
+	// Priority: unified selection > cached binary selection > error
+	if resolvedMode == UpgradeModeLocal {
+		// T049: Check if binary was already selected via unified selection (interactive mode)
+		// If user selected a local binary via the filesystem browser, customBinarySymlinkPath is already set
+		if customBinarySymlinkPath == "" {
+			// No binary selected yet - fall back to cache selection (for non-interactive mode or GitHub release flow)
+			// Priority 2: Interactive/Auto selection from cache (US1)
+			// This is only for local mode; docker mode uses images
+			selectedPath, err := selectBinaryForUpgrade(ctx, cleanMetadata.NetworkName, cleanMetadata.BlockchainNetwork, homeDir, logger)
+			if err != nil {
+				return fmt.Errorf("binary selection failed: %w", err)
+			}
 
-		// Import custom binary into cache system
-		importInput := &dto.CustomBinaryImportInput{
-			BinaryPath:  upgradeBinary,
-			NetworkType: cleanMetadata.NetworkName, // e.g., "mainnet", "testnet"
-			BuildConfig: nil,                       // No build config for custom binaries
-			Ref:         "custom",                  // Mark as custom import
-		}
+			if selectedPath == "" {
+				// No cached binaries available
+				return fmt.Errorf("no cached binaries found for upgrade\nUse --binary flag to specify a binary, or deploy/build a binary first")
+			}
 
-		// Create temporary DI container for import operation
-		tempFactory := di.NewInfrastructureFactory(homeDir, logger).
-			WithNetworkModule(networkModule)
-		tempContainer, err := tempFactory.WireContainer()
-		if err != nil {
-			return fmt.Errorf("failed to initialize for binary import: %w", err)
+			customBinarySymlinkPath = selectedPath
+		} else {
+			// customBinarySymlinkPath already set from unified selection - use it directly
+			logger.Success("Using selected binary: %s", customBinarySymlinkPath)
 		}
-
-		importResult, err := tempContainer.ImportCustomBinaryUseCase().Execute(ctx, importInput)
-		if err != nil {
-			return fmt.Errorf("failed to import custom binary: %w", err)
-		}
-
-		// Use the symlink path which points to the cached binary
-		customBinarySymlinkPath = importResult.SymlinkPath
-		logger.Success("Custom binary imported to cache")
-		logger.Info("  Version: %s", importResult.Version)
-		logger.Info("  Commit: %s", importResult.CommitHash)
-		logger.Info("  Cache key: %s", importResult.CacheKey)
-		logger.Info("  Binary path: %s", customBinarySymlinkPath)
 	}
 
 	// Determine target binary/image
-	targetBinary := customBinarySymlinkPath // Use imported binary if available
-	if targetBinary == "" {
-		targetBinary = upgradeBinary // Fallback to raw path (should not happen)
+	targetBinary := customBinarySymlinkPath // Use selected/imported binary if available
+	if targetBinary == "" && upgradeBinary != "" {
+		targetBinary = upgradeBinary // Fallback to raw path (should not happen with import)
 	}
 	targetImage := upgradeImage
 	if versionResolvedImage != "" {
@@ -446,30 +483,173 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 
 // runUpgradeInteractiveSelection runs the interactive version selection flow for upgrade.
 func runUpgradeInteractiveSelection(ctx context.Context, cmd *cobra.Command) (*interactive.UpgradeSelectionConfig, error) {
-	// Get config for cache settings
 	fileCfg := GetLoadedFileConfig()
 
-	// Set up cache manager
-	cacheTTL := github.DefaultCacheTTL
-	if fileCfg != nil && fileCfg.CacheTTL != nil {
-		if ttl, err := time.ParseDuration(*fileCfg.CacheTTL); err == nil {
-			cacheTTL = ttl
-		}
-	}
-	cacheManager := github.NewCacheManager(homeDir, cacheTTL)
-
-	// Set up GitHub client with cache and optional token
-	clientOpts := []github.ClientOption{
-		github.WithCache(cacheManager),
-	}
-	if fileCfg != nil && fileCfg.GitHubToken != nil && *fileCfg.GitHubToken != "" {
-		clientOpts = append(clientOpts, github.WithToken(*fileCfg.GitHubToken))
-	}
-	client := github.NewClient(clientOpts...)
+	// Use unified GitHub client setup (US2: eliminates code duplication)
+	client := setupGitHubClient(homeDir, fileCfg)
 
 	// Run selection flow
 	selector := interactive.NewSelector(client)
 	return selector.RunUpgradeSelectionFlow(ctx)
+}
+
+// selectBinaryForUpgrade orchestrates binary selection from cache for upgrade command.
+// This is simpler than selectBinaryForDeployment because upgrade doesn't build from source.
+//
+// Priority Order:
+//  1. Interactive/auto selection from cache (NEW)
+//  2. Return empty if no cache (caller will error)
+//
+// Parameters:
+//   - ctx: Context for cancellation
+//   - network: Network type ("mainnet", "testnet")
+//   - blockchain: Blockchain name ("stable", "ault")
+//   - homeDir: Home directory path
+//   - logger: Logger for user feedback
+//
+// Returns:
+//   - Binary path to use (symlink in ~/.devnet-builder/bin/)
+//   - Error if selection fails or user cancels
+//
+// Note: Unlike deploy, upgrade MUST have a binary (either --binary flag or cached).
+// If no binaries found, returns empty string and caller will error appropriately.
+func selectBinaryForUpgrade(
+	ctx context.Context,
+	network string,
+	blockchain string,
+	homeDir string,
+	logger *output.Logger,
+) (string, error) {
+	// Setup components (same as deploy)
+	fs := filesystem.NewOSFileSystem()
+	scanner := cache.NewBinaryScanner(fs)
+
+	executor := executor.NewOSCommandExecutor()
+	detector := binary.NewVersionDetectorAdapter(executor, 5*time.Second)
+	validator := binary.NewBinaryValidator(detector)
+
+	prompter := interactive.NewPrompterAdapter()
+	selector := interactive.NewBinarySelector(prompter)
+
+	// Scan cache for binaries
+	binaryName := blockchain + "d" // e.g., "stable" → "stabled"
+	cacheDir := filepath.Join(homeDir, ".devnet-builder", "cache", "binaries")
+
+	scannedBinaries, err := scanner.ScanCachedBinaries(ctx, cacheDir, network, binaryName)
+	if err != nil {
+		return "", fmt.Errorf("failed to scan cache: %w", err)
+	}
+
+	// Validate binaries concurrently
+	validBinaries := filterValidBinariesForUpgrade(ctx, scannedBinaries, validator, logger)
+
+	// If no valid binaries found, return empty (caller will handle error)
+	if len(validBinaries) == 0 {
+		if len(scannedBinaries) > 0 {
+			logger.Info("No valid cached binaries found")
+		}
+		return "", nil // Empty result indicates no cache
+	}
+
+	// Run selection with appropriate options
+	// Note: Upgrade doesn't have "Build from source" option
+	opts := interactive.BinarySelectionOptions{
+		AllowBuildFromSource: false,                               // Upgrade must use existing binary
+		AutoSelectSingle:     true,                                // CLARIFICATION 1: Auto-select single binary
+		IsInteractive:        interactive.IsTerminalInteractive(), // EC-004: TTY detection
+	}
+
+	result, err := selector.RunBinarySelectionFlow(ctx, validBinaries, opts)
+	if err != nil {
+		return "", fmt.Errorf("binary selection failed: %w", err)
+	}
+
+	// User cancelled
+	if result.WasCancelled {
+		return "", fmt.Errorf("selection cancelled by user")
+	}
+
+	// No binary selected (shouldn't happen since AllowBuildFromSource=false)
+	if result.SelectedBinary == nil {
+		return "", fmt.Errorf("no binary selected")
+	}
+
+	// Binary selected from cache
+	// EC-002: Single binary was auto-selected (log for transparency)
+	if len(validBinaries) == 1 {
+		logger.Info("Using cached binary: %s %s (%s)",
+			result.SelectedBinary.Name,
+			result.SelectedBinary.Version,
+			result.SelectedBinary.CommitHashShort)
+	} else {
+		logger.Success("Selected binary: %s %s (%s)",
+			result.SelectedBinary.Name,
+			result.SelectedBinary.Version,
+			result.SelectedBinary.CommitHashShort)
+	}
+
+	return result.BinaryPath, nil
+}
+
+// filterValidBinariesForUpgrade is similar to filterValidBinaries but for upgrade command.
+func filterValidBinariesForUpgrade(
+	ctx context.Context,
+	binaries []cache.CachedBinaryMetadata,
+	validator *binary.BinaryValidator,
+	logger *output.Logger,
+) []cache.CachedBinaryMetadata {
+	if len(binaries) == 0 {
+		return []cache.CachedBinaryMetadata{}
+	}
+
+	// Validate concurrently for performance
+	type validationResult struct {
+		binary cache.CachedBinaryMetadata
+		err    error
+	}
+
+	results := make(chan validationResult, len(binaries))
+	var wg sync.WaitGroup
+
+	for i := range binaries {
+		wg.Add(1)
+		go func(binary cache.CachedBinaryMetadata) {
+			defer wg.Done()
+
+			// Validate and enrich with version info
+			enriched, err := validator.ValidateAndEnrichMetadata(ctx, &binary)
+			results <- validationResult{
+				binary: *enriched,
+				err:    err,
+			}
+		}(binaries[i])
+	}
+
+	// Wait for all validations to complete
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect valid binaries
+	var validBinaries []cache.CachedBinaryMetadata
+	for result := range results {
+		if result.err != nil {
+			// EC-007: Corrupted/invalid binary - warn and skip
+			logger.Warn("Skipping invalid binary %s: %v", result.binary.Path, result.err)
+			continue
+		}
+		if result.binary.IsValid {
+			validBinaries = append(validBinaries, result.binary)
+		}
+	}
+
+	// Sort by modification time descending (most recent first)
+	sort.Slice(validBinaries, func(i, j int) bool {
+		return validBinaries[i].ModTime.After(validBinaries[j].ModTime)
+	})
+
+	return validBinaries
 }
 
 // isStandardVersionTag checks if a string looks like a standard version tag (e.g., v1.2.3).

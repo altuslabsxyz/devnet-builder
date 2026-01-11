@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/b-harvest/devnet-builder/internal/application/dto"
@@ -27,15 +28,16 @@ func (m *mockVersionDetector) DetectVersion(ctx context.Context, binaryPath stri
 
 // mockBinaryCache is a test double for BinaryCache
 type mockBinaryCache struct {
-	storePath      string
-	storeErr       error
-	setActiveErr   error
-	symlinkPath    string
-	symlinksDir    string
-	cachePath      string
-	cacheKey       string
-	storedKey      string
-	storedSrcPath  string
+	storePath     string
+	storeErr      error
+	setActiveErr  error
+	symlinkPath   string
+	symlinksDir   string
+	cachePath     string
+	cacheKey      string
+	storedKey     string
+	storedSrcPath string
+	cacheDir      string
 }
 
 func (m *mockBinaryCache) Store(ctx context.Context, cacheKey, srcPath string) (string, error) {
@@ -67,20 +69,47 @@ func (m *mockBinaryCache) CachePath() string {
 	return m.cachePath
 }
 
-func (m *mockBinaryCache) Get(cacheKey string) (string, error) {
-	return "", nil
+func (m *mockBinaryCache) CacheDir() string {
+	if m.cacheDir != "" {
+		return m.cacheDir
+	}
+	return "/tmp/cache"
 }
 
-func (m *mockBinaryCache) Exists(cacheKey string) bool {
+func (m *mockBinaryCache) Get(ref string) (string, bool) {
+	return "", false
+}
+
+func (m *mockBinaryCache) Has(ref string) bool {
 	return false
 }
 
-func (m *mockBinaryCache) List() ([]string, error) {
-	return nil, nil
+func (m *mockBinaryCache) List() []string {
+	return nil
 }
 
-func (m *mockBinaryCache) Delete(cacheKey string) error {
+func (m *mockBinaryCache) ListDetailed() []ports.CachedBinaryInfo {
 	return nil
+}
+
+func (m *mockBinaryCache) Stats() ports.CacheStats {
+	return ports.CacheStats{}
+}
+
+func (m *mockBinaryCache) Remove(ref string) error {
+	return nil
+}
+
+func (m *mockBinaryCache) Clean() error {
+	return nil
+}
+
+func (m *mockBinaryCache) GetActive() (string, error) {
+	return "", nil
+}
+
+func (m *mockBinaryCache) SymlinkInfo() (*ports.SymlinkInfo, error) {
+	return nil, nil
 }
 
 // TestImportCustomBinaryUseCase_Success tests successful binary import flow
@@ -103,6 +132,14 @@ func TestImportCustomBinaryUseCase_Success(t *testing.T) {
 
 	cachedBinaryPath := filepath.Join(tmpDir, "cache", "mainnet", "80ad31b1234567890abcdef1234567890abcdef-abc123", "stabled")
 	symlinkPath := filepath.Join(tmpDir, "bin", "stabled")
+
+	// Create the cached binary path directory and file so stat succeeds
+	if err := os.MkdirAll(filepath.Dir(cachedBinaryPath), 0755); err != nil {
+		t.Fatalf("Failed to create cache directory: %v", err)
+	}
+	if err := os.WriteFile(cachedBinaryPath, []byte("cached binary"), 0755); err != nil {
+		t.Fatalf("Failed to create cached binary: %v", err)
+	}
 
 	binaryCache := &mockBinaryCache{
 		storePath:   cachedBinaryPath,
@@ -158,7 +195,7 @@ func TestImportCustomBinaryUseCase_Success(t *testing.T) {
 		t.Errorf("Expected cache to store from %s, got: %s", testBinary, binaryCache.storedSrcPath)
 	}
 
-	expectedCacheKey := "mainnet/80ad31b1234567890abcdef1234567890abcdef-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	expectedCacheKey := "mainnet/80ad31b1234567890abcdef1234567890abcdef-empty"
 	if binaryCache.storedKey != expectedCacheKey {
 		t.Errorf("Expected cache key %s, got: %s", expectedCacheKey, binaryCache.storedKey)
 	}
@@ -262,7 +299,7 @@ func TestImportCustomBinaryUseCase_BinaryNotFound(t *testing.T) {
 
 	// Should contain "binary not found" message
 	errMsg := err.Error()
-	if !contains(errMsg, "invalid input") || !contains(errMsg, "binary not found") {
+	if !strings.Contains(errMsg, "invalid input") || !strings.Contains(errMsg, "binary not found") {
 		t.Errorf("Expected 'binary not found' error, got: %v", err)
 	}
 }
@@ -298,7 +335,7 @@ func TestImportCustomBinaryUseCase_VersionDetectionFails(t *testing.T) {
 		t.Fatal("Expected error from version detection")
 	}
 
-	if !contains(err.Error(), "failed to detect binary version") {
+	if !strings.Contains(err.Error(), "failed to detect binary version") {
 		t.Errorf("Expected version detection error, got: %v", err)
 	}
 }
@@ -341,7 +378,7 @@ func TestImportCustomBinaryUseCase_CacheStoreFails(t *testing.T) {
 		t.Fatal("Expected error from cache storage")
 	}
 
-	if !contains(err.Error(), "failed to store binary in cache") {
+	if !strings.Contains(err.Error(), "failed to store binary in cache") {
 		t.Errorf("Expected cache storage error, got: %v", err)
 	}
 }
@@ -390,7 +427,7 @@ func TestImportCustomBinaryUseCase_SetActiveFails(t *testing.T) {
 		t.Fatal("Expected error from SetActive")
 	}
 
-	if !contains(err.Error(), "failed to set binary as active") {
+	if !strings.Contains(err.Error(), "failed to set binary as active") {
 		t.Errorf("Expected SetActive error, got: %v", err)
 	}
 }
@@ -439,8 +476,8 @@ func TestImportCustomBinaryUseCase_WithNilBuildConfig(t *testing.T) {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
 
-	// Should use empty build config hash (e3b0c44...)
-	expectedCacheKey := "mainnet/80ad31b1234567890abcdef1234567890abcdef-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	// Should use empty build config hash ("empty")
+	expectedCacheKey := "mainnet/80ad31b1234567890abcdef1234567890abcdef-empty"
 	if result.CacheKey != expectedCacheKey {
 		t.Errorf("Expected cache key %s, got: %s", expectedCacheKey, result.CacheKey)
 	}

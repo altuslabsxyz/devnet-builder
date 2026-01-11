@@ -3,9 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/b-harvest/devnet-builder/internal/domain/common"
-	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
 
@@ -60,15 +61,20 @@ func handleCommandError(cmd *cobra.Command, err error) error {
 
 // wrapInteractiveError wraps errors from interactive operations.
 // It preserves cancellation handling while applying error formatting.
+// Returns exit code 130 for user cancellation (Ctrl+C/ESC), exit code 1 for other errors.
 func wrapInteractiveError(cmd *cobra.Command, err error, context string) error {
 	if err == nil {
 		return nil
 	}
 
-	// Check for user cancellation
+	// Check for user cancellation (T014: EC-005)
+	// User cancellation should exit with code 130 (standard UNIX convention)
 	if isCancellation(err) {
-		output.Info("Operation cancelled.")
-		return nil
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+		// Exit with code 130 (128 + 2 for SIGINT)
+		os.Exit(130)
+		return nil // Unreachable, but required for type safety
 	}
 
 	// Add context to the error if provided
@@ -81,14 +87,33 @@ func wrapInteractiveError(cmd *cobra.Command, err error, context string) error {
 }
 
 // isCancellation checks if an error represents a user cancellation.
+// This implements EC-005 (User Cancellation edge case) from the specification.
+//
+// User Cancellation Detection:
+//   - promptui.ErrInterrupt: Ctrl+C pressed during prompt
+//   - promptui.ErrEOF: ESC pressed during prompt
+//   - Error message contains "exit code 130": Wrapped cancellation error
+//   - Error message contains "cancelled": Generic cancellation
+//
+// Returns:
+//   - true if error is user cancellation (should exit with code 130)
+//   - false for all other errors (should exit with code 1)
 func isCancellation(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	errMsg := err.Error()
-	return errMsg == "operation cancelled" ||
-		errMsg == "user cancelled" ||
-		errMsg == "^C" ||
-		errMsg == "interrupt"
+	// Check for promptui cancellation errors directly (US1: T014)
+	if err == promptui.ErrInterrupt || err == promptui.ErrEOF {
+		return true
+	}
+
+	// Check error message for cancellation indicators
+	errMsg := strings.ToLower(err.Error())
+	return strings.Contains(errMsg, "exit code 130") ||
+		strings.Contains(errMsg, "cancelled") ||
+		strings.Contains(errMsg, "user cancelled") ||
+		strings.Contains(errMsg, "operation cancelled") ||
+		strings.Contains(errMsg, "^c") ||
+		strings.Contains(errMsg, "interrupt")
 }

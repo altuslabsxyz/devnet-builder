@@ -6,11 +6,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"sync"
 	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	"github.com/b-harvest/devnet-builder/internal/config"
 	"github.com/b-harvest/devnet-builder/internal/di"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/binary"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/cache"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/executor"
+	"github.com/b-harvest/devnet-builder/internal/infrastructure/filesystem"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
@@ -82,11 +88,12 @@ Examples:
   # Large-scale deployment with 100 validators (docker mode only)
   devnet-builder deploy --validators 100
 
-  # Deploy with custom binary in local mode
-  devnet-builder deploy --mode local --binary /path/to/custom/stabled
+  # Deploy with custom binary in local mode (interactive selection)
+  devnet-builder deploy --mode local
+  → Then select "Use local binary" and browse to your binary
 
-  # Deploy with custom binary and fork mode (binary needed for genesis export)
-  devnet-builder deploy --mode local --binary /path/to/stabled --fork`,
+  # Deploy with fork mode (binary needed for genesis export)
+  devnet-builder deploy --mode local --fork`,
 		RunE: runDeploy,
 	}
 
@@ -119,9 +126,10 @@ Examples:
 	cmd.Flags().StringVar(&deployImage, "image", "",
 		"Docker image for docker mode (e.g., v1.0.0 or ghcr.io/org/image:tag)")
 
-	// Custom binary flag for local mode
-	cmd.Flags().StringVarP(&deployBinary, "binary", "b", "",
-		"Custom binary path for local mode (skips build)")
+	// T046: Removed --binary flag (replaced by interactive selection)
+	// Custom binary flag removed - use interactive mode instead
+	// cmd.Flags().StringVarP(&deployBinary, "binary", "b", "",
+	// 	"Custom binary path for local mode (skips build)")
 
 	// Blockchain network module flag
 	cmd.Flags().StringVar(&deployBlockchainNetwork, "blockchain", "stable",
@@ -215,6 +223,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Skip interactive version selection if --binary flag is provided
 	isInteractive := !deployNoInteractive && !jsonMode && deployBinary == ""
 
+	// Variable to store custom binary path (set by unified selection or selectBinaryForDeployment)
+	var customBinaryPath string
+
 	// Docker mode uses GHCR package versions, not GitHub releases
 	if deployMode == "docker" {
 		resolvedImage, err := resolveDeployDockerImage(ctx, cmd, isInteractive)
@@ -225,16 +236,23 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		exportVersion = deployStableVersion
 		startVersion = deployStableVersion
 	} else {
-		// Local mode: run interactive selection flow for GitHub releases
-		// Skip if --binary flag is provided (custom binary doesn't need version selection)
+		// Local mode: run interactive selection flow (local binary OR GitHub releases)
+		// T039: Use unified selection function for deploy command
 		if isInteractive {
-			selection, err := runDeployInteractiveSelection(ctx, cmd, deployNetwork)
+			// includeNetworkSelection = false (network is already known from config)
+			selection, err := runInteractiveVersionSelection(ctx, cmd, false)
 			if err != nil {
-				return wrapInteractiveError(cmd, err, "failed to fetch versions")
+				return wrapInteractiveError(cmd, err, "failed during interactive selection")
 			}
 			exportVersion = selection.ExportVersion
 			startVersion = selection.StartVersion
 			deployStableVersion = exportVersion
+
+			// T048: If user selected a local binary, store it for later use
+			// This prevents the need to call selectBinaryForDeployment() again
+			if selection.BinarySource.IsLocal() && selection.BinarySource.SelectedPath != "" {
+				customBinaryPath = selection.BinarySource.SelectedPath
+			}
 		} else {
 			// Non-interactive: use explicit flags if provided, otherwise fall back to --stable-version
 			if deployExportVersion != "" {
@@ -267,20 +285,28 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", deployMode)
 	}
 
-	// Validate --binary flag with mode
-	if deployBinary != "" && deployMode == "docker" {
-		return fmt.Errorf("--binary flag is only supported in local mode, use --image for docker mode")
-	}
-
-	// Validate and normalize --binary path if provided
-	var validatedBinaryPath string
+	// T048: Check for deprecated --binary flag usage
 	if deployBinary != "" {
-		var err error
-		validatedBinaryPath, err = validateBinaryPath(deployBinary)
-		if err != nil {
-			return err
-		}
-		logger.Info("Using custom binary: %s", validatedBinaryPath)
+		return fmt.Errorf(`the --binary flag has been removed in favor of interactive binary selection
+
+When you run 'devnet-builder deploy' in interactive mode, you will be prompted to:
+1. Choose between using a local binary or downloading from GitHub releases
+2. If you select "local binary", you can browse your filesystem with Tab autocomplete
+
+Migration guide:
+  • Interactive mode (recommended):
+      devnet-builder deploy
+      → Select "Use local binary (browse filesystem)"
+      → Navigate to your binary using Tab autocomplete
+
+  • Non-interactive mode with environment variable:
+      export DEVNET_BINARY_PATH=/path/to/your/binary
+      devnet-builder deploy --no-interactive
+
+  • Docker mode (unchanged):
+      devnet-builder deploy --mode docker --image your-image:tag
+
+For more information, see: https://github.com/b-harvest/devnet-builder/blob/main/docs/MIGRATION.md`)
 	}
 
 	// Validate blockchain network module exists
@@ -308,48 +334,39 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Build binary for local mode (all versions need to be built/cached)
-	// Priority: --binary flag > cached binary > build from source
-	var customBinaryPath string
+	// Priority: unified selection > cached binary > build from source
 	if deployMode == "local" {
-		// Priority 1: Use --binary flag if provided (already validated)
-		if validatedBinaryPath != "" {
-			// Import custom binary into cache system
-			importInput := &dto.CustomBinaryImportInput{
-				BinaryPath:  validatedBinaryPath,
-				NetworkType: deployNetwork, // "mainnet", "testnet", etc.
-				BuildConfig: nil,           // No build config for custom binaries
-				Ref:         "custom",      // Mark as custom import
-			}
-
-			importResult, err := svc.Container().ImportCustomBinaryUseCase().Execute(ctx, importInput)
+		// T048: Check if binary was already selected via unified selection (interactive mode)
+		// If user selected a local binary via the filesystem browser, customBinaryPath is already set
+		if customBinaryPath == "" {
+			// No binary selected yet - fall back to old selection logic (for non-interactive mode)
+			// Interactive/Auto selection from cache (US1)
+			// This replaces the old "check if binary exists" logic with:
+			//   - Scan cache directory for all matching binaries
+			//   - Validate each binary (executable, version detectable)
+			//   - Present interactive selection (or auto-select if single/non-TTY)
+			//   - Allow "Build from source" option
+			selectedPath, err := selectBinaryForDeployment(ctx, deployNetwork, deployBlockchainNetwork, homeDir, logger)
 			if err != nil {
-				return fmt.Errorf("failed to import custom binary: %w", err)
+				return fmt.Errorf("binary selection failed: %w", err)
 			}
 
-			// Use the symlink path which points to the cached binary
-			customBinaryPath = importResult.SymlinkPath
-			logger.Success("Custom binary imported to cache")
-			logger.Info("  Version: %s", importResult.Version)
-			logger.Info("  Commit: %s", importResult.CommitHash)
-			logger.Info("  Cache key: %s", importResult.CacheKey)
-			logger.Info("  Binary path: %s", customBinaryPath)
-		} else {
-			// Priority 2: Check if binary already exists in cache
-			binaryName := deployBlockchainNetwork + "d" // e.g., "stable" -> "stabled", "ault" -> "aultd"
-			expectedBinaryPath := filepath.Join(homeDir, ".devnet-builder", "bin", binaryName)
-			if _, err := os.Stat(expectedBinaryPath); err == nil {
-				// Binary exists, skip build
-				customBinaryPath = expectedBinaryPath
-				logger.Info("Using existing binary: %s", expectedBinaryPath)
-			} else {
-				// Priority 3: Build binary from source
+			// If no binary selected (empty cache, no explicit build request)
+			// Priority 3: Build binary from source (existing behavior)
+			if selectedPath == "" {
 				buildResult, err := buildBinaryForDeploy(ctx, deployBlockchainNetwork, startVersion, deployNetwork, logger)
 				if err != nil {
 					return fmt.Errorf("failed to build from source: %w", err)
 				}
 				customBinaryPath = buildResult.BinaryPath
 				logger.Success("Binary built: %s (commit: %s)", buildResult.BinaryPath, buildResult.CommitHash)
+			} else {
+				// Use the selected cached binary
+				customBinaryPath = selectedPath
 			}
+		} else {
+			// customBinaryPath already set from unified selection - use it directly
+			logger.Success("Using selected binary: %s", customBinaryPath)
 		}
 	}
 
@@ -489,28 +506,201 @@ func outputDeployErrorClean(err error) error {
 func runDeployInteractiveSelection(ctx context.Context, cmd *cobra.Command, network string) (*interactive.SelectionConfig, error) {
 	fileCfg := GetLoadedFileConfig()
 
-	cacheTTL := github.DefaultCacheTTL
-	if fileCfg != nil && fileCfg.CacheTTL != nil {
-		if ttl, err := time.ParseDuration(*fileCfg.CacheTTL); err == nil {
-			cacheTTL = ttl
-		}
-	}
-	cacheManager := github.NewCacheManager(homeDir, cacheTTL)
-
-	clientOpts := []github.ClientOption{
-		github.WithCache(cacheManager),
-	}
-
-	// Resolve GitHub token from keychain, environment, or config file
-	if token, found := resolveGitHubToken(fileCfg); found {
-		clientOpts = append(clientOpts, github.WithToken(token))
-	}
-
-	client := github.NewClient(clientOpts...)
+	// Use unified GitHub client setup (US2: eliminates code duplication)
+	client := setupGitHubClient(homeDir, fileCfg)
 
 	selector := interactive.NewSelector(client)
 	// Use RunVersionSelectionFlow to skip network selection (network already determined)
 	return selector.RunVersionSelectionFlow(ctx, network)
+}
+
+// selectBinaryForDeployment orchestrates binary selection from cache or build.
+// This implements US1 (Interactive Local Binary Selection) by scanning cache,
+// validating binaries, and presenting an interactive selection to the user.
+//
+// Priority Order (FR-005):
+//  1. Interactive/auto selection from cache (NEW)
+//  2. Build from source (if selected or no cache)
+//
+// Parameters:
+//   - ctx: Context for cancellation
+//   - network: Network type ("mainnet", "testnet")
+//   - blockchain: Blockchain name ("stable", "ault")
+//   - homeDir: Home directory path
+//   - logger: Logger for user feedback
+//
+// Returns:
+//   - Binary path to use (symlink in ~/.devnet-builder/bin/)
+//   - Error if selection fails or build fails
+//
+// Edge Cases Handled:
+//   - EC-001: No cache → builds from source automatically
+//   - EC-002: Single binary → auto-selects with info log
+//   - EC-004: Non-TTY → auto-selects first valid binary
+//   - EC-005: User cancellation → returns error
+//   - EC-007: Corrupted binaries → skipped with warning
+func selectBinaryForDeployment(
+	ctx context.Context,
+	network string,
+	blockchain string,
+	homeDir string,
+	logger *output.Logger,
+) (string, error) {
+	// Setup components
+	fs := filesystem.NewOSFileSystem()
+	scanner := cache.NewBinaryScanner(fs)
+
+	executor := executor.NewOSCommandExecutor()
+	detector := binary.NewVersionDetectorAdapter(executor, 5*time.Second)
+	validator := binary.NewBinaryValidator(detector)
+
+	prompter := interactive.NewPrompterAdapter()
+	selector := interactive.NewBinarySelector(prompter)
+
+	// Scan cache for binaries
+	binaryName := blockchain + "d" // e.g., "stable" → "stabled"
+	cacheDir := filepath.Join(homeDir, ".devnet-builder", "cache", "binaries")
+
+	scannedBinaries, err := scanner.ScanCachedBinaries(ctx, cacheDir, network, binaryName)
+	if err != nil {
+		return "", fmt.Errorf("failed to scan cache: %w", err)
+	}
+
+	// Validate binaries concurrently (EC-006: 5s timeout per binary)
+	validBinaries := filterValidBinaries(ctx, scannedBinaries, validator, logger)
+
+	// If no valid binaries found, log and proceed to build
+	// EC-001: Empty cache → caller will build from source
+	if len(validBinaries) == 0 && len(scannedBinaries) > 0 {
+		logger.Info("No valid cached binaries found, building from source")
+	}
+
+	// Run selection with appropriate options
+	opts := interactive.BinarySelectionOptions{
+		AllowBuildFromSource: true,                                // FR-011: Allow build option
+		AutoSelectSingle:     true,                                // CLARIFICATION 1: Auto-select single binary
+		IsInteractive:        interactive.IsTerminalInteractive(), // EC-004: TTY detection
+	}
+
+	result, err := selector.RunBinarySelectionFlow(ctx, validBinaries, opts)
+	if err != nil {
+		return "", fmt.Errorf("binary selection failed: %w", err)
+	}
+
+	// EC-005: User cancelled
+	if result.WasCancelled {
+		return "", fmt.Errorf("selection cancelled by user")
+	}
+
+	// User selected "Build from source" or no binaries available
+	if result.ShouldBuild || result.SelectedBinary == nil {
+		buildVersion := result.BuildVersion
+		if buildVersion == "" {
+			// No binaries and didn't explicitly select build → use default behavior
+			// This handles EC-001: Empty cache scenario
+			return "", nil // Caller will trigger default build
+		}
+
+		// User explicitly requested build with specific version
+		logger.Info("Building binary from source: %s", buildVersion)
+		buildResult, err := buildBinaryForDeploy(ctx, blockchain, buildVersion, network, logger)
+		if err != nil {
+			return "", fmt.Errorf("failed to build from source: %w", err)
+		}
+		return buildResult.BinaryPath, nil
+	}
+
+	// Binary selected from cache
+	// EC-002: Single binary was auto-selected (log for transparency)
+	if len(validBinaries) == 1 {
+		logger.Info("Using cached binary: %s %s (%s)",
+			result.SelectedBinary.Name,
+			result.SelectedBinary.Version,
+			result.SelectedBinary.CommitHashShort)
+	} else {
+		logger.Success("Selected binary: %s %s (%s)",
+			result.SelectedBinary.Name,
+			result.SelectedBinary.Version,
+			result.SelectedBinary.CommitHashShort)
+	}
+
+	return result.BinaryPath, nil
+}
+
+// filterValidBinaries validates binaries concurrently and returns only valid ones.
+// This implements concurrent validation per spec requirement (Performance: ≤2.5s for 20 binaries).
+//
+// Parameters:
+//   - ctx: Context for cancellation
+//   - binaries: Scanned binaries from cache
+//   - validator: Binary validator
+//   - logger: Logger for warnings about invalid binaries
+//
+// Returns:
+//   - Slice of valid binaries (IsValid=true, with Version and CommitHash populated)
+//
+// Edge Cases:
+//   - EC-007: Corrupted binaries → logged as warnings, excluded from results
+//   - EC-006: Version detection timeout → logged as warnings
+func filterValidBinaries(
+	ctx context.Context,
+	binaries []cache.CachedBinaryMetadata,
+	validator *binary.BinaryValidator,
+	logger *output.Logger,
+) []cache.CachedBinaryMetadata {
+	if len(binaries) == 0 {
+		return []cache.CachedBinaryMetadata{}
+	}
+
+	// Validate concurrently for performance
+	type validationResult struct {
+		binary cache.CachedBinaryMetadata
+		err    error
+	}
+
+	results := make(chan validationResult, len(binaries))
+	var wg sync.WaitGroup
+
+	for i := range binaries {
+		wg.Add(1)
+		go func(binary cache.CachedBinaryMetadata) {
+			defer wg.Done()
+
+			// Validate and enrich with version info
+			enriched, err := validator.ValidateAndEnrichMetadata(ctx, &binary)
+			results <- validationResult{
+				binary: *enriched,
+				err:    err,
+			}
+		}(binaries[i])
+	}
+
+	// Wait for all validations to complete
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect valid binaries
+	var validBinaries []cache.CachedBinaryMetadata
+	for result := range results {
+		if result.err != nil {
+			// EC-007: Corrupted/invalid binary - warn and skip
+			logger.Warn("Skipping invalid binary %s: %v", result.binary.Path, result.err)
+			continue
+		}
+		if result.binary.IsValid {
+			validBinaries = append(validBinaries, result.binary)
+		}
+	}
+
+	// Sort by modification time descending (most recent first)
+	// This maintains the order from scanner (CLARIFICATION 3)
+	sort.Slice(validBinaries, func(i, j int) bool {
+		return validBinaries[i].ModTime.After(validBinaries[j].ModTime)
+	})
+
+	return validBinaries
 }
 
 // resolveDeployDockerImage determines the docker image to use.

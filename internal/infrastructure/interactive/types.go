@@ -3,15 +3,32 @@ package interactive
 import (
 	"fmt"
 	"time"
+
+	"github.com/b-harvest/devnet-builder/internal/domain"
 )
 
 // SelectionConfig represents the user's selection state during interactive mode for start command.
+// Enhanced to support unified binary source selection (local filesystem or GitHub release).
 type SelectionConfig struct {
 	Network           string // "mainnet" or "testnet"
 	ExportVersion     string // Version for genesis export
 	StartVersion      string // Version for node start
 	ExportIsCustomRef bool   // True if export version is a custom branch/commit
 	StartIsCustomRef  bool   // True if start version is a custom branch/commit
+
+	// BinarySource represents the user's choice of binary origin (local or GitHub release).
+	// This field is populated by the unified selection flow (runInteractiveVersionSelection).
+	// If nil, the selection flow will prompt the user to choose a source.
+	BinarySource *domain.BinarySource
+
+	// SourceSelectionTimestamp records when the source selection was made.
+	// Used for debugging and audit purposes.
+	SourceSelectionTimestamp time.Time
+
+	// IncludeNetworkSelection controls whether network selection prompt is shown.
+	// - false for deploy command (network pre-determined from config.toml)
+	// - true for upgrade command (user selects network interactively)
+	IncludeNetworkSelection bool
 }
 
 // UpgradeSelectionConfig represents the user's selection state during interactive upgrade mode.
