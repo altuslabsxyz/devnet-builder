@@ -48,6 +48,7 @@ func runInteractiveVersionSelection(
 	ctx context.Context,
 	cmd *cobra.Command,
 	includeNetworkSelection bool,
+	network string,
 ) (*interactive.SelectionConfig, error) {
 	// Step 1: Source Selection (US1: FR-001, FR-002)
 	// Prompt user to choose between local binary and GitHub release
@@ -76,7 +77,7 @@ func runInteractiveVersionSelection(
 
 	case domain.SourceTypeGitHubRelease:
 		// Existing flow: Fetch releases and prompt for version selection
-		if err := handleGitHubReleaseSelection(ctx, cmd, config); err != nil {
+		if err := handleGitHubReleaseSelection(ctx, cmd, config, network); err != nil {
 			return nil, err
 		}
 
@@ -156,7 +157,7 @@ func handleLocalBinarySelection(ctx context.Context, config *interactive.Selecti
 //
 // Design Decision: Reuses existing Selector.RunVersionSelectionFlow to avoid
 // code duplication. This aligns with US3: Unified Function Integration (SC-004).
-func handleGitHubReleaseSelection(ctx context.Context, cmd *cobra.Command, config *interactive.SelectionConfig) error {
+func handleGitHubReleaseSelection(ctx context.Context, cmd *cobra.Command, config *interactive.SelectionConfig, network string) error {
 	fileCfg := GetLoadedFileConfig()
 
 	// Use unified GitHub client setup (eliminates code duplication)
@@ -165,16 +166,8 @@ func handleGitHubReleaseSelection(ctx context.Context, cmd *cobra.Command, confi
 	// Create selector and run version selection flow
 	selector := interactive.NewSelector(client)
 
-	// For deploy: network is already in config, so we pass it explicitly
-	// For upgrade: network will be selected in Step 3 (handleNetworkSelection)
-	// Here we use empty string for upgrade, which means selector will skip network prompt
-	network := ""
-	if !config.IncludeNetworkSelection {
-		// Deploy command: get network from config
-		// TODO: Extract network from file config (depends on existing config structure)
-		network = "mainnet" // Placeholder - should be from fileCfg
-	}
-
+	// For deploy: network is passed from caller (from config)
+	// For upgrade: network will be selected in Step 3 (handleNetworkSelection), passed as empty string here
 	// Run existing version selection flow
 	versionConfig, err := selector.RunVersionSelectionFlow(ctx, network)
 	if err != nil {
