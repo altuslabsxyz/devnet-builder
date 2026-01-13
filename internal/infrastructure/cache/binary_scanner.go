@@ -175,6 +175,67 @@ func (s *BinaryScanner) ScanCachedBinaries(ctx context.Context, cacheDir, networ
 	return binaries, nil
 }
 
+// ScanAllNetworks finds all binaries across ALL network directories.
+// Use this when networkType is unknown or empty (fallback scanning).
+//
+// Parameters:
+//   - ctx: Context for cancellation
+//   - cacheDir: Base cache directory (e.g., ~/.devnet-builder/cache/binaries)
+//   - binaryName: Binary name to search for (e.g., "stabled")
+//
+// Returns:
+//   - Slice of CachedBinaryMetadata sorted by modification time (most recent first)
+//   - Empty slice if no binaries found
+//   - Error only for permission denied or filesystem failures
+//
+// This method scans subdirectories of cacheDir that look like network names
+// (mainnet, testnet, devnet, etc.) and searches for binaries in each.
+func (s *BinaryScanner) ScanAllNetworks(ctx context.Context, cacheDir, binaryName string) ([]CachedBinaryMetadata, error) {
+	// Read top-level directories (network types: mainnet, testnet, etc.)
+	entries, err := s.fs.ReadDir(cacheDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []CachedBinaryMetadata{}, nil
+		}
+		if os.IsPermission(err) {
+			return nil, fmt.Errorf("cannot access cache directory: permission denied\nRun: chmod -R u+r %s", cacheDir)
+		}
+		return nil, fmt.Errorf("failed to read cache directory %s: %w", cacheDir, err)
+	}
+
+	var allBinaries []CachedBinaryMetadata
+
+	// Iterate through potential network directories
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		networkType := entry.Name()
+
+		// Skip hidden directories and non-network-like names
+		if strings.HasPrefix(networkType, ".") {
+			continue
+		}
+
+		// Scan binaries in this network directory
+		binaries, err := s.ScanCachedBinaries(ctx, cacheDir, networkType, binaryName)
+		if err != nil {
+			// Log but continue scanning other networks
+			continue
+		}
+
+		allBinaries = append(allBinaries, binaries...)
+	}
+
+	// Sort combined results by modification time (most recent first)
+	sort.Slice(allBinaries, func(i, j int) bool {
+		return allBinaries[i].ModTime.After(allBinaries[j].ModTime)
+	})
+
+	return allBinaries, nil
+}
+
 // formatBytes converts bytes to human-readable size (KB, MB, GB).
 // This matches the spec requirement for "45.2 MB" style formatting.
 //

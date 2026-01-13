@@ -571,9 +571,36 @@ func selectBinaryForDeployment(
 	binaryName := blockchain + "d" // e.g., "stable" → "stabled"
 	cacheDir := filepath.Join(homeDir, ".devnet-builder", "cache", "binaries")
 
-	scannedBinaries, err := scanner.ScanCachedBinaries(ctx, cacheDir, network, binaryName)
-	if err != nil {
-		return "", fmt.Errorf("failed to scan cache: %w", err)
+	// Debug: log what we're searching for
+	logger.Debug("Scanning cache for binaries: network=%q, blockchain=%q, binaryName=%q, cacheDir=%q",
+		network, blockchain, binaryName, cacheDir)
+
+	var scannedBinaries []cache.CachedBinaryMetadata
+	var err error
+
+	if network != "" {
+		// Scan specific network directory
+		scannedBinaries, err = scanner.ScanCachedBinaries(ctx, cacheDir, network, binaryName)
+		if err != nil {
+			return "", fmt.Errorf("failed to scan cache: %w", err)
+		}
+		logger.Debug("Found %d binaries in network %q", len(scannedBinaries), network)
+	}
+
+	// Fallback: if no binaries found with specific network, scan ALL networks
+	// This handles edge cases where NetworkName might be empty or mismatched
+	if len(scannedBinaries) == 0 {
+		if network != "" {
+			logger.Debug("No binaries found in network %q, scanning all networks...", network)
+		} else {
+			logger.Debug("Network not specified, scanning all networks...")
+		}
+
+		scannedBinaries, err = scanner.ScanAllNetworks(ctx, cacheDir, binaryName)
+		if err != nil {
+			return "", fmt.Errorf("failed to scan all networks: %w", err)
+		}
+		logger.Debug("Found %d binaries across all networks", len(scannedBinaries))
 	}
 
 	// Validate binaries concurrently (EC-006: 5s timeout per binary)

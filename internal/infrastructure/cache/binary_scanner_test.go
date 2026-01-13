@@ -338,3 +338,126 @@ func TestFormatRelativeTime(t *testing.T) {
 		})
 	}
 }
+
+// TestBinaryScanner_ScanAllNetworks_MultipleNetworks tests scanning across multiple networks
+func TestBinaryScanner_ScanAllNetworks_MultipleNetworks(t *testing.T) {
+	// Setup: Create cache with binaries in multiple network directories
+	tmpDir := t.TempDir()
+	cacheDir := filepath.Join(tmpDir, "cache", "binaries")
+
+	// Create binaries in mainnet
+	mainnetBinary := filepath.Join(cacheDir, "mainnet", "aaaaaaa-empty", "stabled")
+	if err := os.MkdirAll(filepath.Dir(mainnetBinary), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(mainnetBinary, []byte("mainnet binary"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create binaries in testnet
+	testnetBinary := filepath.Join(cacheDir, "testnet", "bbbbbbb-config", "stabled")
+	if err := os.MkdirAll(filepath.Dir(testnetBinary), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Create testnet binary slightly newer
+	time.Sleep(10 * time.Millisecond)
+	if err := os.WriteFile(testnetBinary, []byte("testnet binary"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := NewBinaryScanner(filesystem.NewOSFileSystem())
+	binaries, err := scanner.ScanAllNetworks(context.Background(), cacheDir, "stabled")
+
+	// Verify: Both binaries found from different networks
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if len(binaries) != 2 {
+		t.Fatalf("Expected 2 binaries from 2 networks, got: %d", len(binaries))
+	}
+
+	// Verify sorted by modification time (testnet newer first)
+	if binaries[0].NetworkType != "testnet" {
+		t.Errorf("Expected testnet first (newer), got: %s", binaries[0].NetworkType)
+	}
+	if binaries[1].NetworkType != "mainnet" {
+		t.Errorf("Expected mainnet second (older), got: %s", binaries[1].NetworkType)
+	}
+}
+
+// TestBinaryScanner_ScanAllNetworks_EmptyCache tests empty cache handling
+func TestBinaryScanner_ScanAllNetworks_EmptyCache(t *testing.T) {
+	tmpDir := t.TempDir()
+	cacheDir := filepath.Join(tmpDir, "cache", "binaries")
+
+	// Create empty cache directory
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := NewBinaryScanner(filesystem.NewOSFileSystem())
+	binaries, err := scanner.ScanAllNetworks(context.Background(), cacheDir, "stabled")
+
+	// Verify: Empty result, no error
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if len(binaries) != 0 {
+		t.Errorf("Expected 0 binaries, got: %d", len(binaries))
+	}
+}
+
+// TestBinaryScanner_ScanAllNetworks_NonexistentCache tests nonexistent cache directory
+func TestBinaryScanner_ScanAllNetworks_NonexistentCache(t *testing.T) {
+	tmpDir := t.TempDir()
+	cacheDir := filepath.Join(tmpDir, "nonexistent", "cache", "binaries")
+
+	scanner := NewBinaryScanner(filesystem.NewOSFileSystem())
+	binaries, err := scanner.ScanAllNetworks(context.Background(), cacheDir, "stabled")
+
+	// Verify: Empty result, no error (cache doesn't exist is not an error)
+	if err != nil {
+		t.Fatalf("Expected no error for nonexistent cache, got: %v", err)
+	}
+	if len(binaries) != 0 {
+		t.Errorf("Expected 0 binaries, got: %d", len(binaries))
+	}
+}
+
+// TestBinaryScanner_ScanAllNetworks_SkipsHiddenDirs tests that hidden directories are skipped
+func TestBinaryScanner_ScanAllNetworks_SkipsHiddenDirs(t *testing.T) {
+	tmpDir := t.TempDir()
+	cacheDir := filepath.Join(tmpDir, "cache", "binaries")
+
+	// Create binary in normal network
+	normalBinary := filepath.Join(cacheDir, "mainnet", "aaaaaaa-empty", "stabled")
+	if err := os.MkdirAll(filepath.Dir(normalBinary), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(normalBinary, []byte("normal"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create binary in hidden directory (should be skipped)
+	hiddenBinary := filepath.Join(cacheDir, ".hidden", "bbbbbbb-empty", "stabled")
+	if err := os.MkdirAll(filepath.Dir(hiddenBinary), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hiddenBinary, []byte("hidden"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := NewBinaryScanner(filesystem.NewOSFileSystem())
+	binaries, err := scanner.ScanAllNetworks(context.Background(), cacheDir, "stabled")
+
+	// Verify: Only mainnet binary found
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if len(binaries) != 1 {
+		t.Fatalf("Expected 1 binary (hidden skipped), got: %d", len(binaries))
+	}
+	if binaries[0].NetworkType != "mainnet" {
+		t.Errorf("Expected mainnet, got: %s", binaries[0].NetworkType)
+	}
+}
