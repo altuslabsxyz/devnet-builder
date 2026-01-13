@@ -380,11 +380,14 @@ For more information, see: https://github.com/b-harvest/devnet-builder/blob/main
 	}
 
 	// Binary resolution for local mode upgrades (T049: --binary flag removed)
-	// Priority: unified selection > cached binary selection > error
+	// Priority: pre-built binary (cachedBuildResult) > unified selection > cached binary selection > error
 	if resolvedMode == UpgradeModeLocal {
-		// T049: Check if binary was already selected via unified selection (interactive mode)
-		// If user selected a local binary via the filesystem browser, customBinarySymlinkPath is already set
-		if customBinarySymlinkPath == "" {
+		// T049: Check if binary was already built from custom ref
+		// If cachedBuildResult is set, the binary was just pre-built - skip selection
+		if cachedBuildResult != nil {
+			// Binary was pre-built from custom ref (e.g., feat/gas-waiver) - use it directly
+			logger.Debug("Using pre-built binary from custom ref: %s", cachedBuildResult.BinaryPath)
+		} else if customBinarySymlinkPath == "" {
 			// No binary selected yet - fall back to cache selection (for non-interactive mode or GitHub release flow)
 			// Priority 2: Interactive/Auto selection from cache (US1)
 			// This is only for local mode; docker mode uses images
