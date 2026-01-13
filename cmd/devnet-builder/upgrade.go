@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -253,8 +254,16 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		if upgradeName != "" {
 			selectedName = upgradeName
 		} else {
-			// Auto-generate upgrade name from version (e.g., "v2.0.0" -> "v2.0.0-upgrade")
-			selectedName = selection.StartVersion + "-upgrade"
+			// Auto-generate upgrade name from version
+			// For custom refs (branches), extract just the last part after '/'
+			// e.g., "feat/gas-waiver" -> "gas-waiver-upgrade"
+			// For tags, use as-is: "v2.0.0" -> "v2.0.0-upgrade"
+			versionForName := selection.StartVersion
+			if selection.StartIsCustomRef && strings.Contains(versionForName, "/") {
+				parts := strings.Split(versionForName, "/")
+				versionForName = parts[len(parts)-1]
+			}
+			selectedName = versionForName + "-upgrade"
 		}
 
 		// T049: If user selected a local binary, store it for later use
