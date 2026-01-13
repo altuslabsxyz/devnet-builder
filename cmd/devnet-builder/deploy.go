@@ -569,7 +569,7 @@ func selectBinaryForDeployment(
 
 	// Scan cache for binaries
 	binaryName := blockchain + "d" // e.g., "stable" → "stabled"
-	cacheDir := filepath.Join(homeDir, ".devnet-builder", "cache", "binaries")
+	cacheDir := filepath.Join(homeDir, "cache", "binaries")
 
 	// Debug: log what we're searching for
 	logger.Debug("Scanning cache for binaries: network=%q, blockchain=%q, binaryName=%q, cacheDir=%q",

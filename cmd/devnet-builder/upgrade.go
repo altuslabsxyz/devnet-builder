@@ -396,7 +396,7 @@ For more information, see: https://github.com/b-harvest/devnet-builder/blob/main
 
 			if selectedPath == "" {
 				// No cached binaries available at all
-				cacheDir := filepath.Join(homeDir, ".devnet-builder", "cache", "binaries")
+				cacheDir := filepath.Join(homeDir, "cache", "binaries")
 				return fmt.Errorf("no cached binaries found for upgrade\nCache directory: %s\nUse --binary flag to specify a binary, or deploy/build a binary first", cacheDir)
 			}
 
@@ -536,7 +536,7 @@ func selectBinaryForUpgrade(
 
 	// Scan cache for binaries
 	binaryName := blockchain + "d" // e.g., "stable" → "stabled"
-	cacheDir := filepath.Join(homeDir, ".devnet-builder", "cache", "binaries")
+	cacheDir := filepath.Join(homeDir, "cache", "binaries")
 
 	// Debug: log what we're searching for
 	logger.Debug("Scanning cache for binaries: network=%q, blockchain=%q, binaryName=%q, cacheDir=%q",
