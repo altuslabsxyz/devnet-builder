@@ -97,34 +97,35 @@ snapshot:
 
 
 changelog:
+  disable: false
   sort: asc
-  use: git
-  abbrev: 0
+  use: github
+  abbrev: 7
+  format: "[{{ .SHA }}](https://github.com/b-harvest/devnet-builder/commit/{{ .SHA }}) {{ .Message }} (@{{ .AuthorUsername }})"
   filters:
     exclude:
       - '^docs:'
       - '^test:'
       - '^chore:'
       - '^ci:'
-      - '^Merge pull request'
-      - '^Merge branch'
+      - typo
   groups:
     - title: Features
-      regexp: '^.*?feat(\([[:word:]]+\))??!?:+.*$'
+      regexp: "^.*feat[(\\w)]*:+.*$"
       order: 0
     - title: Bug Fixes
-      regexp: '^.*?fix(\([[:word:]]+\))??!?:+.*$'
+      regexp: "^.*fix[(\\w)]*:+.*$"
       order: 1
     - title: Security
-      regexp: '^.*?sec(\([[:word:]]+\))??!?:+.*$'
+      regexp: "^.*sec[(\\w)]*:+.*$"
       order: 2
     - title: Performance
-      regexp: '^.*?perf(\([[:word:]]+\))??!?:+.*$'
+      regexp: "^.*perf[(\\w)]*:+.*$"
       order: 3
     - title: Dependencies
-      regexp: '^.*?deps(\([[:word:]]+\))??!?:+.*$'
+      regexp: "^.*deps[(\\w)]*:+.*$"
       order: 4
-    - title: Other
+    - title: Others
       order: 999
 
 
