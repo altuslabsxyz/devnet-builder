@@ -107,12 +107,13 @@ func (d *VersionDetectorAdapter) DetectVersion(ctx context.Context, binaryPath s
 //     v1.0.0
 //     80ad31b...
 //
-//  3. JSON format (if needed in future):
-//     {"version":"v1.0.0","commit":"80ad31b..."}
+//  3. Devnet format (custom builds):
+//     devnet-20bc50b
+//     This format is used by custom devnet builds where version is derived from commit hash.
 //
 // Returns:
-//   - version string (e.g., "v1.0.0")
-//   - commit hash (e.g., "80ad31b1234567890abcdef1234567890abcdef")
+//   - version string (e.g., "v1.0.0" or "devnet-20bc50b")
+//   - commit hash (e.g., "80ad31b1234567890abcdef1234567890abcdef" or short hash "20bc50b")
 //   - error if parsing fails
 func parseVersionOutput(output string) (version string, commit string, err error) {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
@@ -153,6 +154,18 @@ func parseVersionOutput(output string) (version string, commit string, err error
 		secondLine := strings.TrimSpace(lines[1])
 		if regexp.MustCompile(`^[a-f0-9]{7,40}$`).MatchString(secondLine) {
 			commit = secondLine
+		}
+	}
+
+	// Pattern 3: Devnet format "devnet-HASH" (custom builds without standard versioning)
+	// This handles binaries built with ldflags that set version to "devnet-{shortcommit}"
+	if version == "" && len(lines) >= 1 {
+		firstLine := strings.TrimSpace(lines[0])
+		devnetRegex := regexp.MustCompile(`^devnet-([a-f0-9]{7,40})$`)
+		if match := devnetRegex.FindStringSubmatch(firstLine); len(match) > 1 {
+			// Use full string as version and extracted hash as commit
+			version = firstLine // "devnet-20bc50b"
+			commit = match[1]   // "20bc50b"
 		}
 	}
 
