@@ -233,10 +233,10 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	// Interactive mode: run selection flow if not disabled
 	// Skip interactive selection if --image or --binary flags are provided
 	if !upgradeNoInteractive && !jsonMode && upgradeImage == "" && upgradeBinary == "" {
-		// T049: Use unified selection function for upgrade command (same as deploy)
-		// includeNetworkSelection = true (upgrade needs network selection)
-		// Pass empty network - will be selected via handleNetworkSelection
-		selection, err := runInteractiveVersionSelection(ctx, cmd, true, "")
+		// T049: Use unified selection function for upgrade command
+		// forUpgrade = true: collects only upgrade target version (no export/start distinction)
+		// includeNetworkSelection = true: upgrade needs network selection
+		selection, err := runInteractiveVersionSelectionWithMode(ctx, cmd, true, true)
 		if err != nil {
 			if interactive.IsCancellation(err) {
 				fmt.Println("Operation cancelled.")

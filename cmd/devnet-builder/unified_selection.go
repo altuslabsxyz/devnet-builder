@@ -44,11 +44,35 @@ import (
 //   - EC-001: Non-interactive environment → defaults to GitHub releases
 //   - EC-005: User cancellation (Ctrl+C/ESC) → returns exit code 130
 //   - EC-003: Invalid binary → shows error, allows retry
+//
+// Deprecated: Use runInteractiveVersionSelectionWithMode instead for new code.
 func runInteractiveVersionSelection(
 	ctx context.Context,
 	cmd *cobra.Command,
 	includeNetworkSelection bool,
 	network string,
+) (*interactive.SelectionConfig, error) {
+	// Default to deploy mode (not upgrade)
+	return runInteractiveVersionSelectionWithMode(ctx, cmd, includeNetworkSelection, false)
+}
+
+// runInteractiveVersionSelectionWithMode orchestrates binary source selection with explicit mode control.
+//
+// Parameters:
+//   - ctx: Context for cancellation support
+//   - cmd: Cobra command for accessing flags and config
+//   - includeNetworkSelection: true for upgrade (prompts for network), false for deploy (network from config)
+//   - forUpgrade: true for upgrade command (collects only upgrade target version),
+//     false for deploy command (collects export and start versions)
+//
+// Returns:
+//   - *interactive.SelectionConfig: User's selections (source, version, network)
+//   - error: User cancellation (exit code 130), validation failure, or system error
+func runInteractiveVersionSelectionWithMode(
+	ctx context.Context,
+	cmd *cobra.Command,
+	includeNetworkSelection bool,
+	forUpgrade bool,
 ) (*interactive.SelectionConfig, error) {
 	// Step 1: Source Selection (US1: FR-001, FR-002)
 	// Prompt user to choose between local binary and GitHub release
@@ -77,7 +101,8 @@ func runInteractiveVersionSelection(
 
 	case domain.SourceTypeGitHubRelease:
 		// Existing flow: Fetch releases and prompt for version selection
-		if err := handleGitHubReleaseSelection(ctx, cmd, config, network); err != nil {
+		// forUpgrade controls whether to use upgrade flow (single version) or deploy flow (export/start versions)
+		if err := handleGitHubReleaseSelection(ctx, cmd, config, forUpgrade); err != nil {
 			return nil, err
 		}
 
@@ -151,13 +176,15 @@ func handleLocalBinarySelection(ctx context.Context, config *interactive.Selecti
 //   - ctx: Context for cancellation
 //   - cmd: Cobra command for config access
 //   - config: SelectionConfig to populate with version info
+//   - forUpgrade: true for upgrade command (single version), false for deploy (export/start versions)
 //
 // Returns:
 //   - error: Network failure, user cancellation, or API error
 //
-// Design Decision: Reuses existing Selector.RunVersionSelectionFlow to avoid
-// code duplication. This aligns with US3: Unified Function Integration (SC-004).
-func handleGitHubReleaseSelection(ctx context.Context, cmd *cobra.Command, config *interactive.SelectionConfig, network string) error {
+// Design Decision: Reuses existing Selector.RunVersionSelectionFlow for deploy
+// and Selector.RunUpgradeSelectionFlow for upgrade to avoid code duplication.
+// This aligns with US3: Unified Function Integration (SC-004).
+func handleGitHubReleaseSelection(ctx context.Context, cmd *cobra.Command, config *interactive.SelectionConfig, forUpgrade bool) error {
 	fileCfg := GetLoadedFileConfig()
 
 	// Use unified GitHub client setup (eliminates code duplication)
@@ -166,8 +193,39 @@ func handleGitHubReleaseSelection(ctx context.Context, cmd *cobra.Command, confi
 	// Create selector and run version selection flow
 	selector := interactive.NewSelector(client)
 
-	// For deploy: network is passed from caller (from config)
-	// For upgrade: network will be selected in Step 3 (handleNetworkSelection), passed as empty string here
+	if forUpgrade {
+		// Upgrade mode: use dedicated upgrade selection flow
+		// This only prompts for single upgrade target version (no export/start distinction)
+		upgradeConfig, err := selector.RunUpgradeSelectionFlow(ctx)
+		if err != nil {
+			return handleUserCancellation(err)
+		}
+
+		// Map UpgradeSelectionConfig to SelectionConfig
+		// For upgrade, we store the target version in StartVersion (which is used by upgrade.go)
+		config.StartVersion = upgradeConfig.UpgradeVersion
+		config.StartIsCustomRef = upgradeConfig.IsCustomRef
+		// ExportVersion is not used in upgrade mode, but we set it to empty to avoid confusion
+		config.ExportVersion = ""
+		config.ExportIsCustomRef = false
+
+		// Mark BinarySource as valid (download will happen later in upgrade flow)
+		config.BinarySource.MarkValid()
+
+		return nil
+	}
+
+	// Deploy mode: use existing version selection flow (export + start versions)
+	// For deploy: network is already in config, so we pass it explicitly
+	// For upgrade: network will be selected in Step 3 (handleNetworkSelection)
+	// Here we use empty string for upgrade, which means selector will skip network prompt
+	network := ""
+	if !config.IncludeNetworkSelection {
+		// Deploy command: get network from config
+		// TODO: Extract network from file config (depends on existing config structure)
+		network = "mainnet" // Placeholder - should be from fileCfg
+	}
+
 	// Run existing version selection flow
 	versionConfig, err := selector.RunVersionSelectionFlow(ctx, network)
 	if err != nil {
