@@ -356,7 +356,6 @@ devnet-builder upgrade [flags]
 | `--version` | string | | Target version (tag or branch/commit for building) |
 | `--export-genesis` | bool | false | Export genesis before/after upgrade |
 | `--genesis-dir` | string | | Directory for genesis exports |
-| `--upgrade-height` | int | 0 | Explicit upgrade height (0 = auto-calculate) |
 | `--height-buffer` | int | 0 | Blocks to add after voting period ends (0 = auto-calculate based on block time from recent 5 blocks) |
 | `--voting-period` | duration | 60s | Expedited voting period duration |
 | `--no-interactive` | bool | false | Disable interactive mode |
@@ -375,9 +374,6 @@ devnet-builder upgrade --name v2 --binary /path/to/<binary-name>
 
 # Upgrade and export genesis for debugging
 devnet-builder upgrade --name v2 --image v2.0.0-mainnet --export-genesis
-
-# Upgrade at specific height
-devnet-builder upgrade --name v2 --image v2.0.0-mainnet --upgrade-height 15000
 
 # Non-interactive with explicit version
 devnet-builder upgrade --no-interactive --name v2 --version v2.0.0

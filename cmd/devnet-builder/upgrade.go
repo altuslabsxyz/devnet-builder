@@ -50,7 +50,6 @@ var (
 	votingPeriod         string
 	forceVotingPeriod    bool
 	heightBuffer         int
-	upgradeHeight        int64
 	withExport           bool
 	genesisDir           string
 	upgradeNoInteractive bool
@@ -111,7 +110,6 @@ Examples:
 	cmd.Flags().StringVar(&votingPeriod, "voting-period", "60s", "Expedited voting period duration")
 	cmd.Flags().BoolVar(&forceVotingPeriod, "force-voting-period", false, "Force use of --voting-period value, ignoring on-chain parameters")
 	cmd.Flags().IntVar(&heightBuffer, "height-buffer", DefaultHeightBuffer, "Blocks to add after voting period ends (0 = auto-calculate based on block time)")
-	cmd.Flags().Int64Var(&upgradeHeight, "upgrade-height", 0, "Explicit upgrade height (0 = auto-calculate)")
 	cmd.Flags().BoolVar(&withExport, "with-export", false, "Export state before and after upgrade")
 	cmd.Flags().StringVar(&genesisDir, "genesis-dir", "", "Directory for genesis exports (default: <home>/devnet/genesis-snapshots)")
 
@@ -445,7 +443,7 @@ For more information, see: https://github.com/b-harvest/devnet-builder/blob/main
 		TargetVersion: selectedVersion,
 		VotingPeriod:  vp,
 		HeightBuffer:  heightBuffer,
-		UpgradeHeight: upgradeHeight,
+		UpgradeHeight: 0, // Always auto-calculate
 		WithExport:    withExport,
 		GenesisDir:    genesisDir,
 		Mode:          ports.ExecutionMode(resolvedMode),
@@ -740,11 +738,7 @@ func printUpgradePlan(name, mode, targetImage, targetBinary string, cached *dto.
 	} else {
 		fmt.Printf("Height Buffer:    %d blocks (manual)\n", heightBuffer)
 	}
-	if upgradeHeight > 0 {
-		fmt.Printf("Upgrade Height:   %d (explicit)\n", upgradeHeight)
-	} else {
-		fmt.Printf("Upgrade Height:   auto-calculate\n")
-	}
+	fmt.Printf("Upgrade Height:   auto-calculate\n")
 	fmt.Printf("Validators:       %d\n", metadata.NumValidators)
 	fmt.Println()
 }
