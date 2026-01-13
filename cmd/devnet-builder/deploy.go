@@ -240,7 +240,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		// T039: Use unified selection function for deploy command
 		if isInteractive {
 			// includeNetworkSelection = false (network is already known from config)
-			selection, err := runInteractiveVersionSelection(ctx, cmd, false)
+			// Pass deployNetwork so ConfirmSelection shows the correct network
+			selection, err := runInteractiveVersionSelection(ctx, cmd, false, deployNetwork)
 			if err != nil {
 				return wrapInteractiveError(cmd, err, "failed during interactive selection")
 			}
@@ -333,6 +334,10 @@ For more information, see: https://github.com/b-harvest/devnet-builder/blob/main
 		return fmt.Errorf("devnet already exists at %s\nUse 'devnet-builder destroy' to remove it first", homeDir)
 	}
 
+	// Enable auto spinner for long-running operations
+	// The spinner will show after Success/Info logs and clear on next log
+	logger.SetAutoSpinner(true)
+
 	// Build binary for local mode (all versions need to be built/cached)
 	// Priority: unified selection > cached binary > build from source
 	if deployMode == "local" {
@@ -389,6 +394,7 @@ For more information, see: https://github.com/b-harvest/devnet-builder/blob/main
 
 	_, err = svc.Provision(ctx, provisionInput)
 	if err != nil {
+		logger.SetAutoSpinner(false)
 		if jsonMode {
 			return outputDeployErrorClean(err)
 		}
@@ -398,6 +404,7 @@ For more information, see: https://github.com/b-harvest/devnet-builder/blob/main
 	// Phase 2: Run using CleanDevnetService
 	runResult, err := svc.Start(ctx, 5*time.Minute)
 	if err != nil {
+		logger.SetAutoSpinner(false)
 		if jsonMode {
 			return outputDeployErrorClean(err)
 		}
@@ -406,6 +413,9 @@ For more information, see: https://github.com/b-harvest/devnet-builder/blob/main
 
 	// Get devnet info for output
 	devnetInfo, _ := svc.LoadDevnetInfo(ctx)
+
+	// Stop spinner before final output
+	logger.SetAutoSpinner(false)
 
 	// Output result
 	if jsonMode {

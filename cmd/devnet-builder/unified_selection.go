@@ -50,6 +50,7 @@ func runInteractiveVersionSelection(
 	ctx context.Context,
 	cmd *cobra.Command,
 	includeNetworkSelection bool,
+	network string,
 ) (*interactive.SelectionConfig, error) {
 	// Default to deploy mode (not upgrade)
 	return runInteractiveVersionSelectionWithMode(ctx, cmd, includeNetworkSelection, false)
