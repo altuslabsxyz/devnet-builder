@@ -4,8 +4,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/fatih/color"
+	"golang.org/x/term"
 )
 
 // Logger provides colored output functions for CLI feedback.
@@ -15,6 +19,14 @@ type Logger struct {
 	noColor  bool
 	verbose  bool
 	jsonMode bool
+
+	// Spinner state
+	spinnerMu      sync.Mutex
+	spinnerActive  bool
+	spinnerStop    chan struct{}
+	spinnerDone    chan struct{}
+	spinnerMessage string
+	autoSpinner    bool // If true, automatically start spinner after Success/Info logs
 }
 
 // NewLogger creates a new Logger instance.
@@ -41,12 +53,30 @@ func (l *Logger) SetJSONMode(jsonMode bool) {
 	l.jsonMode = jsonMode
 }
 
+// SetAutoSpinner enables or disables automatic spinner after Success/Info logs.
+// When enabled, a spinner will be shown after each Success or Info log to indicate
+// ongoing work. The spinner is automatically cleared when the next log is printed.
+func (l *Logger) SetAutoSpinner(enabled bool) {
+	l.spinnerMu.Lock()
+	defer l.spinnerMu.Unlock()
+
+	l.autoSpinner = enabled
+	if !enabled && l.spinnerActive {
+		l.stopSpinnerLocked()
+	}
+}
+
 // Info prints an informational message in default color.
+// If autoSpinner is enabled, a spinner will be shown after the message.
 func (l *Logger) Info(format string, args ...interface{}) {
 	if l.jsonMode {
 		return
 	}
+	l.StopSpinner() // Stop any existing spinner
 	fmt.Fprintf(l.out, format+"\n", args...)
+	if l.autoSpinner {
+		l.StartSpinner("Processing...")
+	}
 }
 
 // Warn prints a warning message in yellow.
@@ -54,6 +84,7 @@ func (l *Logger) Warn(format string, args ...interface{}) {
 	if l.jsonMode {
 		return
 	}
+	l.StopSpinner()
 	yellow := color.New(color.FgYellow)
 	yellow.Fprintf(l.errOut, "Warning: "+format+"\n", args...)
 }
@@ -63,17 +94,23 @@ func (l *Logger) Error(format string, args ...interface{}) {
 	if l.jsonMode {
 		return
 	}
+	l.StopSpinner()
 	red := color.New(color.FgRed)
 	red.Fprintf(l.errOut, "Error: "+format+"\n", args...)
 }
 
 // Success prints a success message in green with checkmark.
+// If autoSpinner is enabled, a spinner will be shown after the message.
 func (l *Logger) Success(format string, args ...interface{}) {
 	if l.jsonMode {
 		return
 	}
+	l.StopSpinner() // Stop any existing spinner
 	green := color.New(color.FgGreen)
 	green.Fprintf(l.out, "✓ "+format+"\n", args...)
+	if l.autoSpinner {
+		l.StartSpinner("Processing...")
+	}
 }
 
 // Debug prints a debug message if verbose mode is enabled.
@@ -81,8 +118,12 @@ func (l *Logger) Debug(format string, args ...interface{}) {
 	if l.jsonMode || !l.verbose {
 		return
 	}
+	l.StopSpinner()
 	gray := color.New(color.FgHiBlack)
 	gray.Fprintf(l.out, "[DEBUG] "+format+"\n", args...)
+	if l.autoSpinner {
+		l.StartSpinner("Processing...")
+	}
 }
 
 // Bold prints a message in bold.
@@ -90,6 +131,7 @@ func (l *Logger) Bold(format string, args ...interface{}) {
 	if l.jsonMode {
 		return
 	}
+	l.StopSpinner()
 	bold := color.New(color.Bold)
 	bold.Fprintf(l.out, format+"\n", args...)
 }
@@ -99,6 +141,7 @@ func (l *Logger) Cyan(format string, args ...interface{}) {
 	if l.jsonMode {
 		return
 	}
+	l.StopSpinner()
 	cyan := color.New(color.FgCyan)
 	cyan.Fprintf(l.out, format+"\n", args...)
 }
@@ -116,6 +159,7 @@ func (l *Logger) Println(format string, args ...interface{}) {
 	if l.jsonMode {
 		return
 	}
+	l.StopSpinner()
 	fmt.Fprintf(l.out, format+"\n", args...)
 }
 
@@ -185,6 +229,110 @@ func (l *Logger) ProgressComplete() {
 		return
 	}
 	fmt.Fprintf(l.out, "\n")
+}
+
+// spinnerFrames defines the animation frames for the spinner.
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// StartSpinner starts an animated spinner with a message.
+// The spinner runs in a background goroutine until StopSpinner is called.
+func (l *Logger) StartSpinner(message string) {
+	if l.jsonMode {
+		return
+	}
+
+	l.spinnerMu.Lock()
+	defer l.spinnerMu.Unlock()
+
+	// If spinner is already running, stop it first
+	if l.spinnerActive {
+		l.stopSpinnerLocked()
+	}
+
+	l.spinnerActive = true
+	l.spinnerMessage = message
+	l.spinnerStop = make(chan struct{})
+	l.spinnerDone = make(chan struct{})
+
+	go l.runSpinner()
+}
+
+// runSpinner runs the spinner animation in a goroutine.
+func (l *Logger) runSpinner() {
+	defer close(l.spinnerDone)
+
+	cyan := color.New(color.FgCyan)
+	frameIdx := 0
+	ticker := time.NewTicker(80 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-l.spinnerStop:
+			return
+		case <-ticker.C:
+			l.spinnerMu.Lock()
+			if l.spinnerActive {
+				frame := spinnerFrames[frameIdx%len(spinnerFrames)]
+				cyan.Fprintf(l.out, "\r  %s %s", frame, l.spinnerMessage)
+				frameIdx++
+			}
+			l.spinnerMu.Unlock()
+		}
+	}
+}
+
+// StopSpinner stops the spinner and clears the spinner line.
+func (l *Logger) StopSpinner() {
+	if l.jsonMode {
+		return
+	}
+
+	l.spinnerMu.Lock()
+	defer l.spinnerMu.Unlock()
+
+	l.stopSpinnerLocked()
+}
+
+// stopSpinnerLocked stops the spinner (must be called with spinnerMu held).
+func (l *Logger) stopSpinnerLocked() {
+	if !l.spinnerActive {
+		return
+	}
+
+	l.spinnerActive = false
+	close(l.spinnerStop)
+	<-l.spinnerDone
+
+	// Clear the spinner line
+	l.clearLineLocked()
+}
+
+// clearLineLocked clears the current line (must be called with spinnerMu held).
+func (l *Logger) clearLineLocked() {
+	// Get terminal width if possible, otherwise use default
+	width := 80
+	if f, ok := l.out.(*os.File); ok {
+		if w, _, err := term.GetSize(int(f.Fd())); err == nil && w > 0 {
+			width = w
+		}
+	}
+	fmt.Fprintf(l.out, "\r%s\r", strings.Repeat(" ", width))
+}
+
+// clearSpinnerIfActive clears the spinner line if active (for use before logging).
+func (l *Logger) clearSpinnerIfActive() {
+	l.spinnerMu.Lock()
+	defer l.spinnerMu.Unlock()
+
+	if l.spinnerActive {
+		l.clearLineLocked()
+	}
+}
+
+// restoreSpinnerIfActive restores spinner output after logging.
+func (l *Logger) restoreSpinnerIfActive() {
+	// Spinner goroutine will automatically redraw on next tick
 }
 
 // DefaultLogger is the package-level default logger instance.
