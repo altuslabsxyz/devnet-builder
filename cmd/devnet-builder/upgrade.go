@@ -236,7 +236,8 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		// T049: Use unified selection function for upgrade command
 		// forUpgrade = true: collects only upgrade target version (no export/start distinction)
 		// includeNetworkSelection = false: network is already determined from running devnet
-		selection, err := runInteractiveVersionSelectionWithMode(ctx, cmd, false, true)
+		// network = "": not used for upgrade flow (forUpgrade=true exits early in handleGitHubReleaseSelection)
+		selection, err := runInteractiveVersionSelectionWithMode(ctx, cmd, false, true, "")
 		if err != nil {
 			if interactive.IsCancellation(err) {
 				fmt.Println("Operation cancelled.")

@@ -53,7 +53,8 @@ func runInteractiveVersionSelection(
 	network string,
 ) (*interactive.SelectionConfig, error) {
 	// Default to deploy mode (not upgrade)
-	return runInteractiveVersionSelectionWithMode(ctx, cmd, includeNetworkSelection, false)
+	// Pass network to ensure correct network is used for cache lookup and display
+	return runInteractiveVersionSelectionWithMode(ctx, cmd, includeNetworkSelection, false, network)
 }
 
 // runInteractiveVersionSelectionWithMode orchestrates binary source selection with explicit mode control.
@@ -64,6 +65,7 @@ func runInteractiveVersionSelection(
 //   - includeNetworkSelection: true for upgrade (prompts for network), false for deploy (network from config)
 //   - forUpgrade: true for upgrade command (collects only upgrade target version),
 //     false for deploy command (collects export and start versions)
+//   - network: Network type from config (used when includeNetworkSelection is false)
 //
 // Returns:
 //   - *interactive.SelectionConfig: User's selections (source, version, network)
@@ -73,6 +75,7 @@ func runInteractiveVersionSelectionWithMode(
 	cmd *cobra.Command,
 	includeNetworkSelection bool,
 	forUpgrade bool,
+	network string,
 ) (*interactive.SelectionConfig, error) {
 	// Step 1: Source Selection (US1: FR-001, FR-002)
 	// Prompt user to choose between local binary and GitHub release
@@ -98,11 +101,16 @@ func runInteractiveVersionSelectionWithMode(
 		if err := handleLocalBinarySelection(ctx, config); err != nil {
 			return nil, err
 		}
+		// For deploy command, set network from config (network selection was skipped)
+		if !includeNetworkSelection && network != "" {
+			config.Network = network
+		}
 
 	case domain.SourceTypeGitHubRelease:
 		// Existing flow: Fetch releases and prompt for version selection
 		// forUpgrade controls whether to use upgrade flow (single version) or deploy flow (export/start versions)
-		if err := handleGitHubReleaseSelection(ctx, cmd, config, forUpgrade); err != nil {
+		// Pass network from config for deploy command (when includeNetworkSelection is false)
+		if err := handleGitHubReleaseSelection(ctx, cmd, config, forUpgrade, network); err != nil {
 			return nil, err
 		}
 
@@ -184,7 +192,10 @@ func handleLocalBinarySelection(ctx context.Context, config *interactive.Selecti
 // Design Decision: Reuses existing Selector.RunVersionSelectionFlow for deploy
 // and Selector.RunUpgradeSelectionFlow for upgrade to avoid code duplication.
 // This aligns with US3: Unified Function Integration (SC-004).
-func handleGitHubReleaseSelection(ctx context.Context, cmd *cobra.Command, config *interactive.SelectionConfig, forUpgrade bool) error {
+//
+// Parameters:
+//   - network: Network type from config (used when config.IncludeNetworkSelection is false, i.e., deploy command)
+func handleGitHubReleaseSelection(ctx context.Context, cmd *cobra.Command, config *interactive.SelectionConfig, forUpgrade bool, network string) error {
 	fileCfg := GetLoadedFileConfig()
 
 	// Use unified GitHub client setup (eliminates code duplication)
@@ -216,17 +227,11 @@ func handleGitHubReleaseSelection(ctx context.Context, cmd *cobra.Command, confi
 	}
 
 	// Deploy mode: use existing version selection flow (export + start versions)
-	// For deploy: network is already in config, so we pass it explicitly
-	// For upgrade: network will be selected in Step 3 (handleNetworkSelection)
-	// Here we use empty string for upgrade, which means selector will skip network prompt
-	network := ""
-	if !config.IncludeNetworkSelection {
-		// Deploy command: get network from config
-		// TODO: Extract network from file config (depends on existing config structure)
-		network = "mainnet" // Placeholder - should be from fileCfg
-	}
+	// For deploy: network is passed from config (when includeNetworkSelection is false)
+	// For upgrade: network will be selected in Step 3 (handleNetworkSelection), so empty string is passed
+	// The network parameter is now passed from the caller instead of being hardcoded
 
-	// Run existing version selection flow
+	// Run existing version selection flow with the network from config
 	versionConfig, err := selector.RunVersionSelectionFlow(ctx, network)
 	if err != nil {
 		return handleUserCancellation(err)
