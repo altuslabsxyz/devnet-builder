@@ -390,12 +390,14 @@ For more information, see: https://github.com/b-harvest/devnet-builder/blob/main
 			// This is only for local mode; docker mode uses images
 			selectedPath, err := selectBinaryForUpgrade(ctx, cleanMetadata.NetworkName, cleanMetadata.BlockchainNetwork, homeDir, logger)
 			if err != nil {
-				return fmt.Errorf("binary selection failed: %w", err)
+				// Error contains detailed validation failure info
+				return err
 			}
 
 			if selectedPath == "" {
-				// No cached binaries available
-				return fmt.Errorf("no cached binaries found for upgrade\nUse --binary flag to specify a binary, or deploy/build a binary first")
+				// No cached binaries available at all
+				cacheDir := filepath.Join(homeDir, ".devnet-builder", "cache", "binaries")
+				return fmt.Errorf("no cached binaries found for upgrade\nCache directory: %s\nUse --binary flag to specify a binary, or deploy/build a binary first", cacheDir)
 			}
 
 			customBinarySymlinkPath = selectedPath
@@ -569,15 +571,21 @@ func selectBinaryForUpgrade(
 	}
 
 	// Validate binaries concurrently
-	validBinaries := filterValidBinariesForUpgrade(ctx, scannedBinaries, validator, logger)
+	validBinaries, invalidBinaries := filterValidBinariesForUpgradeWithDiagnostics(ctx, scannedBinaries, validator, logger)
 
-	// If no valid binaries found, return empty (caller will handle error)
+	// If no valid binaries found, provide detailed diagnostics
 	if len(validBinaries) == 0 {
 		if len(scannedBinaries) > 0 {
-			logger.Debug("Scanned %d binaries but none passed validation", len(scannedBinaries))
-		} else {
-			logger.Debug("No cached binaries found for %q in cache directory: %s", binaryName, cacheDir)
+			// Binaries were found but all failed validation - show WHY
+			logger.Warn("Found %d cached binaries but all failed validation:", len(scannedBinaries))
+			for _, inv := range invalidBinaries {
+				logger.Warn("  - %s: %s", inv.binary.Path, inv.reason)
+			}
+			// Offer to clean up invalid cache entries
+			logger.Warn("Run 'devnet-builder cache clean' to remove invalid entries")
+			return "", fmt.Errorf("all %d cached binaries failed validation (see warnings above)", len(scannedBinaries))
 		}
+		logger.Debug("No cached binaries found for %q in cache directory: %s", binaryName, cacheDir)
 		return "", nil // Empty result indicates no cache
 	}
 
@@ -621,15 +629,22 @@ func selectBinaryForUpgrade(
 	return result.BinaryPath, nil
 }
 
-// filterValidBinariesForUpgrade is similar to filterValidBinaries but for upgrade command.
-func filterValidBinariesForUpgrade(
+// invalidBinaryInfo holds information about a binary that failed validation.
+type invalidBinaryInfo struct {
+	binary cache.CachedBinaryMetadata
+	reason string
+}
+
+// filterValidBinariesForUpgradeWithDiagnostics validates binaries and returns both valid and invalid lists.
+// This provides better diagnostics for debugging cache issues.
+func filterValidBinariesForUpgradeWithDiagnostics(
 	ctx context.Context,
 	binaries []cache.CachedBinaryMetadata,
 	validator *binary.BinaryValidator,
 	logger *output.Logger,
-) []cache.CachedBinaryMetadata {
+) ([]cache.CachedBinaryMetadata, []invalidBinaryInfo) {
 	if len(binaries) == 0 {
-		return []cache.CachedBinaryMetadata{}
+		return []cache.CachedBinaryMetadata{}, []invalidBinaryInfo{}
 	}
 
 	// Validate concurrently for performance
@@ -643,11 +658,11 @@ func filterValidBinariesForUpgrade(
 
 	for i := range binaries {
 		wg.Add(1)
-		go func(binary cache.CachedBinaryMetadata) {
+		go func(b cache.CachedBinaryMetadata) {
 			defer wg.Done()
 
 			// Validate and enrich with version info
-			enriched, err := validator.ValidateAndEnrichMetadata(ctx, &binary)
+			enriched, err := validator.ValidateAndEnrichMetadata(ctx, &b)
 			results <- validationResult{
 				binary: *enriched,
 				err:    err,
@@ -661,16 +676,25 @@ func filterValidBinariesForUpgrade(
 		close(results)
 	}()
 
-	// Collect valid binaries
+	// Collect valid and invalid binaries
 	var validBinaries []cache.CachedBinaryMetadata
+	var invalidBinaries []invalidBinaryInfo
 	for result := range results {
 		if result.err != nil {
-			// EC-007: Corrupted/invalid binary - warn and skip
-			logger.Warn("Skipping invalid binary %s: %v", result.binary.Path, result.err)
+			// EC-007: Corrupted/invalid binary - collect for diagnostics
+			invalidBinaries = append(invalidBinaries, invalidBinaryInfo{
+				binary: result.binary,
+				reason: result.err.Error(),
+			})
 			continue
 		}
 		if result.binary.IsValid {
 			validBinaries = append(validBinaries, result.binary)
+		} else {
+			invalidBinaries = append(invalidBinaries, invalidBinaryInfo{
+				binary: result.binary,
+				reason: result.binary.ValidationError,
+			})
 		}
 	}
 
@@ -679,7 +703,7 @@ func filterValidBinariesForUpgrade(
 		return validBinaries[i].ModTime.After(validBinaries[j].ModTime)
 	})
 
-	return validBinaries
+	return validBinaries, invalidBinaries
 }
 
 // isStandardVersionTag checks if a string looks like a standard version tag (e.g., v1.2.3).
