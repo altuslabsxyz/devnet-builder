@@ -15,6 +15,7 @@ type SelectionConfig struct {
 	StartVersion      string // Version for node start
 	ExportIsCustomRef bool   // True if export version is a custom branch/commit
 	StartIsCustomRef  bool   // True if start version is a custom branch/commit
+	UpgradeName       string // Upgrade handler name (for upgrade command only)
 
 	// BinarySource represents the user's choice of binary origin (local or GitHub release).
 	// This field is populated by the unified selection flow (runInteractiveVersionSelection).

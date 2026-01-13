@@ -216,6 +216,7 @@ func handleGitHubReleaseSelection(ctx context.Context, cmd *cobra.Command, confi
 		// For upgrade, we store the target version in StartVersion (which is used by upgrade.go)
 		config.StartVersion = upgradeConfig.UpgradeVersion
 		config.StartIsCustomRef = upgradeConfig.IsCustomRef
+		config.UpgradeName = upgradeConfig.UpgradeName // User-entered upgrade handler name
 		// ExportVersion is not used in upgrade mode, but we set it to empty to avoid confusion
 		config.ExportVersion = ""
 		config.ExportIsCustomRef = false

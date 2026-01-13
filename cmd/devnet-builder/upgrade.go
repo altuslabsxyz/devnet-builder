@@ -249,10 +249,15 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		// For upgrade, we use the start version (same as export version in unified selection)
 		selectedVersion = selection.StartVersion
 
-		// Generate upgrade name from version if not explicitly set
-		// This maintains compatibility with the old flow where name was prompted separately
+		// Determine upgrade name with priority:
+		// 1. CLI flag (--name) if provided
+		// 2. User input from interactive prompt (selection.UpgradeName)
+		// 3. Auto-generate from version as fallback
 		if upgradeName != "" {
 			selectedName = upgradeName
+		} else if selection.UpgradeName != "" {
+			// Use the upgrade name entered by user in interactive prompt
+			selectedName = selection.UpgradeName
 		} else {
 			// Auto-generate upgrade name from version
 			// For custom refs (branches), extract just the last part after '/'
