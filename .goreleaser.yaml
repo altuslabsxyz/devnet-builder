@@ -51,7 +51,7 @@ checksum:
   algorithm: sha256
 
 sboms:
-  - artifacts: archive
+  - artifacts: none
 
 signs:
   - cmd: cosign
