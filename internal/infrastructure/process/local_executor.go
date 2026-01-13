@@ -172,7 +172,7 @@ func (e *LocalExecutor) Start(ctx context.Context, cmd ports.Command) (ports.Pro
 // Stop gracefully stops a process with timeout.
 func (e *LocalExecutor) Stop(ctx context.Context, handle ports.ProcessHandle, timeout time.Duration) error {
 	// Try native localHandle first (has done channel for proper waiting)
-	if lh, ok := handle.(*localHandle); ok {
+	if lh, ok := handle.(*localHandle); ok && lh.done != nil {
 		if lh.process == nil {
 			return nil
 		}
@@ -319,6 +319,9 @@ func ReadPIDFile(path string) (int, error) {
 }
 
 // FindProcessByPID finds a process by PID and returns a handle.
+// Note: The returned handle has done=nil because there's no monitoring goroutine
+// for externally-discovered processes. Stop() will fall back to polling-based
+// termination detection when done is nil, and Wait() will return immediately.
 func (e *LocalExecutor) FindProcessByPID(pid int, logPath string) (ports.ProcessHandle, error) {
 	process, err := os.FindProcess(pid)
 	if err != nil {
@@ -334,7 +337,7 @@ func (e *LocalExecutor) FindProcessByPID(pid int, logPath string) (ports.Process
 		pid:     pid,
 		process: process,
 		logPath: logPath,
-		done:    make(chan struct{}),
+		done:    nil, // Intentionally nil - no monitoring goroutine for external processes
 	}, nil
 }
 

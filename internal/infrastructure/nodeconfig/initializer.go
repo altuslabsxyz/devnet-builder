@@ -257,8 +257,9 @@ func (i *NodeInitializer) exportLocal(ctx context.Context, nodeDir, destPath str
 		binaryPath = "stabled" // Fallback for backward compatibility
 	}
 
+	// Use %q for proper shell quoting to handle paths with spaces or special characters
 	cmd := exec.CommandContext(ctx, "bash", "-c",
-		fmt.Sprintf("%s export --home %s > %s", binaryPath, nodeDir, destPath),
+		fmt.Sprintf("%q export --home %q > %q", binaryPath, nodeDir, destPath),
 	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -410,9 +411,10 @@ var TestMnemonics = []string{
 
 // GetTestMnemonic returns a deterministic test mnemonic for the given validator index.
 // If the index exceeds available test mnemonics, it wraps around.
+// Panics if TestMnemonics slice is empty (should never happen as it's initialized with defaults).
 func (i *NodeInitializer) GetTestMnemonic(validatorIndex int) string {
 	if len(TestMnemonics) == 0 {
-		return TestMnemonics[0]
+		panic("TestMnemonics slice is unexpectedly empty - this is a programming error")
 	}
 	return TestMnemonics[validatorIndex%len(TestMnemonics)]
 }
