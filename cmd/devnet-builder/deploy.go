@@ -253,6 +253,19 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			// This prevents the need to call selectBinaryForDeployment() again
 			if selection.BinarySource.IsLocal() && selection.BinarySource.SelectedPath != "" {
 				customBinaryPath = selection.BinarySource.SelectedPath
+			} else if selection.BinarySource.IsGitHubRelease() && startVersion != "" {
+				// User selected GitHub release - pre-build the binary now
+				// This prevents the binary selection prompt from appearing
+				buildResult, err := buildBinaryForDeploy(ctx, deployBlockchainNetwork, startVersion, deployNetwork, logger)
+				if err != nil {
+					return fmt.Errorf("failed to pre-build binary: %w", err)
+				}
+				customBinaryPath = buildResult.BinaryPath
+				commitShort := buildResult.CommitHash
+				if len(commitShort) > 12 {
+					commitShort = commitShort[:12]
+				}
+				logger.Success("Binary pre-built and cached (commit: %s)", commitShort)
 			}
 		} else {
 			// Non-interactive: use explicit flags if provided, otherwise fall back to --stable-version
