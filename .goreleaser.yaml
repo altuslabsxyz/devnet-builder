@@ -50,8 +50,10 @@ checksum:
   name_template: 'checksums.txt'
   algorithm: sha256
 
-sboms:
-  - artifacts: none
+# Note: SBOM generation disabled - remove this comment and add sboms section if needed
+# sboms:
+#   - artifacts: archive
+#     cmd: syft
 
 signs:
   - cmd: cosign
