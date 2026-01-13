@@ -609,13 +609,14 @@ func (c *Container) ExecuteUpgradeUseCase() *upgrade.ExecuteUpgradeUseCase {
 	proposeUC := c.ProposeUseCase()
 	voteUC := c.VoteUseCase()
 	switchUC := c.SwitchBinaryUseCase()
+	exportUC := c.ExportUseCase() // Moved outside lock to prevent deadlock
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if c.executeUpgradeUC == nil {
 		// Create export adapter to match ports interface
-		exportAdapter := &exportUseCaseAdapter{concrete: c.ExportUseCase()}
+		exportAdapter := &exportUseCaseAdapter{concrete: exportUC}
 
 		c.executeUpgradeUC = upgrade.NewExecuteUpgradeUseCase(
 			proposeUC,
