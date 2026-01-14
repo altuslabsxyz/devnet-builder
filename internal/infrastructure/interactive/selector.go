@@ -68,23 +68,15 @@ func (s *Selector) runVersionSelection(ctx context.Context, config *SelectionCon
 		fmt.Println("(Using cached version data)")
 	}
 
-	// Step 3: Select export version
-	exportVersion, exportIsCustom, err := SelectVersion("Select export binary version", releases, "")
-	if err != nil {
-		return nil, handleInterruptError(err)
-	}
-	config.ExportVersion = exportVersion
-	config.ExportIsCustomRef = exportIsCustom
-
-	// Step 4: Select start version (default to export version)
-	startVersion, startIsCustom, err := SelectVersion("Select node start binary version", releases, exportVersion)
+	// Step 3: Select devnet binary version (used for both export and start)
+	startVersion, startIsCustom, err := SelectVersion("Select devnet binary version", releases, "")
 	if err != nil {
 		return nil, handleInterruptError(err)
 	}
 	config.StartVersion = startVersion
 	config.StartIsCustomRef = startIsCustom
 
-	// Step 5: Confirm selection
+	// Step 4: Confirm selection
 	confirmed, err := ConfirmSelection(config)
 	if err != nil {
 		return nil, handleInterruptError(err)

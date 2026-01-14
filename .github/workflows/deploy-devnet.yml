@@ -84,7 +84,6 @@ jobs:
             --validators "${{ inputs.validators }}" \
             --mode docker \
             --image "$TARGET_IMAGE" \
-            --export-version "${{ inputs.source_image_tag }}" \
             --start-version "${{ inputs.target_image_tag }}" \
             --no-interactive \
             --verbose

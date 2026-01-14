@@ -301,17 +301,11 @@ func (a *Adapter) ConfirmSelection(config *ports.SelectionConfig) (bool, error) 
 	fmt.Printf("\nStarting devnet with:\n")
 	fmt.Printf("  Network: %s\n", config.Network)
 
-	exportSuffix := ""
-	if config.ExportIsCustomRef {
-		exportSuffix = " (custom ref - will build from source)"
-	}
-	fmt.Printf("  Export version: %s%s\n", config.ExportVersion, exportSuffix)
-
-	startSuffix := ""
+	versionSuffix := ""
 	if config.StartIsCustomRef {
-		startSuffix = " (custom ref - will build from source)"
+		versionSuffix = " (custom ref - will build from source)"
 	}
-	fmt.Printf("  Start version: %s%s\n", config.StartVersion, startSuffix)
+	fmt.Printf("  Binary version: %s%s\n", config.StartVersion, versionSuffix)
 	fmt.Println()
 
 	prompt := promptui.Prompt{

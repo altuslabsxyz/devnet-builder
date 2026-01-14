@@ -217,9 +217,6 @@ func handleGitHubReleaseSelection(ctx context.Context, cmd *cobra.Command, confi
 		config.StartVersion = upgradeConfig.UpgradeVersion
 		config.StartIsCustomRef = upgradeConfig.IsCustomRef
 		config.UpgradeName = upgradeConfig.UpgradeName // User-entered upgrade handler name
-		// ExportVersion is not used in upgrade mode, but we set it to empty to avoid confusion
-		config.ExportVersion = ""
-		config.ExportIsCustomRef = false
 
 		// Mark BinarySource as valid (download will happen later in upgrade flow)
 		config.BinarySource.MarkValid()
@@ -227,7 +224,7 @@ func handleGitHubReleaseSelection(ctx context.Context, cmd *cobra.Command, confi
 		return nil
 	}
 
-	// Deploy mode: use existing version selection flow (export + start versions)
+	// Deploy mode: use existing version selection flow
 	// For deploy: network is passed from config (when includeNetworkSelection is false)
 	// For upgrade: network will be selected in Step 3 (handleNetworkSelection), so empty string is passed
 	// The network parameter is now passed from the caller instead of being hardcoded
@@ -240,9 +237,7 @@ func handleGitHubReleaseSelection(ctx context.Context, cmd *cobra.Command, confi
 
 	// Populate SelectionConfig with version information
 	config.Network = versionConfig.Network
-	config.ExportVersion = versionConfig.ExportVersion
 	config.StartVersion = versionConfig.StartVersion
-	config.ExportIsCustomRef = versionConfig.ExportIsCustomRef
 	config.StartIsCustomRef = versionConfig.StartIsCustomRef
 
 	// Mark BinarySource as valid (download will happen later in deployment flow)

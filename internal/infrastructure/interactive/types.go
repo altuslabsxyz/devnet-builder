@@ -10,12 +10,10 @@ import (
 // SelectionConfig represents the user's selection state during interactive mode for start command.
 // Enhanced to support unified binary source selection (local filesystem or GitHub release).
 type SelectionConfig struct {
-	Network           string // "mainnet" or "testnet"
-	ExportVersion     string // Version for genesis export
-	StartVersion      string // Version for node start
-	ExportIsCustomRef bool   // True if export version is a custom branch/commit
-	StartIsCustomRef  bool   // True if start version is a custom branch/commit
-	UpgradeName       string // Upgrade handler name (for upgrade command only)
+	Network          string // "mainnet" or "testnet"
+	StartVersion     string // Version for devnet binary (used for both export and start)
+	StartIsCustomRef bool   // True if start version is a custom branch/commit
+	UpgradeName      string // Upgrade handler name (for upgrade command only)
 
 	// BinarySource represents the user's choice of binary origin (local or GitHub release).
 	// This field is populated by the unified selection flow (runInteractiveVersionSelection).

@@ -33,7 +33,6 @@ var (
 	deployNoCache           bool
 	deployAccounts          int
 	deployNoInteractive     bool
-	deployExportVersion     string
 	deployStartVersion      string
 	deployImage             string
 	deployFork              bool   // Fork live network state via snapshot export
@@ -116,11 +115,9 @@ Examples:
 	// Interactive mode flags (controls version/docker image selection prompts)
 	// Note: Base config prompts (network, validators, mode) are handled by config.toml
 	cmd.Flags().BoolVar(&deployNoInteractive, "no-interactive", false,
-		"Disable version selection prompts (use --export-version, --start-version, --image instead)")
-	cmd.Flags().StringVar(&deployExportVersion, "export-version", "",
-		"Version for genesis export (non-interactive mode)")
+		"Disable version selection prompts (use --start-version, --image instead)")
 	cmd.Flags().StringVar(&deployStartVersion, "start-version", "",
-		"Version for node start (non-interactive mode)")
+		"Version for devnet binary (non-interactive mode)")
 
 	// Docker image flag
 	cmd.Flags().StringVar(&deployImage, "image", "",
@@ -213,8 +210,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		deployAccounts = *effectiveCfg.Accounts
 	}
 
-	// Track if versions are custom refs
-	var exportVersion string
+	// Track version for deployment (unified: same version for export and start)
 	var startVersion string
 	var dockerImage string
 
@@ -233,7 +229,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			return wrapInteractiveError(cmd, err, "failed to resolve docker image")
 		}
 		dockerImage = resolvedImage
-		exportVersion = deployStableVersion
 		startVersion = deployStableVersion
 	} else {
 		// Local mode: run interactive selection flow (local binary OR GitHub releases)
@@ -245,9 +240,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return wrapInteractiveError(cmd, err, "failed during interactive selection")
 			}
-			exportVersion = selection.ExportVersion
 			startVersion = selection.StartVersion
-			deployStableVersion = exportVersion
+			deployStableVersion = startVersion
 
 			// T048: If user selected a local binary, store it for later use
 			// This prevents the need to call selectBinaryForDeployment() again
@@ -268,12 +262,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				logger.Success("Binary pre-built and cached (commit: %s)", commitShort)
 			}
 		} else {
-			// Non-interactive: use explicit flags if provided, otherwise fall back to --stable-version
-			if deployExportVersion != "" {
-				exportVersion = deployExportVersion
-			} else {
-				exportVersion = deployStableVersion
-			}
+			// Non-interactive: use --start-version if provided, otherwise fall back to --stable-version
 			if deployStartVersion != "" {
 				startVersion = deployStartVersion
 			} else {
@@ -396,7 +385,7 @@ For more information, see: https://github.com/b-harvest/devnet-builder/blob/main
 		NumValidators:     deployValidators,
 		NumAccounts:       deployAccounts,
 		Mode:              deployMode,
-		StableVersion:     exportVersion,
+		StableVersion:     startVersion,
 		DockerImage:       dockerImage,
 		NoCache:           deployNoCache,
 		CustomBinaryPath:  customBinaryPath,

@@ -77,13 +77,12 @@ func (r *CommandRunner) RunWithContext(ctx context.Context, args ...string) *Com
 	// Add test-specific flags to deploy commands
 	// - --fork=false: Create fresh genesis instead of downloading from GitHub
 	// - --no-interactive: Skip version selection prompts
-	// - --export-version/--start-version: Provide versions for non-interactive mode (only if binary not pre-built)
+	// - --start-version: Provide version for non-interactive mode (only if binary not pre-built)
 	// - --no-cache: Skip snapshot cache
 	if len(args) > 0 && args[0] == "deploy" {
 		hasFork := false
 		hasNoCache := false
 		hasNoInteractive := false
-		hasExportVersion := false
 		hasStartVersion := false
 
 		for _, arg := range args {
@@ -95,9 +94,6 @@ func (r *CommandRunner) RunWithContext(ctx context.Context, args ...string) *Com
 			}
 			if arg == "--no-interactive" {
 				hasNoInteractive = true
-			}
-			if strings.HasPrefix(arg, "--export-version") {
-				hasExportVersion = true
 			}
 			if strings.HasPrefix(arg, "--start-version") {
 				hasStartVersion = true
@@ -123,12 +119,8 @@ func (r *CommandRunner) RunWithContext(ctx context.Context, args ...string) *Com
 		_, err := os.Stat(binPath)
 		binExists := err == nil
 
-		// Add version flags for non-interactive mode (only if binary not pre-built)
-		// Both --export-version and --start-version can trigger builds from source
+		// Add version flag for non-interactive mode (only if binary not pre-built)
 		if !binExists {
-			if !hasExportVersion {
-				args = append(args, "--export-version=latest")
-			}
 			if !hasStartVersion {
 				args = append(args, "--start-version=latest")
 			}

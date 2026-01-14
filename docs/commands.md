@@ -50,8 +50,7 @@ devnet-builder deploy [flags]
 | `--network-version` | string | latest | Network version to use |
 | `--no-cache` | bool | false | Skip snapshot cache, download fresh |
 | `--no-interactive` | bool | false | Disable interactive mode |
-| `--export-version` | string | | Version for genesis export (non-interactive) |
-| `--start-version` | string | | Version for node start (non-interactive) |
+| `--start-version` | string | | Version for devnet binary (non-interactive) |
 
 #### Examples
 
