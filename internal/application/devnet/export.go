@@ -51,7 +51,7 @@ func (uc *ExportUseCase) Execute(ctx context.Context, input dto.ExportInput) (*d
 		return nil, fmt.Errorf("failed to load devnet: %w", err)
 	}
 
-	// Step 2: Check if devnet is running
+	// Step 2: Check if devnet is running and find an active node
 	nodes, err := uc.nodeRepo.LoadAll(ctx, input.HomeDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load nodes: %w", err)
@@ -59,10 +59,12 @@ func (uc *ExportUseCase) Execute(ctx context.Context, input dto.ExportInput) (*d
 
 	wasRunning := false
 	var rpcURL string
+	var activeNode *ports.NodeMetadata
 	for _, node := range nodes {
 		if node.PID != nil && *node.PID > 0 {
 			wasRunning = true
 			rpcURL = fmt.Sprintf("http://localhost:%d", node.Ports.RPC)
+			activeNode = node
 			break
 		}
 	}
@@ -70,7 +72,7 @@ func (uc *ExportUseCase) Execute(ctx context.Context, input dto.ExportInput) (*d
 	// Step 3: Get current block height
 	uc.logger.Info("Querying current block height...")
 	var blockHeight int64
-	if wasRunning && rpcURL != "" {
+	if wasRunning && rpcURL != "" && activeNode != nil {
 		blockHeight, err = uc.heightResolver.GetCurrentHeight(ctx, rpcURL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get block height: %w", err)
@@ -166,7 +168,8 @@ func (uc *ExportUseCase) Execute(ctx context.Context, input dto.ExportInput) (*d
 	genesisPath := filepath.Join(exportPath, genesisFileName)
 
 	uc.logger.Info("Exporting state at height %d (this may take a few minutes)...", blockHeight)
-	_, err = uc.executor.ExportAtHeight(ctx, binaryPath, input.HomeDir, blockHeight, genesisPath)
+	// Use the active node's home directory (contains config/genesis.json and data/)
+	_, err = uc.executor.ExportAtHeight(ctx, binaryPath, activeNode.HomeDir, blockHeight, genesisPath)
 	if err != nil {
 		// Clean up failed export
 		os.RemoveAll(exportPath)
