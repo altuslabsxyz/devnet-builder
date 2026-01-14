@@ -138,6 +138,20 @@ func (uc *ProvisionUseCase) Execute(ctx context.Context, input dto.ProvisionInpu
 		return nil, fmt.Errorf("failed to save validator keys: %w", err)
 	}
 
+	// Step 2.2: Create and save additional account keys (for testing/transactions)
+	if input.NumAccounts > 0 {
+		uc.logger.Info("Creating %d additional account keys...", input.NumAccounts)
+		additionalAccounts, err := uc.createAdditionalAccountKeys(ctx, accountsDir, input.NumAccounts, input.UseTestMnemonic, input.NumValidators)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create additional account keys: %w", err)
+		}
+
+		uc.logger.Debug("Saving account key information...")
+		if err := uc.saveAccountKeys(input.HomeDir, additionalAccounts); err != nil {
+			return nil, fmt.Errorf("failed to save account keys: %w", err)
+		}
+	}
+
 	// Step 2.5: Configure nodes with network-specific settings (config.toml, app.toml)
 	uc.logger.Info("Configuring node settings...")
 	if err := uc.configureNodes(ctx, nodes, chainID, input.NumValidators); err != nil {
@@ -466,6 +480,77 @@ func (uc *ProvisionUseCase) saveValidatorKeys(homeDir string, accountKeys []*por
 		}
 
 		uc.logger.Debug("Saved validator key %d to %s", i, keyPath)
+	}
+
+	return nil
+}
+
+// createAdditionalAccountKeys creates secp256k1 account keys for additional test accounts.
+// These are separate from validator keys and used for testing transactions, transfers, etc.
+// The offset parameter allows starting key naming after validator keys (e.g., account0, account1...).
+func (uc *ProvisionUseCase) createAdditionalAccountKeys(ctx context.Context, accountsDir string, numAccounts int, useTestMnemonic bool, mnemonicOffset int) ([]*ports.AccountKeyInfo, error) {
+	keys := make([]*ports.AccountKeyInfo, numAccounts)
+
+	for i := 0; i < numAccounts; i++ {
+		keyName := fmt.Sprintf("account%d", i)
+
+		var keyInfo *ports.AccountKeyInfo
+		var err error
+
+		if useTestMnemonic {
+			// Use deterministic test mnemonic for reproducible testing
+			// Offset by numValidators to avoid reusing validator mnemonics
+			mnemonic := uc.nodeInitializer.GetTestMnemonic(i + mnemonicOffset)
+			keyInfo, err = uc.nodeInitializer.CreateAccountKeyFromMnemonic(ctx, accountsDir, keyName, mnemonic)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create account key from test mnemonic for %s: %w", keyName, err)
+			}
+			uc.logger.Debug("Created account key %s from test mnemonic: %s", keyName, keyInfo.Address)
+		} else {
+			// Generate new random mnemonic
+			keyInfo, err = uc.nodeInitializer.CreateAccountKey(ctx, accountsDir, keyName)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create account key for %s: %w", keyName, err)
+			}
+			uc.logger.Debug("Created account key %s: %s", keyName, keyInfo.Address)
+		}
+
+		keys[i] = keyInfo
+	}
+
+	return keys, nil
+}
+
+// saveAccountKeys saves account key information to JSON files for export-keys command.
+// This creates account{i}.json in the devnet directory with address and mnemonic.
+func (uc *ProvisionUseCase) saveAccountKeys(homeDir string, accountKeys []*ports.AccountKeyInfo) error {
+	devnetDir := filepath.Join(homeDir, "devnet")
+
+	for i, key := range accountKeys {
+		// Create account key file structure
+		keyFile := struct {
+			Name     string `json:"name"`
+			Address  string `json:"address"`
+			Mnemonic string `json:"mnemonic"`
+		}{
+			Name:     key.Name,
+			Address:  key.Address,
+			Mnemonic: key.Mnemonic,
+		}
+
+		// Save to devnet directory
+		keyPath := filepath.Join(devnetDir, fmt.Sprintf("account%d.json", i))
+
+		data, err := json.MarshalIndent(keyFile, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal account key %d: %w", i, err)
+		}
+
+		if err := os.WriteFile(keyPath, data, 0644); err != nil {
+			return fmt.Errorf("failed to write account key file %d: %w", i, err)
+		}
+
+		uc.logger.Debug("Saved account key %d to %s", i, keyPath)
 	}
 
 	return nil

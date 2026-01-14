@@ -398,15 +398,29 @@ func (i *NodeInitializer) GetAccountKey(ctx context.Context, keyringDir, keyName
 // TestMnemonics contains well-known BIP39 mnemonics for deterministic testing.
 // These are the same mnemonics used by popular development tools (Ganache, Hardhat, etc.)
 // DO NOT use these for any real funds - they are publicly known test mnemonics.
+// We need enough mnemonics to support validators + additional accounts without overlap.
 var TestMnemonics = []string{
-	// Validator 0 - Standard test mnemonic used by many tools
+	// Validator 0 - Standard test mnemonic used by many tools (Ganache, Hardhat default)
 	"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
-	// Validator 1
+	// Validator 1 - Hardhat secondary
 	"test test test test test test test test test test test junk",
-	// Validator 2
+	// Validator 2 - BIP-39 test vector
 	"zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong",
-	// Validator 3 - Another standard test mnemonic
+	// Validator 3 - Cosmos SDK test mnemonic
 	"myth like bonus scare over problem client lizard pioneer submit female collect",
+	// Account 0 - BIP-39 test vector (letter = abandon but with variety)
+	"letter advice cage absurd amount doctor acoustic avoid letter advice cage above",
+	// Account 1 - Foundry/Anvil default mnemonic
+	"body quick review slot oblige virus address analyst much half royal canvas",
+	// Account 2 - Standard test vector
+	"void come effort suffer camp survey warrior heavy shoot primary clutch crush",
+	// Account 3 - Another standard test vector
+	"ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic",
+	// Account 4-7 - Additional test vectors for larger deployments
+	"panda eyebrow bullet gorilla call smoke muffin taste mesh discover soft ostrich",
+	"alley afraid soup fall idea toss can goat luck match mechanic coin",
+	"all hour make first leader extend hole alien behind guard gospel lava",
+	"cram scale desert dirt muffin front slow guard word lion great blast",
 }
 
 // GetTestMnemonic returns a deterministic test mnemonic for the given validator index.

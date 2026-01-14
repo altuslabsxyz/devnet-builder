@@ -594,8 +594,8 @@ func selectBinaryForUpgrade(
 		if len(scannedBinaries) > 0 {
 			// Binaries were found but all failed validation - show WHY
 			logger.Warn("Found %d cached binaries but all failed validation:", len(scannedBinaries))
-			for _, inv := range invalidBinaries {
-				logger.Warn("  - %s: %s", inv.binary.Path, inv.reason)
+			for i := range invalidBinaries {
+				logger.Warn("  - %s: %s", invalidBinaries[i].binary.Path, invalidBinaries[i].reason)
 			}
 			// Offer to clean up invalid cache entries
 			logger.Warn("Run 'devnet-builder cache clean' to remove invalid entries")
