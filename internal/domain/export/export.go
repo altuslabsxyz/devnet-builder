@@ -88,13 +88,14 @@ func (e *Export) Validate() error {
 
 // DirectoryName returns the formatted directory name
 func (e *Export) DirectoryName() string {
-	timestamp := e.ExportTimestamp.Format("20060102150405")
-	return fmt.Sprintf("%s-%s-%d-%s",
-		e.NetworkSource,
-		e.BinaryInfo.GetIdentifier(),
-		e.BlockHeight,
-		timestamp,
-	)
+	return GenerateDirectoryName(e.NetworkSource, e.BinaryInfo.GetIdentifier(), e.BlockHeight, e.ExportTimestamp)
+}
+
+// GenerateDirectoryName creates a directory name from the given components
+// This can be called without creating a full Export object
+func GenerateDirectoryName(network string, binaryIdentifier string, height int64, timestamp time.Time) string {
+	ts := timestamp.Format("20060102150405")
+	return fmt.Sprintf("%s-%s-%d-%s", network, binaryIdentifier, height, ts)
 }
 
 // IsComplete checks if all required files exist
@@ -129,5 +130,11 @@ func isValidDirectoryName(name string) bool {
 
 // GetGenesisFileName returns the expected genesis file name
 func (e *Export) GetGenesisFileName() string {
-	return fmt.Sprintf("genesis-%d-%s.json", e.BlockHeight, e.BinaryInfo.GetIdentifier())
+	return GenerateGenesisFileName(e.BlockHeight, e.BinaryInfo.GetIdentifier())
+}
+
+// GenerateGenesisFileName creates a genesis file name from the given components
+// This can be called without creating a full Export object
+func GenerateGenesisFileName(height int64, binaryIdentifier string) string {
+	return fmt.Sprintf("genesis-%d-%s.json", height, binaryIdentifier)
 }

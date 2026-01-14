@@ -146,21 +146,8 @@ func (uc *ExportUseCase) Execute(ctx context.Context, input dto.ExportInput) (*d
 		outputDir = filepath.Join(input.HomeDir, "exports")
 	}
 
-	// Create temporary export entity to generate directory name
-	tempExport, err := domainExport.NewExport(
-		"",
-		timestamp,
-		blockHeight,
-		devnet.NetworkName,
-		binaryInfo,
-		metadata,
-		"",
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create export entity: %w", err)
-	}
-
-	exportDirName := tempExport.DirectoryName()
+	// Generate directory and file names using utility functions
+	exportDirName := domainExport.GenerateDirectoryName(devnet.NetworkName, binaryInfo.GetIdentifier(), blockHeight, timestamp)
 	exportPath := filepath.Join(outputDir, exportDirName)
 
 	// Check if export directory already exists
@@ -175,7 +162,7 @@ func (uc *ExportUseCase) Execute(ctx context.Context, input dto.ExportInput) (*d
 	}
 
 	// Step 9: Execute export command
-	genesisFileName := tempExport.GetGenesisFileName()
+	genesisFileName := domainExport.GenerateGenesisFileName(blockHeight, binaryInfo.GetIdentifier())
 	genesisPath := filepath.Join(exportPath, genesisFileName)
 
 	uc.logger.Info("Exporting state at height %d (this may take a few minutes)...", blockHeight)
