@@ -180,6 +180,32 @@ func ConfirmSelection(config *SelectionConfig) (bool, error) {
 	return true, nil
 }
 
+// ConfirmLocalBinarySelection prompts the user to confirm their local binary selection.
+func ConfirmLocalBinarySelection(config *SelectionConfig) (bool, error) {
+	fmt.Printf("\nStarting devnet with local binary:\n")
+	fmt.Printf("  Network: %s\n", config.Network)
+	if config.BinarySource != nil {
+		fmt.Printf("  Binary:  %s\n", config.BinarySource.SelectedPath)
+	}
+	fmt.Println()
+
+	prompt := promptui.Prompt{
+		Label:     "Proceed",
+		IsConfirm: true,
+		Default:   "y",
+	}
+
+	_, err := prompt.Run()
+	if err != nil {
+		if err == promptui.ErrAbort {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
+}
+
 // PromptUpgradeName prompts the user to enter an upgrade handler name.
 func PromptUpgradeName(defaultName string) (string, error) {
 	// Generate a suggested name from version
@@ -229,9 +255,14 @@ func PromptUpgradeName(defaultName string) (string, error) {
 }
 
 // ConfirmUpgradeSelection prompts the user to confirm their upgrade selection.
-func ConfirmUpgradeSelection(config *UpgradeSelectionConfig) (bool, error) {
-	fmt.Printf("\nUpgrade configuration:\n")
-	fmt.Printf("  Upgrade name: %s\n", config.UpgradeName)
+// When skipUpgradeName is true (e.g., --skip-gov mode), it skips displaying the upgrade name.
+func ConfirmUpgradeSelection(config *UpgradeSelectionConfig, skipUpgradeName bool) (bool, error) {
+	if skipUpgradeName {
+		fmt.Printf("\nBinary replacement configuration (--skip-gov):\n")
+	} else {
+		fmt.Printf("\nUpgrade configuration:\n")
+		fmt.Printf("  Upgrade name: %s\n", config.UpgradeName)
+	}
 
 	versionSuffix := ""
 	if config.IsCustomRef {
@@ -240,8 +271,13 @@ func ConfirmUpgradeSelection(config *UpgradeSelectionConfig) (bool, error) {
 	fmt.Printf("  Target version: %s%s\n", config.UpgradeVersion, versionSuffix)
 	fmt.Println()
 
+	promptLabel := "Proceed with upgrade"
+	if skipUpgradeName {
+		promptLabel = "Proceed with binary replacement"
+	}
+
 	prompt := promptui.Prompt{
-		Label:     "Proceed with upgrade",
+		Label:     promptLabel,
 		IsConfirm: true,
 		Default:   "y",
 	}

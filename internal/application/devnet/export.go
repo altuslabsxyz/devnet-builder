@@ -11,39 +11,61 @@ import (
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	domainExport "github.com/b-harvest/devnet-builder/internal/domain/export"
 	infraExport "github.com/b-harvest/devnet-builder/internal/infrastructure/export"
+	infraprocess "github.com/b-harvest/devnet-builder/internal/infrastructure/process"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // ExportUseCase handles blockchain state export operations.
+// It follows Clean Architecture principles by depending on abstractions (ports)
+// rather than concrete implementations.
 type ExportUseCase struct {
 	devnetRepo     ports.DevnetRepository
 	nodeRepo       ports.NodeRepository
 	exportRepo     ports.ExportRepository
+	nodeLifecycle  ports.NodeLifecycleManager // Injected for stop-export-start workflow
 	hashCalc       *infraExport.HashCalculator
 	heightResolver *infraExport.HeightResolver
-	executor       *infraExport.ExportExecutor
+	exportExec     *infraExport.ExportExecutor
+	processExec    ports.ProcessExecutor
 	logger         ports.Logger
 }
 
 // NewExportUseCase creates a new ExportUseCase.
+// nodeLifecycle is injected for managing node state during export (stop-export-start workflow).
+// This follows Dependency Inversion Principle (DIP).
 func NewExportUseCase(
+	ctx context.Context,
 	devnetRepo ports.DevnetRepository,
 	nodeRepo ports.NodeRepository,
 	exportRepo ports.ExportRepository,
+	nodeLifecycle ports.NodeLifecycleManager,
 	logger ports.Logger,
 ) *ExportUseCase {
+	processExec := infraprocess.NewLocalExecutor()
+
 	return &ExportUseCase{
 		devnetRepo:     devnetRepo,
 		nodeRepo:       nodeRepo,
 		exportRepo:     exportRepo,
+		nodeLifecycle:  nodeLifecycle,
 		hashCalc:       infraExport.NewHashCalculator(),
 		heightResolver: infraExport.NewHeightResolver(),
-		executor:       infraExport.NewExportExecutor(),
+		exportExec:     infraExport.NewExportExecutor(),
+		processExec:    processExec,
 		logger:         logger,
 	}
 }
 
 // Execute performs a blockchain state export at the current height.
+// It implements a stop-export-start workflow to avoid database lock issues:
+// 1. Get block height while nodes are running
+// 2. Stop all nodes (releases database lock)
+// 3. Execute export (database is now accessible)
+// 4. Restart nodes (if they were running before)
 func (uc *ExportUseCase) Execute(ctx context.Context, input dto.ExportInput) (*dto.ExportOutput, error) {
+	const stopTimeout = 30 * time.Second
+	const startTimeout = 5 * time.Minute
+
 	// Step 1: Load devnet metadata
 	uc.logger.Info("Loading devnet configuration...")
 	devnet, err := uc.devnetRepo.Load(ctx, input.HomeDir)
@@ -69,7 +91,7 @@ func (uc *ExportUseCase) Execute(ctx context.Context, input dto.ExportInput) (*d
 		}
 	}
 
-	// Step 3: Get current block height
+	// Step 3: Get current block height (MUST do this while nodes are running)
 	uc.logger.Info("Querying current block height...")
 	var blockHeight int64
 	if wasRunning && rpcURL != "" && activeNode != nil {
@@ -82,9 +104,39 @@ func (uc *ExportUseCase) Execute(ctx context.Context, input dto.ExportInput) (*d
 		return nil, fmt.Errorf("devnet is not running; cannot determine block height")
 	}
 
+	// Step 4: Stop all nodes to release database lock
+	// This is critical - the database is locked while nodes are running
+	if wasRunning {
+		uc.logger.Info("Stopping nodes for export (releasing database lock)...")
+		stoppedCount, err := uc.nodeLifecycle.StopAll(ctx, input.HomeDir, stopTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("failed to stop nodes for export: %w", err)
+		}
+		uc.logger.Info("Stopped %d node(s)", stoppedCount)
+
+		// Ensure nodes are restarted even if export fails (using defer)
+		defer func() {
+			if wasRunning {
+				uc.logger.Info("Restarting nodes after export...")
+				startedCount, allRunning, restartErr := uc.nodeLifecycle.StartAll(ctx, input.HomeDir, startTimeout)
+				if restartErr != nil {
+					uc.logger.Warn("Failed to restart nodes: %v", restartErr)
+					uc.logger.Warn("You may need to manually run 'devnet-builder start'")
+				} else if !allRunning {
+					uc.logger.Warn("Some nodes failed to start (%d started)", startedCount)
+				} else {
+					uc.logger.Info("Restarted %d node(s) successfully", startedCount)
+				}
+			}
+		}()
+
+		// Brief pause to ensure database lock is fully released
+		time.Sleep(2 * time.Second)
+	}
+
 	// Step 4: Determine binary path and calculate hash
 	binaryPath := devnet.CustomBinaryPath
-	if binaryPath == "" && devnet.ExecutionMode == ports.ModeLocal {
+	if binaryPath == "" && devnet.ExecutionMode == types.ExecutionModeLocal {
 		// Use symlinked binary from cache
 		cachePath := filepath.Join(os.Getenv("HOME"), ".stable-devnet", "cache", "binaries", devnet.BinaryName)
 		if _, err := os.Stat(cachePath); err == nil {
@@ -103,7 +155,7 @@ func (uc *ExportUseCase) Execute(ctx context.Context, input dto.ExportInput) (*d
 	}
 
 	// Step 5: Get binary version
-	binaryVersion, err := uc.executor.GetBinaryVersion(ctx, binaryPath)
+	binaryVersion, err := uc.exportExec.GetBinaryVersion(ctx, binaryPath)
 	if err != nil {
 		uc.logger.Debug("Failed to get binary version: %v", err)
 		binaryVersion = devnet.CurrentVersion
@@ -117,7 +169,7 @@ func (uc *ExportUseCase) Execute(ctx context.Context, input dto.ExportInput) (*d
 		"", // Docker image (empty for local mode)
 		binaryHash,
 		binaryVersion,
-		domainExport.ExecutionModeLocal,
+		types.ExecutionModeLocal,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create binary info: %w", err)
@@ -169,7 +221,7 @@ func (uc *ExportUseCase) Execute(ctx context.Context, input dto.ExportInput) (*d
 
 	uc.logger.Info("Exporting state at height %d (this may take a few minutes)...", blockHeight)
 	// Use the active node's home directory (contains config/genesis.json and data/)
-	_, err = uc.executor.ExportAtHeight(ctx, binaryPath, activeNode.HomeDir, blockHeight, genesisPath)
+	_, err = uc.exportExec.ExportAtHeight(ctx, binaryPath, activeNode.HomeDir, blockHeight, genesisPath)
 	if err != nil {
 		// Clean up failed export
 		os.RemoveAll(exportPath)

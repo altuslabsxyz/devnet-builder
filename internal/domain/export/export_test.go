@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 func createValidBinaryInfo(t *testing.T) *BinaryInfo {
@@ -14,7 +16,7 @@ func createValidBinaryInfo(t *testing.T) *BinaryInfo {
 		"",
 		"a1b2c3d4e5f67890123456789012345678901234567890123456789012345678",
 		"v1.0.0",
-		ExecutionModeLocal,
+		types.ExecutionModeLocal,
 	)
 	if err != nil {
 		t.Fatalf("failed to create BinaryInfo: %v", err)

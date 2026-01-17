@@ -26,6 +26,7 @@ import (
 	infraversion "github.com/b-harvest/devnet-builder/internal/infrastructure/version"
 	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/b-harvest/devnet-builder/pkg/network/plugin"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // InfrastructureFactory creates infrastructure implementations.
@@ -142,12 +143,12 @@ func (f *InfrastructureFactory) CreateStateExportService() ports.StateExportServ
 
 // CreateNodeInitializer creates a NodeInitializer implementation.
 func (f *InfrastructureFactory) CreateNodeInitializer() ports.NodeInitializer {
-	mode := infranodeconfig.ModeLocal
+	mode := types.ExecutionModeLocal
 	dockerImage := ""
 	binaryPath := ""
 
 	if f.dockerMode {
-		mode = infranodeconfig.ModeDocker
+		mode = types.ExecutionModeDocker
 	}
 	if f.module != nil {
 		dockerImage = f.module.DockerImage()
@@ -190,9 +191,9 @@ func (a *nodeInitializerAdapter) GetTestMnemonic(validatorIndex int) string {
 
 // CreateNodeManagerFactory creates a NodeManagerFactory.
 func (f *InfrastructureFactory) CreateNodeManagerFactory() *infranode.NodeManagerFactory {
-	mode := infranode.ModeLocal
+	mode := types.ExecutionModeLocal
 	if f.dockerMode {
-		mode = infranode.ModeDocker
+		mode = types.ExecutionModeDocker
 	}
 	config := infranode.FactoryConfig{
 		Mode:   mode,
@@ -464,7 +465,7 @@ func (a *networkModuleAdapter) DefaultPorts() ports.PortConfig {
 		GRPC:    np.GRPC,
 		GRPCWeb: np.GRPCWeb,
 		API:     np.API,
-		EVM:     np.EVMRPC,
+		EVMRPC:  np.EVMRPC,
 		EVMWS:   np.EVMWS,
 		PProf:   6060, // Default pprof port
 		Rosetta: 8080, // Default Rosetta API port
@@ -561,7 +562,7 @@ func (a *networkModuleAdapter) GetConfigOverrides(nodeIndex int, opts ports.Node
 			GRPC:    opts.Ports.GRPC,
 			GRPCWeb: opts.Ports.GRPCWeb,
 			API:     opts.Ports.API,
-			EVMRPC:  opts.Ports.EVM,
+			EVMRPC:  opts.Ports.EVMRPC,
 			EVMWS:   opts.Ports.EVMWS,
 		},
 	}

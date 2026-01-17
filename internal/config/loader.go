@@ -147,11 +147,8 @@ func mergeFileConfig(dst, src *FileConfig) {
 	if src.Validators != nil {
 		dst.Validators = src.Validators
 	}
-	if src.Mode != nil {
-		dst.Mode = src.Mode
-	}
-	if src.StableVersion != nil {
-		dst.StableVersion = src.StableVersion
+	if src.ExecutionMode != nil {
+		dst.ExecutionMode = src.ExecutionMode
 	}
 	if src.NetworkVersion != nil {
 		dst.NetworkVersion = src.NetworkVersion

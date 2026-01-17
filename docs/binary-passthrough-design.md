@@ -41,7 +41,7 @@ This design follows Clean Architecture and SOLID principles.
 ```go
 type ExecuteBinaryPassthroughUseCase struct {
     resolver BinaryResolver
-    executor BinaryExecutor
+    exportExec BinaryExecutor
     cache    BinaryCache
 }
 
@@ -76,7 +76,7 @@ type PluginBinaryResolver struct {
 Adapts existing ProcessExecutor to BinaryExecutor:
 ```go
 type ProcessBinaryExecutor struct {
-    executor ports.ProcessExecutor
+    exportExec ports.ProcessExecutor
 }
 ```
 

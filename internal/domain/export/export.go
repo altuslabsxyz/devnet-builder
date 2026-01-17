@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"time"
+
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // Export represents a complete blockchain state export with metadata
@@ -61,7 +63,7 @@ func (e *Export) Validate() error {
 		return NewValidationError("BlockHeight", "must be greater than 0")
 	}
 
-	if e.NetworkSource != "mainnet" && e.NetworkSource != "testnet" {
+	if !types.NetworkSource(e.NetworkSource).IsValid() {
 		return NewValidationError("NetworkSource", "must be 'mainnet' or 'testnet'")
 	}
 

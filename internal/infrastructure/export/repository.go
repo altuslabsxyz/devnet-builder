@@ -10,6 +10,8 @@ import (
 	"time"
 
 	domainExport "github.com/b-harvest/devnet-builder/internal/domain/export"
+	"github.com/b-harvest/devnet-builder/internal/paths"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // Repository implements ports.ExportRepository for file-based persistence.
@@ -75,7 +77,7 @@ func (r *Repository) Load(ctx context.Context, exportPath string) (interface{}, 
 	}
 
 	// Read metadata.json
-	metadataPath := filepath.Join(exportPath, "metadata.json")
+	metadataPath := filepath.Join(exportPath, paths.MetadataFile)
 	metadataJSON, err := os.ReadFile(metadataPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -96,7 +98,7 @@ func (r *Repository) Load(ctx context.Context, exportPath string) (interface{}, 
 		metadata.DockerImage,
 		metadata.BinaryHash,
 		metadata.BinaryVersion,
-		domainExport.ExecutionMode(metadata.ExecutionMode),
+		types.ExecutionMode(metadata.ExecutionMode),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create BinaryInfo: %w", err)
@@ -131,7 +133,7 @@ func (r *Repository) ListForDevnet(ctx context.Context, devnetHomeDir string) (i
 	default:
 	}
 
-	exportsDir := filepath.Join(devnetHomeDir, "exports")
+	exportsDir := paths.ExportsPath(devnetHomeDir)
 
 	// Check if exports directory exists
 	if _, err := os.Stat(exportsDir); os.IsNotExist(err) {
@@ -261,7 +263,7 @@ type ValidationResult struct {
 
 // GetExportsDirectory returns the exports directory path for a devnet.
 func (r *Repository) GetExportsDirectory(devnetHomeDir string) string {
-	return filepath.Join(devnetHomeDir, "exports")
+	return paths.ExportsPath(devnetHomeDir)
 }
 
 // GenerateExportPath generates the full export directory path.

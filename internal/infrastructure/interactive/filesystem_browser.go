@@ -56,19 +56,17 @@ type readlineCompleter struct {
 }
 
 // Do implements readline.AutoCompleter.Do
-// Returns completion suggestions as suffixes to append to the current input.
+// Returns completion suggestions as full paths to replace the current input.
 //
 // The readline library expects:
-//   - newLine: Array of suffixes to append after removing 'length' characters
-//   - length: Number of characters to remove from the end before appending suffix
+//   - newLine: Array of completions to show/insert
+//   - length: Number of characters to remove from the end before appending
 //
 // Algorithm:
-//   - PathCompleter returns full paths like ["/home/", "/home2/"]
+//   - PathCompleter returns full paths like ["/Users/", "/usr/"]
 //   - Sort by modification time (newest first)
 //   - Take top 5 most recent entries
-//   - Extract the suffix by removing the common prefix (current input)
-//   - For input "/ho" with completion "/home/", suffix is "me/"
-//   - Return suffix "me/" with length 0 (don't remove anything, just append)
+//   - Return full paths with length = input length (replaces input with full path)
 //   - readline automatically handles Tab cycling through suggestions
 func (c *readlineCompleter) Do(line []rune, pos int) (newLine [][]rune, length int) {
 	// Get current line as string up to cursor position
@@ -85,23 +83,15 @@ func (c *readlineCompleter) Do(line []rune, pos int) (newLine [][]rune, length i
 	// Sort by modification time (newest first) and take top 5
 	completions = c.sortByModTimeAndLimit(completions, 5)
 
-	// Extract suffixes by removing the current input prefix
+	// Return full paths as completions
+	// Set length = len(lineStr) to replace the current input with the full path
 	suggestions := make([][]rune, 0, len(completions))
 	for _, comp := range completions {
-		// Remove the common prefix (current input) to get the suffix
-		suffix := comp
-		if strings.HasPrefix(comp, lineStr) {
-			suffix = comp[len(lineStr):]
-		}
-
-		// Only add non-empty suffixes
-		if len(suffix) > 0 {
-			suggestions = append(suggestions, []rune(suffix))
-		}
+		suggestions = append(suggestions, []rune(comp))
 	}
 
-	// Return suffixes with length 0 (append only, don't remove anything)
-	return suggestions, 0
+	// Return full paths with length = input length (replaces input when selected)
+	return suggestions, len(lineStr)
 }
 
 // sortByModTimeAndLimit sorts paths by modification time (newest first) and limits to top N

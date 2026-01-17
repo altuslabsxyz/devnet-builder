@@ -7,6 +7,7 @@ import (
 
 	"github.com/b-harvest/devnet-builder/internal/application/dto"
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // SwitchBinaryUseCase handles switching the chain binary during upgrade.
@@ -68,7 +69,7 @@ func (uc *SwitchBinaryUseCase) Execute(ctx context.Context, input dto.SwitchBina
 	}
 
 	// For local mode, activate the new binary
-	if input.Mode == ports.ModeLocal && newBinary != "" {
+	if input.Mode == types.ExecutionModeLocal && newBinary != "" {
 		cacheRef := input.CacheRef
 		if cacheRef == "" {
 			cacheRef = input.CommitHash // Fallback for backward compatibility

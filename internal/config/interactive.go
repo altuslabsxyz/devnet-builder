@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
+	"github.com/b-harvest/devnet-builder/types"
 	"github.com/manifoldco/promptui"
 	"golang.org/x/term"
 )
@@ -91,11 +92,12 @@ func (s *InteractiveSetup) Run() (*FileConfig, error) {
 	cfg.Validators = &validators
 
 	// Prompt for mode
-	mode, err := s.promptMode(cfg)
+	modeStr, err := s.promptMode(cfg)
 	if err != nil {
 		return nil, err
 	}
-	cfg.Mode = &mode
+	mode := types.ExecutionMode(modeStr)
+	cfg.ExecutionMode = &mode
 
 	// Prompt for version
 	version, err := s.promptVersion(cfg)
@@ -111,16 +113,16 @@ func (s *InteractiveSetup) Run() (*FileConfig, error) {
 // Used when terminal is non-interactive.
 func (s *InteractiveSetup) RunWithDefaults() *FileConfig {
 	blockchain := "stable"
-	networkSource := "mainnet"
+	networkSource := string(types.NetworkSourceMainnet)
 	validators := 4
-	mode := "docker"
+	mode := types.ExecutionModeDocker
 	version := "latest"
 
 	return &FileConfig{
 		BlockchainNetwork: &blockchain,
 		Network:           &networkSource,
 		Validators:        &validators,
-		Mode:              &mode,
+		ExecutionMode:     &mode,
 		NetworkVersion:    &version,
 	}
 }
@@ -171,10 +173,10 @@ func (s *InteractiveSetup) promptBlockchainNetwork(cfg *FileConfig) (string, err
 
 // promptNetworkSource prompts the user to select mainnet or testnet.
 func (s *InteractiveSetup) promptNetworkSource(cfg *FileConfig) (string, error) {
-	options := []string{"mainnet", "testnet"}
+	options := []string{string(types.NetworkSourceMainnet), string(types.NetworkSourceTestnet)}
 
 	defaultIdx := 0
-	if cfg.Network != nil && *cfg.Network == "testnet" {
+	if cfg.Network != nil && *cfg.Network == string(types.NetworkSourceTestnet) {
 		defaultIdx = 1
 	}
 
@@ -239,10 +241,11 @@ func (s *InteractiveSetup) promptValidators(cfg *FileConfig) (int, error) {
 
 // promptMode prompts the user to select docker or local mode.
 func (s *InteractiveSetup) promptMode(cfg *FileConfig) (string, error) {
-	options := []string{"docker", "local"}
+	// Use type constants for display options
+	options := []string{string(types.ExecutionModeDocker), string(types.ExecutionModeLocal)}
 
 	defaultIdx := 0
-	if cfg.Mode != nil && *cfg.Mode == "local" {
+	if cfg.ExecutionMode != nil && *cfg.ExecutionMode == types.ExecutionModeLocal {
 		defaultIdx = 1
 	}
 
@@ -254,7 +257,7 @@ func (s *InteractiveSetup) promptMode(cfg *FileConfig) (string, error) {
 			Label:    "{{ . }}",
 			Active:   "▸ {{ . | cyan }}",
 			Inactive: "  {{ . }}",
-			Selected: "✓ Mode: {{ . | green }}",
+			Selected: "✓ ExecutionMode: {{ . | green }}",
 		},
 	}
 
@@ -326,7 +329,7 @@ func (s *InteractiveSetup) RunPartial(cfg *FileConfig) (*FileConfig, error) {
 
 	// Check if any prompts are needed
 	needsPrompt := cfg.BlockchainNetwork == nil || cfg.Network == nil ||
-		cfg.Validators == nil || cfg.Mode == nil
+		cfg.Validators == nil || cfg.ExecutionMode == nil
 
 	if needsPrompt && IsInteractive() {
 		fmt.Println()
@@ -372,15 +375,16 @@ func (s *InteractiveSetup) RunPartial(cfg *FileConfig) (*FileConfig, error) {
 	}
 
 	// Prompt for mode if not set
-	if cfg.Mode == nil {
+	if cfg.ExecutionMode == nil {
 		if !IsInteractive() {
 			return nil, &MissingFieldsError{Fields: s.getMissingFields(cfg)}
 		}
-		mode, err := s.promptMode(cfg)
+		modeStr, err := s.promptMode(cfg)
 		if err != nil {
 			return nil, err
 		}
-		cfg.Mode = &mode
+		mode := types.ExecutionMode(modeStr)
+		cfg.ExecutionMode = &mode
 	}
 
 	// NetworkVersion is optional - use default if not set
@@ -404,7 +408,7 @@ func (s *InteractiveSetup) getMissingFields(cfg *FileConfig) []string {
 	if cfg.Validators == nil {
 		missing = append(missing, "validators")
 	}
-	if cfg.Mode == nil {
+	if cfg.ExecutionMode == nil {
 		missing = append(missing, "mode")
 	}
 	return missing

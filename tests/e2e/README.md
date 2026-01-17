@@ -61,7 +61,7 @@ This test suite validates all devnet-builder functionality through integration t
 - [PASS] Validator key export
 - [PASS] Snapshot creation
 
-### Multi-Mode Testing (multimode_test.go)
+### Multi-ExecutionMode Testing (multimode_test.go)
 - [PASS] Docker mode deployment
 - [PASS] Local mode deployment
 - [PASS] 1 validator configuration

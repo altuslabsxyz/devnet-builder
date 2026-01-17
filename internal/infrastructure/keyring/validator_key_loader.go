@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // ValidatorKeyLoader loads validator keys from the devnet keyring.
@@ -74,7 +75,7 @@ func (l *ValidatorKeyLoader) loadValidatorKey(ctx context.Context, opts ports.Va
 func (l *ValidatorKeyLoader) exportETHKey(ctx context.Context, opts ports.ValidatorKeyOptions, accountsDir, validatorName string) (string, error) {
 	var cmd *exec.Cmd
 
-	if opts.ExecutionMode == ports.ModeDocker {
+	if opts.ExecutionMode == types.ExecutionModeDocker {
 		// Docker mode: use docker run
 		image := l.getDockerImage(opts)
 		cmd = exec.CommandContext(ctx, "docker", "run", "--rm", "-u", "0",
@@ -113,7 +114,7 @@ func (l *ValidatorKeyLoader) exportETHKey(ctx context.Context, opts ports.Valida
 func (l *ValidatorKeyLoader) getBech32Address(ctx context.Context, opts ports.ValidatorKeyOptions, accountsDir, validatorName string) (string, error) {
 	var cmd *exec.Cmd
 
-	if opts.ExecutionMode == ports.ModeDocker {
+	if opts.ExecutionMode == types.ExecutionModeDocker {
 		image := l.getDockerImage(opts)
 		cmd = exec.CommandContext(ctx, "docker", "run", "--rm", "-u", "0",
 			"-v", accountsDir+":/data",
@@ -157,7 +158,7 @@ func (l *ValidatorKeyLoader) getBech32Address(ctx context.Context, opts ports.Va
 func (l *ValidatorKeyLoader) convertToHexAddress(ctx context.Context, opts ports.ValidatorKeyOptions, accountsDir, bech32Addr string) (string, error) {
 	var cmd *exec.Cmd
 
-	if opts.ExecutionMode == ports.ModeDocker {
+	if opts.ExecutionMode == types.ExecutionModeDocker {
 		image := l.getDockerImage(opts)
 		cmd = exec.CommandContext(ctx, "docker", "run", "--rm", "-u", "0",
 			"-v", accountsDir+":/data",

@@ -3,28 +3,22 @@ package export
 import (
 	"fmt"
 	"regexp"
-)
 
-// ExecutionMode represents how the binary is executed
-type ExecutionMode string
-
-const (
-	ExecutionModeLocal  ExecutionMode = "local"
-	ExecutionModeDocker ExecutionMode = "docker"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // BinaryInfo contains information about the blockchain binary used for export
 type BinaryInfo struct {
-	Path          string        // Full path to binary (local mode)
-	DockerImage   string        // Docker image name (docker mode)
-	Hash          string        // SHA256 hash of binary/image
-	HashPrefix    string        // First 8 characters of hash
-	Version       string        // Binary version identifier
-	ExecutionMode ExecutionMode // local or docker
+	Path          string              // Full path to binary (local mode)
+	DockerImage   string              // Docker image name (docker mode)
+	Hash          string              // SHA256 hash of binary/image
+	HashPrefix    string              // First 8 characters of hash
+	Version       string              // Binary version identifier
+	ExecutionMode types.ExecutionMode // local or docker
 }
 
 // NewBinaryInfo creates a new BinaryInfo instance
-func NewBinaryInfo(path, dockerImage, hash, version string, mode ExecutionMode) (*BinaryInfo, error) {
+func NewBinaryInfo(path, dockerImage, hash, version string, mode types.ExecutionMode) (*BinaryInfo, error) {
 	bi := &BinaryInfo{
 		Path:          path,
 		DockerImage:   dockerImage,
@@ -48,7 +42,7 @@ func NewBinaryInfo(path, dockerImage, hash, version string, mode ExecutionMode) 
 // Validate checks if the BinaryInfo is valid
 func (b *BinaryInfo) Validate() error {
 	// Validate execution mode
-	if b.ExecutionMode != ExecutionModeLocal && b.ExecutionMode != ExecutionModeDocker {
+	if b.ExecutionMode != types.ExecutionModeLocal && b.ExecutionMode != types.ExecutionModeDocker {
 		return NewValidationError("ExecutionMode", "must be 'local' or 'docker'")
 	}
 
@@ -61,10 +55,10 @@ func (b *BinaryInfo) Validate() error {
 	}
 
 	// Validate execution mode matches path/image
-	if b.ExecutionMode == ExecutionModeLocal && b.Path == "" {
+	if b.ExecutionMode == types.ExecutionModeLocal && b.Path == "" {
 		return NewValidationError("Path", "Path must be set when ExecutionMode is 'local'")
 	}
-	if b.ExecutionMode == ExecutionModeDocker && b.DockerImage == "" {
+	if b.ExecutionMode == types.ExecutionModeDocker && b.DockerImage == "" {
 		return NewValidationError("DockerImage", "DockerImage must be set when ExecutionMode is 'docker'")
 	}
 

@@ -1,5 +1,5 @@
 # =============================================================================
-# E2E Test Configuration: Docker Mode with 4 Validators
+# E2E Test Configuration: Docker ExecutionMode with 4 Validators
 # =============================================================================
 # This configuration is used for E2E testing of devnet-builder in docker mode
 # with a 4-validator network setup.

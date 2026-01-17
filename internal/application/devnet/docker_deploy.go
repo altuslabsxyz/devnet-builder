@@ -10,6 +10,7 @@ import (
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	domainports "github.com/b-harvest/devnet-builder/internal/domain/ports"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/node"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // DockerDeployUseCase handles Docker-based devnet deployment with network isolation
@@ -51,10 +52,10 @@ func (uc *DockerDeployUseCase) Execute(ctx context.Context, input dto.Deployment
 	uc.logger.Info("Provisioning devnet...")
 	provisionInput := dto.ProvisionInput{
 		HomeDir:       input.HomeDir,
-		Network:       "testnet", // Default to testnet for now
+		Network:       string(types.NetworkSourceTestnet), // Default to testnet for now
 		NumValidators: input.ValidatorCount,
 		NumAccounts:   0, // No separate accounts for Docker deployment
-		Mode:          "docker",
+		Mode:          string(types.ExecutionModeDocker),
 		DockerImage:   input.Image,
 		StableVersion: "",
 		NoCache:       false,

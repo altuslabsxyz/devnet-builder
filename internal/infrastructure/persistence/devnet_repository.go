@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // DevnetFileRepository implements DevnetRepository using the filesystem.
@@ -178,7 +179,7 @@ func (r *DevnetFileRepository) fromStoredFormat(s *storedDevnetMetadata) *ports.
 		NetworkVersion:    s.NetworkVersion,
 		NumValidators:     s.NumValidators,
 		NumAccounts:       s.NumAccounts,
-		ExecutionMode:     ports.ExecutionMode(s.ExecutionMode),
+		ExecutionMode:     types.ExecutionMode(s.ExecutionMode),
 		Status:            ports.DevnetState(s.Status),
 		DockerImage:       s.DockerImage,
 		CustomBinaryPath:  s.CustomBinaryPath,

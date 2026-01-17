@@ -3,6 +3,8 @@ package ports
 import (
 	"context"
 	"time"
+
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // RPCClient defines operations for interacting with Cosmos RPC.
@@ -271,7 +273,7 @@ type ValidatorKeyLoader interface {
 type ValidatorKeyOptions struct {
 	HomeDir       string
 	NumValidators int
-	ExecutionMode ExecutionMode
+	ExecutionMode types.ExecutionMode
 	Version       string // For docker mode, the image version
 	BinaryName    string // Name of the chain binary
 }

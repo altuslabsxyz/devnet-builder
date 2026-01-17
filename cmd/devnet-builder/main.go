@@ -7,6 +7,7 @@ import (
 
 	"github.com/fatih/color"
 
+	"github.com/b-harvest/devnet-builder/cmd/devnet-builder/commands"
 	"github.com/b-harvest/devnet-builder/internal"
 	"github.com/b-harvest/devnet-builder/internal/di"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
@@ -36,15 +37,15 @@ func main() {
 	}
 
 	// Check and migrate version before executing commands
-	homeDir := DefaultHomeDir()
+	homeDir := commands.DefaultHomeDir()
 	if err := checkAndMigrateVersion(homeDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Version migration failed: %v\n", err)
 		globalLoader.Close()
 		os.Exit(1)
 	}
 
-	// Initialize root command
-	rootCmd := NewRootCmd()
+	// Initialize root command from commands package
+	rootCmd := commands.NewRootCmd()
 
 	// Enhance root command with binary passthrough commands
 	// This is done after root command initialization but before execution

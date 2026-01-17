@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 func TestFactoryConfig_Validate(t *testing.T) {
@@ -15,12 +16,12 @@ func TestFactoryConfig_Validate(t *testing.T) {
 	}{
 		{
 			name:    "valid docker mode",
-			config:  FactoryConfig{Mode: ModeDocker},
+			config:  FactoryConfig{Mode: types.ExecutionModeDocker},
 			wantErr: false,
 		},
 		{
 			name:    "valid local mode",
-			config:  FactoryConfig{Mode: ModeLocal},
+			config:  FactoryConfig{Mode: types.ExecutionModeLocal},
 			wantErr: false,
 		},
 		{
@@ -68,7 +69,7 @@ func TestNodeManagerFactory_Create(t *testing.T) {
 		{
 			name: "docker mode - default image",
 			config: FactoryConfig{
-				Mode:   ModeDocker,
+				Mode:   types.ExecutionModeDocker,
 				Logger: logger,
 			},
 			wantDocker: true,
@@ -76,7 +77,7 @@ func TestNodeManagerFactory_Create(t *testing.T) {
 		{
 			name: "docker mode - custom image",
 			config: FactoryConfig{
-				Mode:        ModeDocker,
+				Mode:        types.ExecutionModeDocker,
 				DockerImage: "custom/image:v1.0",
 				Logger:      logger,
 			},
@@ -85,7 +86,7 @@ func TestNodeManagerFactory_Create(t *testing.T) {
 		{
 			name: "docker mode - with EVM chain ID",
 			config: FactoryConfig{
-				Mode:        ModeDocker,
+				Mode:        types.ExecutionModeDocker,
 				DockerImage: "stablelabs/stabled:latest",
 				EVMChainID:  "988",
 				Logger:      logger,
@@ -95,7 +96,7 @@ func TestNodeManagerFactory_Create(t *testing.T) {
 		{
 			name: "local mode - default binary",
 			config: FactoryConfig{
-				Mode:   ModeLocal,
+				Mode:   types.ExecutionModeLocal,
 				Logger: logger,
 			},
 			wantLocal: true,
@@ -103,7 +104,7 @@ func TestNodeManagerFactory_Create(t *testing.T) {
 		{
 			name: "local mode - custom binary",
 			config: FactoryConfig{
-				Mode:       ModeLocal,
+				Mode:       types.ExecutionModeLocal,
 				BinaryPath: "/custom/path/stabled",
 				Logger:     logger,
 			},
@@ -112,7 +113,7 @@ func TestNodeManagerFactory_Create(t *testing.T) {
 		{
 			name: "local mode - with EVM chain ID",
 			config: FactoryConfig{
-				Mode:       ModeLocal,
+				Mode:       types.ExecutionModeLocal,
 				BinaryPath: "/usr/local/bin/stabled",
 				EVMChainID: "988",
 				Logger:     logger,
@@ -122,7 +123,7 @@ func TestNodeManagerFactory_Create(t *testing.T) {
 		{
 			name: "nil logger uses default",
 			config: FactoryConfig{
-				Mode:   ModeDocker,
+				Mode:   types.ExecutionModeDocker,
 				Logger: nil,
 			},
 			wantDocker: true,
@@ -184,25 +185,25 @@ func TestNodeManagerFactory_Create(t *testing.T) {
 func TestNodeManagerFactory_Mode(t *testing.T) {
 	tests := []struct {
 		name string
-		mode ExecutionMode
+		mode types.ExecutionMode
 	}{
-		{"docker mode", ModeDocker},
-		{"local mode", ModeLocal},
+		{"docker mode", types.ExecutionModeDocker},
+		{"local mode", types.ExecutionModeLocal},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			factory := NewNodeManagerFactory(FactoryConfig{Mode: tt.mode})
 			if got := factory.Mode(); got != tt.mode {
-				t.Errorf("Mode() = %q, want %q", got, tt.mode)
+				t.Errorf("ExecutionMode() = %q, want %q", got, tt.mode)
 			}
 		})
 	}
 }
 
 func TestNodeManagerFactory_IsDocker(t *testing.T) {
-	dockerFactory := NewNodeManagerFactory(FactoryConfig{Mode: ModeDocker})
-	localFactory := NewNodeManagerFactory(FactoryConfig{Mode: ModeLocal})
+	dockerFactory := NewNodeManagerFactory(FactoryConfig{Mode: types.ExecutionModeDocker})
+	localFactory := NewNodeManagerFactory(FactoryConfig{Mode: types.ExecutionModeLocal})
 
 	if !dockerFactory.IsDocker() {
 		t.Error("IsDocker() = false for docker factory, want true")
@@ -229,7 +230,7 @@ func TestDockerManager_CreatedWithCorrectConfig(t *testing.T) {
 		{
 			name: "default image when empty",
 			config: FactoryConfig{
-				Mode:        ModeDocker,
+				Mode:        types.ExecutionModeDocker,
 				DockerImage: "",
 			},
 			wantImage: DefaultDockerImage,
@@ -238,7 +239,7 @@ func TestDockerManager_CreatedWithCorrectConfig(t *testing.T) {
 		{
 			name: "custom image",
 			config: FactoryConfig{
-				Mode:        ModeDocker,
+				Mode:        types.ExecutionModeDocker,
 				DockerImage: "my/image:v2",
 			},
 			wantImage: "my/image:v2",
@@ -247,7 +248,7 @@ func TestDockerManager_CreatedWithCorrectConfig(t *testing.T) {
 		{
 			name: "with EVM chain ID",
 			config: FactoryConfig{
-				Mode:        ModeDocker,
+				Mode:        types.ExecutionModeDocker,
 				DockerImage: "stablelabs/stabled:1.1.3",
 				EVMChainID:  "988",
 			},
@@ -289,7 +290,7 @@ func TestLocalManager_CreatedWithCorrectConfig(t *testing.T) {
 		{
 			name: "default binary when empty",
 			config: FactoryConfig{
-				Mode:       ModeLocal,
+				Mode:       types.ExecutionModeLocal,
 				BinaryPath: "",
 			},
 			wantBinary: DefaultLocalBinary,
@@ -298,7 +299,7 @@ func TestLocalManager_CreatedWithCorrectConfig(t *testing.T) {
 		{
 			name: "custom binary",
 			config: FactoryConfig{
-				Mode:       ModeLocal,
+				Mode:       types.ExecutionModeLocal,
 				BinaryPath: "/opt/stabled",
 			},
 			wantBinary: "/opt/stabled",
@@ -307,7 +308,7 @@ func TestLocalManager_CreatedWithCorrectConfig(t *testing.T) {
 		{
 			name: "with EVM chain ID",
 			config: FactoryConfig{
-				Mode:       ModeLocal,
+				Mode:       types.ExecutionModeLocal,
 				BinaryPath: "/usr/local/bin/stabled",
 				EVMChainID: "988",
 			},

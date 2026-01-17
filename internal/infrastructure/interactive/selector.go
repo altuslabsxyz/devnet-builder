@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/b-harvest/devnet-builder/internal/domain"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
 	"github.com/manifoldco/promptui"
 )
@@ -48,7 +50,56 @@ func (s *Selector) RunVersionSelectionFlow(ctx context.Context, network string) 
 }
 
 // runVersionSelection is the internal implementation for version selection steps.
+// This method now includes binary source selection (local or GitHub release).
 func (s *Selector) runVersionSelection(ctx context.Context, config *SelectionConfig) (*SelectionConfig, error) {
+	// Step 1: Select binary source (local filesystem or GitHub release)
+	sourceSelector := NewSourceSelectorAdapter()
+	sourceType, err := sourceSelector.SelectSource(ctx)
+	if err != nil {
+		return nil, handleInterruptError(err)
+	}
+
+	// Record selection timestamp for debugging/audit
+	config.SourceSelectionTimestamp = time.Now()
+
+	// Handle local binary selection
+	if sourceType == domain.SourceTypeLocal {
+		// Create filesystem browser with path completer
+		pathCompleter := NewPathCompleterAdapter()
+		browser := NewFilesystemBrowserAdapter(pathCompleter)
+
+		// Browse for binary file
+		binaryPath, err := browser.BrowsePath(ctx, "")
+		if err != nil {
+			return nil, handleInterruptError(err)
+		}
+
+		// Create and populate BinarySource
+		binarySource := domain.NewBinarySource(domain.SourceTypeLocal)
+		binarySource.SelectedPath = binaryPath
+		binarySource.MarkValid() // Path was validated by BrowsePath
+
+		config.BinarySource = binarySource
+		// For local binary, version is determined from the binary itself
+		config.StartVersion = "local"
+		config.StartIsCustomRef = false
+
+		// Confirm selection
+		confirmed, err := ConfirmLocalBinarySelection(config)
+		if err != nil {
+			return nil, handleInterruptError(err)
+		}
+		if !confirmed {
+			return nil, &CancellationError{Message: "Operation cancelled by user"}
+		}
+
+		return config, nil
+	}
+
+	// Handle GitHub release selection (existing flow)
+	binarySource := domain.NewBinarySource(domain.SourceTypeGitHubRelease)
+	config.BinarySource = binarySource
+
 	// Step 2: Fetch available versions
 	releases, fromCache, err := s.client.FetchReleasesWithCache(ctx)
 	if err != nil {
@@ -64,9 +115,9 @@ func (s *Selector) runVersionSelection(ctx context.Context, config *SelectionCon
 		return nil, fmt.Errorf("no versions available. Check your network connection or GitHub token")
 	}
 
-	if fromCache {
-		fmt.Println("(Using cached version data)")
-	}
+	// Note: fromCache is only true when API failed and we fell back to cache
+	// StaleDataWarning is already displayed in that case, so no additional message needed
+	_ = fromCache
 
 	// Step 3: Select devnet binary version (used for both export and start)
 	startVersion, startIsCustom, err := SelectVersion("Select devnet binary version", releases, "")
@@ -89,8 +140,10 @@ func (s *Selector) runVersionSelection(ctx context.Context, config *SelectionCon
 }
 
 // RunUpgradeSelectionFlow runs the interactive selection workflow for upgrade command.
+// When skipUpgradeName is true (e.g., --skip-gov mode), it skips the upgrade name prompt
+// since there's no governance proposal requiring a handler name.
 // Returns the upgrade selection config and any error (including cancellation).
-func (s *Selector) RunUpgradeSelectionFlow(ctx context.Context) (*UpgradeSelectionConfig, error) {
+func (s *Selector) RunUpgradeSelectionFlow(ctx context.Context, skipUpgradeName bool) (*UpgradeSelectionConfig, error) {
 	config := &UpgradeSelectionConfig{}
 
 	// Step 1: Fetch available versions
@@ -108,9 +161,9 @@ func (s *Selector) RunUpgradeSelectionFlow(ctx context.Context) (*UpgradeSelecti
 		return nil, fmt.Errorf("no versions available. Check your network connection or GitHub token")
 	}
 
-	if fromCache {
-		fmt.Println("(Using cached version data)")
-	}
+	// Note: fromCache is only true when API failed and we fell back to cache
+	// StaleDataWarning is already displayed in that case, so no additional message needed
+	_ = fromCache
 
 	// Step 2: Select upgrade version (the binary to upgrade to)
 	upgradeVersion, isCustomRef, err := SelectVersion("Select upgrade target version", releases, "")
@@ -120,15 +173,17 @@ func (s *Selector) RunUpgradeSelectionFlow(ctx context.Context) (*UpgradeSelecti
 	config.UpgradeVersion = upgradeVersion
 	config.IsCustomRef = isCustomRef
 
-	// Step 3: Prompt for upgrade name (handler name)
-	upgradeName, err := PromptUpgradeName(upgradeVersion)
-	if err != nil {
-		return nil, handleInterruptError(err)
+	// Step 3: Prompt for upgrade name (handler name) - skip if skipUpgradeName is true
+	if !skipUpgradeName {
+		upgradeName, err := PromptUpgradeName(upgradeVersion)
+		if err != nil {
+			return nil, handleInterruptError(err)
+		}
+		config.UpgradeName = upgradeName
 	}
-	config.UpgradeName = upgradeName
 
 	// Step 4: Confirm selection
-	confirmed, err := ConfirmUpgradeSelection(config)
+	confirmed, err := ConfirmUpgradeSelection(config, skipUpgradeName)
 	if err != nil {
 		return nil, handleInterruptError(err)
 	}

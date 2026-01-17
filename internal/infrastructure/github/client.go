@@ -237,20 +237,14 @@ func parseNextPageURL(linkHeader string) string {
 	return ""
 }
 
-// FetchReleasesWithCache fetches releases, using cache when available.
+// FetchReleasesWithCache fetches releases from API (always fresh).
+// Cache is only used as fallback when API request fails.
+// Returns (releases, fromCache, error).
 func (c *Client) FetchReleasesWithCache(ctx context.Context) ([]GitHubRelease, bool, error) {
-	// Try cache first
-	if c.cache != nil {
-		cache, err := c.cache.Load()
-		if err == nil && cache != nil && !c.cache.IsExpired(cache) {
-			return cache.Releases, true, nil
-		}
-	}
-
-	// Fetch from API
+	// Always fetch fresh data from API for releases
 	releases, _, err := c.FetchReleases(ctx)
 	if err != nil {
-		// If we have stale cache, use it with warning
+		// If we have cache, use it as fallback with warning
 		if c.cache != nil {
 			cache, loadErr := c.cache.Load()
 			if loadErr == nil && cache != nil {
@@ -263,7 +257,7 @@ func (c *Client) FetchReleasesWithCache(ctx context.Context) ([]GitHubRelease, b
 		return nil, false, err
 	}
 
-	// Save to cache
+	// Save to cache for fallback use
 	if c.cache != nil {
 		cache := &VersionCache{
 			Version:   CacheSchemaVersion,
@@ -403,22 +397,14 @@ func (c *Client) GetImageVersions(ctx context.Context, packageName string) ([]Im
 	return result, nil
 }
 
-// GetImageVersionsWithCache returns image versions, using cache when available.
+// GetImageVersionsWithCache returns image versions from API (always fresh).
+// Cache is only used as fallback when API request fails.
+// Returns (versions, fromCache, error).
 func (c *Client) GetImageVersionsWithCache(ctx context.Context, packageName string) ([]ImageVersion, bool, error) {
-	// Try cache first
-	if c.cache != nil {
-		cache, err := c.cache.LoadContainerCache()
-		if err == nil && cache != nil && !c.cache.IsContainerCacheExpired(cache) {
-			// Convert cached versions to ImageVersion list
-			versions := c.convertToImageVersions(cache.Versions)
-			return versions, true, nil
-		}
-	}
-
-	// Fetch from API
+	// Always fetch fresh data from API
 	containerVersions, _, err := c.FetchContainerVersions(ctx, packageName)
 	if err != nil {
-		// If we have stale cache, use it with warning
+		// If we have cache, use it as fallback with warning
 		if c.cache != nil {
 			cache, loadErr := c.cache.LoadContainerCache()
 			if loadErr == nil && cache != nil {
@@ -432,7 +418,7 @@ func (c *Client) GetImageVersionsWithCache(ctx context.Context, packageName stri
 		return nil, false, err
 	}
 
-	// Save to cache
+	// Save to cache for fallback use
 	if c.cache != nil {
 		cache := &ContainerVersionCache{
 			Version:   CacheSchemaVersion,

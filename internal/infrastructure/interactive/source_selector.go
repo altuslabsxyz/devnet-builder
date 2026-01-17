@@ -45,8 +45,8 @@ func NewSourceSelectorAdapter() *SourceSelectorAdapter {
 //
 // Implementation Notes:
 //   - Non-TTY detection uses golang.org/x/term package
-//   - Default option is "Local" (first in list) for convenience
-//   - Cursor starts on first option ("Use local binary")
+//   - Default option is "GitHub release" (first in list) for convenience
+//   - Cursor starts on first option ("Use GitHub release")
 func (s *SourceSelectorAdapter) SelectSource(ctx context.Context) (domain.SourceType, error) {
 	// Non-interactive environment detection (EC-001)
 	if !isTerminalInteractive() {
@@ -57,16 +57,17 @@ func (s *SourceSelectorAdapter) SelectSource(ctx context.Context) (domain.Source
 
 	// Define source options for display
 	// Format: Clear, action-oriented labels with context
+	// GitHub release is first (default) as it's the most common use case
 	sourceOptions := []sourceOption{
-		{
-			Label:       "Use local binary (browse filesystem)",
-			Description: "Select a binary file from your local filesystem with autocomplete",
-			Type:        domain.SourceTypeLocal,
-		},
 		{
 			Label:       "Use GitHub release (download from repository)",
 			Description: "Fetch and download an official release from GitHub",
 			Type:        domain.SourceTypeGitHubRelease,
+		},
+		{
+			Label:       "Use local binary (browse filesystem)",
+			Description: "Select a binary file from your local filesystem with autocomplete",
+			Type:        domain.SourceTypeLocal,
 		},
 	}
 

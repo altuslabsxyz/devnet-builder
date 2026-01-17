@@ -1,6 +1,3 @@
-// Package dto contains Data Transfer Objects used for input/output
-// of UseCases. These objects decouple the application layer from
-// external concerns like CLI flags or JSON serialization.
 package dto
 
 import (
@@ -8,6 +5,7 @@ import (
 	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // ProvisionInput contains the input for provisioning a devnet.
@@ -54,7 +52,7 @@ type NodeInfo struct {
 // RunInput contains the input for running a devnet.
 type RunInput struct {
 	HomeDir       string
-	ExecutionMode ports.ExecutionMode
+	ExecutionMode types.ExecutionMode
 	Background    bool
 	WaitForSync   bool
 	Timeout       time.Duration
@@ -162,8 +160,8 @@ type DevnetInfo struct {
 	HomeDir           string
 	ChainID           string
 	NetworkSource     string // mainnet/testnet
-	BlockchainNetwork string // stable/ault
-	ExecutionMode     string // docker/local
+	BlockchainNetwork string
+	ExecutionMode     types.ExecutionMode
 	DockerImage       string
 	NumValidators     int
 	NumAccounts       int
@@ -275,7 +273,7 @@ type LogsOutput struct {
 
 // ExecutionModeInfo contains information about how nodes are executed.
 type ExecutionModeInfo struct {
-	Mode          string // "docker" or "local"
+	Mode          types.ExecutionMode
 	DockerImage   string
 	ContainerName string
 	LogPath       string

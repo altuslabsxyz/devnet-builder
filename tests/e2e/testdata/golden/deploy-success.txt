@@ -2,7 +2,7 @@ Devnet deployed successfully
 
 Configuration:
   Network: testnet
-  Mode: local
+  ExecutionMode: local
   Validators: 2
   Home: /path/to/home
 

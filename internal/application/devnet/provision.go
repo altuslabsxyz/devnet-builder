@@ -15,6 +15,8 @@ import (
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/stateexport"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/tomlutil"
+	"github.com/b-harvest/devnet-builder/internal/paths"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // ProvisionUseCase handles devnet provisioning.
@@ -62,11 +64,11 @@ func (uc *ProvisionUseCase) Execute(ctx context.Context, input dto.ProvisionInpu
 	}
 
 	// Determine execution mode
-	var execMode ports.ExecutionMode
-	if input.Mode == "docker" {
-		execMode = ports.ModeDocker
+	var execMode types.ExecutionMode
+	if input.Mode == string(types.ExecutionModeDocker) {
+		execMode = types.ExecutionModeDocker
 	} else {
-		execMode = ports.ModeLocal
+		execMode = types.ExecutionModeLocal
 	}
 
 	// Create metadata
@@ -81,6 +83,8 @@ func (uc *ProvisionUseCase) Execute(ctx context.Context, input dto.ProvisionInpu
 		Status:            ports.StateCreated,
 		DockerImage:       input.DockerImage,
 		CustomBinaryPath:  input.CustomBinaryPath,
+		InitialVersion:    input.StableVersion, // Store the deployed version
+		CurrentVersion:    input.StableVersion, // Initially same as deployed version
 		CreatedAt:         time.Now(),
 	}
 
@@ -119,7 +123,7 @@ func (uc *ProvisionUseCase) Execute(ctx context.Context, input dto.ProvisionInpu
 
 	// Step 1: Create account keys for validators (for transaction signing)
 	uc.logger.Info("Creating validator account keys...")
-	accountsDir := filepath.Join(input.HomeDir, "devnet", "accounts")
+	accountsDir := paths.DevnetAccountsPath(input.HomeDir)
 	accountKeys, err := uc.createAccountKeys(ctx, accountsDir, input.NumValidators, input.UseTestMnemonic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create account keys: %w", err)
@@ -283,7 +287,7 @@ func calculateNodePorts(basePorts ports.PortConfig, index int) ports.PortConfig 
 		GRPC:    basePorts.GRPC + offset,
 		GRPCWeb: basePorts.GRPCWeb + offset,
 		API:     basePorts.API + offset,
-		EVM:     basePorts.EVM + offset,
+		EVMRPC:  basePorts.EVMRPC + offset,
 		EVMWS:   basePorts.EVMWS + offset,
 		PProf:   basePorts.PProf + offset,
 		Rosetta: basePorts.Rosetta + offset,
@@ -297,7 +301,7 @@ func (uc *ProvisionUseCase) initializeNodes(ctx context.Context, input dto.Provi
 	defaultPorts := uc.networkModule.DefaultPorts()
 
 	for i := 0; i < input.NumValidators; i++ {
-		nodeDir := filepath.Join(input.HomeDir, "devnet", fmt.Sprintf("node%d", i))
+		nodeDir := paths.NodePath(input.HomeDir, i)
 		moniker := fmt.Sprintf("node%d", i)
 
 		// Create node directory
@@ -337,7 +341,7 @@ func (uc *ProvisionUseCase) extractValidatorInfo(nodes []*ports.NodeMetadata, be
 
 	for i, node := range nodes {
 		// Read priv_validator_key.json
-		keyPath := filepath.Join(node.HomeDir, "config", "priv_validator_key.json")
+		keyPath := filepath.Join(node.HomeDir, paths.ConfigDir, "priv_validator_key.json")
 		keyData, err := os.ReadFile(keyPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read validator key for node %d: %w", i, err)
@@ -444,8 +448,6 @@ func (uc *ProvisionUseCase) createAccountKeys(ctx context.Context, accountsDir s
 // saveValidatorKeys saves validator key information to JSON files for export-keys command.
 // This creates validator{i}.json in each node directory with account address, valoper address, and mnemonic.
 func (uc *ProvisionUseCase) saveValidatorKeys(homeDir string, accountKeys []*ports.AccountKeyInfo, bech32Prefix string) error {
-	devnetDir := filepath.Join(homeDir, "devnet")
-
 	for i, key := range accountKeys {
 		// Convert account address to valoper address
 		valoperAddress, err := convertToValoperAddress(key.Address, bech32Prefix)
@@ -466,9 +468,8 @@ func (uc *ProvisionUseCase) saveValidatorKeys(homeDir string, accountKeys []*por
 			Mnemonic:   key.Mnemonic,
 		}
 
-		// Save to node directory
-		nodeDir := filepath.Join(devnetDir, fmt.Sprintf("node%d", i))
-		keyPath := filepath.Join(nodeDir, fmt.Sprintf("validator%d.json", i))
+		// Save to node directory using centralized path
+		keyPath := paths.ValidatorKeyPath(homeDir, i)
 
 		data, err := json.MarshalIndent(keyFile, "", "  ")
 		if err != nil {
@@ -524,8 +525,6 @@ func (uc *ProvisionUseCase) createAdditionalAccountKeys(ctx context.Context, acc
 // saveAccountKeys saves account key information to JSON files for export-keys command.
 // This creates account{i}.json in the devnet directory with address and mnemonic.
 func (uc *ProvisionUseCase) saveAccountKeys(homeDir string, accountKeys []*ports.AccountKeyInfo) error {
-	devnetDir := filepath.Join(homeDir, "devnet")
-
 	for i, key := range accountKeys {
 		// Create account key file structure
 		keyFile := struct {
@@ -538,8 +537,8 @@ func (uc *ProvisionUseCase) saveAccountKeys(homeDir string, accountKeys []*ports
 			Mnemonic: key.Mnemonic,
 		}
 
-		// Save to devnet directory
-		keyPath := filepath.Join(devnetDir, fmt.Sprintf("account%d.json", i))
+		// Save to devnet directory using centralized path
+		keyPath := paths.AccountKeyPath(homeDir, i)
 
 		data, err := json.MarshalIndent(keyFile, "", "  ")
 		if err != nil {

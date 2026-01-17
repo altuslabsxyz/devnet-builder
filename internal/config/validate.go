@@ -4,12 +4,13 @@ import (
 	"fmt"
 
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // Validate validates the EffectiveConfig values against allowed ranges and types.
 func (c *EffectiveConfig) Validate() error {
-	// Validate network source (mainnet/testnet)
-	if c.Network.Value != "mainnet" && c.Network.Value != "testnet" {
+	// Validate network source using canonical type validation
+	if !types.NetworkSource(c.Network.Value).IsValid() {
 		return fmt.Errorf("invalid network: %s (must be 'mainnet' or 'testnet')", c.Network.Value)
 	}
 
@@ -25,8 +26,8 @@ func (c *EffectiveConfig) Validate() error {
 		return fmt.Errorf("invalid validators: %d (must be 1-4)", c.Validators.Value)
 	}
 
-	// Validate mode
-	if c.Mode.Value != "docker" && c.Mode.Value != "local" {
+	// Validate mode using canonical type validation
+	if !types.ExecutionMode(c.Mode.Value).IsValid() {
 		return fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", c.Mode.Value)
 	}
 
@@ -45,9 +46,9 @@ func ValidateFileConfig(cfg *FileConfig) error {
 		return nil
 	}
 
-	// Validate network source if set
+	// Validate network source if set using canonical type validation
 	if cfg.Network != nil {
-		if *cfg.Network != "mainnet" && *cfg.Network != "testnet" {
+		if !types.NetworkSource(*cfg.Network).IsValid() {
 			return fmt.Errorf("invalid network in config file: %s (must be 'mainnet' or 'testnet')", *cfg.Network)
 		}
 	}
@@ -62,10 +63,10 @@ func ValidateFileConfig(cfg *FileConfig) error {
 		}
 	}
 
-	// Validate mode if set
-	if cfg.Mode != nil {
-		if *cfg.Mode != "docker" && *cfg.Mode != "local" {
-			return fmt.Errorf("invalid mode in config file: %s (must be 'docker' or 'local')", *cfg.Mode)
+	// Validate mode if set using canonical type validation
+	if cfg.ExecutionMode != nil {
+		if !types.ExecutionMode(*cfg.ExecutionMode).IsValid() {
+			return fmt.Errorf("invalid mode in config file: %s (must be 'docker' or 'local')", *cfg.ExecutionMode)
 		}
 	}
 

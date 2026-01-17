@@ -19,7 +19,6 @@ Complete reference for all devnet-builder commands.
   - [build](#build)
   - [export-keys](#export-keys)
   - [reset](#reset)
-  - [restart](#restart)
 - [Utility Commands](#utility-commands)
   - [config](#config)
   - [cache](#cache)
@@ -92,7 +91,7 @@ devnet-builder init [flags]
 | `--accounts` | int | 4 | Number of additional funded accounts |
 | `-n, --network` | string | mainnet | Network source (mainnet, testnet) |
 | `-m, --mode` | string | docker | Execution mode (docker, local) |
-| `--stable-version` | string | latest | Network version to use |
+| `--network-version` | string | latest | Network version to use |
 | `--no-cache` | bool | false | Skip snapshot cache, download fresh |
 | `--test-mnemonic` | bool | true | Use deterministic test mnemonics |
 
@@ -237,7 +236,7 @@ devnet-builder status --json | jq '.nodes[0].height'
 ```
 Devnet Status: running
 Chain ID: <chain-id>
-Execution Mode: docker
+Execution ExecutionMode: docker
 Network Source: mainnet
 
 Nodes:
@@ -338,7 +337,7 @@ devnet-builder node logs 0 -f
 
 ### upgrade
 
-Perform software upgrade via expedited governance proposal.
+Perform software upgrade via expedited governance proposal, or directly replace the binary without governance.
 
 ```bash
 devnet-builder upgrade [flags]
@@ -348,7 +347,7 @@ devnet-builder upgrade [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `-n, --name` | string | | Upgrade handler name (required) |
+| `-n, --name` | string | | Upgrade handler name (required unless --skip-gov) |
 | `-i, --image` | string | | Docker image for new version |
 | `-b, --binary` | string | | Local binary path for new version |
 | `-m, --mode` | string | | Override execution mode for upgrade |
@@ -357,6 +356,7 @@ devnet-builder upgrade [flags]
 | `--genesis-dir` | string | | Directory for genesis exports |
 | `--height-buffer` | int | 0 | Blocks to add after voting period ends (0 = auto-calculate based on block time from recent 5 blocks) |
 | `--voting-period` | duration | 60s | Expedited voting period duration |
+| `--skip-gov` | bool | false | Skip governance proposal and directly replace binary |
 | `--no-interactive` | bool | false | Disable interactive mode |
 
 #### Examples
@@ -379,7 +379,23 @@ devnet-builder upgrade --no-interactive --name v2 --version v2.0.0
 
 # Custom voting period
 devnet-builder upgrade --name v2 --image v2.0.0 --voting-period 120s
+
+# Direct binary replacement (skip governance)
+devnet-builder upgrade --skip-gov --image v2.0.0-mainnet
+
+# Replace binary in local mode without governance
+devnet-builder upgrade --skip-gov --mode local --version v2.0.0
 ```
+
+#### Skip Governance Mode
+
+The `--skip-gov` flag allows direct binary replacement without going through the governance proposal process. This is useful for:
+
+- Quick testing during development
+- Switching between compatible binary versions
+- Environments where governance overhead is unnecessary
+
+**Note:** When using `--skip-gov`, ensure the chain state is compatible with the new binary version, as there is no upgrade handler executed.
 
 ---
 
@@ -486,32 +502,6 @@ devnet-builder reset --hard
 
 # Reset without confirmation
 devnet-builder reset --force
-```
-
----
-
-### restart
-
-Restart all running nodes.
-
-```bash
-devnet-builder restart [flags]
-```
-
-#### Flags
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--timeout` | duration | 30s | Timeout for graceful shutdown |
-
-#### Examples
-
-```bash
-# Restart all nodes
-devnet-builder restart
-
-# Restart with longer timeout
-devnet-builder restart --timeout 60s
 ```
 
 ---

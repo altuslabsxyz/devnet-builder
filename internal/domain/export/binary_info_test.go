@@ -2,6 +2,8 @@ package export
 
 import (
 	"testing"
+
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 func TestNewBinaryInfo_LocalMode(t *testing.T) {
@@ -12,7 +14,7 @@ func TestNewBinaryInfo_LocalMode(t *testing.T) {
 		"",
 		hash,
 		"v1.0.0",
-		ExecutionModeLocal,
+		types.ExecutionModeLocal,
 	)
 
 	if err != nil {
@@ -40,7 +42,7 @@ func TestNewBinaryInfo_DockerMode(t *testing.T) {
 		"ghcr.io/stablelabs/stable:v1.0.0",
 		hash,
 		"v1.0.0",
-		ExecutionModeDocker,
+		types.ExecutionModeDocker,
 	)
 
 	if err != nil {
@@ -62,7 +64,7 @@ func TestBinaryInfo_Validate_BothPathAndImage(t *testing.T) {
 		"ghcr.io/stablelabs/stable:v1.0.0",
 		"a1b2c3d4e5f67890123456789012345678901234567890123456789012345678",
 		"v1.0.0",
-		ExecutionModeLocal,
+		types.ExecutionModeLocal,
 	)
 
 	if err == nil {
@@ -85,7 +87,7 @@ func TestBinaryInfo_Validate_NeitherPathNorImage(t *testing.T) {
 		"",
 		"a1b2c3d4e5f67890123456789012345678901234567890123456789012345678",
 		"v1.0.0",
-		ExecutionModeLocal,
+		types.ExecutionModeLocal,
 	)
 
 	if err == nil {
@@ -108,7 +110,7 @@ func TestBinaryInfo_Validate_LocalModeWithoutPath(t *testing.T) {
 		"",
 		"a1b2c3d4e5f67890123456789012345678901234567890123456789012345678",
 		"v1.0.0",
-		ExecutionModeLocal,
+		types.ExecutionModeLocal,
 	)
 
 	if err == nil {
@@ -122,7 +124,7 @@ func TestBinaryInfo_Validate_DockerModeWithoutImage(t *testing.T) {
 		"",
 		"a1b2c3d4e5f67890123456789012345678901234567890123456789012345678",
 		"v1.0.0",
-		ExecutionModeDocker,
+		types.ExecutionModeDocker,
 	)
 
 	if err == nil {
@@ -148,7 +150,7 @@ func TestBinaryInfo_Validate_InvalidHashFormat(t *testing.T) {
 				"",
 				tt.hash,
 				"v1.0.0",
-				ExecutionModeLocal,
+				types.ExecutionModeLocal,
 			)
 
 			if err == nil {
@@ -164,7 +166,7 @@ func TestBinaryInfo_Validate_EmptyVersion(t *testing.T) {
 		"",
 		"a1b2c3d4e5f67890123456789012345678901234567890123456789012345678",
 		"",
-		ExecutionModeLocal,
+		types.ExecutionModeLocal,
 	)
 
 	if err == nil {
@@ -213,7 +215,7 @@ func TestBinaryInfo_HashPrefixGeneration(t *testing.T) {
 		"",
 		hash,
 		"v1.0.0",
-		ExecutionModeLocal,
+		types.ExecutionModeLocal,
 	)
 
 	if err != nil {
@@ -237,7 +239,7 @@ func TestBinaryInfo_GetIdentifier_WithHashPrefix(t *testing.T) {
 		"",
 		"a1b2c3d4e5f67890123456789012345678901234567890123456789012345678",
 		"v1.0.0",
-		ExecutionModeLocal,
+		types.ExecutionModeLocal,
 	)
 
 	if err != nil {
@@ -255,7 +257,7 @@ func TestBinaryInfo_GetIdentifier_WithoutHashPrefix(t *testing.T) {
 	bi := &BinaryInfo{
 		Path:          "/usr/local/bin/stabled",
 		Version:       "1.0.0",
-		ExecutionMode: ExecutionModeLocal,
+		ExecutionMode: types.ExecutionModeLocal,
 	}
 
 	identifier := bi.GetIdentifier()

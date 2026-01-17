@@ -66,7 +66,6 @@ func (e *ExportExecutor) ExportAtHeight(
 		"export",
 		"--home", homeDir,
 		"--height", fmt.Sprintf("%d", height),
-		"--for-zero-height",
 	}
 
 	// Execute command and capture stdout

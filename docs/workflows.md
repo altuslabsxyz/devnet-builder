@@ -7,7 +7,7 @@ Step-by-step guides for common development and debugging scenarios.
 - [Upgrade Testing Workflow](#upgrade-testing-workflow)
 - [Key Export Workflow](#key-export-workflow)
 - [State Reset Workflow](#state-reset-workflow)
-- [Docker vs Local Mode](#docker-vs-local-mode)
+- [Docker vs Local ExecutionMode](#docker-vs-local-mode)
 
 ---
 
@@ -252,11 +252,11 @@ Note: The node will sync from other validators.
 
 ---
 
-## Docker vs Local Mode
+## Docker vs Local ExecutionMode
 
 Choose the right execution mode for your use case.
 
-### Docker Mode (Recommended)
+### Docker ExecutionMode (Recommended)
 
 Best for:
 - Quick setup
@@ -278,7 +278,7 @@ Advantages:
 - Easy cleanup
 - Reproducible across machines
 
-### Local Mode (Advanced)
+### Local ExecutionMode (Advanced)
 
 Best for:
 - Testing local code changes
@@ -314,9 +314,9 @@ devnet-builder stop
 devnet-builder start --mode local --binary-ref /path/to/debug-<binary-name>
 ```
 
-### Mode Comparison
+### ExecutionMode Comparison
 
-| Aspect | Docker Mode | Local Mode |
+| Aspect | Docker ExecutionMode | Local ExecutionMode |
 |--------|-------------|------------|
 | Setup Time | Fast | Requires Go setup |
 | Binary Source | Pre-built images | Built from source |

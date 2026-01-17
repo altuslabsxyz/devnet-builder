@@ -3,14 +3,8 @@ package ports
 import (
 	"context"
 	"time"
-)
 
-// ExecutionMode represents how the devnet nodes are executed.
-type ExecutionMode string
-
-const (
-	ModeLocal  ExecutionMode = "local"
-	ModeDocker ExecutionMode = "docker"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // DevnetState represents the current state of the devnet.
@@ -33,7 +27,7 @@ type DevnetMetadata struct {
 	BlockchainNetwork string // e.g., "stable", "ault"
 	NumValidators     int
 	NumAccounts       int
-	ExecutionMode     ExecutionMode
+	ExecutionMode     types.ExecutionMode
 	Status            DevnetState
 	DockerImage       string
 	CustomBinaryPath  string
@@ -70,20 +64,9 @@ type NodeMetadata struct {
 	Ports       PortConfig
 }
 
-// PortConfig holds port assignments for a node.
-// This is the canonical type for the application layer.
-// Infrastructure adapters must convert to this type.
-type PortConfig struct {
-	RPC     int // Tendermint RPC (default: 26657)
-	P2P     int // P2P networking (default: 26656)
-	GRPC    int // gRPC server (default: 9090)
-	GRPCWeb int // gRPC-Web (default: 9091)
-	API     int // REST API (default: 1317)
-	EVM     int // EVM JSON-RPC (default: 8545)
-	EVMWS   int // EVM WebSocket (default: 8546)
-	PProf   int // pprof debugging (default: 6060)
-	Rosetta int // Rosetta API (default: 8080)
-}
+// PortConfig is an alias to the canonical types.PortConfig.
+// This provides backward compatibility for code using ports.PortConfig.
+type PortConfig = types.PortConfig
 
 // DevnetRepository defines operations for persisting devnet state.
 type DevnetRepository interface {

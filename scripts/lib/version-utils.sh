@@ -508,8 +508,8 @@ build_devnet_builder() {
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
-            -v|--stable-version)
-                STABLE_VERSION="$2"
+            -v|--network-version)
+                NETWORK_VERSION="$2"
                 shift 2
                 ;;
             -s|--skip-cache)
@@ -556,13 +556,13 @@ parse_args() {
 
 show_help() {
     cat << 'EOF'
-build-for-version.sh - Build devnet-builder with a specific stable version
+build-for-version.sh - Build devnet-builder with a specific network version
 
 Usage:
   ./scripts/build-for-version.sh [OPTIONS] -- [DEVNET_BUILDER_ARGS]
 
 Options:
-  -v, --stable-version VERSION  Stable repository version (tag, branch, or commit)
+  -v, --network-version VERSION  Network repository version (tag, branch, or commit)
   -s, --skip-cache              Force rebuild even if cached binary exists
   -c, --cache-dir DIR           Cache directory location
       --verbose                 Enable verbose output
@@ -572,7 +572,7 @@ Options:
   -h, --help                    Show this help message
 
 Environment Variables:
-  STABLE_VERSION             Target stable version (overridden by CLI flag)
+  NETWORK_VERSION            Target network version (overridden by CLI flag)
   DEVNET_BUILDER_CACHE       Cache directory (default: ~/.cache/devnet-builder)
   DEVNET_BUILDER_SKIP_CACHE  Skip cache lookup (default: false)
   DEVNET_BUILDER_VERBOSE     Enable verbose logging (default: false)
@@ -668,21 +668,21 @@ resolve_version() {
     local repo_url="${STABLE_REPO_URL:-https://github.com/stablelabs/stable.git}"
 
     # Use default version if none specified
-    if [[ -z "$STABLE_VERSION" ]]; then
-        STABLE_VERSION=$(get_current_stable_version "$PROJECT_ROOT")
-        progress "Using default version from go.mod: $STABLE_VERSION"
+    if [[ -z "$NETWORK_VERSION" ]]; then
+        NETWORK_VERSION=$(get_current_stable_version "$PROJECT_ROOT")
+        progress "Using default version from go.mod: $NETWORK_VERSION"
     fi
 
-    progress "Validating version '$STABLE_VERSION'..."
+    progress "Validating version '$NETWORK_VERSION'..."
 
     local commit_hash
-    if ! commit_hash=$(resolve_version_to_commit "$repo_url" "$STABLE_VERSION"); then
-        error "Version '$STABLE_VERSION' not found"
+    if ! commit_hash=$(resolve_version_to_commit "$repo_url" "$NETWORK_VERSION"); then
+        error "Version '$NETWORK_VERSION' not found"
         echo ""
 
         # Try fuzzy matching
         local suggestions
-        suggestions=$(fuzzy_match_refs "$repo_url" "$STABLE_VERSION" 5)
+        suggestions=$(fuzzy_match_refs "$repo_url" "$NETWORK_VERSION" 5)
 
         if [[ -n "$suggestions" ]]; then
             echo "Did you mean one of these?"
@@ -701,12 +701,12 @@ resolve_version() {
     fi
 
     RESOLVED_COMMIT="$commit_hash"
-    success "Version '$STABLE_VERSION' validated (commit: ${commit_hash:0:7})"
+    success "Version '$NETWORK_VERSION' validated (commit: ${commit_hash:0:7})"
 }
 
 get_or_build_binary() {
     local cache_key
-    cache_key=$(generate_cache_key "$STABLE_MODULE" "$STABLE_VERSION")
+    cache_key=$(generate_cache_key "$STABLE_MODULE" "$NETWORK_VERSION")
 
     ensure_cache_dir "$CACHE_DIR"
 
@@ -726,7 +726,7 @@ get_or_build_binary() {
     fi
 
     if [[ "$DRY_RUN" == "true" ]]; then
-        progress "[DRY RUN] Would build devnet-builder with $STABLE_MODULE@$STABLE_VERSION"
+        progress "[DRY RUN] Would build devnet-builder with $STABLE_MODULE@$NETWORK_VERSION"
         progress "[DRY RUN] Would cache to: $CACHE_DIR/binaries/$cache_key/"
         echo ""
         return 0
@@ -745,15 +745,15 @@ get_or_build_binary() {
     backup_go_mod "$PROJECT_ROOT"
 
     # Determine version string for go mod
-    local go_mod_version="$STABLE_VERSION"
+    local go_mod_version="$NETWORK_VERSION"
     local version_type
-    version_type=$(detect_version_type "$STABLE_VERSION")
+    version_type=$(detect_version_type "$NETWORK_VERSION")
 
     if [[ "$version_type" == "branch" ]]; then
         # For branches, resolve to pseudo-version using go list
         progress "Resolving branch to pseudo-version..."
         local resolved_version
-        if ! resolved_version=$(GOWORK=off go list -m "${STABLE_MODULE}@${STABLE_VERSION}" 2>&1 | awk '{print $2}'); then
+        if ! resolved_version=$(GOWORK=off go list -m "${STABLE_MODULE}@${NETWORK_VERSION}" 2>&1 | awk '{print $2}'); then
             error "Failed to resolve branch version"
             restore_go_mod "$PROJECT_ROOT"
             release_lock "$BUILD_LOCK_DIR"
@@ -783,7 +783,7 @@ get_or_build_binary() {
     fi
 
     # Store in cache
-    store_in_cache "$CACHE_DIR" "$cache_key" "$temp_binary" "$STABLE_VERSION" "${RESOLVED_COMMIT:-unknown}"
+    store_in_cache "$CACHE_DIR" "$cache_key" "$temp_binary" "$NETWORK_VERSION" "${RESOLVED_COMMIT:-unknown}"
     rm -f "$temp_binary"
 
     # Restore go.mod (keep original state)

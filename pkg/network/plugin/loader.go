@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
 
+	"github.com/b-harvest/devnet-builder/internal/paths"
 	"github.com/b-harvest/devnet-builder/pkg/network"
 )
 
@@ -182,7 +183,7 @@ func NewLoader(opts ...LoaderOption) *Loader {
 	l := &Loader{
 		pluginDirs: []string{
 			"./plugins",
-			filepath.Join(os.Getenv("HOME"), ".devnet-builder", "plugins"),
+			paths.PluginsPath(paths.DefaultHomeDir()),
 			"/usr/local/lib/devnet-builder/plugins",
 		},
 		logger:            hclog.New(&hclog.LoggerOptions{Name: "plugin-loader", Level: hclog.Warn}),

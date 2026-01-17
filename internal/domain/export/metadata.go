@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"regexp"
 	"time"
+
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // ExportMetadata contains comprehensive information about an exported state
@@ -75,11 +77,14 @@ func (em *ExportMetadata) Validate() error {
 		return NewValidationError("BlockHeight", "must be greater than 0")
 	}
 
-	if em.NetworkSource != "mainnet" && em.NetworkSource != "testnet" {
+	// Use canonical type validation instead of string literals
+	networkSource := types.NetworkSource(em.NetworkSource)
+	if !networkSource.IsValid() {
 		return NewValidationError("NetworkSource", "must be 'mainnet' or 'testnet'")
 	}
 
-	if em.ExecutionMode != "local" && em.ExecutionMode != "docker" {
+	execMode := types.ExecutionMode(em.ExecutionMode)
+	if !execMode.IsValid() {
 		return NewValidationError("ExecutionMode", "must be 'local' or 'docker'")
 	}
 
@@ -90,10 +95,10 @@ func (em *ExportMetadata) Validate() error {
 		return NewValidationError("BinaryPath/DockerImage", "cannot set both")
 	}
 
-	if em.ExecutionMode == "local" && em.BinaryPath == "" {
+	if execMode == types.ExecutionModeLocal && em.BinaryPath == "" {
 		return NewValidationError("BinaryPath", "must be set when ExecutionMode is 'local'")
 	}
-	if em.ExecutionMode == "docker" && em.DockerImage == "" {
+	if execMode == types.ExecutionModeDocker && em.DockerImage == "" {
 		return NewValidationError("DockerImage", "must be set when ExecutionMode is 'docker'")
 	}
 

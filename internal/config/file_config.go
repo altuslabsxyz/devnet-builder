@@ -1,5 +1,9 @@
 package config
 
+import (
+	"github.com/b-harvest/devnet-builder/types"
+)
+
 // FileConfig represents the raw config.toml file contents.
 // All fields are pointers to distinguish "not set" from "set to zero/false".
 type FileConfig struct {
@@ -10,14 +14,13 @@ type FileConfig struct {
 	JSON    *bool   `toml:"json"`
 
 	// Start command settings
-	Network           *string `toml:"network"`            // Network source: "mainnet" or "testnet"
-	BlockchainNetwork *string `toml:"blockchain_network"` // Network module: "stable", "ault", etc.
-	Validators        *int    `toml:"validators"`
-	Mode              *string `toml:"mode"`
-	StableVersion     *string `toml:"stable_version"`  // Deprecated: use NetworkVersion instead
-	NetworkVersion    *string `toml:"network_version"` // Version for the selected blockchain network
-	NoCache           *bool   `toml:"no_cache"`
-	Accounts          *int    `toml:"accounts"`
+	Network           *string              `toml:"network"`            // Network source: "mainnet" or "testnet"
+	BlockchainNetwork *string              `toml:"blockchain_network"` // Network module: "stable", "ault", etc.
+	Validators        *int                 `toml:"validators"`
+	ExecutionMode     *types.ExecutionMode `toml:"mode"`
+	NetworkVersion    *string              `toml:"network_version"` // Version for the selected blockchain network
+	NoCache           *bool                `toml:"no_cache"`
+	Accounts          *int                 `toml:"accounts"`
 
 	// GitHub API settings
 	GitHubToken *string `toml:"github_token"` // GHP token for private repos
@@ -33,8 +36,7 @@ func (f *FileConfig) IsEmpty() bool {
 		f.Network == nil &&
 		f.BlockchainNetwork == nil &&
 		f.Validators == nil &&
-		f.Mode == nil &&
-		f.StableVersion == nil &&
+		f.ExecutionMode == nil &&
 		f.NetworkVersion == nil &&
 		f.NoCache == nil &&
 		f.Accounts == nil &&

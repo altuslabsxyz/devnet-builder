@@ -132,8 +132,8 @@ func (w *ConfigWriter) generateTOMLWithComments(cfg *FileConfig) string {
 		content += "# validators = 4\n"
 	}
 
-	if cfg.Mode != nil {
-		content += fmt.Sprintf("mode = %q\n", *cfg.Mode)
+	if cfg.ExecutionMode != nil {
+		content += fmt.Sprintf("mode = %q\n", *cfg.ExecutionMode)
 	} else {
 		content += "# mode = \"docker\"\n"
 	}

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/helpers"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // NodeStatus represents the current state of a node.
@@ -19,28 +20,16 @@ const (
 	NodeStatusError    NodeStatus = "error"
 )
 
-// NodePorts defines all network ports for a node.
-type NodePorts struct {
-	RPC    int `json:"rpc"`     // Tendermint RPC (default: 26657)
-	P2P    int `json:"p2p"`     // P2P networking (default: 26656)
-	GRPC   int `json:"grpc"`    // gRPC server (default: 9090)
-	EVMRPC int `json:"evm_rpc"` // EVM JSON-RPC (default: 8545)
-	EVMWS  int `json:"evm_ws"`  // EVM WebSocket (default: 8546)
-	PProf  int `json:"pprof"`   // pprof debugging (default: 6060)
-}
+// NodePorts is an alias to the canonical types.PortConfig.
+//
+// Deprecated: Use types.PortConfig directly.
+type NodePorts = types.PortConfig
 
 // DefaultPortsForNode returns the default ports for a node at the given index.
-// Each node has a port offset of 10000 * index.
+//
+// Deprecated: Use types.PortConfigForNode() directly.
 func DefaultPortsForNode(index int) NodePorts {
-	offset := index * 10000
-	return NodePorts{
-		RPC:    26657 + offset,
-		P2P:    26656 + offset,
-		GRPC:   9090 + offset,
-		EVMRPC: 8545 + offset,
-		EVMWS:  8546 + offset,
-		PProf:  6060 + offset,
-	}
+	return types.PortConfigForNode(index)
 }
 
 // Node represents a single validator node in the devnet.

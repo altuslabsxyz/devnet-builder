@@ -112,10 +112,10 @@ readonly DEFAULT_STABLED_TAG="latest"
 # Global Variables (set by flags/env)
 # =============================================================================
 
-NETWORK="${STABLE_DEVNET_NETWORK:-mainnet}"
-DEVNET_DIR="${STABLE_DEVNET_DIR:-$DEFAULT_DEVNET_DIR}"
-CACHE_DIR="${STABLE_DEVNET_CACHE:-$DEFAULT_CACHE_DIR}"
-CHAIN_ID="${STABLE_DEVNET_CHAIN_ID:-}"
+NETWORK="${DEVNET_NETWORK:-mainnet}"
+DEVNET_DIR="${DEVNET_DIR:-$DEFAULT_DEVNET_DIR}"
+CACHE_DIR="${DEVNET_CACHE:-$DEFAULT_CACHE_DIR}"
+CHAIN_ID="${DEVNET_CHAIN_ID:-}"
 STABLED_IMAGE="${STABLED_IMAGE:-$DEFAULT_STABLED_IMAGE}"
 STABLED_TAG="${STABLED_TAG:-$DEFAULT_STABLED_TAG}"
 
@@ -280,9 +280,9 @@ check_disk_space() {
 ensure_devnet_builder() {
     local builder_path="$PROJECT_ROOT/build/devnet-builder"
 
-    # If STABLE_VERSION is set, use build-for-version.sh for dynamic version
-    if [[ -n "${STABLE_VERSION:-}" ]]; then
-        info "STABLE_VERSION is set to '$STABLE_VERSION'"
+    # If NETWORK_VERSION is set, use build-for-version.sh for dynamic version
+    if [[ -n "${NETWORK_VERSION:-}" ]]; then
+        info "NETWORK_VERSION is set to '$NETWORK_VERSION'"
         info "Using build-for-version.sh for dynamic version support"
 
         local version_script="$SCRIPT_DIR/build-for-version.sh"
@@ -294,17 +294,17 @@ ensure_devnet_builder() {
         # Set up alias for the versioned binary
         # The script will cache the binary and we can get its path
         local versioned_binary
-        versioned_binary=$("$version_script" -v "$STABLE_VERSION" 2>&1 | grep -o '/[^[:space:]]*devnet-builder' | tail -1)
+        versioned_binary=$("$version_script" -v "$NETWORK_VERSION" 2>&1 | grep -o '/[^[:space:]]*devnet-builder' | tail -1)
 
         if [[ -n "$versioned_binary" ]] && [[ -x "$versioned_binary" ]]; then
             # Create symlink to versioned binary in build directory
             mkdir -p "$PROJECT_ROOT/build"
             ln -sf "$versioned_binary" "$builder_path"
-            success "Using devnet-builder for stable version: $STABLE_VERSION"
+            success "Using devnet-builder for network version: $NETWORK_VERSION"
             return 0
         else
             error "Failed to get versioned devnet-builder binary"
-            error "Try running: $version_script -v $STABLE_VERSION --verbose"
+            error "Try running: $version_script -v $NETWORK_VERSION --verbose"
             return 1
         fi
     fi
@@ -400,8 +400,8 @@ EXAMPLES:
     # Start with local binary
     ./scripts/local-devnet.sh start --local-binary /path/to/stabled
 
-    # Start with specific stable version/branch
-    STABLE_VERSION=feat/usdt0-gas ./scripts/local-devnet.sh start
+    # Start with specific network version/branch
+    NETWORK_VERSION=feat/usdt0-gas ./scripts/local-devnet.sh start
 
     # Stop the devnet
     ./scripts/local-devnet.sh stop
@@ -413,11 +413,11 @@ EXAMPLES:
     ./scripts/local-devnet.sh export-keys --format json
 
 ENVIRONMENT VARIABLES:
-    STABLE_VERSION          Build devnet-builder with a specific stable version/branch
+    NETWORK_VERSION         Build devnet-builder with a specific network version/branch
                             (e.g., v1.1.3, feat/usdt0-gas, commit-hash)
-    STABLE_DEVNET_NETWORK   Source network (mainnet or testnet)
-    STABLE_DEVNET_DIR       Custom devnet data directory
-    STABLE_DEVNET_CACHE     Custom cache directory
+    DEVNET_NETWORK          Source network (mainnet or testnet)
+    DEVNET_DIR              Custom devnet data directory
+    DEVNET_CACHE            Custom cache directory
 
 Run './scripts/local-devnet.sh help <command>' for more info on a command.
 EOF

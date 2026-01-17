@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/binary"
 	"github.com/b-harvest/devnet-builder/internal/application/build"
@@ -18,6 +19,7 @@ import (
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/plugin"
 	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // exportUseCaseAdapter adapts the concrete ExportUseCase to the ports interface.
@@ -99,7 +101,7 @@ type Config struct {
 	Verbose       bool
 	NoColor       bool
 	JSONMode      bool
-	ExecutionMode ports.ExecutionMode
+	ExecutionMode types.ExecutionMode
 }
 
 // NetworkRegistry wraps network registration operations.
@@ -606,10 +608,11 @@ func (c *Container) SwitchBinaryUseCase() *upgrade.SwitchBinaryUseCase {
 // ExecuteUpgradeUseCase returns the execute upgrade use case (lazy init).
 func (c *Container) ExecuteUpgradeUseCase() *upgrade.ExecuteUpgradeUseCase {
 	// Get dependencies first without holding the lock to avoid deadlock
+	ctx := context.Background()
 	proposeUC := c.ProposeUseCase()
 	voteUC := c.VoteUseCase()
 	switchUC := c.SwitchBinaryUseCase()
-	exportUC := c.ExportUseCase() // Moved outside lock to prevent deadlock
+	exportUC := c.ExportUseCase(ctx) // Moved outside lock to prevent deadlock
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -725,16 +728,35 @@ func (c *Container) ImportCustomBinaryUseCase() *binary.ImportCustomBinaryUseCas
 	return c.importCustomBinaryUC
 }
 
+// NodeLifecycleManager returns the node lifecycle manager adapter.
+// This provides a focused interface for stopping/starting nodes,
+// following Interface Segregation Principle.
+func (c *Container) NodeLifecycleManager() ports.NodeLifecycleManager {
+	// Get dependencies first without holding the lock to avoid deadlock
+	stopUC := c.StopUseCase()
+	runUC := c.RunUseCase()
+
+	return &nodeLifecycleAdapter{
+		stopUC: stopUC,
+		runUC:  runUC,
+	}
+}
+
 // ExportUseCase returns the export use case (lazy init).
-func (c *Container) ExportUseCase() *appdevnet.ExportUseCase {
+func (c *Container) ExportUseCase(ctx context.Context) *appdevnet.ExportUseCase {
+	// Get dependencies first without holding the lock to avoid deadlock
+	nodeLifecycle := c.NodeLifecycleManager()
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if c.exportUC == nil {
 		c.exportUC = appdevnet.NewExportUseCase(
+			ctx,
 			c.devnetRepo,
 			c.nodeRepo,
 			c.exportRepo,
+			nodeLifecycle,
 			c.LoggerPort(),
 		)
 	}
@@ -788,4 +810,38 @@ func (a *loggerAdapter) Writer() io.Writer {
 
 func (a *loggerAdapter) ErrWriter() io.Writer {
 	return a.logger.ErrWriter()
+}
+
+// nodeLifecycleAdapter implements ports.NodeLifecycleManager by delegating
+// to StopUseCase and RunUseCase. This follows the Adapter pattern.
+type nodeLifecycleAdapter struct {
+	stopUC *appdevnet.StopUseCase
+	runUC  *appdevnet.RunUseCase
+}
+
+// StopAll stops all running nodes with the given timeout.
+func (a *nodeLifecycleAdapter) StopAll(ctx context.Context, homeDir string, timeout time.Duration) (int, error) {
+	input := dto.StopInput{
+		HomeDir: homeDir,
+		Timeout: timeout,
+	}
+	result, err := a.stopUC.Execute(ctx, input)
+	if err != nil {
+		return 0, err
+	}
+	return result.StoppedNodes, nil
+}
+
+// StartAll starts all nodes with the given timeout.
+func (a *nodeLifecycleAdapter) StartAll(ctx context.Context, homeDir string, timeout time.Duration) (int, bool, error) {
+	input := dto.RunInput{
+		HomeDir:     homeDir,
+		WaitForSync: false,
+		Timeout:     timeout,
+	}
+	result, err := a.runUC.Execute(ctx, input)
+	if err != nil {
+		return 0, false, err
+	}
+	return len(result.Nodes), result.AllRunning, nil
 }

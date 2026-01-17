@@ -5,9 +5,11 @@ package main
 import (
 	"sync"
 
+	"github.com/b-harvest/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/b-harvest/devnet-builder/internal/di"
 	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
 	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 var (
@@ -72,7 +74,7 @@ func initContainerInternal(cfg AppConfig) (*di.Container, error) {
 	}
 
 	// Set execution mode
-	factory.WithDockerMode(cfg.ExecutionMode == "docker")
+	factory.WithDockerMode(cfg.ExecutionMode == string(types.ExecutionModeDocker))
 
 	// Wire container with all infrastructure components
 	container, err := factory.WireContainer(
@@ -102,12 +104,12 @@ func initContainerInternal(cfg AppConfig) (*di.Container, error) {
 // This is a convenience function that extracts common parameters from global flags.
 func InitContainerForCommand(blockchainNetwork, executionMode string) (*di.Container, error) {
 	return InitContainer(AppConfig{
-		HomeDir:           homeDir,
+		HomeDir:           shared.GetHomeDir(),
 		BlockchainNetwork: blockchainNetwork,
 		ExecutionMode:     executionMode,
-		Verbose:           verbose,
-		NoColor:           noColor,
-		JSONMode:          jsonMode,
+		Verbose:           shared.GetVerbose(),
+		NoColor:           shared.GetNoColor(),
+		JSONMode:          shared.GetJSONMode(),
 	})
 }
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // isGHCRImage returns true if the image is from GitHub Container Registry.
@@ -22,24 +23,16 @@ func isGHCRImage(image string) bool {
 	return strings.HasPrefix(image, "ghcr.io/")
 }
 
-// ExecutionMode defines how nodes are executed.
-type ExecutionMode string
-
-const (
-	ModeDocker ExecutionMode = "docker"
-	ModeLocal  ExecutionMode = "local"
-)
-
 // NodeInitializer handles node initialization with stabled.
 type NodeInitializer struct {
-	mode        ExecutionMode
+	mode        types.ExecutionMode
 	dockerImage string
 	binaryPath  string // Path to local stabled binary (used for local mode)
 	logger      *output.Logger
 }
 
 // NewNodeInitializer creates a new NodeInitializer.
-func NewNodeInitializer(mode ExecutionMode, dockerImage string, logger *output.Logger) *NodeInitializer {
+func NewNodeInitializer(mode types.ExecutionMode, dockerImage string, logger *output.Logger) *NodeInitializer {
 	if logger == nil {
 		logger = output.DefaultLogger
 	}
@@ -52,7 +45,7 @@ func NewNodeInitializer(mode ExecutionMode, dockerImage string, logger *output.L
 
 // NewNodeInitializerWithBinary creates a new NodeInitializer with a specific binary path.
 // For local mode, this should be the managed binary at ~/.devnet-builder/bin/stabled.
-func NewNodeInitializerWithBinary(mode ExecutionMode, dockerImage, binaryPath string, logger *output.Logger) *NodeInitializer {
+func NewNodeInitializerWithBinary(mode types.ExecutionMode, dockerImage, binaryPath string, logger *output.Logger) *NodeInitializer {
 	if logger == nil {
 		logger = output.DefaultLogger
 	}
@@ -221,7 +214,7 @@ func readNodeIDFromFile(nodeKeyPath string) (string, error) {
 func (i *NodeInitializer) Export(ctx context.Context, nodeDir, destPath string) error {
 	i.logger.Debug("Exporting genesis from %s", nodeDir)
 
-	if i.mode == ModeDocker {
+	if i.mode == types.ExecutionModeDocker {
 		return i.exportDocker(ctx, nodeDir, destPath)
 	}
 	return i.exportLocal(ctx, nodeDir, destPath)

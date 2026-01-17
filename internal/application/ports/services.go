@@ -235,3 +235,17 @@ type ExportUseCase interface {
 	// Returns export result with paths and metadata
 	Execute(ctx context.Context, input interface{}) (interface{}, error)
 }
+
+// NodeLifecycleManager defines operations for managing node lifecycle.
+// This interface is used by use cases that need to stop/start nodes
+// without depending on the full DevnetService.
+// Following Interface Segregation Principle (ISP) - only expose what's needed.
+type NodeLifecycleManager interface {
+	// StopAll stops all running nodes with the given timeout.
+	// Returns the number of nodes stopped.
+	StopAll(ctx context.Context, homeDir string, timeout time.Duration) (int, error)
+
+	// StartAll starts all nodes with the given timeout.
+	// Returns the number of nodes started and whether all are running.
+	StartAll(ctx context.Context, homeDir string, timeout time.Duration) (int, bool, error)
+}

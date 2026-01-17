@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 #
-# build-for-version.sh - Build devnet-builder with a specific stable version
+# build-for-version.sh - Build devnet-builder with a specific network version
 #
-# This wrapper script enables dynamic stable repository version/branch selection
-# for devnet-builder CLI to support testing against different stable branches.
+# This wrapper script enables dynamic network repository version/branch selection
+# for devnet-builder CLI to support testing against different network branches.
 #
 # Usage:
 #   ./scripts/build-for-version.sh [OPTIONS] -- [DEVNET_BUILDER_ARGS]
 #
 # Options:
-#   -v, --stable-version VERSION  Stable repository version (tag, branch, or commit)
+#   -v, --network-version VERSION  Network repository version (tag, branch, or commit)
 #   -s, --skip-cache              Force rebuild even if cached binary exists
 #   -c, --cache-dir DIR           Cache directory location (default: ~/.cache/devnet-builder)
 #       --verbose                 Enable verbose output
@@ -19,7 +19,7 @@
 #   -h, --help                    Show this help message
 #
 # Environment Variables:
-#   STABLE_VERSION           Target stable version (overridden by CLI flag)
+#   NETWORK_VERSION          Target network version (overridden by CLI flag)
 #   DEVNET_BUILDER_CACHE     Cache directory (default: ~/.cache/devnet-builder)
 #   DEVNET_BUILDER_SKIP_CACHE  Skip cache lookup (default: false)
 #   DEVNET_BUILDER_VERBOSE   Enable verbose logging (default: false)
@@ -53,7 +53,7 @@ readonly DEFAULT_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/devnet-builder"
 readonly DEFAULT_TIMEOUT=300
 
 # Global variables (set by parse_args or environment)
-STABLE_VERSION="${STABLE_VERSION:-}"
+NETWORK_VERSION="${NETWORK_VERSION:-}"
 CACHE_DIR="${DEVNET_BUILDER_CACHE:-$DEFAULT_CACHE_DIR}"
 SKIP_CACHE="${DEVNET_BUILDER_SKIP_CACHE:-false}"
 VERBOSE="${DEVNET_BUILDER_VERBOSE:-false}"

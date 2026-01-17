@@ -8,6 +8,7 @@ import (
 	"time"
 
 	domainExport "github.com/b-harvest/devnet-builder/internal/domain/export"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 func createTestExport(t *testing.T, dirPath string) *domainExport.Export {
@@ -21,7 +22,7 @@ func createTestExport(t *testing.T, dirPath string) *domainExport.Export {
 		"",
 		hash,
 		"v1.0.0",
-		domainExport.ExecutionModeLocal,
+		types.ExecutionModeLocal,
 	)
 	if err != nil {
 		t.Fatalf("failed to create BinaryInfo: %v", err)
@@ -234,7 +235,7 @@ func TestRepository_ListForDevnet(t *testing.T) {
 
 	// Create export1 (older)
 	export1Dir := filepath.Join(exportsDir, "mainnet-a1b2c3d4-1000000-20240115120000")
-	binaryInfo1, err := domainExport.NewBinaryInfo("/usr/local/bin/stabled", "", hash1, "v1.0.0", domainExport.ExecutionModeLocal)
+	binaryInfo1, err := domainExport.NewBinaryInfo("/usr/local/bin/stabled", "", hash1, "v1.0.0", types.ExecutionModeLocal)
 	if err != nil {
 		t.Fatalf("failed to create binaryInfo1: %v", err)
 	}
@@ -249,7 +250,7 @@ func TestRepository_ListForDevnet(t *testing.T) {
 
 	// Create export2 (newer)
 	export2Dir := filepath.Join(exportsDir, "mainnet-b2c3d4e5-2000000-20240116120000")
-	binaryInfo2, err := domainExport.NewBinaryInfo("/usr/local/bin/stabled", "", hash2, "v1.0.0", domainExport.ExecutionModeLocal)
+	binaryInfo2, err := domainExport.NewBinaryInfo("/usr/local/bin/stabled", "", hash2, "v1.0.0", types.ExecutionModeLocal)
 	if err != nil {
 		t.Fatalf("failed to create binaryInfo2: %v", err)
 	}

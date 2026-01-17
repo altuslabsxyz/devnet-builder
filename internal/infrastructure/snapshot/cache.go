@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
+
+	"github.com/b-harvest/devnet-builder/internal/paths"
 )
 
 const (
@@ -79,17 +80,17 @@ func (s *SnapshotCache) TimeUntilExpiry() time.Duration {
 
 // CacheDir returns the cache directory for a given home directory and cache key.
 func CacheDir(homeDir, cacheKey string) string {
-	return filepath.Join(homeDir, "snapshots", cacheKey)
+	return paths.SnapshotCacheKeyPath(homeDir, cacheKey)
 }
 
 // MetadataPath returns the path to the cache metadata file.
 func MetadataPath(homeDir, cacheKey string) string {
-	return filepath.Join(CacheDir(homeDir, cacheKey), "snapshot.meta.json")
+	return paths.SnapshotMetadataPath(homeDir, cacheKey)
 }
 
 // SnapshotPath returns the path where the snapshot file should be stored.
 func SnapshotPath(homeDir, cacheKey, extension string) string {
-	return filepath.Join(CacheDir(homeDir, cacheKey), "snapshot"+extension)
+	return paths.SnapshotFilePath(homeDir, cacheKey, extension)
 }
 
 // Save persists the cache metadata to disk.
@@ -145,7 +146,7 @@ func ClearCache(homeDir, cacheKey string) error {
 
 // ClearAllCaches removes all cached snapshots.
 func ClearAllCaches(homeDir string) error {
-	snapshotsDir := filepath.Join(homeDir, "snapshots")
+	snapshotsDir := paths.SnapshotCachePath(homeDir)
 	if err := os.RemoveAll(snapshotsDir); err != nil {
 		return fmt.Errorf("failed to clear all caches: %w", err)
 	}

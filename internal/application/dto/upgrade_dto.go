@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // ProposeInput contains the input for proposing an upgrade.
@@ -50,7 +51,7 @@ type SwitchBinaryInput struct {
 	CachePath     string // Pre-built cached binary
 	CommitHash    string // Commit hash of cached binary (deprecated, use CacheRef)
 	CacheRef      string // Cache key for SetActive
-	Mode          ports.ExecutionMode
+	Mode          types.ExecutionMode
 	UpgradeHeight int64 // Height to skip via --unsafe-skip-upgrades
 }
 
@@ -93,13 +94,14 @@ type ExecuteUpgradeInput struct {
 	CacheRef     string // Cache key for SetActive
 
 	// Options
-	TargetVersion string
-	VotingPeriod  time.Duration
-	HeightBuffer  int
-	UpgradeHeight int64
-	WithExport    bool
-	GenesisDir    string
-	Mode          ports.ExecutionMode
+	TargetVersion  string
+	VotingPeriod   time.Duration
+	HeightBuffer   int
+	UpgradeHeight  int64
+	WithExport     bool
+	GenesisDir     string
+	Mode           types.ExecutionMode
+	SkipGovernance bool // Skip governance proposal and voting (direct binary replacement)
 }
 
 // ExecuteUpgradeOutput contains the result of the full workflow.

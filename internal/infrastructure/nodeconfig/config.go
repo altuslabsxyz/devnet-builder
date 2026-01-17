@@ -8,33 +8,19 @@ import (
 	"strings"
 
 	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
-// PortConfig defines the port configuration for a node.
-type PortConfig struct {
-	P2P    int // P2P port (default: 26656)
-	RPC    int // RPC port (default: 26657)
-	Proxy  int // Proxy/ABCI port (default: 26658)
-	GRPC   int // gRPC port (default: 9090)
-	EVMRPC int // EVM JSON-RPC port (default: 8545)
-	EVMWS  int // EVM WebSocket port (default: 8546)
-	PProf  int // pprof port (default: 6060)
-	API    int // REST API port (default: 1317)
-}
+// PortConfig is an alias to the canonical types.PortConfig.
+//
+// Deprecated: Use types.PortConfig directly.
+type PortConfig = types.PortConfig
 
 // GetPortConfigForNode returns the port configuration for a node at the given index.
+//
+// Deprecated: Use types.PortConfigForNode() directly.
 func GetPortConfigForNode(index int) PortConfig {
-	offset := index * 10000
-	return PortConfig{
-		P2P:    26656 + offset,
-		RPC:    26657 + offset,
-		Proxy:  26658 + offset,
-		GRPC:   9090 + offset,
-		EVMRPC: 8545 + offset,
-		EVMWS:  8546 + offset,
-		PProf:  6060 + offset,
-		API:    1317 + offset,
-	}
+	return types.PortConfigForNode(index)
 }
 
 // ConfigEditor modifies config.toml and app.toml files.

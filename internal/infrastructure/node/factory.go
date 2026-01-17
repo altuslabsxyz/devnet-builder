@@ -4,23 +4,13 @@ import (
 	"fmt"
 
 	"github.com/b-harvest/devnet-builder/internal/output"
-)
-
-// ExecutionMode defines how nodes are executed.
-type ExecutionMode string
-
-const (
-	// ModeDocker runs nodes in Docker containers.
-	ModeDocker ExecutionMode = "docker"
-
-	// ModeLocal runs nodes as local processes.
-	ModeLocal ExecutionMode = "local"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // FactoryConfig contains configuration for creating a NodeManager.
 type FactoryConfig struct {
 	// Mode determines whether to use Docker or local execution.
-	Mode ExecutionMode
+	Mode types.ExecutionMode
 
 	// BinaryPath is the path to the stabled binary (local mode only).
 	// If empty, defaults to homeDir/bin/stabled.
@@ -40,7 +30,7 @@ type FactoryConfig struct {
 // Validate checks if the configuration is valid.
 func (c *FactoryConfig) Validate() error {
 	switch c.Mode {
-	case ModeDocker, ModeLocal:
+	case types.ExecutionModeDocker, types.ExecutionModeLocal:
 		return nil
 	case "":
 		return fmt.Errorf("execution mode is required")
@@ -73,9 +63,9 @@ func (f *NodeManagerFactory) Create() (NodeManager, error) {
 	}
 
 	switch f.config.Mode {
-	case ModeDocker:
+	case types.ExecutionModeDocker:
 		return f.createDockerManager(logger), nil
-	case ModeLocal:
+	case types.ExecutionModeLocal:
 		return f.createLocalManager(logger), nil
 	default:
 		// This should never happen due to Validate(), but handle it gracefully.
@@ -100,16 +90,16 @@ func (f *NodeManagerFactory) createLocalManager(logger *output.Logger) NodeManag
 }
 
 // Mode returns the configured execution mode.
-func (f *NodeManagerFactory) Mode() ExecutionMode {
+func (f *NodeManagerFactory) Mode() types.ExecutionMode {
 	return f.config.Mode
 }
 
 // IsDocker returns true if the factory is configured for Docker mode.
 func (f *NodeManagerFactory) IsDocker() bool {
-	return f.config.Mode == ModeDocker
+	return f.config.Mode == types.ExecutionModeDocker
 }
 
 // IsLocal returns true if the factory is configured for local mode.
 func (f *NodeManagerFactory) IsLocal() bool {
-	return f.config.Mode == ModeLocal
+	return f.config.Mode == types.ExecutionModeLocal
 }

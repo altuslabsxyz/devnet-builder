@@ -12,6 +12,7 @@ import (
 	"github.com/b-harvest/devnet-builder/internal/application/ports"
 	domainExport "github.com/b-harvest/devnet-builder/internal/domain/export"
 	infraExport "github.com/b-harvest/devnet-builder/internal/infrastructure/export"
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // Mock implementations
@@ -29,7 +30,7 @@ func (m *mockDevnetRepository) Load(ctx context.Context, homeDir string) (*ports
 		NetworkName:    "testnet",
 		NumValidators:  4,
 		NumAccounts:    10,
-		ExecutionMode:  ports.ModeLocal,
+		ExecutionMode:  types.ExecutionModeLocal,
 		HomeDir:        homeDir,
 		BinaryName:     "testd",
 		CurrentVersion: "v1.0.0",
@@ -133,15 +134,38 @@ func (m *mockLogger) ErrWriter() io.Writer                       { return os.Std
 func (m *mockLogger) IsVerbose() bool                            { return false }
 func (m *mockLogger) SetVerbose(verbose bool)                    {}
 
+// mockNodeLifecycleManager implements ports.NodeLifecycleManager for testing.
+type mockNodeLifecycleManager struct {
+	stopAllFunc  func(ctx context.Context, homeDir string, timeout time.Duration) (int, error)
+	startAllFunc func(ctx context.Context, homeDir string, timeout time.Duration) (int, bool, error)
+}
+
+func (m *mockNodeLifecycleManager) StopAll(ctx context.Context, homeDir string, timeout time.Duration) (int, error) {
+	if m.stopAllFunc != nil {
+		return m.stopAllFunc(ctx, homeDir, timeout)
+	}
+	// Default: successfully stop 1 node
+	return 1, nil
+}
+
+func (m *mockNodeLifecycleManager) StartAll(ctx context.Context, homeDir string, timeout time.Duration) (int, bool, error) {
+	if m.startAllFunc != nil {
+		return m.startAllFunc(ctx, homeDir, timeout)
+	}
+	// Default: successfully start 1 node
+	return 1, true, nil
+}
+
 // Tests
 
 func TestNewExportUseCase(t *testing.T) {
 	devnetRepo := &mockDevnetRepository{}
 	nodeRepo := &mockNodeRepository{}
 	exportRepo := &mockExportRepository{}
+	nodeLifecycle := &mockNodeLifecycleManager{}
 	logger := &mockLogger{}
 
-	uc := NewExportUseCase(devnetRepo, nodeRepo, exportRepo, logger)
+	uc := NewExportUseCase(context.Background(), devnetRepo, nodeRepo, exportRepo, nodeLifecycle, logger)
 
 	if uc == nil {
 		t.Fatal("expected non-nil ExportUseCase")
@@ -159,6 +183,10 @@ func TestNewExportUseCase(t *testing.T) {
 		t.Error("expected non-nil exportRepo")
 	}
 
+	if uc.nodeLifecycle == nil {
+		t.Error("expected non-nil nodeLifecycle")
+	}
+
 	if uc.hashCalc == nil {
 		t.Error("expected non-nil hashCalc")
 	}
@@ -167,8 +195,8 @@ func TestNewExportUseCase(t *testing.T) {
 		t.Error("expected non-nil heightResolver")
 	}
 
-	if uc.executor == nil {
-		t.Error("expected non-nil executor")
+	if uc.exportExec == nil {
+		t.Error("expected non-nil exportExec")
 	}
 
 	if uc.logger == nil {
@@ -183,7 +211,7 @@ func TestExportUseCase_Execute_DevnetLoadFailure(t *testing.T) {
 		},
 	}
 
-	uc := NewExportUseCase(devnetRepo, &mockNodeRepository{}, &mockExportRepository{}, &mockLogger{})
+	uc := NewExportUseCase(context.Background(), devnetRepo, &mockNodeRepository{}, &mockExportRepository{}, &mockNodeLifecycleManager{}, &mockLogger{})
 
 	input := dto.ExportInput{
 		HomeDir: "/tmp/test-devnet",
@@ -207,7 +235,7 @@ func TestExportUseCase_Execute_NodeLoadFailure(t *testing.T) {
 		},
 	}
 
-	uc := NewExportUseCase(&mockDevnetRepository{}, nodeRepo, &mockExportRepository{}, &mockLogger{})
+	uc := NewExportUseCase(context.Background(), &mockDevnetRepository{}, nodeRepo, &mockExportRepository{}, &mockNodeLifecycleManager{}, &mockLogger{})
 
 	input := dto.ExportInput{
 		HomeDir: "/tmp/test-devnet",
@@ -233,7 +261,7 @@ func TestExportUseCase_Execute_DevnetNotRunning(t *testing.T) {
 		},
 	}
 
-	uc := NewExportUseCase(&mockDevnetRepository{}, nodeRepo, &mockExportRepository{}, &mockLogger{})
+	uc := NewExportUseCase(context.Background(), &mockDevnetRepository{}, nodeRepo, &mockExportRepository{}, &mockNodeLifecycleManager{}, &mockLogger{})
 
 	input := dto.ExportInput{
 		HomeDir: "/tmp/test-devnet",
@@ -257,7 +285,7 @@ func TestExportUseCase_List_Success(t *testing.T) {
 		},
 	}
 
-	uc := NewExportUseCase(&mockDevnetRepository{}, &mockNodeRepository{}, exportRepo, &mockLogger{})
+	uc := NewExportUseCase(context.Background(), &mockDevnetRepository{}, &mockNodeRepository{}, exportRepo, &mockNodeLifecycleManager{}, &mockLogger{})
 
 	output, err := uc.List(context.Background(), "/tmp/test-devnet")
 
@@ -281,7 +309,7 @@ func TestExportUseCase_List_RepositoryFailure(t *testing.T) {
 		},
 	}
 
-	uc := NewExportUseCase(&mockDevnetRepository{}, &mockNodeRepository{}, exportRepo, &mockLogger{})
+	uc := NewExportUseCase(context.Background(), &mockDevnetRepository{}, &mockNodeRepository{}, exportRepo, &mockNodeLifecycleManager{}, &mockLogger{})
 
 	_, err := uc.List(context.Background(), "/tmp/test-devnet")
 
@@ -298,7 +326,7 @@ func TestExportUseCase_List_InvalidType(t *testing.T) {
 		},
 	}
 
-	uc := NewExportUseCase(&mockDevnetRepository{}, &mockNodeRepository{}, exportRepo, &mockLogger{})
+	uc := NewExportUseCase(context.Background(), &mockDevnetRepository{}, &mockNodeRepository{}, exportRepo, &mockNodeLifecycleManager{}, &mockLogger{})
 
 	_, err := uc.List(context.Background(), "/tmp/test-devnet")
 
@@ -310,7 +338,7 @@ func TestExportUseCase_List_InvalidType(t *testing.T) {
 func TestExportUseCase_Inspect_Success(t *testing.T) {
 	// Create valid test export
 	hash := "a1b2c3d4e5f67890123456789012345678901234567890123456789012345678"
-	binaryInfo, _ := domainExport.NewBinaryInfo("/usr/bin/testd", "", hash, "v1.0.0", domainExport.ExecutionModeLocal)
+	binaryInfo, _ := domainExport.NewBinaryInfo("/usr/bin/testd", "", hash, "v1.0.0", types.ExecutionModeLocal)
 	metadata, _ := domainExport.NewExportMetadata(
 		testTimestamp(),
 		1000000,
@@ -346,7 +374,7 @@ func TestExportUseCase_Inspect_Success(t *testing.T) {
 		},
 	}
 
-	uc := NewExportUseCase(&mockDevnetRepository{}, &mockNodeRepository{}, exportRepo, &mockLogger{})
+	uc := NewExportUseCase(context.Background(), &mockDevnetRepository{}, &mockNodeRepository{}, exportRepo, &mockNodeLifecycleManager{}, &mockLogger{})
 
 	output, err := uc.Inspect(context.Background(), "/tmp/exports/testnet-a1b2c3d4-1000000-20240115120000")
 
@@ -370,7 +398,7 @@ func TestExportUseCase_Inspect_ValidationFailure(t *testing.T) {
 		},
 	}
 
-	uc := NewExportUseCase(&mockDevnetRepository{}, &mockNodeRepository{}, exportRepo, &mockLogger{})
+	uc := NewExportUseCase(context.Background(), &mockDevnetRepository{}, &mockNodeRepository{}, exportRepo, &mockNodeLifecycleManager{}, &mockLogger{})
 
 	_, err := uc.Inspect(context.Background(), "/tmp/exports/invalid")
 
@@ -381,7 +409,7 @@ func TestExportUseCase_Inspect_ValidationFailure(t *testing.T) {
 
 func TestExportUseCase_Inspect_IncompleteExport(t *testing.T) {
 	hash := "a1b2c3d4e5f67890123456789012345678901234567890123456789012345678"
-	binaryInfo, _ := domainExport.NewBinaryInfo("/usr/bin/testd", "", hash, "v1.0.0", domainExport.ExecutionModeLocal)
+	binaryInfo, _ := domainExport.NewBinaryInfo("/usr/bin/testd", "", hash, "v1.0.0", types.ExecutionModeLocal)
 	metadata, _ := domainExport.NewExportMetadata(
 		testTimestamp(),
 		1000000,
@@ -417,7 +445,7 @@ func TestExportUseCase_Inspect_IncompleteExport(t *testing.T) {
 		},
 	}
 
-	uc := NewExportUseCase(&mockDevnetRepository{}, &mockNodeRepository{}, exportRepo, &mockLogger{})
+	uc := NewExportUseCase(context.Background(), &mockDevnetRepository{}, &mockNodeRepository{}, exportRepo, &mockNodeLifecycleManager{}, &mockLogger{})
 
 	output, err := uc.Inspect(context.Background(), "/tmp/exports/testnet-a1b2c3d4-1000000-20240115120000")
 
@@ -443,7 +471,7 @@ func TestExportUseCase_Inspect_InvalidType(t *testing.T) {
 		},
 	}
 
-	uc := NewExportUseCase(&mockDevnetRepository{}, &mockNodeRepository{}, exportRepo, &mockLogger{})
+	uc := NewExportUseCase(context.Background(), &mockDevnetRepository{}, &mockNodeRepository{}, exportRepo, &mockNodeLifecycleManager{}, &mockLogger{})
 
 	_, err := uc.Inspect(context.Background(), "/tmp/exports/invalid")
 

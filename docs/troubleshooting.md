@@ -10,7 +10,7 @@ Solutions for common issues when using devnet-builder.
   - [Docker Not Running](#docker-not-running)
   - [Port Conflicts](#port-conflicts)
   - [Insufficient Disk Space](#insufficient-disk-space)
-  - [Binary/Mode Mismatch](#binarymode-mismatch)
+  - [Binary/ExecutionMode Mismatch](#binarymode-mismatch)
   - [Chain Not Syncing](#chain-not-syncing)
   - [Upgrade Failure](#upgrade-failure)
   - [Permission Issues](#permission-issues)
@@ -171,7 +171,7 @@ devnet-builder destroy --cache --force
 
 ---
 
-### Binary/Mode Mismatch
+### Binary/ExecutionMode Mismatch
 
 **Symptoms:**
 - Error: `binary not found`
@@ -409,7 +409,7 @@ devnet-builder logs --tail 200 > devnet-logs.txt
 
 ### Log Locations
 
-| Mode | Log Location |
+| ExecutionMode | Log Location |
 |------|--------------|
 | Docker | `docker logs devnet-builder-node0` |
 | Local | `~/.devnet-builder/devnet/node0/node.log` |

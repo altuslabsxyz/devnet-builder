@@ -45,8 +45,69 @@ func NewExecuteUpgradeUseCase(
 }
 
 // Execute performs the full upgrade workflow.
+// When SkipGovernance is true, it skips proposal/vote/wait and directly replaces the binary.
 func (uc *ExecuteUpgradeUseCase) Execute(ctx context.Context, input dto.ExecuteUpgradeInput) (*dto.ExecuteUpgradeOutput, error) {
 	startTime := time.Now()
+
+	// Branch based on skip-gov mode
+	if input.SkipGovernance {
+		return uc.executeSkipGov(ctx, input, startTime)
+	}
+
+	return uc.executeWithGov(ctx, input, startTime)
+}
+
+// executeSkipGov performs binary replacement without governance (same as old "replace" command).
+func (uc *ExecuteUpgradeUseCase) executeSkipGov(ctx context.Context, input dto.ExecuteUpgradeInput, startTime time.Time) (*dto.ExecuteUpgradeOutput, error) {
+	uc.logger.Info("Starting binary replacement (skip governance)...")
+	output := &dto.ExecuteUpgradeOutput{}
+
+	// Step 1: Switch binary (stops nodes, replaces binary, restarts)
+	uc.logger.Info("Step 1/2: Switching binary...")
+	switchResult, err := uc.switchUC.Execute(ctx, dto.SwitchBinaryInput{
+		HomeDir:       input.HomeDir,
+		TargetBinary:  input.TargetBinary,
+		TargetImage:   input.TargetImage,
+		TargetVersion: input.TargetVersion,
+		CachePath:     input.CachePath,
+		CommitHash:    input.CommitHash,
+		CacheRef:      input.CacheRef,
+		Mode:          input.Mode,
+		UpgradeHeight: 0, // No upgrade height for skip-gov mode
+	})
+	if err != nil {
+		output.Error = err
+		return output, err
+	}
+	output.NewBinary = switchResult.NewBinary
+
+	// Step 2: Verify chain resumed
+	uc.logger.Info("Step 2/2: Verifying chain health...")
+	postHeight, err := uc.verifyChainResumed(ctx, input.HomeDir)
+	if err != nil {
+		output.Error = err
+		return output, err
+	}
+	output.PostUpgradeHeight = postHeight
+
+	// Update metadata version after successful upgrade
+	if input.TargetVersion != "" {
+		if err := uc.updateCurrentVersion(ctx, input.HomeDir, input.TargetVersion); err != nil {
+			uc.logger.Warn("Failed to update version in metadata: %v", err)
+			// Non-fatal: upgrade was successful, just version tracking failed
+		}
+	}
+
+	// Success
+	output.Success = true
+	output.Duration = time.Since(startTime)
+	uc.logger.Success("Binary replacement complete! Duration: %v", output.Duration)
+
+	return output, nil
+}
+
+// executeWithGov performs the full upgrade workflow with governance proposal.
+func (uc *ExecuteUpgradeUseCase) executeWithGov(ctx context.Context, input dto.ExecuteUpgradeInput, startTime time.Time) (*dto.ExecuteUpgradeOutput, error) {
 	uc.logger.Info("Starting upgrade workflow...")
 
 	output := &dto.ExecuteUpgradeOutput{}
@@ -175,12 +236,37 @@ func (uc *ExecuteUpgradeUseCase) Execute(ctx context.Context, input dto.ExecuteU
 		}
 	}
 
+	// Update metadata version after successful upgrade
+	if input.TargetVersion != "" {
+		if err := uc.updateCurrentVersion(ctx, input.HomeDir, input.TargetVersion); err != nil {
+			uc.logger.Warn("Failed to update version in metadata: %v", err)
+			// Non-fatal: upgrade was successful, just version tracking failed
+		}
+	}
+
 	// Success
 	output.Success = true
 	output.Duration = time.Since(startTime)
 	uc.logger.Success("Upgrade complete! Duration: %v", output.Duration)
 
 	return output, nil
+}
+
+// updateCurrentVersion updates the CurrentVersion in devnet metadata after successful upgrade.
+func (uc *ExecuteUpgradeUseCase) updateCurrentVersion(ctx context.Context, homeDir, version string) error {
+	metadata, err := uc.devnetRepo.Load(ctx, homeDir)
+	if err != nil {
+		return fmt.Errorf("failed to load metadata: %w", err)
+	}
+
+	metadata.CurrentVersion = version
+
+	if err := uc.devnetRepo.Save(ctx, metadata); err != nil {
+		return fmt.Errorf("failed to save metadata: %w", err)
+	}
+
+	uc.logger.Debug("Updated CurrentVersion to: %s", version)
+	return nil
 }
 
 func (uc *ExecuteUpgradeUseCase) waitForUpgradeHeight(ctx context.Context, targetHeight int64) error {

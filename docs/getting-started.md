@@ -109,7 +109,7 @@ Expected output:
 ```
 Devnet Status: running
 Chain ID: <network-specific>
-Execution Mode: docker
+Execution ExecutionMode: docker
 Network Source: mainnet
 
 Nodes:
@@ -200,7 +200,7 @@ devnet-builder deploy --network mainnet
 devnet-builder deploy --network testnet
 ```
 
-### Execution Mode
+### Execution ExecutionMode
 
 ```bash
 # Docker mode (recommended, default)

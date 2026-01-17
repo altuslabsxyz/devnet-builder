@@ -1,5 +1,5 @@
 # =============================================================================
-# E2E Test Configuration: Local Mode with 2 Validators
+# E2E Test Configuration: Local ExecutionMode with 2 Validators
 # =============================================================================
 # This configuration is used for E2E testing of devnet-builder in local mode
 # with a 2-validator network setup (faster execution).

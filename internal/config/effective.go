@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"text/tabwriter"
+
+	"github.com/b-harvest/devnet-builder/types"
 )
 
 // EffectiveConfig represents the final merged configuration after applying priority chain.
@@ -19,7 +21,6 @@ type EffectiveConfig struct {
 	BlockchainNetwork StringValue // Network module: "stable", "ault", etc.
 	Validators        IntValue
 	Mode              StringValue
-	StableVersion     StringValue // Deprecated: use NetworkVersion for new code
 	NetworkVersion    StringValue // Version for the selected blockchain network
 	NoCache           BoolValue
 	Accounts          IntValue
@@ -39,11 +40,10 @@ func NewEffectiveConfig(defaultHomeDir string) *EffectiveConfig {
 		NoColor:           NewBoolValue(false),
 		Verbose:           NewBoolValue(false),
 		JSON:              NewBoolValue(false),
-		Network:           NewStringValue("mainnet"),
+		Network:           NewStringValue(string(types.NetworkSourceMainnet)),
 		BlockchainNetwork: NewStringValue("stable"), // Default to stable for backward compatibility
 		Validators:        NewIntValue(4),
-		Mode:              NewStringValue("docker"),
-		StableVersion:     NewStringValue("latest"),
+		Mode:              NewStringValue(string(types.ExecutionModeDocker)),
 		NetworkVersion:    NewStringValue(""), // Empty means use network module default
 		NoCache:           NewBoolValue(false),
 		Accounts:          NewIntValue(0),
@@ -64,7 +64,6 @@ func (c *EffectiveConfig) ToTable(w io.Writer) {
 	fmt.Fprintf(tw, "blockchain_network\t%s\t%s\n", c.BlockchainNetwork.Value, c.BlockchainNetwork.Source)
 	fmt.Fprintf(tw, "validators\t%d\t%s\n", c.Validators.Value, c.Validators.Source)
 	fmt.Fprintf(tw, "mode\t%s\t%s\n", c.Mode.Value, c.Mode.Source)
-	fmt.Fprintf(tw, "stable_version\t%s\t%s\n", c.StableVersion.Value, c.StableVersion.Source)
 	fmt.Fprintf(tw, "network_version\t%s\t%s\n", c.NetworkVersion.Value, c.NetworkVersion.Source)
 	fmt.Fprintf(tw, "no_cache\t%t\t%s\n", c.NoCache.Value, c.NoCache.Source)
 	fmt.Fprintf(tw, "accounts\t%d\t%s\n", c.Accounts.Value, c.Accounts.Source)

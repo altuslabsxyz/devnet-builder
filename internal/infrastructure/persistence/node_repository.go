@@ -176,7 +176,7 @@ func (r *NodeFileRepository) toStoredFormat(n *ports.NodeMetadata) *storedNodeMe
 			P2P:     n.Ports.P2P,
 			GRPC:    n.Ports.GRPC,
 			API:     n.Ports.API,
-			EVM:     n.Ports.EVM,
+			EVM:     n.Ports.EVMRPC, // Storage format uses EVM, canonical uses EVMRPC
 			EVMWS:   n.Ports.EVMWS,
 			PProf:   n.Ports.PProf,
 			Rosetta: n.Ports.Rosetta,
@@ -199,7 +199,7 @@ func (r *NodeFileRepository) fromStoredFormat(s *storedNodeMetadata) *ports.Node
 			P2P:     s.Ports.P2P,
 			GRPC:    s.Ports.GRPC,
 			API:     s.Ports.API,
-			EVM:     s.Ports.EVM,
+			EVMRPC:  s.Ports.EVM, // Storage format uses EVM, canonical uses EVMRPC
 			EVMWS:   s.Ports.EVMWS,
 			PProf:   s.Ports.PProf,
 			Rosetta: s.Ports.Rosetta,
