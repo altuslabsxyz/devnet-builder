@@ -10,8 +10,8 @@
 //	package main
 //
 //	import (
-//	    "github.com/b-harvest/devnet-builder/pkg/network"
-//	    "github.com/b-harvest/devnet-builder/pkg/network/plugin"
+//	    "github.com/altuslabsxyz/devnet-builder/pkg/network"
+//	    "github.com/altuslabsxyz/devnet-builder/pkg/network/plugin"
 //	)
 //
 //	type MyNetwork struct{}
@@ -31,7 +31,7 @@ import (
 	"github.com/hashicorp/go-plugin"
 	"google.golang.org/grpc"
 
-	"github.com/b-harvest/devnet-builder/pkg/network"
+	"github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
 // Handshake is the handshake configuration for devnet-builder plugins.

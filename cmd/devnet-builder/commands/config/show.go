@@ -6,9 +6,9 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/b-harvest/devnet-builder/cmd/devnet-builder/shared"
-	"github.com/b-harvest/devnet-builder/internal/config"
-	"github.com/b-harvest/devnet-builder/internal/paths"
+	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
+	"github.com/altuslabsxyz/devnet-builder/internal/config"
+	"github.com/altuslabsxyz/devnet-builder/internal/paths"
 	"github.com/spf13/cobra"
 )
 

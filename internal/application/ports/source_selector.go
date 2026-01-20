@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"github.com/b-harvest/devnet-builder/internal/domain"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain"
 )
 
 // SourceSelector provides UI for choosing between binary source types.

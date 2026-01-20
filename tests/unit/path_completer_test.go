@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/interactive"
 )
 
 // TestPathCompleterAdapterCreation tests the NewPathCompleterAdapter constructor.

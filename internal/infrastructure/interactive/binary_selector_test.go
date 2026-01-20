@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/cache"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/cache"
 	"github.com/manifoldco/promptui"
 )
 

@@ -17,8 +17,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/pkg/network"
-	"github.com/b-harvest/devnet-builder/pkg/network/plugin"
+	"github.com/altuslabsxyz/devnet-builder/pkg/network"
+	"github.com/altuslabsxyz/devnet-builder/pkg/network/plugin"
 )
 
 func main() {

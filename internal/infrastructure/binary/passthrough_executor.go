@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"syscall"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 )
 
 // PassthroughExecutor implements ports.BinaryExecutor for executing plugin binaries.

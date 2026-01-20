@@ -6,9 +6,9 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/b-harvest/devnet-builder/cmd/devnet-builder/shared"
-	"github.com/b-harvest/devnet-builder/internal"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
+	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
+	"github.com/altuslabsxyz/devnet-builder/internal"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
 	"github.com/spf13/cobra"
 )
 

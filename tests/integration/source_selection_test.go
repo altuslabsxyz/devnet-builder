@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/domain"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/interactive"
 )
 
 // TestSourceSelectionNonInteractive tests that source selection defaults to GitHub releases

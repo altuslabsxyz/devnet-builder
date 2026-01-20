@@ -10,21 +10,21 @@ import (
 	"sync"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/cmd/devnet-builder/shared"
-	"github.com/b-harvest/devnet-builder/internal/application"
-	"github.com/b-harvest/devnet-builder/internal/application/dto"
-	"github.com/b-harvest/devnet-builder/internal/config"
-	"github.com/b-harvest/devnet-builder/internal/di"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/binary"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/cache"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/executor"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/filesystem"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
-	"github.com/b-harvest/devnet-builder/internal/output"
-	"github.com/b-harvest/devnet-builder/internal/paths"
-	"github.com/b-harvest/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
+	"github.com/altuslabsxyz/devnet-builder/internal/application"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
+	"github.com/altuslabsxyz/devnet-builder/internal/config"
+	"github.com/altuslabsxyz/devnet-builder/internal/di"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/binary"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/cache"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/executor"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/filesystem"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/github"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/interactive"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/internal/paths"
+	"github.com/altuslabsxyz/devnet-builder/types"
 	"github.com/spf13/cobra"
 )
 
@@ -311,7 +311,7 @@ Migration guide:
   • Docker mode (unchanged):
       devnet-builder deploy --mode docker --image your-image:tag
 
-For more information, see: https://github.com/b-harvest/devnet-builder/blob/main/docs/MIGRATION.md`)
+For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/main/docs/MIGRATION.md`)
 	}
 
 	// Validate blockchain network module exists

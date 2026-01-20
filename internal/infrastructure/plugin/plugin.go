@@ -29,7 +29,7 @@ import (
 	"github.com/hashicorp/go-plugin"
 	"google.golang.org/grpc"
 
-	pb "github.com/b-harvest/devnet-builder/pkg/network/plugin"
+	pb "github.com/altuslabsxyz/devnet-builder/pkg/network/plugin"
 )
 
 // Handshake is the handshake config for plugins.

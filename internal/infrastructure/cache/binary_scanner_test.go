@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/filesystem"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/filesystem"
 )
 
 // TestBinaryScanner_ScanCachedBinaries_EmptyCache tests scanning an empty cache directory

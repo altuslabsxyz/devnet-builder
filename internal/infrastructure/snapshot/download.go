@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
 )
 
 const (

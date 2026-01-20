@@ -7,7 +7,7 @@ import (
 
 	"cosmossdk.io/log"
 
-	sdknetwork "github.com/b-harvest/devnet-builder/pkg/network"
+	sdknetwork "github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
 // =============================================================================

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/domain/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain/ports"
 )
 
 // NetworkManagerImpl implements the NetworkManager interface

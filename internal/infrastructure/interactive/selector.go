@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/domain"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/github"
 	"github.com/manifoldco/promptui"
 )
 

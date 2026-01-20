@@ -142,10 +142,10 @@ jobs:
           echo "### Docker Images" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "# Pull the latest release" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ghcr.io/b-harvest/devnet-builder:${TAG}" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ghcr.io/altuslabsxyz/devnet-builder:${TAG}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "# Or use the latest tag" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ghcr.io/b-harvest/devnet-builder:latest" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ghcr.io/altuslabsxyz/devnet-builder:latest" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Binary Downloads" >> $GITHUB_STEP_SUMMARY
@@ -158,7 +158,7 @@ jobs:
           echo "### Quick Install" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "# Linux (amd64)" >> $GITHUB_STEP_SUMMARY
-          echo "curl -LO https://github.com/b-harvest/devnet-builder/releases/download/${TAG}/devnet-builder_\${TAG#v}_linux_amd64.tar.gz" >> $GITHUB_STEP_SUMMARY
+          echo "curl -LO https://github.com/altuslabsxyz/devnet-builder/releases/download/${TAG}/devnet-builder_\${TAG#v}_linux_amd64.tar.gz" >> $GITHUB_STEP_SUMMARY
           echo "tar -xzf devnet-builder_\${TAG#v}_linux_amd64.tar.gz" >> $GITHUB_STEP_SUMMARY
           echo "sudo mv devnet-builder /usr/local/bin/" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/b-harvest/devnet-builder/pkg/network/plugin"
+	pb "github.com/altuslabsxyz/devnet-builder/pkg/network/plugin"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

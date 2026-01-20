@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/paths"
+	"github.com/altuslabsxyz/devnet-builder/internal/paths"
 )
 
 const (

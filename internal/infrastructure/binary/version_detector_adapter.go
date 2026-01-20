@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/executor"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/executor"
 )
 
 // VersionDetectorAdapter implements ports.BinaryVersionDetector using command execution.

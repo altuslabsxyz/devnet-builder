@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/application/dto"
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	domainExport "github.com/b-harvest/devnet-builder/internal/domain/export"
-	infraExport "github.com/b-harvest/devnet-builder/internal/infrastructure/export"
-	"github.com/b-harvest/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	domainExport "github.com/altuslabsxyz/devnet-builder/internal/domain/export"
+	infraExport "github.com/altuslabsxyz/devnet-builder/internal/infrastructure/export"
+	"github.com/altuslabsxyz/devnet-builder/types"
 )
 
 // Mock implementations

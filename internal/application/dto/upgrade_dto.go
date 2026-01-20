@@ -3,8 +3,8 @@ package dto
 import (
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	"github.com/b-harvest/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/types"
 )
 
 // ProposeInput contains the input for proposing an upgrade.

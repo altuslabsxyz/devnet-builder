@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/pkg/network"
+	"github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
 type CachedBinary struct {

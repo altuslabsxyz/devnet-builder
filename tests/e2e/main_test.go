@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/b-harvest/devnet-builder/tests/e2e/helpers"
+	"github.com/altuslabsxyz/devnet-builder/tests/e2e/helpers"
 )
 
 // Global test fixtures shared across all tests

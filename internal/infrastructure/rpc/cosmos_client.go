@@ -13,8 +13,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	pb "github.com/b-harvest/devnet-builder/pkg/network/plugin"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	pb "github.com/altuslabsxyz/devnet-builder/pkg/network/plugin"
 )
 
 // NetworkPluginModule defines the interface for plugin-based RPC operations.

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/b-harvest/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/types"
 )
 
 // BinaryInfo contains information about the blockchain binary used for export

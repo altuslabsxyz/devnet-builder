@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/pelletier/go-toml/v2"
 )
 

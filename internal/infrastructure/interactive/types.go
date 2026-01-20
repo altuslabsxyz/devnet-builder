@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/domain"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain"
 )
 
 // SelectionConfig represents the user's selection state during interactive mode for start command.

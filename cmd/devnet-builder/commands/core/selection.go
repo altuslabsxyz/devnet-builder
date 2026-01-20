@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/b-harvest/devnet-builder/cmd/devnet-builder/shared"
-	"github.com/b-harvest/devnet-builder/internal/domain"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
+	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/interactive"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )

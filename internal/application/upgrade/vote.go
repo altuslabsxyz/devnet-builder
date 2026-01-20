@@ -6,8 +6,8 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/b-harvest/devnet-builder/internal/application/dto"
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"

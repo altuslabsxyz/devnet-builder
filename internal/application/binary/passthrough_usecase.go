@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 )
 
 // PassthroughUseCase orchestrates the binary passthrough flow.

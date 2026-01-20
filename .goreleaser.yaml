@@ -24,9 +24,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/b-harvest/devnet-builder/internal.Version={{.Version}}
-      - -X github.com/b-harvest/devnet-builder/internal.GitCommit={{.FullCommit}}
-      - -X github.com/b-harvest/devnet-builder/internal.BuildDate={{.Date}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal.Version={{.Version}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal.GitCommit={{.FullCommit}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal.BuildDate={{.Date}}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 universal_binaries:
@@ -75,7 +75,7 @@ dockers_v2:
       - devnet-builder
     dockerfile: Dockerfile.goreleaser
     images:
-      - "ghcr.io/b-harvest/devnet-builder"
+      - "ghcr.io/altuslabsxyz/devnet-builder"
     tags:
       - "{{ .Tag }}"
       - "v{{ .Major }}"
@@ -87,8 +87,8 @@ dockers_v2:
     labels:
       "org.opencontainers.image.title": "{{ .ProjectName }}"
       "org.opencontainers.image.description": "Build and manage local blockchain development networks"
-      "org.opencontainers.image.url": "https://github.com/b-harvest/devnet-builder"
-      "org.opencontainers.image.source": "https://github.com/b-harvest/devnet-builder"
+      "org.opencontainers.image.url": "https://github.com/altuslabsxyz/devnet-builder"
+      "org.opencontainers.image.source": "https://github.com/altuslabsxyz/devnet-builder"
       "org.opencontainers.image.version": "{{ .Version }}"
       "org.opencontainers.image.created": "{{ .Date }}"
       "org.opencontainers.image.revision": "{{ .FullCommit }}"
@@ -103,7 +103,7 @@ changelog:
   sort: asc
   use: github
   abbrev: 7
-  format: "[{{ .SHA }}](https://github.com/b-harvest/devnet-builder/commit/{{ .SHA }}) {{ .Message }} (@{{ .AuthorUsername }})"
+  format: "[{{ .SHA }}](https://github.com/altuslabsxyz/devnet-builder/commit/{{ .SHA }}) {{ .Message }} (@{{ .AuthorUsername }})"
   filters:
     exclude:
       - '^docs:'
@@ -149,19 +149,19 @@ release:
     **Download binary:**
     ```bash
     # Linux (amd64)
-    curl -LO https://github.com/b-harvest/devnet-builder/releases/download/{{ .Tag }}/devnet-builder_{{ .Version }}_linux_amd64.tar.gz
+    curl -LO https://github.com/altuslabsxyz/devnet-builder/releases/download/{{ .Tag }}/devnet-builder_{{ .Version }}_linux_amd64.tar.gz
     tar -xzf devnet-builder_{{ .Version }}_linux_amd64.tar.gz
     sudo mv devnet-builder /usr/local/bin/
 
     # macOS (Apple Silicon)
-    curl -LO https://github.com/b-harvest/devnet-builder/releases/download/{{ .Tag }}/devnet-builder_{{ .Version }}_darwin_arm64.tar.gz
+    curl -LO https://github.com/altuslabsxyz/devnet-builder/releases/download/{{ .Tag }}/devnet-builder_{{ .Version }}_darwin_arm64.tar.gz
     tar -xzf devnet-builder_{{ .Version }}_darwin_arm64.tar.gz
     sudo mv devnet-builder /usr/local/bin/
     ```
 
     **Docker:**
     ```bash
-    docker pull ghcr.io/b-harvest/devnet-builder:{{ .Tag }}
+    docker pull ghcr.io/altuslabsxyz/devnet-builder:{{ .Tag }}
     ```
 
     ### Verify Installation
@@ -171,7 +171,7 @@ release:
 
   footer: |
     ---
-    **Full Changelog**: https://github.com/b-harvest/devnet-builder/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **Full Changelog**: https://github.com/altuslabsxyz/devnet-builder/compare/{{ .PreviousTag }}...{{ .Tag }}
 
     ---
 

@@ -1,6 +1,6 @@
 package network
 
-import "github.com/b-harvest/devnet-builder/types"
+import "github.com/altuslabsxyz/devnet-builder/types"
 
 // PortConfig is an alias to the canonical types.PortConfig.
 //

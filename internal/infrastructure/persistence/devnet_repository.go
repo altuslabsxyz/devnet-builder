@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	"github.com/b-harvest/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/types"
 )
 
 // DevnetFileRepository implements DevnetRepository using the filesystem.

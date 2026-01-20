@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	pb "github.com/b-harvest/devnet-builder/pkg/network/plugin"
+	pb "github.com/altuslabsxyz/devnet-builder/pkg/network/plugin"
 )
 
 // GRPCClient is the gRPC client that the host uses to communicate with plugins.

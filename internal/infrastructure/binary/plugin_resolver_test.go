@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 )
 
 // Mock BinaryCache for testing

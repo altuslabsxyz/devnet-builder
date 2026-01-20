@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/b-harvest/devnet-builder/pkg/network"
+	"github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
 // GRPCServer is the gRPC server that plugins use to implement network.Module.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/b-harvest/devnet-builder/internal/domain"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain"
 	"github.com/manifoldco/promptui"
 	"golang.org/x/term"
 )

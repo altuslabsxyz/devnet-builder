@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/cache"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
-	"github.com/b-harvest/devnet-builder/internal/output"
-	sdknetwork "github.com/b-harvest/devnet-builder/pkg/network"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/cache"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	sdknetwork "github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
 const (

@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	domainVersion "github.com/b-harvest/devnet-builder/internal/domain/version"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	domainVersion "github.com/altuslabsxyz/devnet-builder/internal/domain/version"
 )
 
 const (

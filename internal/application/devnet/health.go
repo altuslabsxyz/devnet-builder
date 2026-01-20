@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/b-harvest/devnet-builder/internal/application/dto"
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 )
 
 // HealthUseCase handles health checking of devnet nodes.

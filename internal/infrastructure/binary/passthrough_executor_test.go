@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 )
 
 func TestPassthroughExecutor_Execute_Success(t *testing.T) {

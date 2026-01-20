@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	"github.com/b-harvest/devnet-builder/pkg/network"
-	"github.com/b-harvest/devnet-builder/pkg/network/plugin"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/pkg/network"
+	"github.com/altuslabsxyz/devnet-builder/pkg/network/plugin"
 )
 
 // PluginBinaryResolver implements ports.BinaryResolver using the plugin system.

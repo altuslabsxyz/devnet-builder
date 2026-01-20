@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/b-harvest/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/types"
 )
 
 // FileConfig represents the raw config.toml file contents.

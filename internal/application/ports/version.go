@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"github.com/b-harvest/devnet-builder/internal/domain/version"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain/version"
 )
 
 // VersionRepository defines operations for persisting version information.

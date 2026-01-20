@@ -4,8 +4,8 @@
 package shared
 
 import (
-	"github.com/b-harvest/devnet-builder/internal/config"
-	"github.com/b-harvest/devnet-builder/internal/di"
+	"github.com/altuslabsxyz/devnet-builder/internal/config"
+	"github.com/altuslabsxyz/devnet-builder/internal/di"
 )
 
 // Global configuration variables - accessed via getter/setter functions

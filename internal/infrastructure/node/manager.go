@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
 )
 
 // LocalNodeManager implements NodeManager for local process execution.

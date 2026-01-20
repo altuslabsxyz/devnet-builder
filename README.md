@@ -5,7 +5,7 @@
 ## TL;DR
 
 ```bash
-git clone https://github.com/b-harvest/devnet-builder.git && cd devnet-builder
+git clone https://github.com/altuslabsxyz/devnet-builder.git && cd devnet-builder
 make build
 ./build/devnet-builder deploy
 ```
@@ -54,7 +54,7 @@ zstd --version || lz4 --version
 ### Build from Source
 
 ```bash
-git clone https://github.com/b-harvest/devnet-builder.git
+git clone https://github.com/altuslabsxyz/devnet-builder.git
 cd devnet-builder
 make build
 

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/domain/ports"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/node"
-	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/node"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
 )
 
 // OrchestratorImpl implements the DeploymentOrchestrator interface

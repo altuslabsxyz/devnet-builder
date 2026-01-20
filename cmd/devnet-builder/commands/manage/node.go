@@ -9,11 +9,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/cmd/devnet-builder/shared"
-	"github.com/b-harvest/devnet-builder/internal/application"
-	"github.com/b-harvest/devnet-builder/internal/application/dto"
-	"github.com/b-harvest/devnet-builder/internal/output"
-	"github.com/b-harvest/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
+	"github.com/altuslabsxyz/devnet-builder/internal/application"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/types"
 	"github.com/spf13/cobra"
 )
 

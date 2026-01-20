@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 )
 
 // Mock implementations for testing

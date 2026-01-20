@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/b-harvest/devnet-builder/internal/domain/version"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain/version"
 )
 
 // CacheKeyMigration migrates from network-based cache keys to composite cache keys.

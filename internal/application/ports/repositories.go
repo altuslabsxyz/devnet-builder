@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/types"
 )
 
 // DevnetState represents the current state of the devnet.

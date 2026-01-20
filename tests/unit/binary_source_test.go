@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/b-harvest/devnet-builder/internal/domain"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain"
 )
 
 // TestBinarySourceCreation tests the NewBinarySource constructor.

@@ -4,7 +4,7 @@ package migrations
 import (
 	"context"
 
-	"github.com/b-harvest/devnet-builder/internal/domain/version"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain/version"
 )
 
 // NoOpMigration is a no-op migration from 0.0.2 to 0.1.0-dev.

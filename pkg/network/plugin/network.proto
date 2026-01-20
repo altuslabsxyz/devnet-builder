@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package network;
 
-option go_package = "github.com/b-harvest/devnet-builder/pkg/network/plugin";
+option go_package = "github.com/altuslabsxyz/devnet-builder/pkg/network/plugin";
 
 // NetworkModule service definition
 service NetworkModule {

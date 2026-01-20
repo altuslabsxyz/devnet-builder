@@ -11,12 +11,12 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/types/bech32"
 
-	"github.com/b-harvest/devnet-builder/internal/application/dto"
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/stateexport"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/tomlutil"
-	"github.com/b-harvest/devnet-builder/internal/paths"
-	"github.com/b-harvest/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/stateexport"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/tomlutil"
+	"github.com/altuslabsxyz/devnet-builder/internal/paths"
+	"github.com/altuslabsxyz/devnet-builder/types"
 )
 
 // ProvisionUseCase handles devnet provisioning.

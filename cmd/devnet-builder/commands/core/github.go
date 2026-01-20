@@ -4,8 +4,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/config"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
+	"github.com/altuslabsxyz/devnet-builder/internal/config"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/github"
 )
 
 // SetupGitHubClient creates a GitHub client with optional caching and token.

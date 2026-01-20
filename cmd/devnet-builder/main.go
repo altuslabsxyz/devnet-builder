@@ -7,13 +7,13 @@ import (
 
 	"github.com/fatih/color"
 
-	"github.com/b-harvest/devnet-builder/cmd/devnet-builder/commands"
-	"github.com/b-harvest/devnet-builder/internal"
-	"github.com/b-harvest/devnet-builder/internal/di"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/version/migrations"
-	"github.com/b-harvest/devnet-builder/internal/output"
-	"github.com/b-harvest/devnet-builder/pkg/network/plugin"
+	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/commands"
+	"github.com/altuslabsxyz/devnet-builder/internal"
+	"github.com/altuslabsxyz/devnet-builder/internal/di"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/version/migrations"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/pkg/network/plugin"
 )
 
 // Global plugin loader - shared across the application

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/b-harvest/devnet-builder/internal/domain/ports"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/docker"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/docker"
 )
 
 // TestPortAllocator_AllocateRange tests basic port allocation

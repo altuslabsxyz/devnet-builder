@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/b-harvest/devnet-builder/internal/application/dto"
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	"github.com/b-harvest/devnet-builder/pkg/network"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
 // mockVersionDetector is a test double for BinaryVersionDetector

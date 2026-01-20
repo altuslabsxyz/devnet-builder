@@ -1,7 +1,7 @@
 package dto
 
 import (
-	"github.com/b-harvest/devnet-builder/pkg/network"
+	"github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
 // CustomBinaryImportInput contains the input parameters for importing a custom binary

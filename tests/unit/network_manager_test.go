@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/docker"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/docker"
 )
 
 // TestNetworkManager_CreateNetwork tests basic network creation

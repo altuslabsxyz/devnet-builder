@@ -10,16 +10,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/application/binary"
-	"github.com/b-harvest/devnet-builder/internal/application/build"
-	appdevnet "github.com/b-harvest/devnet-builder/internal/application/devnet"
-	"github.com/b-harvest/devnet-builder/internal/application/dto"
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	"github.com/b-harvest/devnet-builder/internal/application/upgrade"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/plugin"
-	"github.com/b-harvest/devnet-builder/internal/output"
-	"github.com/b-harvest/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/binary"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/build"
+	appdevnet "github.com/altuslabsxyz/devnet-builder/internal/application/devnet"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/upgrade"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/plugin"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/types"
 )
 
 // exportUseCaseAdapter adapts the concrete ExportUseCase to the ports interface.

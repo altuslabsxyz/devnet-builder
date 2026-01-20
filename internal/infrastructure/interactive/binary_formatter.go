@@ -3,7 +3,7 @@ package interactive
 import (
 	"fmt"
 
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/cache"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/cache"
 )
 
 // formatBinaryForDisplay formats a CachedBinaryMetadata into a user-friendly display string.

@@ -3,9 +3,9 @@ package internal
 // Build-time variables injected via ldflags
 // These are set by GoReleaser during the build process:
 //
-//	-X github.com/b-harvest/devnet-builder/internal.Version={{.Version}}
-//	-X github.com/b-harvest/devnet-builder/internal.GitCommit={{.FullCommit}}
-//	-X github.com/b-harvest/devnet-builder/internal.BuildDate={{.Date}}
+//	-X github.com/altuslabsxyz/devnet-builder/internal.Version={{.Version}}
+//	-X github.com/altuslabsxyz/devnet-builder/internal.GitCommit={{.FullCommit}}
+//	-X github.com/altuslabsxyz/devnet-builder/internal.BuildDate={{.Date}}
 var (
 	// Version is the semantic version of the application.
 	// Set at build time via ldflags, defaults to "0.1.0-dev" for local builds.

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/cache"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/cache"
 )
 
 // BinaryValidator validates cached binaries for usability.

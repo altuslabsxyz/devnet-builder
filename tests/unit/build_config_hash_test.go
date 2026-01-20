@@ -3,7 +3,7 @@ package unit_test
 import (
 	"testing"
 
-	"github.com/b-harvest/devnet-builder/pkg/network"
+	"github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
 // TestBuildConfigHashDeterminism verifies that Hash() produces the same output

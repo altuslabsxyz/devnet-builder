@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	binaryapp "github.com/b-harvest/devnet-builder/internal/application/binary"
-	"github.com/b-harvest/devnet-builder/internal/di"
-	"github.com/b-harvest/devnet-builder/internal/output"
+	binaryapp "github.com/altuslabsxyz/devnet-builder/internal/application/binary"
+	"github.com/altuslabsxyz/devnet-builder/internal/di"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
 )
 

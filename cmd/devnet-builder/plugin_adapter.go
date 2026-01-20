@@ -7,8 +7,8 @@ import (
 	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
-	internalNetwork "github.com/b-harvest/devnet-builder/internal/infrastructure/network"
-	pkgNetwork "github.com/b-harvest/devnet-builder/pkg/network"
+	internalNetwork "github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
+	pkgNetwork "github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
 // pluginAdapter adapts pkg/network.Module to internal/network.NetworkModule.

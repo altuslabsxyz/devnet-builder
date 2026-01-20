@@ -7,11 +7,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/cmd/devnet-builder/shared"
-	"github.com/b-harvest/devnet-builder/internal/config"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/github"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
-	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
+	"github.com/altuslabsxyz/devnet-builder/internal/config"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/github"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/interactive"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
 )
 

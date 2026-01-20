@@ -3,7 +3,7 @@ package credential
 import (
 	"fmt"
 
-	"github.com/b-harvest/devnet-builder/internal/domain/credential"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain/credential"
 )
 
 // =============================================================================

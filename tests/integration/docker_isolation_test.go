@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/domain/ports"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/docker"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/node"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/docker"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/node"
 )
 
 // requireDockerDaemon skips the test if Docker daemon is not available

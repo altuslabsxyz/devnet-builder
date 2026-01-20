@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 )
 
 // DockerExecutorImpl implements DockerExecutor for Docker container execution.

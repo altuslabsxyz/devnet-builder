@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	domainExport "github.com/b-harvest/devnet-builder/internal/domain/export"
-	"github.com/b-harvest/devnet-builder/types"
+	domainExport "github.com/altuslabsxyz/devnet-builder/internal/domain/export"
+	"github.com/altuslabsxyz/devnet-builder/types"
 )
 
 func createTestExport(t *testing.T, dirPath string) *domainExport.Export {

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/pkg/network"
+	"github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
 // TestMultiNetworkBuild verifies that mainnet and testnet builds produce

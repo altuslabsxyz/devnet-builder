@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	"github.com/b-harvest/devnet-builder/internal/output"
-	pkgNetwork "github.com/b-harvest/devnet-builder/pkg/network"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	pkgNetwork "github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
 // Adapter implements ports.StateExportService.

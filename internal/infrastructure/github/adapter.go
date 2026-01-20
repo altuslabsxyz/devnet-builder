@@ -4,7 +4,7 @@ package github
 import (
 	"context"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 )
 
 // Adapter implements ports.GitHubClient using the github Client.

@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/application/dto"
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	domainports "github.com/b-harvest/devnet-builder/internal/domain/ports"
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/node"
-	"github.com/b-harvest/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	domainports "github.com/altuslabsxyz/devnet-builder/internal/domain/ports"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/node"
+	"github.com/altuslabsxyz/devnet-builder/types"
 )
 
 // DockerDeployUseCase handles Docker-based devnet deployment with network isolation

@@ -3,8 +3,8 @@ package config
 import (
 	"fmt"
 
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/network"
-	"github.com/b-harvest/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
+	"github.com/altuslabsxyz/devnet-builder/types"
 )
 
 // Validate validates the EffectiveConfig values against allowed ranges and types.

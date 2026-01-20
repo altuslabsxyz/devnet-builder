@@ -3,8 +3,8 @@ package node
 import (
 	"testing"
 
-	"github.com/b-harvest/devnet-builder/internal/output"
-	"github.com/b-harvest/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/types"
 )
 
 func TestFactoryConfig_Validate(t *testing.T) {

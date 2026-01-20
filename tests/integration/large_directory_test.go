@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/interactive"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/interactive"
 )
 
 // TestPathCompleterLargeDirectoryPerformance tests autocomplete performance with 10k files.

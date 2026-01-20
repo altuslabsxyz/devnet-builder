@@ -2,7 +2,7 @@
 package credential
 
 import (
-	"github.com/b-harvest/devnet-builder/internal/domain/credential"
+	"github.com/altuslabsxyz/devnet-builder/internal/domain/credential"
 	"github.com/zalando/go-keyring"
 )
 

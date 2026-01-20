@@ -13,8 +13,8 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
 
-	"github.com/b-harvest/devnet-builder/internal/paths"
-	"github.com/b-harvest/devnet-builder/pkg/network"
+	"github.com/altuslabsxyz/devnet-builder/internal/paths"
+	"github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
 // =============================================================================

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/b-harvest/devnet-builder/internal/infrastructure/cache"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/cache"
 	"github.com/manifoldco/promptui"
 	"golang.org/x/term"
 )

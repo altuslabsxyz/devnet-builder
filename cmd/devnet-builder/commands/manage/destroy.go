@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/b-harvest/devnet-builder/cmd/devnet-builder/shared"
-	"github.com/b-harvest/devnet-builder/internal/application"
-	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
+	"github.com/altuslabsxyz/devnet-builder/internal/application"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
 )
 

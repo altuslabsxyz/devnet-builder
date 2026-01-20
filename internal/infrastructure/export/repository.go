@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	domainExport "github.com/b-harvest/devnet-builder/internal/domain/export"
-	"github.com/b-harvest/devnet-builder/internal/paths"
-	"github.com/b-harvest/devnet-builder/types"
+	domainExport "github.com/altuslabsxyz/devnet-builder/internal/domain/export"
+	"github.com/altuslabsxyz/devnet-builder/internal/paths"
+	"github.com/altuslabsxyz/devnet-builder/types"
 )
 
 // Repository implements ports.ExportRepository for file-based persistence.

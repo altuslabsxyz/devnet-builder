@@ -1,4 +1,4 @@
-module github.com/b-harvest/devnet-builder
+module github.com/altuslabsxyz/devnet-builder
 
 go 1.24.0
 

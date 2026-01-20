@@ -7,9 +7,9 @@ import (
 
 	"github.com/hashicorp/go-version"
 
-	"github.com/b-harvest/devnet-builder/internal/application/ports"
-	domainVersion "github.com/b-harvest/devnet-builder/internal/domain/version"
-	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	domainVersion "github.com/altuslabsxyz/devnet-builder/internal/domain/version"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
 )
 
 const (

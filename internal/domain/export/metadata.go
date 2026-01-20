@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/b-harvest/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/types"
 )
 
 // ExportMetadata contains comprehensive information about an exported state

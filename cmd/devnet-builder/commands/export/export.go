@@ -10,10 +10,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/b-harvest/devnet-builder/cmd/devnet-builder/shared"
-	"github.com/b-harvest/devnet-builder/internal/application"
-	domainExport "github.com/b-harvest/devnet-builder/internal/domain/export"
-	"github.com/b-harvest/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
+	"github.com/altuslabsxyz/devnet-builder/internal/application"
+	domainExport "github.com/altuslabsxyz/devnet-builder/internal/domain/export"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/spf13/cobra"
 )
 
