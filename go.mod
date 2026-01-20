@@ -9,6 +9,7 @@ require (
 	cosmossdk.io/math v1.5.3
 	github.com/chzyer/readline v1.5.1
 	github.com/cosmos/cosmos-sdk v0.53.4
+	github.com/cosmos/go-bip39 v1.0.0
 	github.com/ethereum/go-ethereum v1.15.11
 	github.com/fatih/color v1.17.0
 	github.com/hashicorp/go-hclog v1.6.3

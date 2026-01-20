@@ -225,14 +225,16 @@ type ValidatorKeyInfo struct {
 	Address    string
 	ValAddress string
 	Mnemonic   string
+	PrivateKey string `json:",omitempty"`
 }
 
 // AccountKeyInfo contains account key information.
 type AccountKeyInfo struct {
-	Index    int
-	Name     string
-	Address  string
-	Mnemonic string
+	Index      int
+	Name       string
+	Address    string
+	Mnemonic   string
+	PrivateKey string `json:",omitempty"`
 }
 
 // RestartInput contains the input for restarting devnet.

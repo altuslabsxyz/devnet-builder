@@ -3,6 +3,7 @@ package application
 import (
 	"bufio"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -17,6 +18,8 @@ import (
 	"github.com/b-harvest/devnet-builder/internal/output"
 	"github.com/b-harvest/devnet-builder/internal/paths"
 	"github.com/b-harvest/devnet-builder/types"
+	"github.com/cosmos/cosmos-sdk/crypto/hd"
+	"github.com/cosmos/go-bip39"
 )
 
 // DevnetService provides unified access to devnet operations
@@ -673,12 +676,20 @@ func (s *DevnetService) readValidatorKeyFromFile(devnetDir string, index int) (*
 		return nil, fmt.Errorf("failed to parse validator key file: %w", err)
 	}
 
+	// Derive private key from mnemonic
+	privateKey, err := derivePrivateKeyFromMnemonic(keyFile.Mnemonic)
+	if err != nil {
+		// Log warning but don't fail - private key is optional
+		privateKey = ""
+	}
+
 	return &dto.ValidatorKeyInfo{
 		Index:      index,
 		Name:       keyFile.Name,
 		Address:    keyFile.Address,
 		ValAddress: keyFile.ValAddress,
 		Mnemonic:   keyFile.Mnemonic,
+		PrivateKey: privateKey,
 	}, nil
 }
 
@@ -696,12 +707,53 @@ func (s *DevnetService) readAccountKeyFromFile(devnetDir string, index int) (*dt
 		return nil, fmt.Errorf("failed to parse account key file: %w", err)
 	}
 
+	// Derive private key from mnemonic
+	privateKey, err := derivePrivateKeyFromMnemonic(keyFile.Mnemonic)
+	if err != nil {
+		// Log warning but don't fail - private key is optional
+		privateKey = ""
+	}
+
 	return &dto.AccountKeyInfo{
-		Index:    index,
-		Name:     keyFile.Name,
-		Address:  keyFile.Address,
-		Mnemonic: keyFile.Mnemonic,
+		Index:      index,
+		Name:       keyFile.Name,
+		Address:    keyFile.Address,
+		Mnemonic:   keyFile.Mnemonic,
+		PrivateKey: privateKey,
 	}, nil
+}
+
+// EthereumHDPath is the BIP44 HD path for Ethereum (coin type 60).
+// Used for eth_secp256k1 keys in EVM-compatible chains.
+const EthereumHDPath = "m/44'/60'/0'/0/0"
+
+// derivePrivateKeyFromMnemonic derives a private key from a BIP39 mnemonic.
+// It uses the Ethereum HD path (m/44'/60'/0'/0/0) for eth_secp256k1 keys.
+// Returns the private key as a hex string without 0x prefix.
+func derivePrivateKeyFromMnemonic(mnemonic string) (string, error) {
+	if mnemonic == "" {
+		return "", fmt.Errorf("mnemonic is empty")
+	}
+
+	// Validate mnemonic
+	if !bip39.IsMnemonicValid(mnemonic) {
+		return "", fmt.Errorf("invalid mnemonic")
+	}
+
+	// Convert mnemonic to seed (using empty passphrase)
+	seed := bip39.NewSeed(mnemonic, "")
+
+	// Compute master key and chain code from seed
+	masterPrivKey, chainCode := hd.ComputeMastersFromSeed(seed)
+
+	// Derive private key using Ethereum HD path
+	derivedKey, err := hd.DerivePrivateKeyForPath(masterPrivKey, chainCode, EthereumHDPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to derive private key: %w", err)
+	}
+
+	// Return as hex string (without 0x prefix, to match stabled behavior)
+	return hex.EncodeToString(derivedKey), nil
 }
 
 // GetNode returns node information by index.
