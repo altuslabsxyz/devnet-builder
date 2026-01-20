@@ -53,7 +53,24 @@ func (s *Service) GetCurrentVersion(homeDir string) (*domainVersion.Version, err
 	return v, nil
 }
 
+// isPatchOnlyUpgrade checks if the version change is only a patch version bump.
+// Returns true if major and minor versions are the same, meaning only patch changed.
+// For example: 1.2.0 -> 1.2.3 returns true, but 1.2.0 -> 1.3.0 returns false.
+func isPatchOnlyUpgrade(current, target *version.Version) bool {
+	currentSegs := current.Segments()
+	targetSegs := target.Segments()
+
+	// Ensure we have at least major.minor for both versions
+	if len(currentSegs) < 2 || len(targetSegs) < 2 {
+		return false
+	}
+
+	// Check if major and minor are the same
+	return currentSegs[0] == targetSegs[0] && currentSegs[1] == targetSegs[1]
+}
+
 // CheckAndMigrate checks if migration is needed and applies migrations.
+// Note: Patch-only upgrades (e.g., v1.2.0 -> v1.2.3) skip migration and only update the version.
 func (s *Service) CheckAndMigrate(ctx context.Context, homeDir string, target string) (*domainVersion.Version, error) {
 	// Get current version
 	current, err := s.GetCurrentVersion(homeDir)
@@ -81,6 +98,16 @@ func (s *Service) CheckAndMigrate(ctx context.Context, homeDir string, target st
 	if currentVer.GreaterThan(targetVer) {
 		// Downgrade not supported
 		return nil, fmt.Errorf("downgrade from %s to %s is not supported", current.Current, target)
+	}
+
+	// Skip migration for patch-only upgrades (e.g., v1.2.0 -> v1.2.3)
+	if isPatchOnlyUpgrade(currentVer, targetVer) {
+		s.logger.Debug("Patch-only upgrade %s -> %s, skipping migration", current.Current, target)
+		current.Current = target
+		if err := s.repository.Save(homeDir, current); err != nil {
+			return nil, fmt.Errorf("failed to save version: %w", err)
+		}
+		return current, nil
 	}
 
 	// Find migration path
