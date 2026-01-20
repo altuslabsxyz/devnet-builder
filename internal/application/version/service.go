@@ -98,6 +98,9 @@ func (s *Service) CheckAndMigrate(ctx context.Context, homeDir string, target st
 		}
 	}
 
+	// Update current version to target
+	current.Current = target
+
 	// Save final version
 	if err := s.repository.Save(homeDir, current); err != nil {
 		return nil, fmt.Errorf("failed to save version: %w", err)
