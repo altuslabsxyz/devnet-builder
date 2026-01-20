@@ -13,14 +13,15 @@ BUILDDIR ?= $(CURDIR)/build
 BINARY_NAME = devnet-builder
 
 # Version information
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+# Try to get version from git tags, fallback to commit hash if no tags exist
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "v0.0.0-dev")
+GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 # ldflags for version injection
-LDFLAGS = -X main.Version=$(VERSION) \
-          -X main.GitCommit=$(GIT_COMMIT) \
-          -X main.BuildDate=$(BUILD_DATE)
+LDFLAGS = -X github.com/altuslabsxyz/devnet-builder/internal.Version=$(VERSION) \
+          -X github.com/altuslabsxyz/devnet-builder/internal.GitCommit=$(GIT_COMMIT) \
+          -X github.com/altuslabsxyz/devnet-builder/internal.BuildDate=$(BUILD_DATE)
 
 # Default target
 .DEFAULT_GOAL := build
