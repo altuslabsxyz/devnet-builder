@@ -482,6 +482,8 @@ func (s *DevnetService) StartNode(ctx context.Context, nodeIndex int) (*dto.Node
 
 	// Build start command
 	args := networkModule.StartCommand(node.HomeDir)
+	args = append(args, "--chain-id", node.ChainID)
+
 	cmd := ports.Command{
 		Binary:  networkModule.BinaryName(),
 		Args:    args,
