@@ -38,6 +38,7 @@ var (
 	deployAccounts          int
 	deployNoInteractive     bool
 	deployStartVersion      string
+	deployExportVersion     string // Version for export binary (genesis export), optional
 	deployImage             string
 	deployFork              bool   // Fork live network state via snapshot export
 	deployTestMnemonic      bool   // Use deterministic test mnemonics for validators
@@ -97,7 +98,11 @@ Examples:
   → Then select "Use local binary" and browse to your binary
 
   # Deploy with fork mode (binary needed for genesis export)
-  devnet-builder deploy --mode local --fork`,
+  devnet-builder deploy --mode local --fork
+
+  # Deploy with different binary versions for export and start
+  # (useful when export requires a specific version for state compatibility)
+  devnet-builder deploy --mode local --start-version v1.2.3 --export-version v1.1.0`,
 		RunE: runDeploy,
 	}
 
@@ -123,6 +128,8 @@ Examples:
 		"Disable version selection prompts (use --start-version, --image instead)")
 	cmd.Flags().StringVar(&deployStartVersion, "start-version", "",
 		"Version for devnet binary (non-interactive mode)")
+	cmd.Flags().StringVar(&deployExportVersion, "export-version", "",
+		"Version for genesis export binary (optional, defaults to start-version)")
 
 	// Docker image flag
 	cmd.Flags().StringVar(&deployImage, "image", "",
@@ -213,7 +220,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		deployAccounts = *effectiveCfg.Accounts
 	}
 
-	// Track version for deployment (unified: same version for export and start)
+	// Track version for deployment
+	// startVersion: binary for running nodes
+	// exportVersion is handled separately via --export-version flag
 	var startVersion string
 	var dockerImage string
 
@@ -222,8 +231,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Skip interactive version selection if --binary flag is provided
 	isInteractive := !deployNoInteractive && !jsonMode() && deployBinary == ""
 
-	// Variable to store custom binary path (set by unified selection or selectBinaryForDeployment)
+	// Variable to store binary paths
+	// customBinaryPath: binary for running nodes (start)
+	// exportBinaryPath: binary for genesis export (may differ if --export-version is set)
 	var customBinaryPath string
+	var exportBinaryPath string
 
 	// Docker mode uses GHCR package versions, not GitHub releases
 	if deployMode == "docker" {
@@ -373,9 +385,30 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 			// customBinaryPath already set from unified selection - use it directly
 			logger.Success("Using selected binary: %s", customBinaryPath)
 		}
+
+		// Handle --export-version flag for separate export binary
+		// This allows using a different binary version for genesis export
+		if deployExportVersion != "" {
+			logger.Info("Building export binary version: %s", deployExportVersion)
+			buildResult, err := buildBinaryForDeploy(ctx, deployBlockchainNetwork, deployExportVersion, deployNetwork, logger)
+			if err != nil {
+				return fmt.Errorf("failed to build export binary: %w", err)
+			}
+			exportBinaryPath = buildResult.BinaryPath
+			commitShort := buildResult.CommitHash
+			if len(commitShort) > 12 {
+				commitShort = commitShort[:12]
+			}
+			logger.Success("Export binary ready (version: %s, commit: %s)", deployExportVersion, commitShort)
+		} else {
+			// No export version specified - use start binary for export too
+			exportBinaryPath = customBinaryPath
+		}
 	}
 
 	// Phase 1: Provision using DevnetService
+	// Note: BinaryPath is used for genesis export, CustomBinaryPath is used for node startup
+	// When --export-version is specified, these may be different binaries
 	provisionInput := dto.ProvisionInput{
 		HomeDir:           homeDir,
 		Network:           deployNetwork,
@@ -386,9 +419,9 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 		StableVersion:     startVersion,
 		DockerImage:       dockerImage,
 		NoCache:           deployNoCache,
-		CustomBinaryPath:  customBinaryPath,
+		CustomBinaryPath:  customBinaryPath,  // Binary for node startup
 		UseSnapshot:       deployFork,
-		BinaryPath:        customBinaryPath,
+		BinaryPath:        exportBinaryPath,  // Binary for genesis export (may differ with --export-version)
 		UseTestMnemonic:   deployTestMnemonic,
 	}
 
