@@ -419,9 +419,9 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 		StableVersion:     startVersion,
 		DockerImage:       dockerImage,
 		NoCache:           deployNoCache,
-		CustomBinaryPath:  customBinaryPath,  // Binary for node startup
+		CustomBinaryPath:  customBinaryPath, // Binary for node startup
 		UseSnapshot:       deployFork,
-		BinaryPath:        exportBinaryPath,  // Binary for genesis export (may differ with --export-version)
+		BinaryPath:        exportBinaryPath, // Binary for genesis export (may differ with --export-version)
 		UseTestMnemonic:   deployTestMnemonic,
 	}
 
