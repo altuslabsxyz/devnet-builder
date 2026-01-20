@@ -53,7 +53,25 @@ func (s *Service) GetCurrentVersion(homeDir string) (*domainVersion.Version, err
 	return v, nil
 }
 
+// isSameMajorMinor checks if two versions have the same major and minor version.
+// Returns true if major.minor are identical, ignoring patch, prerelease, and git metadata.
+// For example: 1.2.0 and 1.2.3 -> true, 1.2.0-rc0-7-g... and 1.2.0-rc0-12-g... -> true
+func isSameMajorMinor(current, target *version.Version) bool {
+	currentSegs := current.Segments()
+	targetSegs := target.Segments()
+
+	// Ensure we have at least major.minor for both versions
+	if len(currentSegs) < 2 || len(targetSegs) < 2 {
+		return false
+	}
+
+	// Check if major and minor are the same
+	return currentSegs[0] == targetSegs[0] && currentSegs[1] == targetSegs[1]
+}
+
 // CheckAndMigrate checks if migration is needed and applies migrations.
+// Note: If major.minor are the same, skip migration entirely and only update the version.
+// This avoids issues with prerelease/git-describe version comparisons.
 func (s *Service) CheckAndMigrate(ctx context.Context, homeDir string, target string) (*domainVersion.Version, error) {
 	// Get current version
 	current, err := s.GetCurrentVersion(homeDir)
@@ -72,15 +90,28 @@ func (s *Service) CheckAndMigrate(ctx context.Context, homeDir string, target st
 		return nil, fmt.Errorf("invalid target version %s: %w", target, err)
 	}
 
-	// Check if migration is needed
-	if currentVer.Equal(targetVer) {
-		s.logger.Debug("Version %s is current, no migration needed", current.Current)
+	// Check major.minor first - if same, skip migration entirely (just update version)
+	// This avoids prerelease comparison issues (e.g., v1.0.0-rc0-7-g... vs v1.0.0-rc0-12-g...)
+	if isSameMajorMinor(currentVer, targetVer) {
+		if current.Current == target {
+			s.logger.Debug("Version %s is current, no migration needed", current.Current)
+			return current, nil
+		}
+		s.logger.Debug("Same major.minor version %s -> %s, skipping migration", current.Current, target)
+		current.Current = target
+		if err := s.repository.Save(homeDir, current); err != nil {
+			return nil, fmt.Errorf("failed to save version: %w", err)
+		}
 		return current, nil
 	}
 
-	if currentVer.GreaterThan(targetVer) {
-		// Downgrade not supported
-		return nil, fmt.Errorf("downgrade from %s to %s is not supported", current.Current, target)
+	// Different major.minor - check for downgrade
+	currentSegs := currentVer.Segments()
+	targetSegs := targetVer.Segments()
+	if len(currentSegs) >= 2 && len(targetSegs) >= 2 {
+		if currentSegs[0] > targetSegs[0] || (currentSegs[0] == targetSegs[0] && currentSegs[1] > targetSegs[1]) {
+			return nil, fmt.Errorf("downgrade from %s to %s is not supported", current.Current, target)
+		}
 	}
 
 	// Find migration path
