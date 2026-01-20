@@ -99,6 +99,10 @@ func NewBinarySource(sourceType SourceType) *BinarySource {
 // Note: This method validates the domain entity state, not the actual binary file.
 // Binary file validation (executable check, architecture check) is done by infrastructure layer.
 func (b *BinarySource) Validate() error {
+	if b == nil {
+		return fmt.Errorf("binary source is nil")
+	}
+
 	// Rule 1: SourceType == Local requires SelectedPath
 	if b.SourceType == SourceTypeLocal && b.SelectedPath == "" {
 		return fmt.Errorf("local binary source requires a selected path")
@@ -119,17 +123,25 @@ func (b *BinarySource) Validate() error {
 
 // MarkValid marks the binary source as validated successfully.
 // This should be called after infrastructure layer verifies the binary file.
+// No-op if the receiver is nil.
 func (b *BinarySource) MarkValid() {
+	if b == nil {
+		return
+	}
 	b.ValidationStatus = true
 	b.ValidationError = ""
 }
 
 // MarkInvalid marks the binary source as invalid with the given error message.
 // This should be called when infrastructure layer validation fails.
+// No-op if the receiver is nil.
 //
 // Parameters:
 //   - err: The validation error that occurred
 func (b *BinarySource) MarkInvalid(err error) {
+	if b == nil {
+		return
+	}
 	b.ValidationStatus = false
 	if err != nil {
 		b.ValidationError = err.Error()
@@ -137,20 +149,32 @@ func (b *BinarySource) MarkInvalid(err error) {
 }
 
 // IsValid returns true if the binary source has been validated successfully.
+// Returns false if the receiver is nil.
 //
 // Returns:
 //   - bool: true if ValidationStatus is true and ValidationError is empty
 func (b *BinarySource) IsValid() bool {
+	if b == nil {
+		return false
+	}
 	return b.ValidationStatus && b.ValidationError == ""
 }
 
 // IsLocal returns true if this is a local filesystem binary source.
+// Returns false if the receiver is nil.
 func (b *BinarySource) IsLocal() bool {
+	if b == nil {
+		return false
+	}
 	return b.SourceType == SourceTypeLocal
 }
 
 // IsGitHubRelease returns true if this is a GitHub release binary source.
+// Returns false if the receiver is nil.
 func (b *BinarySource) IsGitHubRelease() bool {
+	if b == nil {
+		return false
+	}
 	return b.SourceType == SourceTypeGitHubRelease
 }
 
