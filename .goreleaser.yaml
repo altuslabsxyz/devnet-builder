@@ -133,7 +133,7 @@ changelog:
 
 release:
   github:
-    owner: b-harvest
+    owner: altuslabsxyz
     name: devnet-builder
   name_template: "{{ .Tag }}"
   draft: false
