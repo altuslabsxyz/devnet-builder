@@ -1,7 +1,13 @@
 // Package version provides domain entities for version management.
 package version
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/hashicorp/go-version"
+)
 
 // Migration represents a single version migration.
 // Each migration is responsible for upgrading from one version to another.
@@ -40,20 +46,42 @@ type MigrationChain []Migration
 
 // FindPath finds the migration path from current version to target version.
 // Returns the migrations to apply in order, or error if no path exists.
+// Versions are normalized before comparison (e.g., v1.0.0-rc0-1-gdff0895-dirty -> 1.0.0).
 func (mc MigrationChain) FindPath(from, to string) ([]Migration, error) {
+	// Normalize versions by extracting core version
+	normalizedFrom := normalizeVersion(from)
+	normalizedTo := normalizeVersion(to)
+
+	// Parse target version to determine the migration endpoint
+	targetVer, err := version.NewVersion(normalizedTo)
+	if err != nil {
+		return nil, &MigrationError{
+			Operation: "find_path",
+			Message:   "invalid target version " + to + ": " + err.Error(),
+		}
+	}
+
 	// Build a graph of possible migrations
 	// For now, we'll do a simple linear search
 	var path []Migration
-	current := from
+	current := normalizedFrom
 
-	for current != to {
+	// Try to find a path to the exact target or any compatible version
+	for current != normalizedTo {
 		found := false
 		for _, m := range mc {
-			if m.FromVersion() == current {
-				path = append(path, m)
-				current = m.ToVersion()
-				found = true
-				break
+			fromVer := normalizeVersion(m.FromVersion())
+			toVer := normalizeVersion(m.ToVersion())
+
+			if fromVer == current {
+				// Check if this migration gets us closer to the target
+				migrToVer, _ := version.NewVersion(toVer)
+				if migrToVer != nil && (migrToVer.Equal(targetVer) || migrToVer.LessThan(targetVer)) {
+					path = append(path, m)
+					current = toVer
+					found = true
+					break
+				}
 			}
 		}
 		if !found {
@@ -65,6 +93,42 @@ func (mc MigrationChain) FindPath(from, to string) ([]Migration, error) {
 	}
 
 	return path, nil
+}
+
+// normalizeVersion extracts the core semantic version from a git describe string.
+// It removes git metadata (commit count, hash, dirty flag) but preserves pre-release tags.
+// Examples:
+//   - v1.0.0-rc0-1-gdff0895-dirty -> 1.0.0
+//   - v1.0.0-rc0 -> 1.0.0
+//   - 1.0.0 -> 1.0.0
+//   - 0.1.0-dev -> 0.1.0
+func normalizeVersion(v string) string {
+	// Remove 'v' prefix
+	v = strings.TrimPrefix(v, "v")
+
+	// Try to parse with go-version to get the core version
+	parsedVer, err := version.NewVersion(v)
+	if err != nil {
+		// If parsing fails, do manual extraction
+		// Split on dash and take only the first part (major.minor.patch)
+		parts := strings.Split(v, "-")
+		if len(parts) > 0 {
+			return parts[0]
+		}
+		return v
+	}
+
+	// Extract segments (major.minor.patch)
+	segments := parsedVer.Segments()
+	if len(segments) >= 3 {
+		return fmt.Sprintf("%d.%d.%d", segments[0], segments[1], segments[2])
+	} else if len(segments) == 2 {
+		return fmt.Sprintf("%d.%d.0", segments[0], segments[1])
+	} else if len(segments) == 1 {
+		return fmt.Sprintf("%d.0.0", segments[0])
+	}
+
+	return v
 }
 
 // MigrationError represents an error during migration.
