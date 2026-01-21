@@ -2,16 +2,15 @@
 package core
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/application"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -64,9 +63,13 @@ Examples:
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
-	homeDir := shared.GetHomeDir()
-	jsonMode := shared.GetJSONMode()
+	// Use context from command (set in root.go with ctxconfig)
+	ctx := cmd.Context()
+
+	// Get config from context (new pattern - replaces shared.GetXxx())
+	cfg := ctxconfig.FromContext(ctx)
+	homeDir := cfg.HomeDir()
+	jsonMode := cfg.JSONMode()
 
 	svc, err := application.GetService(homeDir)
 	if err != nil {
