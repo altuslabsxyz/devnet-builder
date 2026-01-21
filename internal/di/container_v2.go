@@ -466,6 +466,7 @@ func (r *NetworkRegistryV2) SetDefault(name string) error {
 
 // ToLegacyContainer creates a legacy Container from ContainerV2.
 // This is provided for backward compatibility during migration.
+//
 // Deprecated: Use ContainerV2 directly instead.
 func (c *ContainerV2) ToLegacyContainer() *Container {
 	opts := []Option{

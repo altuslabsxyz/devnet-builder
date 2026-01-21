@@ -29,8 +29,8 @@ type DevnetUseCasesProvider interface {
 
 // devnetUseCases is the concrete implementation of DevnetUseCasesProvider.
 type devnetUseCases struct {
-	mu     sync.RWMutex
-	infra  InfrastructureProvider
+	mu    sync.RWMutex
+	infra InfrastructureProvider
 
 	// Lazy-initialized use cases
 	provisionUC *appdevnet.ProvisionUseCase

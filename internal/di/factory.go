@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
-	"github.com/altuslabsxyz/devnet-builder/internal/di/providers"
 	appversion "github.com/altuslabsxyz/devnet-builder/internal/application/version"
+	"github.com/altuslabsxyz/devnet-builder/internal/di/providers"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/binary"
 	infrabuilder "github.com/altuslabsxyz/devnet-builder/internal/infrastructure/builder"
 	infracache "github.com/altuslabsxyz/devnet-builder/internal/infrastructure/cache"
@@ -580,7 +580,6 @@ func (f *InfrastructureFactory) CreateBinaryResolver(loader *plugin.Loader, cach
 func (f *InfrastructureFactory) CreateBinaryExecutor() ports.BinaryExecutor {
 	return binary.NewPassthroughExecutor()
 }
-
 
 // WireContainerV2 wires all infrastructure components into a ContainerV2.
 // This method creates the new provider-based container architecture.

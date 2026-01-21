@@ -170,7 +170,7 @@ func (i *infrastructure) BinaryExecutor() ports.BinaryExecutor         { return 
 func (i *infrastructure) BinaryVersionDetector() ports.BinaryVersionDetector {
 	return i.binaryVersionDetector
 }
-func (i *infrastructure) GitHubClient() ports.GitHubClient             { return i.githubClient }
+func (i *infrastructure) GitHubClient() ports.GitHubClient { return i.githubClient }
 func (i *infrastructure) InteractiveSelector() ports.InteractiveSelector {
 	return i.interactiveSelector
 }
@@ -188,14 +188,18 @@ func NewLoggerAdapter(logger *output.Logger) *LoggerAdapter {
 	return &LoggerAdapter{logger: logger}
 }
 
-func (a *LoggerAdapter) Info(format string, args ...interface{})    { a.logger.Info(format, args...) }
-func (a *LoggerAdapter) Warn(format string, args ...interface{})    { a.logger.Warn(format, args...) }
-func (a *LoggerAdapter) Error(format string, args ...interface{})   { a.logger.Error(format, args...) }
-func (a *LoggerAdapter) Debug(format string, args ...interface{})   { a.logger.Debug(format, args...) }
-func (a *LoggerAdapter) Success(format string, args ...interface{}) { a.logger.Success(format, args...) }
-func (a *LoggerAdapter) Print(format string, args ...interface{})   { a.logger.Print(format, args...) }
-func (a *LoggerAdapter) Println(format string, args ...interface{}) { a.logger.Println(format, args...) }
-func (a *LoggerAdapter) SetVerbose(verbose bool)                    { a.logger.SetVerbose(verbose) }
-func (a *LoggerAdapter) IsVerbose() bool                            { return a.logger.IsVerbose() }
-func (a *LoggerAdapter) Writer() io.Writer    { return a.logger.Writer() }
-func (a *LoggerAdapter) ErrWriter() io.Writer { return a.logger.ErrWriter() }
+func (a *LoggerAdapter) Info(format string, args ...interface{})  { a.logger.Info(format, args...) }
+func (a *LoggerAdapter) Warn(format string, args ...interface{})  { a.logger.Warn(format, args...) }
+func (a *LoggerAdapter) Error(format string, args ...interface{}) { a.logger.Error(format, args...) }
+func (a *LoggerAdapter) Debug(format string, args ...interface{}) { a.logger.Debug(format, args...) }
+func (a *LoggerAdapter) Success(format string, args ...interface{}) {
+	a.logger.Success(format, args...)
+}
+func (a *LoggerAdapter) Print(format string, args ...interface{}) { a.logger.Print(format, args...) }
+func (a *LoggerAdapter) Println(format string, args ...interface{}) {
+	a.logger.Println(format, args...)
+}
+func (a *LoggerAdapter) SetVerbose(verbose bool) { a.logger.SetVerbose(verbose) }
+func (a *LoggerAdapter) IsVerbose() bool         { return a.logger.IsVerbose() }
+func (a *LoggerAdapter) Writer() io.Writer       { return a.logger.Writer() }
+func (a *LoggerAdapter) ErrWriter() io.Writer    { return a.logger.ErrWriter() }
