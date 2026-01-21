@@ -6,6 +6,7 @@ import (
 
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	appversion "github.com/altuslabsxyz/devnet-builder/internal/application/version"
+	"github.com/altuslabsxyz/devnet-builder/internal/di/providers"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/binary"
 	infrabuilder "github.com/altuslabsxyz/devnet-builder/internal/infrastructure/builder"
 	infracache "github.com/altuslabsxyz/devnet-builder/internal/infrastructure/cache"
@@ -578,4 +579,78 @@ func (f *InfrastructureFactory) CreateBinaryResolver(loader *plugin.Loader, cach
 // CreateBinaryExecutor creates a BinaryExecutor implementation.
 func (f *InfrastructureFactory) CreateBinaryExecutor() ports.BinaryExecutor {
 	return binary.NewPassthroughExecutor()
+}
+
+// WireContainerV2 wires all infrastructure components into a ContainerV2.
+// This method creates the new provider-based container architecture.
+func (f *InfrastructureFactory) WireContainerV2(opts ...OptionV2) (*ContainerV2, error) {
+	// Create all infrastructure implementations
+	devnetRepo := f.CreateDevnetRepository()
+	nodeRepo := f.CreateNodeRepository()
+	exportRepo := f.CreateExportRepository()
+	executor := f.CreateProcessExecutor()
+	snapshotFetcher := f.CreateSnapshotFetcher()
+	genesisFetcher := f.CreateGenesisFetcher()
+	stateExportSvc := f.CreateStateExportService()
+	nodeInitializer := f.CreateNodeInitializer()
+	builder := f.CreateBuilder()
+
+	binaryCache, err := f.CreateBinaryCache()
+	if err != nil {
+		return nil, err
+	}
+
+	binaryVersionDetector := f.CreateBinaryVersionDetector()
+	rpcClient := f.CreateRPCClient("localhost", 26657)
+	healthChecker := f.CreateHealthChecker(26657)
+	evmClient := f.CreateEVMClient("http://localhost:8545")
+	validatorKeyLoader := f.CreateValidatorKeyLoader()
+	githubClient := f.CreateGitHubClient()
+	interactiveSelector := f.CreateInteractiveSelector()
+	binaryExecutor := f.CreateBinaryExecutor()
+
+	// Build infrastructure provider config
+	infraCfg := providers.InfrastructureConfig{
+		DevnetRepo:            devnetRepo,
+		NodeRepo:              nodeRepo,
+		ExportRepo:            exportRepo,
+		Executor:              executor,
+		HealthChecker:         healthChecker,
+		RPCClient:             rpcClient,
+		EVMClient:             evmClient,
+		SnapshotSvc:           snapshotFetcher,
+		GenesisSvc:            genesisFetcher,
+		StateExportSvc:        stateExportSvc,
+		NodeInitializer:       nodeInitializer,
+		ValidatorKeyLoader:    validatorKeyLoader,
+		Builder:               builder,
+		BinaryCache:           binaryCache,
+		BinaryExecutor:        binaryExecutor,
+		BinaryVersionDetector: binaryVersionDetector,
+		GitHubClient:          githubClient,
+		InteractiveSelector:   interactiveSelector,
+		Logger:                providers.NewLoggerAdapter(f.logger),
+	}
+
+	// Add network module adapter if available
+	if f.module != nil {
+		infraCfg.NetworkModule = &networkModuleAdapter{module: f.module}
+	}
+
+	// Create infrastructure provider
+	infra := providers.NewInfrastructure(infraCfg)
+
+	// Build container options
+	allOpts := []OptionV2{
+		WithLoggerV2(f.logger),
+		WithInfrastructureV2(infra),
+		WithConfigV2(&Config{
+			HomeDir: f.homeDir,
+		}),
+	}
+
+	// Append user-provided options
+	allOpts = append(allOpts, opts...)
+
+	return NewV2(allOpts...), nil
 }
