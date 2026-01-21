@@ -16,6 +16,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/altuslabsxyz/devnet-builder/internal/paths"
 	"github.com/altuslabsxyz/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -107,9 +108,6 @@ func persistentPreRunE(cmd *cobra.Command, args []string) error {
 	// Store loaded config in shared package
 	shared.SetLoadedFileConfig(fileCfg)
 
-	ctx := cmd.Context()
-	ctx = context.WithValue(ctx, types.ExecutionModeCtxKey, fileCfg.ExecutionMode)
-
 	// Apply config file values to global flags (if not explicitly set)
 	// Priority: default < config.toml < env < flag
 	applyConfigDefaults(cmd, fileCfg)
@@ -123,6 +121,23 @@ func persistentPreRunE(cmd *cobra.Command, args []string) error {
 	shared.SetNoColor(noColor)
 	shared.SetVerbose(verbose)
 	shared.SetConfigPath(configPath)
+
+	// Build context-based config from FileConfig and CLI overrides
+	cfg := ctxconfig.New(
+		ctxconfig.FromFileConfig(fileCfg),
+		ctxconfig.WithHomeDir(homeDir),
+		ctxconfig.WithConfigPath(configPath),
+		ctxconfig.WithJSONMode(jsonMode),
+		ctxconfig.WithNoColor(noColor),
+		ctxconfig.WithVerbose(verbose),
+	)
+
+	// Set config in context (new pattern)
+	ctx := cmd.Context()
+	ctx = ctxconfig.WithConfig(ctx, cfg)
+
+	// Deprecated: Keep old context value for backward compatibility during migration
+	ctx = context.WithValue(ctx, types.ExecutionModeCtxKey, fileCfg.ExecutionMode)
 
 	// Log which config file was loaded (if verbose)
 	if configFilePath != "" && verbose {

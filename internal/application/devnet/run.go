@@ -8,6 +8,7 @@ import (
 
 	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 )
 
 // RunUseCase handles starting devnet nodes.
@@ -43,8 +44,11 @@ func NewRunUseCase(
 func (uc *RunUseCase) Execute(ctx context.Context, input dto.RunInput) (*dto.RunOutput, error) {
 	uc.logger.Info("Starting devnet nodes...")
 
+	// Get homeDir from context (preferred) or fallback to DTO
+	homeDir := ctxconfig.HomeDir(ctx, input.HomeDir)
+
 	// Load devnet metadata
-	metadata, err := uc.devnetRepo.Load(ctx, input.HomeDir)
+	metadata, err := uc.devnetRepo.Load(ctx, homeDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load devnet: %w", err)
 	}
@@ -55,7 +59,7 @@ func (uc *RunUseCase) Execute(ctx context.Context, input dto.RunInput) (*dto.Run
 	}
 
 	// Load nodes
-	nodes, err := uc.nodeRepo.LoadAll(ctx, input.HomeDir)
+	nodes, err := uc.nodeRepo.LoadAll(ctx, homeDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load nodes: %w", err)
 	}
@@ -211,19 +215,22 @@ func NewStopUseCase(
 func (uc *StopUseCase) Execute(ctx context.Context, input dto.StopInput) (*dto.StopOutput, error) {
 	uc.logger.Info("Stopping devnet nodes...")
 
+	// Get homeDir from context (preferred) or fallback to DTO
+	homeDir := ctxconfig.HomeDir(ctx, input.HomeDir)
+
 	// Load devnet metadata
-	metadata, err := uc.devnetRepo.Load(ctx, input.HomeDir)
+	metadata, err := uc.devnetRepo.Load(ctx, homeDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load devnet: %w", err)
 	}
 
 	// Load nodes
-	nodes, err := uc.nodeRepo.LoadAll(ctx, input.HomeDir)
+	nodes, err := uc.nodeRepo.LoadAll(ctx, homeDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load nodes: %w", err)
 	}
 
-	uc.logger.Debug("Loaded %d nodes from %s", len(nodes), input.HomeDir)
+	uc.logger.Debug("Loaded %d nodes from %s", len(nodes), homeDir)
 
 	// Stop each node
 	stoppedCount := 0

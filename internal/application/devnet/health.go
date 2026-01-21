@@ -6,6 +6,7 @@ import (
 
 	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 )
 
 // HealthUseCase handles health checking of devnet nodes.
@@ -33,14 +34,17 @@ func NewHealthUseCase(
 
 // Execute checks the health of all devnet nodes.
 func (uc *HealthUseCase) Execute(ctx context.Context, input dto.HealthInput) (*dto.HealthOutput, error) {
+	// Get homeDir from context (preferred) or fallback to DTO
+	homeDir := ctxconfig.HomeDir(ctx, input.HomeDir)
+
 	// Load devnet metadata
-	metadata, err := uc.devnetRepo.Load(ctx, input.HomeDir)
+	metadata, err := uc.devnetRepo.Load(ctx, homeDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load devnet: %w", err)
 	}
 
 	// Load nodes
-	nodes, err := uc.nodeRepo.LoadAll(ctx, input.HomeDir)
+	nodes, err := uc.nodeRepo.LoadAll(ctx, homeDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load nodes: %w", err)
 	}
@@ -79,8 +83,12 @@ func (uc *HealthUseCase) Execute(ctx context.Context, input dto.HealthInput) (*d
 		}
 	}
 
-	// Log results if verbose
-	if input.Verbose {
+	// Log results if verbose (prefer context, fallback to DTO)
+	verbose := ctxconfig.Verbose(ctx)
+	if !verbose {
+		verbose = input.Verbose
+	}
+	if verbose {
 		uc.logger.Info("Devnet status: %s", metadata.Status)
 		for _, node := range output.Nodes {
 			uc.logger.Info("  %s: %s (height: %d)", node.Name, node.Status, node.BlockHeight)
