@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/github"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -53,12 +53,13 @@ Examples:
 }
 
 func runVersions(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := cmd.Context()
 	logger := output.DefaultLogger
-	homeDir := shared.GetHomeDir()
+	cfg := ctxconfig.FromContext(ctx)
+	homeDir := cfg.HomeDir()
 
 	// Get config for cache settings
-	fileCfg := shared.GetLoadedFileConfig()
+	fileCfg := cfg.FileConfig()
 
 	// Set up cache manager
 	cacheTTL := github.DefaultCacheTTL

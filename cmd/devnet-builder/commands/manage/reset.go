@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/application"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -47,8 +47,10 @@ Examples:
 
 func runReset(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
+	cfg := ctxconfig.FromContext(ctx)
+	homeDir := cfg.HomeDir()
+	jsonMode := cfg.JSONMode()
 
-	homeDir := shared.GetHomeDir()
 	svc, err := application.GetService(homeDir)
 	if err != nil {
 		return outputResetError(fmt.Errorf("failed to initialize service: %w", err))
@@ -56,14 +58,14 @@ func runReset(cmd *cobra.Command, args []string) error {
 
 	// Check if devnet exists
 	if !svc.DevnetExists() {
-		if jsonMode() {
+		if jsonMode {
 			return outputResetError(fmt.Errorf("no devnet found"))
 		}
 		return fmt.Errorf("no devnet found at %s", homeDir)
 	}
 
 	// Confirmation prompt (unless --force)
-	if !resetForce && !jsonMode() {
+	if !resetForce && !jsonMode {
 		if resetHard {
 			fmt.Println("This will remove all devnet data. You will need to re-provision.")
 		} else {
@@ -81,19 +83,19 @@ func runReset(cmd *cobra.Command, args []string) error {
 	}
 
 	// Perform reset
-	if !jsonMode() {
+	if !jsonMode {
 		output.Info("Resetting devnet...")
 	}
 
 	result, err := svc.Reset(ctx, resetHard)
 	if err != nil {
-		if jsonMode() {
+		if jsonMode {
 			return outputResetError(err)
 		}
 		return err
 	}
 
-	if jsonMode() {
+	if jsonMode {
 		return outputResetJSON(result.Type == "hard")
 	}
 

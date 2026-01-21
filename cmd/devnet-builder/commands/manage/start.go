@@ -1,17 +1,16 @@
 package manage
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"time"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/application"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/altuslabsxyz/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -77,10 +76,13 @@ Examples:
 }
 
 func runStart(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := cmd.Context()
+	cfg := ctxconfig.FromContext(ctx)
+	homeDir := cfg.HomeDir()
+	jsonMode := cfg.JSONMode()
+	fileCfg := cfg.FileConfig()
 
 	// Apply config.toml values
-	fileCfg := GetLoadedFileConfig()
 	if fileCfg != nil {
 		if !cmd.Flags().Changed("network-version") && fileCfg.NetworkVersion != nil {
 			upStableVersion = *fileCfg.NetworkVersion
@@ -94,46 +96,46 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Validate mode if specified
 	if upMode != "" && !types.ExecutionMode(upMode).IsValid() {
-		return outputStartError(fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", upMode))
+		return outputStartErrorWithMode(fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", upMode), jsonMode)
 	}
 
 	// Initialize service
-	svc, err := application.GetService(shared.GetHomeDir())
+	svc, err := application.GetService(homeDir)
 	if err != nil {
-		return outputStartError(fmt.Errorf("failed to initialize service: %w", err))
+		return outputStartErrorWithMode(fmt.Errorf("failed to initialize service: %w", err), jsonMode)
 	}
 
 	// Check if devnet exists
 	if !svc.DevnetExists() {
-		return outputStartError(fmt.Errorf("no devnet found at %s\nRun 'devnet-builder init' or 'devnet-builder deploy' first", shared.GetHomeDir()))
+		return outputStartErrorWithMode(fmt.Errorf("no devnet found at %s\nRun 'devnet-builder init' or 'devnet-builder deploy' first", homeDir), jsonMode)
 	}
 
 	// Load devnet info to check status
 	devnetInfo, err := svc.LoadDevnetInfo(ctx)
 	if err != nil {
-		return outputStartError(fmt.Errorf("failed to load devnet: %w", err))
+		return outputStartErrorWithMode(fmt.Errorf("failed to load devnet: %w", err), jsonMode)
 	}
 
 	// Check if already running
 	if devnetInfo.Status == "running" {
-		return outputStartError(fmt.Errorf("devnet is already running\nUse 'devnet-builder stop' first"))
+		return outputStartErrorWithMode(fmt.Errorf("devnet is already running\nUse 'devnet-builder stop' first"), jsonMode)
 	}
 
 	// Start nodes using DevnetService
-	if !jsonMode() {
+	if !jsonMode {
 		output.Info("Starting devnet nodes...")
 	}
 
 	result, err := svc.Start(ctx, upHealthTimeout)
 	if err != nil {
-		return outputStartError(err)
+		return outputStartErrorWithMode(err, jsonMode)
 	}
 
 	// Reload devnet info for output
 	devnetInfo, _ = svc.LoadDevnetInfo(ctx)
 
 	// Output result
-	if jsonMode() {
+	if jsonMode {
 		return outputStartJSON(result, devnetInfo)
 	}
 	return outputStartText(result, devnetInfo)
@@ -222,8 +224,8 @@ func outputStartJSON(result *dto.RunOutput, devnetInfo *dto.DevnetInfo) error {
 	return nil
 }
 
-func outputStartError(err error) error {
-	if jsonMode() {
+func outputStartErrorWithMode(err error, jsonMode bool) error {
+	if jsonMode {
 		jsonResult := UpJSONResult{
 			Status: "error",
 			Error:  err.Error(),

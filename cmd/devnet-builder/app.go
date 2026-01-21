@@ -5,7 +5,6 @@ package main
 import (
 	"sync"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/di"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
@@ -98,19 +97,6 @@ func initContainerInternal(cfg AppConfig) (*di.Container, error) {
 	}
 
 	return container, nil
-}
-
-// InitContainerForCommand initializes the container for a specific command.
-// This is a convenience function that extracts common parameters from global flags.
-func InitContainerForCommand(blockchainNetwork, executionMode string) (*di.Container, error) {
-	return InitContainer(AppConfig{
-		HomeDir:           shared.GetHomeDir(),
-		BlockchainNetwork: blockchainNetwork,
-		ExecutionMode:     executionMode,
-		Verbose:           shared.GetVerbose(),
-		NoColor:           shared.GetNoColor(),
-		JSONMode:          shared.GetJSONMode(),
-	})
 }
 
 // MustGetContainer returns the global container or panics if not initialized.

@@ -1,13 +1,11 @@
 package core
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/application"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
@@ -15,6 +13,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/altuslabsxyz/devnet-builder/internal/paths"
 	"github.com/altuslabsxyz/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -93,13 +92,14 @@ Examples:
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
-	homeDir := shared.GetHomeDir()
-	jsonMode := shared.GetJSONMode()
+	ctx := cmd.Context()
+	cfg := ctxconfig.FromContext(ctx)
+	homeDir := cfg.HomeDir()
+	jsonMode := cfg.JSONMode()
 
 	// Build effective config from: default < config.toml < env < flag
 	// Start with loaded config.toml values
-	fileCfg := shared.GetLoadedFileConfig()
+	fileCfg := cfg.FileConfig()
 	if fileCfg == nil {
 		fileCfg = &config.FileConfig{}
 	}

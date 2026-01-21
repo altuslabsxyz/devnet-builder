@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/domain"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/interactive"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -118,8 +118,9 @@ func handleLocalBinarySelection(ctx context.Context, config *interactive.Selecti
 // handleGitHubReleaseSelection orchestrates GitHub release fetching and version selection.
 // When skipUpgradeName is true (e.g., --skip-gov mode), it skips the upgrade name prompt.
 func handleGitHubReleaseSelection(ctx context.Context, cmd *cobra.Command, config *interactive.SelectionConfig, forUpgrade bool, network string, skipUpgradeName bool) error {
-	fileCfg := shared.GetLoadedFileConfig()
-	homeDir := shared.GetHomeDir()
+	cfg := ctxconfig.FromContext(cmd.Context())
+	fileCfg := cfg.FileConfig()
+	homeDir := cfg.HomeDir()
 
 	// Use unified GitHub client setup
 	client := SetupGitHubClient(homeDir, fileCfg)

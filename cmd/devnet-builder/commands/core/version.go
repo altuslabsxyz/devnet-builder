@@ -6,9 +6,9 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -36,7 +36,8 @@ func NewVersionCmd() *cobra.Command {
 }
 
 func runVersion(cmd *cobra.Command, args []string) error {
-	jsonMode := shared.GetJSONMode()
+	cfg := ctxconfig.FromContext(cmd.Context())
+	jsonMode := cfg.JSONMode()
 
 	// Get actual registered networks
 	registeredNetworks := network.List()

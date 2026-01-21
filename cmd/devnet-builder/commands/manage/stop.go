@@ -7,7 +7,7 @@ import (
 
 	"github.com/altuslabsxyz/devnet-builder/internal/application"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
-	"github.com/altuslabsxyz/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -44,8 +44,10 @@ Examples:
 
 func runStop(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
+	cfg := ctxconfig.FromContext(ctx)
+	homeDir := cfg.HomeDir()
+	jsonMode := cfg.JSONMode()
 
-	homeDir := types.GetHomeDir()
 	svc, err := application.GetService(homeDir)
 	if err != nil {
 		return outputStopError(fmt.Errorf("failed to initialize service: %w", err))
@@ -53,26 +55,26 @@ func runStop(cmd *cobra.Command, args []string) error {
 
 	// Check if devnet exists
 	if !svc.DevnetExists() {
-		if jsonMode() {
+		if jsonMode {
 			return outputStopError(fmt.Errorf("no devnet found"))
 		}
 		return fmt.Errorf("no devnet found at %s", homeDir)
 	}
 
 	// Stop nodes
-	if !jsonMode() {
+	if !jsonMode {
 		output.Info("Stopping devnet nodes...")
 	}
 
 	_, err = svc.Stop(ctx, downTimeout)
 	if err != nil {
-		if jsonMode() {
+		if jsonMode {
 			return outputStopError(err)
 		}
 		return err
 	}
 
-	if jsonMode() {
+	if jsonMode {
 		return outputStopJSON()
 	}
 

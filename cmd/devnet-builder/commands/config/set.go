@@ -9,12 +9,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
 	"github.com/altuslabsxyz/devnet-builder/internal/domain/credential"
 	infracred "github.com/altuslabsxyz/devnet-builder/internal/infrastructure/credential"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/altuslabsxyz/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -89,6 +89,7 @@ Examples:
 }
 
 func runSet(cmd *cobra.Command, args []string) error {
+	cfg := ctxconfig.FromContext(cmd.Context())
 	key := normalizeKey(args[0])
 	var value string
 
@@ -107,13 +108,13 @@ func runSet(cmd *cobra.Command, args []string) error {
 	}
 
 	if secretKeys[key] && !setUseConfigFile {
-		return setSecretValue(key, value)
+		return setSecretValue(cfg.HomeDir(), key, value)
 	}
 
-	return setConfigFileValue(key, value)
+	return setConfigFileValue(cfg.HomeDir(), key, value)
 }
 
-func setSecretValue(key, value string) error {
+func setSecretValue(homeDir, key, value string) error {
 	credType := keyToCredentialType(key)
 	if credType == "" {
 		return fmt.Errorf("unknown secret key: %s", key)
@@ -130,13 +131,13 @@ func setSecretValue(key, value string) error {
 		if err := keychain.Set(credType, value); err != nil {
 			output.Warn("Failed to store in system keychain: %v", err)
 			output.Info("Falling back to config file storage...")
-			return setConfigFileValueForSecret(key, value)
+			return setConfigFileValueForSecret(homeDir, key, value)
 		}
 
 		output.Success("Securely stored %s in system keychain", key)
 		output.Info("Storage: %s", getKeychainDescription())
 
-		if err := removeSecretFromConfigFile(key); err != nil {
+		if err := removeSecretFromConfigFile(homeDir, key); err != nil {
 			output.Debug("Note: Could not remove old value from config file: %v", err)
 		}
 
@@ -145,11 +146,10 @@ func setSecretValue(key, value string) error {
 
 	output.Warn("System keychain not available on this system")
 	output.Info("Storing in config file (less secure)")
-	return setConfigFileValueForSecret(key, value)
+	return setConfigFileValueForSecret(homeDir, key, value)
 }
 
-func setConfigFileValue(key, value string) error {
-	homeDir := shared.GetHomeDir()
+func setConfigFileValue(homeDir, key, value string) error {
 	configFile := filepath.Join(homeDir, "config.toml")
 
 	var cfg config.FileConfig
@@ -200,8 +200,7 @@ func setConfigFileValue(key, value string) error {
 	return writeConfigFile(configFile, &cfg, value, key)
 }
 
-func setConfigFileValueForSecret(key, value string) error {
-	homeDir := shared.GetHomeDir()
+func setConfigFileValueForSecret(homeDir, key, value string) error {
 	configFile := filepath.Join(homeDir, "config.toml")
 
 	var cfg config.FileConfig
@@ -249,8 +248,7 @@ func writeConfigFile(configFile string, cfg *config.FileConfig, displayValue, ke
 	return nil
 }
 
-func removeSecretFromConfigFile(key string) error {
-	homeDir := shared.GetHomeDir()
+func removeSecretFromConfigFile(homeDir, key string) error {
 	configFile := filepath.Join(homeDir, "config.toml")
 
 	data, err := os.ReadFile(configFile)
