@@ -1,22 +1,22 @@
-package ctxconfig
+package shared
 
 import (
 	"context"
 	"testing"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 )
 
-func TestFromGlobals(t *testing.T) {
+func TestConfigFromGlobals(t *testing.T) {
 	// Set up globals
-	shared.SetHomeDir("/test/home")
-	shared.SetConfigPath("/test/config.toml")
-	shared.SetJSONMode(true)
-	shared.SetNoColor(true)
-	shared.SetVerbose(true)
-	shared.SetLoadedFileConfig(nil)
+	SetHomeDir("/test/home")
+	SetConfigPath("/test/config.toml")
+	SetJSONMode(true)
+	SetNoColor(true)
+	SetVerbose(true)
+	SetLoadedFileConfig(nil)
 
-	cfg := FromGlobals()
+	cfg := ConfigFromGlobals()
 
 	if cfg.HomeDir() != "/test/home" {
 		t.Errorf("expected HomeDir /test/home, got %s", cfg.HomeDir())
@@ -35,66 +35,66 @@ func TestFromGlobals(t *testing.T) {
 	}
 
 	// Clean up
-	shared.SetHomeDir("")
-	shared.SetConfigPath("")
-	shared.SetJSONMode(false)
-	shared.SetNoColor(false)
-	shared.SetVerbose(false)
+	SetHomeDir("")
+	SetConfigPath("")
+	SetJSONMode(false)
+	SetNoColor(false)
+	SetVerbose(false)
 }
 
-func TestSyncToGlobals(t *testing.T) {
+func TestSyncConfigToGlobals(t *testing.T) {
 	// Reset globals first
-	shared.SetHomeDir("")
-	shared.SetConfigPath("")
-	shared.SetJSONMode(false)
-	shared.SetNoColor(false)
-	shared.SetVerbose(false)
+	SetHomeDir("")
+	SetConfigPath("")
+	SetJSONMode(false)
+	SetNoColor(false)
+	SetVerbose(false)
 
-	cfg := New(
-		WithHomeDir("/sync/home"),
-		WithConfigPath("/sync/config.toml"),
-		WithJSONMode(true),
-		WithNoColor(true),
-		WithVerbose(true),
+	cfg := ctxconfig.New(
+		ctxconfig.WithHomeDir("/sync/home"),
+		ctxconfig.WithConfigPath("/sync/config.toml"),
+		ctxconfig.WithJSONMode(true),
+		ctxconfig.WithNoColor(true),
+		ctxconfig.WithVerbose(true),
 	)
 
-	SyncToGlobals(cfg)
+	SyncConfigToGlobals(cfg)
 
-	if shared.GetHomeDir() != "/sync/home" {
-		t.Errorf("expected HomeDir /sync/home, got %s", shared.GetHomeDir())
+	if GetHomeDir() != "/sync/home" {
+		t.Errorf("expected HomeDir /sync/home, got %s", GetHomeDir())
 	}
-	if shared.GetConfigPath() != "/sync/config.toml" {
-		t.Errorf("expected ConfigPath /sync/config.toml, got %s", shared.GetConfigPath())
+	if GetConfigPath() != "/sync/config.toml" {
+		t.Errorf("expected ConfigPath /sync/config.toml, got %s", GetConfigPath())
 	}
-	if !shared.GetJSONMode() {
+	if !GetJSONMode() {
 		t.Error("expected JSONMode true")
 	}
-	if !shared.GetNoColor() {
+	if !GetNoColor() {
 		t.Error("expected NoColor true")
 	}
-	if !shared.GetVerbose() {
+	if !GetVerbose() {
 		t.Error("expected Verbose true")
 	}
 
 	// Clean up
-	shared.SetHomeDir("")
-	shared.SetConfigPath("")
-	shared.SetJSONMode(false)
-	shared.SetNoColor(false)
-	shared.SetVerbose(false)
+	SetHomeDir("")
+	SetConfigPath("")
+	SetJSONMode(false)
+	SetNoColor(false)
+	SetVerbose(false)
 }
 
-func TestSyncToGlobalsNil(t *testing.T) {
+func TestSyncConfigToGlobalsNil(t *testing.T) {
 	// Should not panic
-	SyncToGlobals(nil)
+	SyncConfigToGlobals(nil)
 }
 
-func TestEnsureInContext(t *testing.T) {
+func TestEnsureConfigInContext(t *testing.T) {
 	// Test with existing config in context
-	existingCfg := New(WithChainID("existing-chain"))
-	ctx := WithConfig(context.Background(), existingCfg)
+	existingCfg := ctxconfig.New(ctxconfig.WithChainID("existing-chain"))
+	ctx := ctxconfig.WithConfig(context.Background(), existingCfg)
 
-	newCtx, cfg := EnsureInContext(ctx)
+	newCtx, cfg := EnsureConfigInContext(ctx)
 	if cfg.ChainID() != "existing-chain" {
 		t.Errorf("expected existing ChainID, got %s", cfg.ChainID())
 	}
@@ -103,11 +103,11 @@ func TestEnsureInContext(t *testing.T) {
 	}
 
 	// Test without config in context (creates from globals)
-	shared.SetHomeDir("/ensure/home")
-	shared.SetLoadedFileConfig(nil)
+	SetHomeDir("/ensure/home")
+	SetLoadedFileConfig(nil)
 
 	emptyCtx := context.Background()
-	newCtx, cfg = EnsureInContext(emptyCtx)
+	newCtx, cfg = EnsureConfigInContext(emptyCtx)
 
 	if cfg.HomeDir() != "/ensure/home" {
 		t.Errorf("expected HomeDir from globals, got %s", cfg.HomeDir())
@@ -117,19 +117,19 @@ func TestEnsureInContext(t *testing.T) {
 	}
 
 	// Clean up
-	shared.SetHomeDir("")
+	SetHomeDir("")
 }
 
 func TestWithChainIDInContext(t *testing.T) {
 	// Test with existing config
-	existingCfg := New(
-		WithHomeDir("/existing"),
-		WithChainID("old-chain"),
+	existingCfg := ctxconfig.New(
+		ctxconfig.WithHomeDir("/existing"),
+		ctxconfig.WithChainID("old-chain"),
 	)
-	ctx := WithConfig(context.Background(), existingCfg)
+	ctx := ctxconfig.WithConfig(context.Background(), existingCfg)
 
 	newCtx := WithChainIDInContext(ctx, "new-chain")
-	newCfg := FromContext(newCtx)
+	newCfg := ctxconfig.FromContext(newCtx)
 
 	if newCfg.ChainID() != "new-chain" {
 		t.Errorf("expected ChainID new-chain, got %s", newCfg.ChainID())
@@ -139,19 +139,19 @@ func TestWithChainIDInContext(t *testing.T) {
 	}
 
 	// Original should be unchanged
-	originalCfg := FromContext(ctx)
+	originalCfg := ctxconfig.FromContext(ctx)
 	if originalCfg.ChainID() != "old-chain" {
 		t.Errorf("original config modified: %s", originalCfg.ChainID())
 	}
 }
 
 func TestWithChainIDInContextNoExisting(t *testing.T) {
-	shared.SetHomeDir("/globals/home")
-	shared.SetLoadedFileConfig(nil)
+	SetHomeDir("/globals/home")
+	SetLoadedFileConfig(nil)
 
 	ctx := context.Background()
 	newCtx := WithChainIDInContext(ctx, "from-globals-chain")
-	newCfg := FromContext(newCtx)
+	newCfg := ctxconfig.FromContext(newCtx)
 
 	if newCfg.ChainID() != "from-globals-chain" {
 		t.Errorf("expected ChainID from-globals-chain, got %s", newCfg.ChainID())
@@ -161,15 +161,15 @@ func TestWithChainIDInContextNoExisting(t *testing.T) {
 	}
 
 	// Clean up
-	shared.SetHomeDir("")
+	SetHomeDir("")
 }
 
 func TestWithNetworkVersionInContext(t *testing.T) {
-	existingCfg := New(WithNetworkVersion("v1.0.0"))
-	ctx := WithConfig(context.Background(), existingCfg)
+	existingCfg := ctxconfig.New(ctxconfig.WithNetworkVersion("v1.0.0"))
+	ctx := ctxconfig.WithConfig(context.Background(), existingCfg)
 
 	newCtx := WithNetworkVersionInContext(ctx, "v2.0.0")
-	newCfg := FromContext(newCtx)
+	newCfg := ctxconfig.FromContext(newCtx)
 
 	if newCfg.NetworkVersion() != "v2.0.0" {
 		t.Errorf("expected NetworkVersion v2.0.0, got %s", newCfg.NetworkVersion())
@@ -177,29 +177,29 @@ func TestWithNetworkVersionInContext(t *testing.T) {
 }
 
 func TestWithBlockchainNetworkInContext(t *testing.T) {
-	existingCfg := New(WithBlockchainNetwork("stable"))
-	ctx := WithConfig(context.Background(), existingCfg)
+	existingCfg := ctxconfig.New(ctxconfig.WithBlockchainNetwork("stable"))
+	ctx := ctxconfig.WithConfig(context.Background(), existingCfg)
 
 	newCtx := WithBlockchainNetworkInContext(ctx, "ault")
-	newCfg := FromContext(newCtx)
+	newCfg := ctxconfig.FromContext(newCtx)
 
 	if newCfg.BlockchainNetwork() != "ault" {
 		t.Errorf("expected BlockchainNetwork ault, got %s", newCfg.BlockchainNetwork())
 	}
 }
 
-func TestUpdateInContext(t *testing.T) {
-	existingCfg := New(
-		WithHomeDir("/original"),
-		WithChainID("original-chain"),
+func TestUpdateConfigInContext(t *testing.T) {
+	existingCfg := ctxconfig.New(
+		ctxconfig.WithHomeDir("/original"),
+		ctxconfig.WithChainID("original-chain"),
 	)
-	ctx := WithConfig(context.Background(), existingCfg)
+	ctx := ctxconfig.WithConfig(context.Background(), existingCfg)
 
-	newCtx := UpdateInContext(ctx,
-		WithChainID("updated-chain"),
-		WithVerbose(true),
+	newCtx := UpdateConfigInContext(ctx,
+		ctxconfig.WithChainID("updated-chain"),
+		ctxconfig.WithVerbose(true),
 	)
-	newCfg := FromContext(newCtx)
+	newCfg := ctxconfig.FromContext(newCtx)
 
 	if newCfg.ChainID() != "updated-chain" {
 		t.Errorf("expected ChainID updated-chain, got %s", newCfg.ChainID())
@@ -212,13 +212,13 @@ func TestUpdateInContext(t *testing.T) {
 	}
 }
 
-func TestUpdateInContextNoExisting(t *testing.T) {
-	shared.SetHomeDir("/update/home")
-	shared.SetLoadedFileConfig(nil)
+func TestUpdateConfigInContextNoExisting(t *testing.T) {
+	SetHomeDir("/update/home")
+	SetLoadedFileConfig(nil)
 
 	ctx := context.Background()
-	newCtx := UpdateInContext(ctx, WithChainID("new-chain"))
-	newCfg := FromContext(newCtx)
+	newCtx := UpdateConfigInContext(ctx, ctxconfig.WithChainID("new-chain"))
+	newCfg := ctxconfig.FromContext(newCtx)
 
 	if newCfg.ChainID() != "new-chain" {
 		t.Errorf("expected ChainID new-chain, got %s", newCfg.ChainID())
@@ -228,5 +228,5 @@ func TestUpdateInContextNoExisting(t *testing.T) {
 	}
 
 	// Clean up
-	shared.SetHomeDir("")
+	SetHomeDir("")
 }
