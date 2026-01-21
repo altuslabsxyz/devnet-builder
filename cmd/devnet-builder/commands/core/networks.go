@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -54,7 +54,8 @@ Examples:
 }
 
 func runNetworks(cmd *cobra.Command, args []string) error {
-	jsonMode := shared.GetJSONMode()
+	cfg := ctxconfig.FromContext(cmd.Context())
+	jsonMode := cfg.JSONMode()
 	networks := network.List()
 
 	if jsonMode {

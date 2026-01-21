@@ -9,11 +9,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/application"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/altuslabsxyz/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -114,10 +114,11 @@ func parseNodeIndex(arg string, numValidators int) (int, error) {
 
 func runNodeStart(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
+	cfg := ctxconfig.FromContext(ctx)
+	homeDir := cfg.HomeDir()
+	jsonMode := cfg.JSONMode()
 
-	homeDir := shared.GetHomeDir()
 	svc, err := application.GetService(homeDir)
-
 	if err != nil {
 		return fmt.Errorf("failed to initialize service: %w", err)
 	}
@@ -145,13 +146,15 @@ func runNodeStart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return outputNodeActionResult(result, err)
+	return outputNodeActionResult(result, err, jsonMode)
 }
 
 func runNodeStop(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
+	cfg := ctxconfig.FromContext(ctx)
+	homeDir := cfg.HomeDir()
+	jsonMode := cfg.JSONMode()
 
-	homeDir := shared.GetHomeDir()
 	svc, err := application.GetService(homeDir)
 	if err != nil {
 		return fmt.Errorf("failed to initialize service: %w", err)
@@ -181,13 +184,14 @@ func runNodeStop(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return outputNodeActionResult(result, err)
+	return outputNodeActionResult(result, err, jsonMode)
 }
 
 func runNodeLogs(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
+	cfg := ctxconfig.FromContext(ctx)
+	homeDir := cfg.HomeDir()
 
-	homeDir := shared.GetHomeDir()
 	svc, err := application.GetService(homeDir)
 	if err != nil {
 		return fmt.Errorf("failed to initialize service: %w", err)
@@ -266,7 +270,7 @@ func followLocalLogsForNode(ctx context.Context, logPath string) error {
 	return cmd.Run()
 }
 
-func outputNodeActionResult(result *dto.NodeActionOutput, originalErr error) error {
+func outputNodeActionResult(result *dto.NodeActionOutput, originalErr error, jsonMode bool) error {
 	actionResult := NodeActionResult{
 		Node:          result.NodeIndex,
 		Action:        result.Action,
@@ -276,7 +280,7 @@ func outputNodeActionResult(result *dto.NodeActionOutput, originalErr error) err
 		Error:         result.Error,
 	}
 
-	if jsonMode() {
+	if jsonMode {
 		data, _ := json.MarshalIndent(actionResult, "", "  ")
 		fmt.Println(string(data))
 	} else {

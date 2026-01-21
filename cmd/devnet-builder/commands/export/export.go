@@ -2,7 +2,6 @@
 package export
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -10,10 +9,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/application"
 	domainExport "github.com/altuslabsxyz/devnet-builder/internal/domain/export"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -66,9 +65,9 @@ Examples:
 }
 
 func runExport(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
-
-	homeDir := shared.GetHomeDir()
+	ctx := cmd.Context()
+	cfg := ctxconfig.FromContext(ctx)
+	homeDir := cfg.HomeDir()
 
 	svc, err := application.GetService(homeDir)
 	if err != nil {
@@ -143,9 +142,10 @@ Examples:
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
-
-	homeDir := shared.GetHomeDir()
+	ctx := cmd.Context()
+	cfg := ctxconfig.FromContext(ctx)
+	homeDir := cfg.HomeDir()
+	jsonMode := cfg.JSONMode()
 
 	svc, err := application.GetService(homeDir)
 	if err != nil {
@@ -164,7 +164,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Handle JSON output
-	if exportListFormat == "json" || shared.GetJSONMode() {
+	if exportListFormat == "json" || jsonMode {
 		return outputListJSON(result)
 	}
 
@@ -239,10 +239,11 @@ Examples:
 }
 
 func runInspect(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := cmd.Context()
 	exportPath := args[0]
 
-	homeDir := shared.GetHomeDir()
+	cfg := ctxconfig.FromContext(ctx)
+	homeDir := cfg.HomeDir()
 	svc, err := application.GetService(homeDir)
 	if err != nil {
 		return fmt.Errorf("failed to initialize service: %w", err)

@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/application"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
@@ -27,6 +26,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/altuslabsxyz/devnet-builder/internal/paths"
 	"github.com/altuslabsxyz/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -148,8 +148,14 @@ type UpgradeResultJSON struct {
 }
 
 func runUpgrade(cmd *cobra.Command, args []string) error {
+	// Get config from context
+	cmdCtx := cmd.Context()
+	cfg := ctxconfig.FromContext(cmdCtx)
+	homeDir := cfg.HomeDir()
+	jsonMode := cfg.JSONMode()
+
 	// Set up signal handling for graceful cancellation
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(cmdCtx)
 	defer cancel()
 
 	sigChan := make(chan os.Signal, 1)
@@ -174,7 +180,6 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	logger := output.DefaultLogger
 
 	// Initialize DevnetService for existence and status checks
-	homeDir := shared.GetHomeDir()
 	svc, err := application.GetService(homeDir)
 	if err != nil {
 		return outputUpgradeError(fmt.Errorf("failed to initialize service: %w", err))
@@ -183,7 +188,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	// Check if devnet exists using DevnetService
 	if !svc.DevnetExists() {
 		err := fmt.Errorf("no devnet found at %s", homeDir)
-		if jsonMode() {
+		if jsonMode {
 			return outputUpgradeError(err)
 		}
 		return err
@@ -192,14 +197,14 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	// Load metadata via DevnetService for status check
 	cleanMetadata, err := svc.LoadMetadata(ctx)
 	if err != nil {
-		if jsonMode() {
+		if jsonMode {
 			return outputUpgradeError(err)
 		}
 		return err
 	}
 
 	if cleanMetadata.Status != ports.StateRunning {
-		if jsonMode() {
+		if jsonMode {
 			return outputUpgradeError(fmt.Errorf("devnet is not running"))
 		}
 		return fmt.Errorf("devnet is not running\nStart it with 'devnet-builder start'")
@@ -225,7 +230,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	}
 
 	// Mode validation against --image/--binary flags
-	if !jsonMode() {
+	if !jsonMode {
 		if resolvedMode == UpgradeModeDocker && upgradeBinary != "" && !modeExplicitlySet {
 			output.Warn("Devnet was started in docker mode but --binary was provided.")
 			output.Warn("Use --image for docker mode, or --mode local to switch modes.")
@@ -249,7 +254,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 
 	// Interactive mode: run selection flow if not disabled
 	// Skip interactive selection if --image or --binary flags are provided
-	if !upgradeNoInteractive && !jsonMode() && upgradeImage == "" && upgradeBinary == "" {
+	if !upgradeNoInteractive && !jsonMode && upgradeImage == "" && upgradeBinary == "" {
 		// Use unified selection function for upgrade command
 		// forUpgrade = true: collects only upgrade target version (no export/start distinction)
 		// includeNetworkSelection = false: network is already determined from running devnet
@@ -346,7 +351,7 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 			logger.Info("Using docker image for version %s: %s", selectedVersion, versionResolvedImage)
 		} else {
 			// Local mode or custom ref: build local binary to cache using DI container
-			buildResult, err := buildBinaryForUpgrade(ctx, cleanMetadata.BlockchainNetwork, selectedVersion, cleanMetadata.NetworkName, logger)
+			buildResult, err := buildBinaryForUpgrade(ctx, cleanMetadata.BlockchainNetwork, selectedVersion, cleanMetadata.NetworkName, homeDir, logger)
 			if err != nil {
 				return fmt.Errorf("failed to pre-build binary: %w", err)
 			}
@@ -365,7 +370,7 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 
 	if skipGovernance {
 		// Skip governance mode - show warning
-		if !jsonMode() {
+		if !jsonMode {
 			logger.Warn("Skipping governance proposal (--skip-gov mode)")
 			logger.Warn("This will directly replace the binary WITHOUT governance upgrade.")
 			logger.Warn("Chain state must be compatible with the new version.")
@@ -385,7 +390,7 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 		logger.Info("Fetching governance parameters from chain...")
 		rpcHost := "localhost"
 		rpcPort := 26657
-		tempFactory := di.NewInfrastructureFactory(types.GetHomeDir(), logger).
+		tempFactory := di.NewInfrastructureFactory(homeDir, logger).
 			WithNetworkModule(networkModule)
 		rpcClient := tempFactory.CreateRPCClient(rpcHost, rpcPort)
 
@@ -430,7 +435,7 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 			// No binary selected yet - fall back to cache selection (for non-interactive mode or GitHub release flow)
 			// Priority 2: Interactive/Auto selection from cache (US1)
 			// This is only for local mode; docker mode uses images
-			selectedPath, err := selectBinaryForUpgrade(ctx, cleanMetadata.NetworkName, cleanMetadata.BlockchainNetwork, types.GetHomeDir(), logger)
+			selectedPath, err := selectBinaryForUpgrade(ctx, cleanMetadata.NetworkName, cleanMetadata.BlockchainNetwork, homeDir, logger)
 			if err != nil {
 				// Error contains detailed validation failure info
 				return err
@@ -438,7 +443,7 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 
 			if selectedPath == "" {
 				// No cached binaries available at all
-				cacheDir := paths.BinaryCachePath(types.GetHomeDir())
+				cacheDir := paths.BinaryCachePath(homeDir)
 				return fmt.Errorf("no cached binaries found for upgrade\nCache directory: %s\nUse --binary flag to specify a binary, or deploy/build a binary first", cacheDir)
 			}
 
@@ -460,7 +465,7 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 	}
 
 	// Print upgrade plan (non-JSON mode)
-	if !jsonMode() {
+	if !jsonMode {
 		if skipGovernance {
 			printSkipGovPlan(string(resolvedMode), targetImage, targetBinary, cachedBuildResult, cleanMetadata)
 		} else {
@@ -469,7 +474,7 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 	}
 
 	// Create DI container for upgrade
-	factory := di.NewInfrastructureFactory(types.GetHomeDir(), logger).
+	factory := di.NewInfrastructureFactory(homeDir, logger).
 		WithNetworkModule(networkModule).
 		WithDockerMode(resolvedMode == UpgradeModeDocker)
 
@@ -480,7 +485,7 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 
 	// Build ExecuteUpgradeInput
 	input := dto.ExecuteUpgradeInput{
-		HomeDir:        types.GetHomeDir(),
+		HomeDir:        homeDir,
 		UpgradeName:    selectedName,
 		TargetBinary:   targetBinary,
 		TargetImage:    targetImage,
@@ -503,13 +508,13 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 	}
 
 	// Execute the upgrade using the UseCase
-	if !jsonMode() {
+	if !jsonMode {
 		fmt.Printf("[1/6] %s\n", color.CyanString("Verifying devnet status..."))
 	}
 
 	result, err := container.ExecuteUpgradeUseCase().Execute(ctx, input)
 	if err != nil {
-		if jsonMode() {
+		if jsonMode {
 			return outputUpgradeError(err)
 		}
 		return err
@@ -525,23 +530,10 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 	}
 
 	// Output result
-	if jsonMode() {
+	if jsonMode {
 		return outputUpgradeJSON(result)
 	}
 	return outputUpgradeText(result)
-}
-
-// runUpgradeInteractiveSelection runs the interactive version selection flow for upgrade.
-// Note: This function is currently unused - consider removing if not needed.
-func runUpgradeInteractiveSelection(ctx context.Context, cmd *cobra.Command, skipUpgradeName bool) (*interactive.UpgradeSelectionConfig, error) {
-	fileCfg := GetLoadedFileConfig()
-
-	// Use unified GitHub client setup (US2: eliminates code duplication)
-	client := SetupGitHubClient(types.GetHomeDir(), fileCfg)
-
-	// Run selection flow
-	selector := interactive.NewSelector(client)
-	return selector.RunUpgradeSelectionFlow(ctx, skipUpgradeName)
 }
 
 // selectBinaryForUpgrade orchestrates binary selection from cache for upgrade command.
@@ -566,7 +558,7 @@ func selectBinaryForUpgrade(
 
 	// Scan cache for binaries
 	binaryName := blockchain + "d" // e.g., "stable" → "stabled"
-	cacheDir := paths.BinaryCachePath(types.GetHomeDir())
+	cacheDir := paths.BinaryCachePath(homeDir)
 
 	// Debug: log what we're searching for
 	logger.Debug("Scanning cache for binaries: network=%q, blockchain=%q, binaryName=%q, cacheDir=%q",
@@ -874,7 +866,7 @@ func outputUpgradeError(err error) error {
 }
 
 // buildBinaryForUpgrade builds a binary using DI container and BuildUseCase.
-func buildBinaryForUpgrade(ctx context.Context, blockchainNetwork, ref, networkType string, logger *output.Logger) (*dto.BuildOutput, error) {
+func buildBinaryForUpgrade(ctx context.Context, blockchainNetwork, ref, networkType, homeDir string, logger *output.Logger) (*dto.BuildOutput, error) {
 	// Get network module
 	networkModule, err := network.Get(blockchainNetwork)
 	if err != nil {
@@ -882,7 +874,7 @@ func buildBinaryForUpgrade(ctx context.Context, blockchainNetwork, ref, networkT
 	}
 
 	// Create DI factory with network module
-	factory := di.NewInfrastructureFactory(types.GetHomeDir(), logger).
+	factory := di.NewInfrastructureFactory(homeDir, logger).
 		WithNetworkModule(networkModule)
 
 	// Wire container

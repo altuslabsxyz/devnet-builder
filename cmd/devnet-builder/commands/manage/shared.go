@@ -7,28 +7,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/github"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/interactive"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
-
-// GetLoadedFileConfig returns the loaded config.toml values via the shared accessor.
-func GetLoadedFileConfig() *config.FileConfig {
-	return shared.GetLoadedFileConfig()
-}
-
-// jsonMode returns the current JSON mode setting.
-func jsonMode() bool {
-	return shared.GetJSONMode()
-}
-
-// homeDir returns the configured home directory.
-func homeDir() string {
-	return shared.GetHomeDir()
-}
 
 // WrapInteractiveError wraps interactive errors with additional context.
 func WrapInteractiveError(cmd *cobra.Command, err error, context string) error {
@@ -69,9 +54,10 @@ func SetupGitHubClient(homeDir string, fileCfg *config.FileConfig) *github.Clien
 
 // RunInteractiveVersionSelection runs the unified version selection flow.
 func RunInteractiveVersionSelection(ctx context.Context, cmd *cobra.Command, includeNetworkSelection bool, network string) (*interactive.SelectionConfig, error) {
-	fileCfg := GetLoadedFileConfig()
+	cfg := ctxconfig.FromContext(cmd.Context())
+	fileCfg := cfg.FileConfig()
 
-	client := SetupGitHubClient(shared.GetHomeDir(), fileCfg)
+	client := SetupGitHubClient(cfg.HomeDir(), fileCfg)
 
 	selector := interactive.NewSelector(client)
 	if includeNetworkSelection {
@@ -84,9 +70,10 @@ func RunInteractiveVersionSelection(ctx context.Context, cmd *cobra.Command, inc
 // When forUpgrade is true, returns a SelectionConfig derived from UpgradeSelectionConfig.
 // When skipUpgradeName is true (e.g., --skip-gov mode), it skips the upgrade name prompt.
 func RunInteractiveVersionSelectionWithMode(ctx context.Context, cmd *cobra.Command, includeNetworkSelection bool, forUpgrade bool, network string, skipUpgradeName bool) (*interactive.SelectionConfig, error) {
-	fileCfg := GetLoadedFileConfig()
+	cfg := ctxconfig.FromContext(cmd.Context())
+	fileCfg := cfg.FileConfig()
 
-	client := SetupGitHubClient(shared.GetHomeDir(), fileCfg)
+	client := SetupGitHubClient(cfg.HomeDir(), fileCfg)
 
 	selector := interactive.NewSelector(client)
 	if forUpgrade {

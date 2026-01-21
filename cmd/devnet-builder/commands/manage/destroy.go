@@ -1,14 +1,13 @@
 package manage
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/application"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -49,8 +48,10 @@ Examples:
 }
 
 func runDestroy(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
-	homeDir := shared.GetHomeDir()
+	ctx := cmd.Context()
+	cfg := ctxconfig.FromContext(ctx)
+	homeDir := cfg.HomeDir()
+	jsonMode := cfg.JSONMode()
 
 	svc, err := application.GetService(homeDir)
 	if err != nil {
@@ -59,14 +60,14 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 
 	// Check if devnet exists
 	if !svc.DevnetExists() && !destroyCache {
-		if jsonMode() {
+		if jsonMode {
 			return outputDestroyError(fmt.Errorf("no devnet found"))
 		}
 		return fmt.Errorf("no devnet found at %s", homeDir)
 	}
 
 	// Confirmation prompt (unless --force)
-	if !destroyForce && !jsonMode() {
+	if !destroyForce && !jsonMode {
 		msg := fmt.Sprintf("This will remove all devnet data at %s/devnet", homeDir)
 		if destroyCache {
 			msg += " and all cached snapshots"
@@ -86,13 +87,13 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 	// Destroy devnet
 	result, err := svc.Destroy(ctx, destroyCache)
 	if err != nil {
-		if jsonMode() {
+		if jsonMode {
 			return outputDestroyError(err)
 		}
 		return err
 	}
 
-	if jsonMode() {
+	if jsonMode {
 		return outputDestroyJSON(result.CacheCleared)
 	}
 

@@ -2,16 +2,15 @@
 package cache
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/altuslabsxyz/devnet-builder/internal/di"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -92,9 +91,10 @@ Shows commit hash, ref, build time, size, and network for each cached binary.`,
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := cmd.Context()
+	cfg := ctxconfig.FromContext(ctx)
 
-	container, err := createCacheContainer()
+	container, err := createCacheContainer(cfg.HomeDir())
 	if err != nil {
 		return fmt.Errorf("failed to initialize: %w", err)
 	}
@@ -106,7 +106,7 @@ func runList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to list cache: %w", err)
 	}
 
-	if shared.GetJSONMode() {
+	if cfg.JSONMode() {
 		return outputListJSON(result)
 	}
 	return outputListText(result)
@@ -202,7 +202,7 @@ func NewCleanCmd() *cobra.Command {
 
 This frees up disk space but will require rebuilding binaries on next upgrade.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runClean(force)
+			return runClean(cmd, force)
 		},
 	}
 
@@ -211,10 +211,11 @@ This frees up disk space but will require rebuilding binaries on next upgrade.`,
 	return cmd
 }
 
-func runClean(force bool) error {
-	ctx := context.Background()
+func runClean(cmd *cobra.Command, force bool) error {
+	ctx := cmd.Context()
+	cfg := ctxconfig.FromContext(ctx)
 
-	container, err := createCacheContainer()
+	container, err := createCacheContainer(cfg.HomeDir())
 	if err != nil {
 		return fmt.Errorf("failed to initialize: %w", err)
 	}
@@ -227,7 +228,7 @@ func runClean(force bool) error {
 		return nil
 	}
 
-	if !force && !shared.GetJSONMode() {
+	if !force && !cfg.JSONMode() {
 		fmt.Printf("This will remove %d cached binaries (%s).\n", stats.TotalEntries, formatBytes(stats.TotalSize))
 		confirmed, err := output.ConfirmPrompt("Proceed with cache clean?")
 		if err != nil {
@@ -246,7 +247,7 @@ func runClean(force bool) error {
 		return fmt.Errorf("failed to clean cache: %w", err)
 	}
 
-	if shared.GetJSONMode() {
+	if cfg.JSONMode() {
 		jsonResult := map[string]interface{}{
 			"status":          "cleaned",
 			"entries_removed": len(result.Removed),
@@ -278,7 +279,9 @@ Displays:
 }
 
 func runInfo(cmd *cobra.Command, args []string) error {
-	container, err := createCacheContainer()
+	cfg := ctxconfig.FromContext(cmd.Context())
+
+	container, err := createCacheContainer(cfg.HomeDir())
 	if err != nil {
 		return fmt.Errorf("failed to initialize: %w", err)
 	}
@@ -287,7 +290,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	stats := cache.Stats()
 	symlinkInfo, _ := cache.SymlinkInfo()
 
-	if shared.GetJSONMode() {
+	if cfg.JSONMode() {
 		return outputInfoJSON(cache, symlinkInfo, stats)
 	}
 	return outputInfoText(cache, symlinkInfo, stats)
@@ -351,8 +354,7 @@ func outputInfoText(cache ports.BinaryCache, symlinkInfo *ports.SymlinkInfo, sta
 }
 
 // createCacheContainer creates a DI container configured for cache operations.
-func createCacheContainer() (*di.Container, error) {
-	homeDir := shared.GetHomeDir()
+func createCacheContainer(homeDir string) (*di.Container, error) {
 	factory := di.NewInfrastructureFactory(homeDir, output.DefaultLogger)
 	return factory.WireContainer()
 }

@@ -6,9 +6,9 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
 	"github.com/altuslabsxyz/devnet-builder/internal/paths"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -38,9 +38,10 @@ Examples:
 }
 
 func runShow(cmd *cobra.Command, args []string) error {
-	cfg := buildEffectiveConfig(cmd)
+	ctxCfg := ctxconfig.FromContext(cmd.Context())
+	cfg := buildEffectiveConfig(cmd, ctxCfg)
 
-	if shared.GetJSONMode() {
+	if ctxCfg.JSONMode() {
 		return outputShowJSON(cfg)
 	}
 
@@ -103,10 +104,10 @@ func defaultHomeDir() string {
 	return paths.DefaultHomeDir()
 }
 
-func buildEffectiveConfig(cmd *cobra.Command) *config.EffectiveConfig {
-	homeDir := shared.GetHomeDir()
-	configPath := shared.GetConfigPath()
-	fileCfg := shared.GetLoadedFileConfig()
+func buildEffectiveConfig(cmd *cobra.Command, ctxCfg *ctxconfig.Config) *config.EffectiveConfig {
+	homeDir := ctxCfg.HomeDir()
+	configPath := ctxCfg.ConfigPath()
+	fileCfg := ctxCfg.FileConfig()
 
 	cfg := config.NewEffectiveConfig(defaultHomeDir())
 
@@ -128,25 +129,25 @@ func buildEffectiveConfig(cmd *cobra.Command) *config.EffectiveConfig {
 	}
 
 	// Verbose
-	cfg.Verbose = config.BoolValue{Value: shared.GetVerbose(), Source: config.SourceDefault}
+	cfg.Verbose = config.BoolValue{Value: ctxCfg.Verbose(), Source: config.SourceDefault}
 	if fileCfg != nil && fileCfg.Verbose != nil {
 		cfg.Verbose = config.BoolValue{Value: *fileCfg.Verbose, Source: config.SourceConfigFile}
 	}
 	if cmd.Flags().Changed("verbose") {
-		cfg.Verbose = config.BoolValue{Value: shared.GetVerbose(), Source: config.SourceFlag}
+		cfg.Verbose = config.BoolValue{Value: ctxCfg.Verbose(), Source: config.SourceFlag}
 	}
 
 	// JSON
-	cfg.JSON = config.BoolValue{Value: shared.GetJSONMode(), Source: config.SourceDefault}
+	cfg.JSON = config.BoolValue{Value: ctxCfg.JSONMode(), Source: config.SourceDefault}
 	if fileCfg != nil && fileCfg.JSON != nil {
 		cfg.JSON = config.BoolValue{Value: *fileCfg.JSON, Source: config.SourceConfigFile}
 	}
 	if cmd.Flags().Changed("json") {
-		cfg.JSON = config.BoolValue{Value: shared.GetJSONMode(), Source: config.SourceFlag}
+		cfg.JSON = config.BoolValue{Value: ctxCfg.JSONMode(), Source: config.SourceFlag}
 	}
 
 	// NoColor
-	cfg.NoColor = config.BoolValue{Value: shared.GetNoColor(), Source: config.SourceDefault}
+	cfg.NoColor = config.BoolValue{Value: ctxCfg.NoColor(), Source: config.SourceDefault}
 	if fileCfg != nil && fileCfg.NoColor != nil {
 		cfg.NoColor = config.BoolValue{Value: *fileCfg.NoColor, Source: config.SourceConfigFile}
 	}
@@ -154,7 +155,7 @@ func buildEffectiveConfig(cmd *cobra.Command) *config.EffectiveConfig {
 		cfg.NoColor = config.BoolValue{Value: true, Source: config.SourceEnvironment}
 	}
 	if cmd.Flags().Changed("no-color") {
-		cfg.NoColor = config.BoolValue{Value: shared.GetNoColor(), Source: config.SourceFlag}
+		cfg.NoColor = config.BoolValue{Value: ctxCfg.NoColor(), Source: config.SourceFlag}
 	}
 
 	// Network

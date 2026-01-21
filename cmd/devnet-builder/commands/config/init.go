@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -106,14 +106,14 @@ Examples:
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
+	cfg := ctxconfig.FromContext(cmd.Context())
 	if initTemplate {
-		return runInitTemplate()
+		return runInitTemplate(cfg.HomeDir())
 	}
-	return runInitInteractive()
+	return runInitInteractive(cfg.HomeDir())
 }
 
-func runInitTemplate() error {
-	homeDir := shared.GetHomeDir()
+func runInitTemplate(homeDir string) error {
 	outputPath := initOutput
 	if outputPath == "" {
 		outputPath = filepath.Join(homeDir, "config.toml")
@@ -149,8 +149,7 @@ func runInitTemplate() error {
 	return nil
 }
 
-func runInitInteractive() error {
-	homeDir := shared.GetHomeDir()
+func runInitInteractive(homeDir string) error {
 	logger := output.DefaultLogger
 
 	// Check if terminal is interactive

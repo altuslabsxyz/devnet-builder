@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/application"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
@@ -25,6 +24,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/altuslabsxyz/devnet-builder/internal/paths"
 	"github.com/altuslabsxyz/devnet-builder/types"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -147,12 +147,15 @@ Examples:
 }
 
 func runDeploy(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := cmd.Context()
+	cfg := ctxconfig.FromContext(ctx)
+	homeDir := cfg.HomeDir()
+	jsonMode := cfg.JSONMode()
 	logger := output.DefaultLogger
 
 	// Build effective config from: default < config.toml < env < flag
 	// Start with loaded config.toml values
-	fileCfg := GetLoadedFileConfig()
+	fileCfg := cfg.FileConfig()
 	if fileCfg == nil {
 		fileCfg = &config.FileConfig{}
 	}
@@ -194,7 +197,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Run partial interactive setup for missing base config values
-	homeDir := shared.GetHomeDir()
 	setup := config.NewInteractiveSetup(homeDir)
 	effectiveCfg, err := setup.RunPartial(fileCfg)
 	if err != nil {
@@ -229,7 +231,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Determine if running in interactive mode for version selection
 	// Note: Base config interactive prompts are handled above via RunPartial
 	// Skip interactive version selection if --binary flag is provided
-	isInteractive := !deployNoInteractive && !jsonMode() && deployBinary == ""
+	isInteractive := !deployNoInteractive && !jsonMode && deployBinary == ""
 
 	// Variable to store binary paths
 	// customBinaryPath: binary for running nodes (start)
@@ -239,7 +241,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Docker mode uses GHCR package versions, not GitHub releases
 	if deployMode == "docker" {
-		resolvedImage, err := resolveDeployDockerImage(ctx, cmd, isInteractive)
+		resolvedImage, err := resolveDeployDockerImage(ctx, cmd, isInteractive, homeDir, fileCfg)
 		if err != nil {
 			return WrapInteractiveError(cmd, err, "failed to resolve docker image")
 		}
@@ -264,7 +266,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			} else if selection.BinarySource != nil && selection.BinarySource.IsGitHubRelease() && startVersion != "" {
 				// User selected GitHub release - pre-build the binary now
 				// This prevents the binary selection prompt from appearing
-				buildResult, err := buildBinaryForDeploy(ctx, deployBlockchainNetwork, startVersion, deployNetwork, logger)
+				buildResult, err := buildBinaryForDeploy(ctx, deployBlockchainNetwork, startVersion, deployNetwork, homeDir, logger)
 				if err != nil {
 					return fmt.Errorf("failed to pre-build binary: %w", err)
 				}
@@ -371,7 +373,7 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 			// If no binary selected (empty cache, no explicit build request)
 			// Priority 3: Build binary from source (existing behavior)
 			if selectedPath == "" {
-				buildResult, err := buildBinaryForDeploy(ctx, deployBlockchainNetwork, startVersion, deployNetwork, logger)
+				buildResult, err := buildBinaryForDeploy(ctx, deployBlockchainNetwork, startVersion, deployNetwork, homeDir, logger)
 				if err != nil {
 					return fmt.Errorf("failed to build from source: %w", err)
 				}
@@ -390,7 +392,7 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 		// This allows using a different binary version for genesis export
 		if deployExportVersion != "" {
 			logger.Info("Building export binary version: %s", deployExportVersion)
-			buildResult, err := buildBinaryForDeploy(ctx, deployBlockchainNetwork, deployExportVersion, deployNetwork, logger)
+			buildResult, err := buildBinaryForDeploy(ctx, deployBlockchainNetwork, deployExportVersion, deployNetwork, homeDir, logger)
 			if err != nil {
 				return fmt.Errorf("failed to build export binary: %w", err)
 			}
@@ -428,7 +430,7 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 	_, err = svc.Provision(ctx, provisionInput)
 	if err != nil {
 		logger.SetAutoSpinner(false)
-		if jsonMode() {
+		if jsonMode {
 			return outputDeployError(err)
 		}
 		return err
@@ -438,7 +440,7 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 	runResult, err := svc.Start(ctx, 5*time.Minute)
 	if err != nil {
 		logger.SetAutoSpinner(false)
-		if jsonMode() {
+		if jsonMode {
 			return outputDeployError(err)
 		}
 		return err
@@ -451,7 +453,7 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 	logger.SetAutoSpinner(false)
 
 	// Output result
-	if jsonMode() {
+	if jsonMode {
 		return outputDeployJSON(runResult, devnetInfo)
 	}
 	return outputDeployText(runResult, devnetInfo)
@@ -542,20 +544,6 @@ func outputDeployError(err error) error {
 	data, _ := json.MarshalIndent(result, "", "  ")
 	fmt.Println(string(data))
 	return err
-}
-
-// runDeployInteractiveSelection runs the interactive version selection flow.
-// Network is already determined from config, so only versions are selected interactively.
-func runDeployInteractiveSelection(ctx context.Context, cmd *cobra.Command, network string) (*interactive.SelectionConfig, error) {
-	fileCfg := GetLoadedFileConfig()
-
-	// Use unified GitHub client setup (US2: eliminates code duplication)
-	homeDir := shared.GetHomeDir()
-	client := SetupGitHubClient(homeDir, fileCfg)
-
-	selector := interactive.NewSelector(client)
-	// Use RunVersionSelectionFlow to skip network selection (network already determined)
-	return selector.RunVersionSelectionFlow(ctx, network)
 }
 
 // selectBinaryForDeployment orchestrates binary selection from cache or build.
@@ -656,7 +644,7 @@ func selectBinaryForDeployment(
 
 		// User explicitly requested build with specific version
 		logger.Info("Building binary from source: %s", buildVersion)
-		buildResult, err := buildBinaryForDeploy(ctx, blockchain, buildVersion, networkName, logger)
+		buildResult, err := buildBinaryForDeploy(ctx, blockchain, buildVersion, networkName, homeDir, logger)
 		if err != nil {
 			return "", fmt.Errorf("failed to build from source: %w", err)
 		}
@@ -744,7 +732,7 @@ func filterValidBinaries(
 }
 
 // resolveDeployDockerImage determines the docker image to use.
-func resolveDeployDockerImage(ctx context.Context, cmd *cobra.Command, isInteractive bool) (string, error) {
+func resolveDeployDockerImage(ctx context.Context, cmd *cobra.Command, isInteractive bool, homeDir string, fileCfg *config.FileConfig) (string, error) {
 	// Priority 1: --image flag was explicitly provided
 	if cmd.Flags().Changed("image") && deployImage != "" {
 		return types.NormalizeImageURL(deployImage), nil
@@ -752,7 +740,7 @@ func resolveDeployDockerImage(ctx context.Context, cmd *cobra.Command, isInterac
 
 	// Priority 2: Interactive mode - prompt user to select
 	if isInteractive && deployMode == string(types.ExecutionModeDocker) {
-		imageSelection, err := runDeployDockerImageSelection(ctx)
+		imageSelection, err := runDeployDockerImageSelection(ctx, homeDir, fileCfg)
 		if err != nil {
 			return "", err
 		}
@@ -771,16 +759,13 @@ func resolveDeployDockerImage(ctx context.Context, cmd *cobra.Command, isInterac
 }
 
 // runDeployDockerImageSelection prompts the user to select a docker image version.
-func runDeployDockerImageSelection(ctx context.Context) (*types.DockerImageSelectionResult, error) {
-	fileCfg := GetLoadedFileConfig()
-
+func runDeployDockerImageSelection(ctx context.Context, homeDir string, fileCfg *config.FileConfig) (*types.DockerImageSelectionResult, error) {
 	cacheTTL := github.DefaultCacheTTL
 	if fileCfg != nil && fileCfg.CacheTTL != nil {
 		if ttl, err := time.ParseDuration(*fileCfg.CacheTTL); err == nil {
 			cacheTTL = ttl
 		}
 	}
-	homeDir := shared.GetHomeDir()
 	cacheManager := github.NewCacheManager(homeDir, cacheTTL)
 
 	clientOpts := []github.ClientOption{
@@ -825,7 +810,7 @@ func runDeployDockerImageSelection(ctx context.Context) (*types.DockerImageSelec
 
 // buildBinaryForDeploy builds a binary using DI container and BuildUseCase.
 // This replaces direct usage of the legacy builder package.
-func buildBinaryForDeploy(ctx context.Context, blockchainNetwork, ref, networkType string, logger *output.Logger) (*dto.BuildOutput, error) {
+func buildBinaryForDeploy(ctx context.Context, blockchainNetwork, ref, networkType, homeDir string, logger *output.Logger) (*dto.BuildOutput, error) {
 	// Get network module
 	networkModule, err := network.Get(blockchainNetwork)
 	if err != nil {
@@ -833,7 +818,6 @@ func buildBinaryForDeploy(ctx context.Context, blockchainNetwork, ref, networkTy
 	}
 
 	// Create DI factory with network module
-	homeDir := types.GetHomeDir()
 	factory := di.NewInfrastructureFactory(homeDir, logger).
 		WithNetworkModule(networkModule)
 

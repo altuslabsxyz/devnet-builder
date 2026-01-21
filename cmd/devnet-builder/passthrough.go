@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -9,6 +8,7 @@ import (
 	binaryapp "github.com/altuslabsxyz/devnet-builder/internal/application/binary"
 	"github.com/altuslabsxyz/devnet-builder/internal/di"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -33,7 +33,7 @@ func createBinaryPassthroughCommand(binaryName, pluginName string) *cobra.Comman
 		Long:               fmt.Sprintf("Pass through commands to the active %s binary for plugin %q", binaryName, pluginName),
 		DisableFlagParsing: true, // Pass all flags to the binary
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return executeBinaryPassthrough(pluginName, args)
+			return executeBinaryPassthrough(cmd, pluginName, args)
 		},
 	}
 
@@ -41,11 +41,19 @@ func createBinaryPassthroughCommand(binaryName, pluginName string) *cobra.Comman
 }
 
 // executeBinaryPassthrough executes a binary passthrough command.
-func executeBinaryPassthrough(pluginName string, args []string) error {
-	ctx := context.Background()
+func executeBinaryPassthrough(cmd *cobra.Command, pluginName string, args []string) error {
+	ctx := cmd.Context()
+	cfg := ctxconfig.FromContext(ctx)
 
 	// Initialize container lazily
-	container, err := InitContainerForCommand(pluginName, "local")
+	container, err := InitContainer(AppConfig{
+		HomeDir:           cfg.HomeDir(),
+		BlockchainNetwork: pluginName,
+		ExecutionMode:     "local",
+		Verbose:           cfg.Verbose(),
+		NoColor:           cfg.NoColor(),
+		JSONMode:          cfg.JSONMode(),
+	})
 	if err != nil {
 		return fmt.Errorf("failed to initialize: %w", err)
 	}

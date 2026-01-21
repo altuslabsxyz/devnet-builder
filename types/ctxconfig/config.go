@@ -28,6 +28,7 @@ type Config struct {
 	cacheTTL          string
 	githubToken       string
 	dockerImage       string
+	fileConfig        *config.FileConfig // Original parsed config.toml
 }
 
 // Option is a functional option for Config.
@@ -197,6 +198,13 @@ func (c *Config) DockerImage() string {
 	return c.dockerImage
 }
 
+func (c *Config) FileConfig() *config.FileConfig {
+	if c == nil {
+		return nil
+	}
+	return c.fileConfig
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Options
 // ─────────────────────────────────────────────────────────────────────────────
@@ -217,6 +225,7 @@ func WithNoCache(v bool) Option                      { return func(c *Config) { 
 func WithCacheTTL(v string) Option                   { return func(c *Config) { c.cacheTTL = v } }
 func WithGitHubToken(v string) Option                { return func(c *Config) { c.githubToken = v } }
 func WithDockerImage(v string) Option                { return func(c *Config) { c.dockerImage = v } }
+func WithFileConfig(v *config.FileConfig) Option     { return func(c *Config) { c.fileConfig = v } }
 
 // FromFileConfig applies FileConfig values (only non-nil values).
 func FromFileConfig(fc *config.FileConfig) Option {

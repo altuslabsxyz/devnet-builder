@@ -11,7 +11,6 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/commands/core"
 	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/commands/export"
 	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/commands/manage"
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/altuslabsxyz/devnet-builder/internal/paths"
@@ -105,22 +104,12 @@ func persistentPreRunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Store loaded config in shared package
-	shared.SetLoadedFileConfig(fileCfg)
-
 	// Apply config file values to global flags (if not explicitly set)
 	// Priority: default < config.toml < env < flag
 	applyConfigDefaults(cmd, fileCfg)
 
 	// Environment variables override config.toml (but not explicit flags)
 	applyEnvironmentOverrides(cmd)
-
-	// Sync local vars to shared package for cross-package access
-	shared.SetHomeDir(homeDir)
-	shared.SetJSONMode(jsonMode)
-	shared.SetNoColor(noColor)
-	shared.SetVerbose(verbose)
-	shared.SetConfigPath(configPath)
 
 	// Build context-based config from FileConfig and CLI overrides
 	cfg := ctxconfig.New(
@@ -130,6 +119,7 @@ func persistentPreRunE(cmd *cobra.Command, args []string) error {
 		ctxconfig.WithJSONMode(jsonMode),
 		ctxconfig.WithNoColor(noColor),
 		ctxconfig.WithVerbose(verbose),
+		ctxconfig.WithFileConfig(fileCfg), // Store original FileConfig for commands that need it
 	)
 
 	// Set config in context (new pattern)
@@ -267,14 +257,4 @@ func registerCommands(rootCmd *cobra.Command) {
 	)
 }
 
-// ReloadFileConfig reloads the configuration from homeDir/config.toml.
-// Used after interactive setup creates a new config file.
-func ReloadFileConfig() {
-	loader := config.NewConfigLoader(homeDir, configPath, output.DefaultLogger)
-	fileCfg, _, err := loader.LoadFileConfig()
-	if err != nil {
-		output.DefaultLogger.Warn("Failed to reload config: %v", err)
-		return
-	}
-	shared.SetLoadedFileConfig(fileCfg)
-}
+

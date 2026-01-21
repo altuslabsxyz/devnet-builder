@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/shared"
 	"github.com/altuslabsxyz/devnet-builder/internal/application"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -66,8 +66,9 @@ Examples:
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
-	homeDir := shared.GetHomeDir()
+	ctx := cmd.Context()
+	cfg := ctxconfig.FromContext(ctx)
+	homeDir := cfg.HomeDir()
 
 	svc, err := application.GetService(homeDir)
 	if err != nil {
