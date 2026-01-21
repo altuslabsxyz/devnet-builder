@@ -6,7 +6,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/altuslabsxyz/devnet-builder/internal/application/ctxhelper"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 )
@@ -45,7 +45,7 @@ func (uc *RunUseCase) Execute(ctx context.Context, input dto.RunInput) (*dto.Run
 	uc.logger.Info("Starting devnet nodes...")
 
 	// Get homeDir from context (preferred) or fallback to DTO
-	homeDir := ctxhelper.HomeDir(ctx, input.HomeDir)
+	homeDir := ctxconfig.HomeDir(ctx, input.HomeDir)
 
 	// Load devnet metadata
 	metadata, err := uc.devnetRepo.Load(ctx, homeDir)
@@ -216,7 +216,7 @@ func (uc *StopUseCase) Execute(ctx context.Context, input dto.StopInput) (*dto.S
 	uc.logger.Info("Stopping devnet nodes...")
 
 	// Get homeDir from context (preferred) or fallback to DTO
-	homeDir := ctxhelper.HomeDir(ctx, input.HomeDir)
+	homeDir := ctxconfig.HomeDir(ctx, input.HomeDir)
 
 	// Load devnet metadata
 	metadata, err := uc.devnetRepo.Load(ctx, homeDir)

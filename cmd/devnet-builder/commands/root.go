@@ -123,15 +123,14 @@ func persistentPreRunE(cmd *cobra.Command, args []string) error {
 	shared.SetConfigPath(configPath)
 
 	// Build context-based config from FileConfig and CLI overrides
-	// This is the new recommended way to access configuration
-	cfg := ctxconfig.NewBuilder().
-		FromFileConfig(fileCfg).
-		WithHomeDir(homeDir).
-		WithConfigPath(configPath).
-		WithJSONMode(jsonMode).
-		WithNoColor(noColor).
-		WithVerbose(verbose).
-		Build()
+	cfg := ctxconfig.New(
+		ctxconfig.FromFileConfig(fileCfg),
+		ctxconfig.WithHomeDir(homeDir),
+		ctxconfig.WithConfigPath(configPath),
+		ctxconfig.WithJSONMode(jsonMode),
+		ctxconfig.WithNoColor(noColor),
+		ctxconfig.WithVerbose(verbose),
+	)
 
 	// Set config in context (new pattern)
 	ctx := cmd.Context()

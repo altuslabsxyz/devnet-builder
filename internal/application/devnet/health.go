@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/altuslabsxyz/devnet-builder/internal/application/ctxhelper"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 )
@@ -35,7 +35,7 @@ func NewHealthUseCase(
 // Execute checks the health of all devnet nodes.
 func (uc *HealthUseCase) Execute(ctx context.Context, input dto.HealthInput) (*dto.HealthOutput, error) {
 	// Get homeDir from context (preferred) or fallback to DTO
-	homeDir := ctxhelper.HomeDir(ctx, input.HomeDir)
+	homeDir := ctxconfig.HomeDir(ctx, input.HomeDir)
 
 	// Load devnet metadata
 	metadata, err := uc.devnetRepo.Load(ctx, homeDir)
@@ -84,7 +84,7 @@ func (uc *HealthUseCase) Execute(ctx context.Context, input dto.HealthInput) (*d
 	}
 
 	// Log results if verbose (prefer context, fallback to DTO)
-	verbose := ctxhelper.Verbose(ctx)
+	verbose := ctxconfig.Verbose(ctx)
 	if !verbose {
 		verbose = input.Verbose
 	}

@@ -32,21 +32,14 @@ func TestConfigClone(t *testing.T) {
 		WithChainID("original-chain"),
 	)
 
-	clone := original.Clone(
-		WithChainID("cloned-chain"),
-	)
+	clone := original.Clone(WithChainID("cloned-chain"))
 
-	// Original should be unchanged
 	if original.ChainID() != "original-chain" {
 		t.Errorf("original ChainID changed: %s", original.ChainID())
 	}
-
-	// Clone should have new value
 	if clone.ChainID() != "cloned-chain" {
 		t.Errorf("expected clone ChainID cloned-chain, got %s", clone.ChainID())
 	}
-
-	// Clone should preserve unchanged values
 	if clone.HomeDir() != "/original" {
 		t.Errorf("expected clone HomeDir /original, got %s", clone.HomeDir())
 	}
@@ -118,30 +111,9 @@ func TestMustFromContextSuccess(t *testing.T) {
 	}
 }
 
-func TestFromContextOrDefault(t *testing.T) {
-	// Empty context should return default config
-	ctx := context.Background()
-	cfg := FromContextOrDefault(ctx)
-
-	if cfg == nil {
-		t.Fatal("expected non-nil default config")
-	}
-	if cfg.ChainID() != "" {
-		t.Errorf("expected empty ChainID from default, got %s", cfg.ChainID())
-	}
-
-	// Context with config should return that config
-	ctx = WithConfig(ctx, New(WithChainID("default-test")))
-	cfg = FromContextOrDefault(ctx)
-	if cfg.ChainID() != "default-test" {
-		t.Errorf("expected ChainID default-test, got %s", cfg.ChainID())
-	}
-}
-
 func TestNilConfigAccessors(t *testing.T) {
 	var cfg *Config
 
-	// All accessors should handle nil safely
 	if cfg.HomeDir() != "" {
 		t.Error("expected empty HomeDir from nil config")
 	}
@@ -160,91 +132,8 @@ func TestNilConfigAccessors(t *testing.T) {
 	if cfg.ChainID() != "" {
 		t.Error("expected empty ChainID from nil config")
 	}
-	if cfg.NetworkVersion() != "" {
-		t.Error("expected empty NetworkVersion from nil config")
-	}
-	if cfg.BlockchainNetwork() != "" {
-		t.Error("expected empty BlockchainNetwork from nil config")
-	}
-	if cfg.NetworkName() != "" {
-		t.Error("expected empty NetworkName from nil config")
-	}
 	if cfg.ExecutionMode() != "" {
 		t.Error("expected empty ExecutionMode from nil config")
-	}
-	if cfg.NumValidators() != 0 {
-		t.Error("expected 0 NumValidators from nil config")
-	}
-	if cfg.NumAccounts() != 0 {
-		t.Error("expected 0 NumAccounts from nil config")
-	}
-	if cfg.NoCache() {
-		t.Error("expected false NoCache from nil config")
-	}
-	if cfg.CacheTTL() != "" {
-		t.Error("expected empty CacheTTL from nil config")
-	}
-	if cfg.GitHubToken() != "" {
-		t.Error("expected empty GitHubToken from nil config")
-	}
-	if cfg.DockerImage() != "" {
-		t.Error("expected empty DockerImage from nil config")
-	}
-}
-
-func TestContextLevelAccessors(t *testing.T) {
-	ctx := context.Background()
-	cfg := New(
-		WithChainID("accessor-chain"),
-		WithHomeDir("/accessor/home"),
-		WithExecutionMode(types.ExecutionModeDocker),
-		WithVerbose(true),
-		WithJSONMode(true),
-		WithNoColor(true),
-	)
-	ctx = WithConfig(ctx, cfg)
-
-	if ChainIDFromContext(ctx) != "accessor-chain" {
-		t.Errorf("ChainIDFromContext failed")
-	}
-	if HomeDirFromContext(ctx) != "/accessor/home" {
-		t.Errorf("HomeDirFromContext failed")
-	}
-	if ExecutionModeFromContext(ctx) != types.ExecutionModeDocker {
-		t.Errorf("ExecutionModeFromContext failed")
-	}
-	if !VerboseFromContext(ctx) {
-		t.Error("VerboseFromContext failed")
-	}
-	if !JSONModeFromContext(ctx) {
-		t.Error("JSONModeFromContext failed")
-	}
-	if !NoColorFromContext(ctx) {
-		t.Error("NoColorFromContext failed")
-	}
-}
-
-func TestContextLevelAccessorsNilContext(t *testing.T) {
-	ctx := context.Background()
-
-	// All context-level accessors should handle missing config
-	if ChainIDFromContext(ctx) != "" {
-		t.Error("expected empty ChainID from context without config")
-	}
-	if HomeDirFromContext(ctx) != "" {
-		t.Error("expected empty HomeDir from context without config")
-	}
-	if ExecutionModeFromContext(ctx) != "" {
-		t.Error("expected empty ExecutionMode from context without config")
-	}
-	if VerboseFromContext(ctx) {
-		t.Error("expected false Verbose from context without config")
-	}
-	if JSONModeFromContext(ctx) {
-		t.Error("expected false JSONMode from context without config")
-	}
-	if NoColorFromContext(ctx) {
-		t.Error("expected false NoColor from context without config")
 	}
 }
 
@@ -318,27 +207,7 @@ func TestAllOptions(t *testing.T) {
 	}
 }
 
-// Test builder pattern
-func TestBuilder(t *testing.T) {
-	cfg := NewBuilder().
-		WithHomeDir("/builder/home").
-		WithChainID("builder-chain").
-		WithVerbose(true).
-		Build()
-
-	if cfg.HomeDir() != "/builder/home" {
-		t.Errorf("expected HomeDir /builder/home, got %s", cfg.HomeDir())
-	}
-	if cfg.ChainID() != "builder-chain" {
-		t.Errorf("expected ChainID builder-chain, got %s", cfg.ChainID())
-	}
-	if !cfg.Verbose() {
-		t.Error("expected Verbose true")
-	}
-}
-
-func TestBuilderFromFileConfig(t *testing.T) {
-	// Create FileConfig with various values
+func TestFromFileConfig(t *testing.T) {
 	home := "/file/home"
 	noColor := true
 	verbose := true
@@ -369,9 +238,7 @@ func TestBuilderFromFileConfig(t *testing.T) {
 		CacheTTL:          &cacheTTL,
 	}
 
-	cfg := NewBuilder().
-		FromFileConfig(fc).
-		Build()
+	cfg := New(FromFileConfig(fc))
 
 	if cfg.HomeDir() != home {
 		t.Errorf("HomeDir mismatch: got %s", cfg.HomeDir())
@@ -414,61 +281,86 @@ func TestBuilderFromFileConfig(t *testing.T) {
 	}
 }
 
-func TestBuilderFromFileConfigNil(t *testing.T) {
-	cfg := NewBuilder().
-		FromFileConfig(nil).
-		WithHomeDir("/override").
-		Build()
+func TestFromFileConfigNil(t *testing.T) {
+	cfg := New(
+		FromFileConfig(nil),
+		WithHomeDir("/override"),
+	)
 
 	if cfg.HomeDir() != "/override" {
 		t.Errorf("expected HomeDir /override, got %s", cfg.HomeDir())
 	}
 }
 
-func TestBuilderOverridesFileConfig(t *testing.T) {
+func TestFromFileConfigOverride(t *testing.T) {
 	home := "/file/home"
 	fc := &config.FileConfig{
 		Home: &home,
 	}
 
-	cfg := NewBuilder().
-		FromFileConfig(fc).
-		WithHomeDir("/override/home").
-		Build()
+	cfg := New(
+		FromFileConfig(fc),
+		WithHomeDir("/override/home"),
+	)
 
 	if cfg.HomeDir() != "/override/home" {
 		t.Errorf("expected HomeDir /override/home, got %s", cfg.HomeDir())
 	}
 }
 
-func TestBuilderWithExecutionModeString(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected types.ExecutionMode
-	}{
-		{"docker", types.ExecutionModeDocker},
-		{"local", types.ExecutionModeLocal},
-		{"custom", types.ExecutionMode("custom")},
+// Test context helpers with fallback
+func TestHomeDirHelper(t *testing.T) {
+	// No config in context - use fallback
+	ctx := context.Background()
+	if HomeDir(ctx, "/fallback") != "/fallback" {
+		t.Error("expected fallback when no config")
 	}
 
-	for _, tt := range tests {
-		cfg := NewBuilder().
-			WithExecutionMode(tt.input).
-			Build()
+	// Empty homeDir in config - use fallback
+	ctx = WithConfig(ctx, New())
+	if HomeDir(ctx, "/fallback") != "/fallback" {
+		t.Error("expected fallback when homeDir empty")
+	}
 
-		if cfg.ExecutionMode() != tt.expected {
-			t.Errorf("WithExecutionMode(%s): expected %s, got %s",
-				tt.input, tt.expected, cfg.ExecutionMode())
-		}
+	// HomeDir set in config
+	ctx = WithConfig(context.Background(), New(WithHomeDir("/context")))
+	if HomeDir(ctx, "/fallback") != "/context" {
+		t.Error("expected context value")
 	}
 }
 
-func TestBuilderWithExecutionModeType(t *testing.T) {
-	cfg := NewBuilder().
-		WithExecutionModeType(types.ExecutionModeDocker).
-		Build()
+func TestVerboseHelper(t *testing.T) {
+	ctx := context.Background()
+	if Verbose(ctx) {
+		t.Error("expected false when no config")
+	}
 
-	if cfg.ExecutionMode() != types.ExecutionModeDocker {
-		t.Errorf("expected ExecutionModeDocker, got %s", cfg.ExecutionMode())
+	ctx = WithConfig(ctx, New(WithVerbose(true)))
+	if !Verbose(ctx) {
+		t.Error("expected true from config")
+	}
+}
+
+func TestJSONModeHelper(t *testing.T) {
+	ctx := context.Background()
+	if JSONMode(ctx) {
+		t.Error("expected false when no config")
+	}
+
+	ctx = WithConfig(ctx, New(WithJSONMode(true)))
+	if !JSONMode(ctx) {
+		t.Error("expected true from config")
+	}
+}
+
+func TestExecutionModeHelper(t *testing.T) {
+	ctx := context.Background()
+	if ExecutionMode(ctx) != "" {
+		t.Error("expected empty when no config")
+	}
+
+	ctx = WithConfig(ctx, New(WithExecutionMode(types.ExecutionModeDocker)))
+	if ExecutionMode(ctx) != types.ExecutionModeDocker {
+		t.Error("expected docker from config")
 	}
 }
