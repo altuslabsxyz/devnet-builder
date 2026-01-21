@@ -256,5 +256,3 @@ func registerCommands(rootCmd *cobra.Command) {
 		completionCmd,
 	)
 }
-
-
