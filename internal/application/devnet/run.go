@@ -6,9 +6,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
+	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 )
 
 // RunUseCase handles starting devnet nodes.

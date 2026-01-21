@@ -201,22 +201,22 @@ func (c *Config) DockerImage() string {
 // Options
 // ─────────────────────────────────────────────────────────────────────────────
 
-func WithHomeDir(v string) Option              { return func(c *Config) { c.homeDir = v } }
-func WithConfigPath(v string) Option           { return func(c *Config) { c.configPath = v } }
-func WithJSONMode(v bool) Option               { return func(c *Config) { c.jsonMode = v } }
-func WithNoColor(v bool) Option                { return func(c *Config) { c.noColor = v } }
-func WithVerbose(v bool) Option                { return func(c *Config) { c.verbose = v } }
-func WithChainID(v string) Option              { return func(c *Config) { c.chainID = v } }
-func WithNetworkVersion(v string) Option       { return func(c *Config) { c.networkVersion = v } }
-func WithBlockchainNetwork(v string) Option    { return func(c *Config) { c.blockchainNetwork = v } }
-func WithNetworkName(v string) Option          { return func(c *Config) { c.networkName = v } }
+func WithHomeDir(v string) Option                    { return func(c *Config) { c.homeDir = v } }
+func WithConfigPath(v string) Option                 { return func(c *Config) { c.configPath = v } }
+func WithJSONMode(v bool) Option                     { return func(c *Config) { c.jsonMode = v } }
+func WithNoColor(v bool) Option                      { return func(c *Config) { c.noColor = v } }
+func WithVerbose(v bool) Option                      { return func(c *Config) { c.verbose = v } }
+func WithChainID(v string) Option                    { return func(c *Config) { c.chainID = v } }
+func WithNetworkVersion(v string) Option             { return func(c *Config) { c.networkVersion = v } }
+func WithBlockchainNetwork(v string) Option          { return func(c *Config) { c.blockchainNetwork = v } }
+func WithNetworkName(v string) Option                { return func(c *Config) { c.networkName = v } }
 func WithExecutionMode(v types.ExecutionMode) Option { return func(c *Config) { c.executionMode = v } }
-func WithNumValidators(v int) Option           { return func(c *Config) { c.numValidators = v } }
-func WithNumAccounts(v int) Option             { return func(c *Config) { c.numAccounts = v } }
-func WithNoCache(v bool) Option                { return func(c *Config) { c.noCache = v } }
-func WithCacheTTL(v string) Option             { return func(c *Config) { c.cacheTTL = v } }
-func WithGitHubToken(v string) Option          { return func(c *Config) { c.githubToken = v } }
-func WithDockerImage(v string) Option          { return func(c *Config) { c.dockerImage = v } }
+func WithNumValidators(v int) Option                 { return func(c *Config) { c.numValidators = v } }
+func WithNumAccounts(v int) Option                   { return func(c *Config) { c.numAccounts = v } }
+func WithNoCache(v bool) Option                      { return func(c *Config) { c.noCache = v } }
+func WithCacheTTL(v string) Option                   { return func(c *Config) { c.cacheTTL = v } }
+func WithGitHubToken(v string) Option                { return func(c *Config) { c.githubToken = v } }
+func WithDockerImage(v string) Option                { return func(c *Config) { c.dockerImage = v } }
 
 // FromFileConfig applies FileConfig values (only non-nil values).
 func FromFileConfig(fc *config.FileConfig) Option {
