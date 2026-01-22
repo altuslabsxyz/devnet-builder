@@ -403,8 +403,8 @@ var TestMnemonics = []string{
 	"myth like bonus scare over problem client lizard pioneer submit female collect",
 	// Account 0 - BIP-39 test vector (letter = abandon but with variety)
 	"letter advice cage absurd amount doctor acoustic avoid letter advice cage above",
-	// Account 1 - Foundry/Anvil default mnemonic
-	"body quick review slot oblige virus address analyst much half royal canvas",
+	// Account 1 - BIP-39 test vector (entropy: 000102030405060708090a0b0c0d0e0f)
+	"abandon amount liar amount expire adjust cage candy arch gather drum buyer",
 	// Account 2 - Standard test vector
 	"void come effort suffer camp survey warrior heavy shoot primary clutch crush",
 	// Account 3 - Another standard test vector
