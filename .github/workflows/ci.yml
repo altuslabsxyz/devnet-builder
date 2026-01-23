@@ -95,16 +95,61 @@ jobs:
           skip-cache: true
           args: --timeout=5m
 
+  proto:
+    name: Proto
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for breaking change detection
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lint protos
+        run: buf lint
+
+      - name: Check for breaking changes
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: buf breaking --against ".git#branch=${BASE_REF}"
+
+      - name: Verify generated code is up-to-date
+        run: |
+          buf generate
+          if [ -n "$(git status --porcelain api/proto/gen)" ]; then
+            echo "::error::Generated proto code is out of date. Run 'make proto' and commit."
+            git diff api/proto/gen
+            exit 1
+          fi
+
   ci-complete:
     name: CI Complete
     runs-on: ubuntu-latest
-    needs: [build, test, lint]
+    needs: [build, test, lint, proto]
     if: always()
 
     steps:
       - name: Check results
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          LINT_RESULT: ${{ needs.lint.result }}
+          PROTO_RESULT: ${{ needs.proto.result }}
         run: |
-          if [ "${{ needs.build.result }}" == "failure" ] || [ "${{ needs.test.result }}" == "failure" ] || [ "${{ needs.lint.result }}" == "failure" ]; then
+          if [ "$BUILD_RESULT" == "failure" ] || [ "$TEST_RESULT" == "failure" ] || [ "$LINT_RESULT" == "failure" ] || [ "$PROTO_RESULT" == "failure" ]; then
             echo "CI failed"
             exit 1
           fi

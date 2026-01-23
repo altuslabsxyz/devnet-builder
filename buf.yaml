@@ -1,0 +1,13 @@
+version: v2
+modules:
+  - path: api/proto
+    name: buf.build/altuslabsxyz/devnet-builder
+lint:
+  use:
+    - STANDARD
+  except:
+    - PACKAGE_VERSION_SUFFIX    # Allow v1 without requiring v1beta1
+    - PACKAGE_DIRECTORY_MATCH   # Our api/proto/v1 structure doesn't match package name
+breaking:
+  use:
+    - FILE  # Detect breaking changes per-file
