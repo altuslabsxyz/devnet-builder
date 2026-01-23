@@ -30,6 +30,8 @@ func main() {
 	rootCmd.Flags().StringVar(&config.SocketPath, "socket", defaults.SocketPath, "Unix socket path")
 	rootCmd.Flags().StringVar(&config.DataDir, "data-dir", defaults.DataDir, "Data directory")
 	rootCmd.Flags().BoolVar(&config.Foreground, "foreground", true, "Run in foreground")
+	rootCmd.Flags().IntVar(&config.Workers, "workers", defaults.Workers, "Workers per controller")
+	rootCmd.Flags().StringVar(&config.LogLevel, "log-level", defaults.LogLevel, "Log level (debug, info, warn, error)")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

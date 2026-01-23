@@ -4,13 +4,17 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
 
+	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/v1"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
+	"google.golang.org/grpc"
 )
 
 // Config holds server configuration.
@@ -21,6 +25,10 @@ type Config struct {
 	DataDir string
 	// Foreground runs in foreground (don't daemonize).
 	Foreground bool
+	// Workers is the number of workers per controller.
+	Workers int
+	// LogLevel is the log level (debug, info, warn, error).
+	LogLevel string
 }
 
 // DefaultConfig returns default configuration.
@@ -31,18 +39,35 @@ func DefaultConfig() *Config {
 		SocketPath: filepath.Join(dataDir, "devnetd.sock"),
 		DataDir:    dataDir,
 		Foreground: false,
+		Workers:    2,
+		LogLevel:   "info",
 	}
 }
 
 // Server is the devnetd daemon server.
 type Server struct {
-	config   *Config
-	store    store.Store
-	listener net.Listener
+	config     *Config
+	store      store.Store
+	manager    *controller.Manager
+	grpcServer *grpc.Server
+	listener   net.Listener
+	logger     *slog.Logger
 }
 
 // New creates a new server.
 func New(config *Config) (*Server, error) {
+	// Set up logger
+	level := slog.LevelInfo
+	switch config.LogLevel {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	}
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
+
 	// Ensure data directory exists
 	if err := os.MkdirAll(config.DataDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
@@ -55,9 +80,29 @@ func New(config *Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to open state store: %w", err)
 	}
 
+	// Create controller manager
+	mgr := controller.NewManager()
+	mgr.SetLogger(logger)
+
+	// Register controllers
+	devnetCtrl := controller.NewDevnetController(st, nil) // No provisioner yet (Phase 3)
+	devnetCtrl.SetLogger(logger)
+	mgr.Register("devnets", devnetCtrl)
+
+	// Create gRPC server
+	grpcServer := grpc.NewServer()
+
+	// Register services
+	devnetSvc := NewDevnetService(st, mgr)
+	devnetSvc.SetLogger(logger)
+	v1.RegisterDevnetServiceServer(grpcServer, devnetSvc)
+
 	return &Server{
-		config: config,
-		store:  st,
+		config:     config,
+		store:      st,
+		manager:    mgr,
+		grpcServer: grpcServer,
+		logger:     logger,
 	}, nil
 }
 
@@ -80,20 +125,40 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 	defer os.Remove(pidPath)
 
-	fmt.Printf("devnetd started\n")
-	fmt.Printf("  Socket: %s\n", s.config.SocketPath)
-	fmt.Printf("  Data: %s\n", s.config.DataDir)
-	fmt.Printf("  PID: %d\n", os.Getpid())
+	s.logger.Info("devnetd started",
+		"socket", s.config.SocketPath,
+		"dataDir", s.config.DataDir,
+		"pid", os.Getpid(),
+		"workers", s.config.Workers)
+
+	// Create cancellable context
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Start controller manager in background
+	go s.manager.Start(ctx, s.config.Workers)
 
 	// Handle shutdown signals
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	// Wait for context cancellation or signal
+	// Start gRPC server in background
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- s.grpcServer.Serve(listener)
+	}()
+
+	// Wait for shutdown
 	select {
 	case <-ctx.Done():
+		s.logger.Info("context cancelled, shutting down")
 	case sig := <-sigCh:
-		fmt.Printf("\nReceived %s, shutting down...\n", sig)
+		s.logger.Info("received signal, shutting down", "signal", sig)
+	case err := <-errCh:
+		if err != nil {
+			s.logger.Error("gRPC server error", "error", err)
+			return err
+		}
 	}
 
 	return s.Shutdown()
@@ -101,13 +166,26 @@ func (s *Server) Run(ctx context.Context) error {
 
 // Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown() error {
+	s.logger.Info("shutting down")
+
+	// Graceful gRPC shutdown
+	if s.grpcServer != nil {
+		s.grpcServer.GracefulStop()
+	}
+
+	// Close listener
 	if s.listener != nil {
 		s.listener.Close()
 	}
+
+	// Close store
 	if s.store != nil {
 		s.store.Close()
 	}
+
+	// Clean up socket
 	os.Remove(s.config.SocketPath)
-	fmt.Println("devnetd stopped")
+
+	s.logger.Info("devnetd stopped")
 	return nil
 }
