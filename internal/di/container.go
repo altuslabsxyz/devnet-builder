@@ -17,6 +17,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/upgrade"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/persistence"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/plugin"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/altuslabsxyz/devnet-builder/types"
@@ -92,6 +93,13 @@ type Container struct {
 	passthroughUC        *binary.PassthroughUseCase
 	importCustomBinaryUC *binary.ImportCustomBinaryUseCase
 	exportUC             *appdevnet.ExportUseCase
+
+	// State management for resumable upgrades
+	stateManager    ports.UpgradeStateManager
+	transitioner    ports.UpgradeStateTransitioner
+	stateDetector   ports.UpgradeStateDetector
+	resumableExecUC *upgrade.ResumableExecuteUpgradeUseCase
+	resumeUC        *upgrade.ResumeUseCase
 }
 
 // Config holds configuration for the container.
@@ -647,6 +655,99 @@ func (c *Container) MonitorUseCase() *upgrade.MonitorUseCase {
 		)
 	}
 	return c.monitorUC
+}
+
+// StateManager returns the upgrade state manager (lazy init).
+func (c *Container) StateManager() ports.UpgradeStateManager {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.stateManager == nil {
+		c.stateManager = persistence.NewFileUpgradeStateManager(c.config.HomeDir)
+	}
+	return c.stateManager
+}
+
+// StateTransitioner returns the state transitioner (lazy init).
+func (c *Container) StateTransitioner() ports.UpgradeStateTransitioner {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.transitioner == nil {
+		c.transitioner = upgrade.NewStateTransitioner()
+	}
+	return c.transitioner
+}
+
+// StateDetector returns the state detector (lazy init).
+func (c *Container) StateDetector() ports.UpgradeStateDetector {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.stateDetector == nil {
+		c.stateDetector = upgrade.NewStateDetector(c.rpcClient)
+	}
+	return c.stateDetector
+}
+
+// ResumableExecuteUpgradeUseCase returns the resumable execute upgrade use case (lazy init).
+func (c *Container) ResumableExecuteUpgradeUseCase() *upgrade.ResumableExecuteUpgradeUseCase {
+	// Get dependencies first without holding the lock
+	ctx := context.Background()
+	executeUC := c.ExecuteUpgradeUseCase()
+	proposeUC := c.ProposeUseCase()
+	voteUC := c.VoteUseCase()
+	switchUC := c.SwitchBinaryUseCase()
+	stateManager := c.StateManager()
+	transitioner := c.StateTransitioner()
+	stateDetector := c.StateDetector()
+	exportUC := c.ExportUseCase(ctx)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.resumableExecUC == nil {
+		// Create export adapter to match ports interface
+		exportAdapter := &exportUseCaseAdapter{concrete: exportUC}
+
+		c.resumableExecUC = upgrade.NewResumableExecuteUpgradeUseCase(
+			executeUC,
+			proposeUC,
+			voteUC,
+			switchUC,
+			stateManager,
+			transitioner,
+			stateDetector,
+			c.rpcClient,
+			exportAdapter,
+			c.devnetRepo,
+			c.LoggerPort(),
+		)
+	}
+	return c.resumableExecUC
+}
+
+// ResumeUseCase returns the resume use case (lazy init).
+func (c *Container) ResumeUseCase() *upgrade.ResumeUseCase {
+	// Get dependencies first without holding the lock
+	stateManager := c.StateManager()
+	stateDetector := c.StateDetector()
+	transitioner := c.StateTransitioner()
+	resumableExecUC := c.ResumableExecuteUpgradeUseCase()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.resumeUC == nil {
+		c.resumeUC = upgrade.NewResumeUseCase(
+			stateManager,
+			stateDetector,
+			transitioner,
+			resumableExecUC,
+			c.logger,
+		)
+	}
+	return c.resumeUC
 }
 
 // BuildUseCase returns the build use case (lazy init).
