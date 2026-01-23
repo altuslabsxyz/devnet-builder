@@ -1,7 +1,16 @@
 // internal/daemon/store/errors.go
 package store
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+// Sentinel errors for simple checks.
+var (
+	ErrNotFound      = errors.New("resource not found")
+	ErrAlreadyExists = errors.New("resource already exists")
+)
 
 // NotFoundError is returned when a resource is not found.
 type NotFoundError struct {
