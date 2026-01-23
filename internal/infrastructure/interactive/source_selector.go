@@ -125,5 +125,7 @@ type sourceOption struct {
 //   - Can be called before creating SourceSelectorAdapter
 //   - Consistent with IsTerminalInteractive in binary_selector.go
 func isTerminalInteractive() bool {
-	return term.IsTerminal(int(os.Stdout.Fd()))
+	// Check stdin (not stdout) because promptui reads from stdin
+	// If stdin is piped/redirected, interactive prompts won't work
+	return term.IsTerminal(int(os.Stdin.Fd()))
 }
