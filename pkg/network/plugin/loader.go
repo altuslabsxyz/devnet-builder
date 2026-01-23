@@ -442,6 +442,52 @@ func (l *Loader) LoadAll() ([]*PluginClient, error) {
 	return clients, nil
 }
 
+// LoadError represents a plugin that failed to load.
+type LoadError struct {
+	PluginName string
+	Err        error
+}
+
+// LoadResult contains the results of loading all plugins.
+type LoadResult struct {
+	Loaded []*PluginClient
+	Errors []LoadError
+}
+
+// LoadAllWithErrors loads all discovered plugins and returns detailed error information.
+// Unlike LoadAll, this method returns both successful loads and detailed errors
+// for plugins that failed to load, enabling better diagnostics.
+func (l *Loader) LoadAllWithErrors() (*LoadResult, error) {
+	// Discover without lock (it acquires its own)
+	names, err := l.Discover()
+	if err != nil {
+		return nil, err
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	result := &LoadResult{
+		Loaded: make([]*PluginClient, 0),
+		Errors: make([]LoadError, 0),
+	}
+
+	for _, name := range names {
+		pc, err := l.loadLocked(name)
+		if err != nil {
+			l.logger.Warn("failed to load plugin", "name", name, "error", err)
+			result.Errors = append(result.Errors, LoadError{
+				PluginName: name,
+				Err:        err,
+			})
+			continue
+		}
+		result.Loaded = append(result.Loaded, pc)
+	}
+
+	return result, nil
+}
+
 // LoadAllStrict loads all discovered plugins, failing if any plugin fails to load.
 func (l *Loader) LoadAllStrict() ([]*PluginClient, error) {
 	names, err := l.Discover()
