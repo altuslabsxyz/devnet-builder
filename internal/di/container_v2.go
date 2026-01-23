@@ -116,7 +116,7 @@ func (c *ContainerV2) ensureProviders() {
 		c.devnetProvider = providers.NewDevnetUseCases(c.infra)
 	}
 	if c.upgradeProvider == nil {
-		c.upgradeProvider = providers.NewUpgradeUseCases(c.infra)
+		c.upgradeProvider = providers.NewUpgradeUseCases(c.infra, c.config.HomeDir)
 	}
 	if c.buildProvider == nil {
 		c.buildProvider = providers.NewBuildUseCases(c.infra)
@@ -372,6 +372,16 @@ func (c *ContainerV2) ExecuteUpgradeUseCase() *upgrade.ExecuteUpgradeUseCase {
 // MonitorUseCase returns the monitor use case.
 func (c *ContainerV2) MonitorUseCase() *upgrade.MonitorUseCase {
 	return c.UpgradeProvider().MonitorUseCase()
+}
+
+// ResumableExecuteUpgradeUseCase returns the resumable execute upgrade use case.
+func (c *ContainerV2) ResumableExecuteUpgradeUseCase() *upgrade.ResumableExecuteUpgradeUseCase {
+	return c.UpgradeProvider().ResumableExecuteUseCase(c.DevnetProvider())
+}
+
+// ResumeUseCase returns the resume use case.
+func (c *ContainerV2) ResumeUseCase() *upgrade.ResumeUseCase {
+	return c.UpgradeProvider().ResumeUseCase(c.DevnetProvider(), c.logger)
 }
 
 // BuildUseCase returns the build use case.

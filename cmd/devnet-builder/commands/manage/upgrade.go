@@ -22,6 +22,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/filesystem"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/interactive"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/persistence"
 	infrarpc "github.com/altuslabsxyz/devnet-builder/internal/infrastructure/rpc"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/altuslabsxyz/devnet-builder/internal/paths"
@@ -59,6 +60,13 @@ var (
 	upgradeNoInteractive bool
 	upgradeVersion       string
 	skipGovernance       bool
+
+	// Resume-related flags
+	upgradeResume       bool
+	upgradeForceRestart bool
+	upgradeResumeFrom   string
+	upgradeClearState   bool
+	upgradeShowStatus   bool
 )
 
 // NewUpgradeCmd creates the upgrade command.
@@ -108,7 +116,23 @@ Examples:
   devnet-builder upgrade
 
   # Non-interactive mode with explicit version
-  devnet-builder upgrade --no-interactive --name v2.0.0-upgrade --version v2.0.0`,
+  devnet-builder upgrade --no-interactive --name v2.0.0-upgrade --version v2.0.0
+
+Resume options (for interrupted upgrades):
+  # Check current upgrade state
+  devnet-builder upgrade --show-status
+
+  # Resume an interrupted upgrade
+  devnet-builder upgrade --resume
+
+  # Clear state and start fresh
+  devnet-builder upgrade --clear-state
+
+  # Force restart (ignore saved state)
+  devnet-builder upgrade --force-restart --name v2.0.0-upgrade --version v2.0.0
+
+  # Resume from a specific stage (advanced)
+  devnet-builder upgrade --resume --resume-from SwitchingBinary`,
 		RunE: runUpgrade,
 	}
 
@@ -130,6 +154,13 @@ Examples:
 	cmd.Flags().IntVar(&heightBuffer, "height-buffer", DefaultHeightBuffer, "Blocks to add after voting period ends (0 = auto-calculate based on block time)")
 	cmd.Flags().BoolVar(&withExport, "with-export", false, "Export state before and after upgrade")
 	cmd.Flags().StringVar(&genesisDir, "genesis-dir", "", "Directory for genesis exports (default: <home>/devnet/genesis-snapshots)")
+
+	// Resume flags (for interrupted upgrades)
+	cmd.Flags().BoolVar(&upgradeResume, "resume", false, "Resume an interrupted upgrade from saved state")
+	cmd.Flags().BoolVar(&upgradeForceRestart, "force-restart", false, "Ignore saved state and start a fresh upgrade")
+	cmd.Flags().StringVar(&upgradeResumeFrom, "resume-from", "", "Resume from a specific stage (advanced: Initialized, ProposalSubmitted, Voting, WaitingForHeight, ChainHalted, SwitchingBinary, VerifyingResume)")
+	cmd.Flags().BoolVar(&upgradeClearState, "clear-state", false, "Clear saved upgrade state and exit")
+	cmd.Flags().BoolVar(&upgradeShowStatus, "show-status", false, "Show current upgrade state and exit")
 
 	return cmd
 }
@@ -178,6 +209,11 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	}()
 
 	logger := output.DefaultLogger
+
+	// Handle resume-related flags early (before devnet checks for some operations)
+	if upgradeClearState || upgradeShowStatus {
+		return handleResumeOnlyOperations(ctx, homeDir, logger, jsonMode)
+	}
 
 	// Initialize DevnetService for existence and status checks
 	svc, err := application.GetService(homeDir)
@@ -483,6 +519,15 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 		return outputUpgradeError(fmt.Errorf("failed to initialize: %w", err))
 	}
 
+	// Check for existing upgrade state (handles --resume and --force-restart)
+	resumeState, err := checkForExistingUpgradeState(ctx, homeDir, logger, jsonMode)
+	if err != nil {
+		if jsonMode {
+			return outputUpgradeError(err)
+		}
+		return err
+	}
+
 	// Build ExecuteUpgradeInput
 	input := dto.ExecuteUpgradeInput{
 		HomeDir:        homeDir,
@@ -507,12 +552,16 @@ For more information, see: https://github.com/altuslabsxyz/devnet-builder/blob/m
 		input.TargetBinary = ""                         // Clear since we're using cache
 	}
 
-	// Execute the upgrade using the UseCase
+	// Execute the upgrade using the ResumableExecuteUpgradeUseCase
 	if !jsonMode {
-		fmt.Printf("[1/6] %s\n", color.CyanString("Verifying devnet status..."))
+		if resumeState != nil {
+			fmt.Printf("[1/6] %s (resuming from %s)\n", color.CyanString("Verifying devnet status..."), resumeState.Stage)
+		} else {
+			fmt.Printf("[1/6] %s\n", color.CyanString("Verifying devnet status..."))
+		}
 	}
 
-	result, err := container.ExecuteUpgradeUseCase().Execute(ctx, input)
+	result, err := container.ResumableExecuteUpgradeUseCase().Execute(ctx, input, resumeState)
 	if err != nil {
 		if jsonMode {
 			return outputUpgradeError(err)
@@ -783,6 +832,260 @@ var (
 	lastUpgradeStage   string
 	lastUpgradeStageMu sync.RWMutex
 )
+
+// handleResumeOnlyOperations handles --clear-state and --show-status flags
+// that don't require the full upgrade flow.
+func handleResumeOnlyOperations(ctx context.Context, homeDir string, logger *output.Logger, jsonMode bool) error {
+	stateManager := persistence.NewFileUpgradeStateManager(homeDir)
+
+	if upgradeClearState {
+		// Clear state and exit
+		exists, err := stateManager.StateExists(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to check state: %w", err)
+		}
+		if !exists {
+			if jsonMode {
+				return outputUpgradeStateJSON(nil, "no_state", "No upgrade state to clear")
+			}
+			logger.Info("No upgrade state to clear")
+			return nil
+		}
+
+		if err := stateManager.DeleteState(ctx); err != nil {
+			return fmt.Errorf("failed to clear state: %w", err)
+		}
+
+		if jsonMode {
+			return outputUpgradeStateJSON(nil, "cleared", "Upgrade state cleared")
+		}
+		logger.Success("Upgrade state cleared successfully")
+		return nil
+	}
+
+	if upgradeShowStatus {
+		// Show state and exit
+		state, err := stateManager.LoadState(ctx)
+		if err != nil {
+			if _, ok := err.(*ports.StateCorruptionError); ok {
+				if jsonMode {
+					return outputUpgradeStateJSON(nil, "corrupted", err.Error())
+				}
+				logger.Error("Upgrade state is corrupted: %v", err)
+				logger.Info("Use --clear-state to remove the corrupted state file")
+				return nil
+			}
+			return fmt.Errorf("failed to load state: %w", err)
+		}
+
+		if state == nil {
+			if jsonMode {
+				return outputUpgradeStateJSON(nil, "no_state", "No upgrade in progress")
+			}
+			logger.Info("No upgrade in progress")
+			return nil
+		}
+
+		if jsonMode {
+			return outputUpgradeStateJSON(state, "in_progress", "")
+		}
+
+		printUpgradeState(state, logger)
+		return nil
+	}
+
+	return nil
+}
+
+// printUpgradeState displays the current upgrade state in a human-readable format.
+func printUpgradeState(state *ports.UpgradeState, logger *output.Logger) {
+	output.Bold("Upgrade State")
+	fmt.Println("─────────────────────────────────────────────────────────")
+	fmt.Printf("  Upgrade Name:     %s\n", state.UpgradeName)
+	fmt.Printf("  Current Stage:    %s\n", state.Stage)
+	fmt.Printf("  Mode:             %s\n", state.Mode)
+	fmt.Printf("  Skip Governance:  %t\n", state.SkipGovernance)
+
+	if state.ProposalID > 0 {
+		fmt.Printf("  Proposal ID:      %d\n", state.ProposalID)
+	}
+	if state.UpgradeHeight > 0 {
+		fmt.Printf("  Upgrade Height:   %d\n", state.UpgradeHeight)
+	}
+	if state.TargetVersion != "" {
+		fmt.Printf("  Target Version:   %s\n", state.TargetVersion)
+	}
+	if state.TargetBinary != "" {
+		fmt.Printf("  Target Binary:    %s\n", state.TargetBinary)
+	}
+	if state.TargetImage != "" {
+		fmt.Printf("  Target Image:     %s\n", state.TargetImage)
+	}
+	if state.Error != "" {
+		fmt.Printf("  Error:            %s\n", color.RedString(state.Error))
+	}
+
+	fmt.Printf("  Created At:       %s\n", state.CreatedAt.Format(time.RFC3339))
+	fmt.Printf("  Updated At:       %s\n", state.UpdatedAt.Format(time.RFC3339))
+
+	// Show stage history summary
+	if len(state.StageHistory) > 0 {
+		fmt.Println()
+		fmt.Println("  Stage History:")
+		for i, h := range state.StageHistory {
+			if i == 0 {
+				fmt.Printf("    %d. %s (initial)\n", i+1, h.To)
+			} else {
+				fmt.Printf("    %d. %s → %s\n", i+1, h.From, h.To)
+			}
+		}
+	}
+
+	fmt.Println("─────────────────────────────────────────────────────────")
+
+	// Provide guidance based on state
+	if state.Stage.IsTerminal() {
+		if state.Stage == ports.ResumableStageCompleted {
+			logger.Success("Upgrade completed successfully!")
+			logger.Info("Use --clear-state to remove the state file")
+		} else if state.Stage == ports.ResumableStageFailed {
+			logger.Warn("Upgrade failed: %s", state.Error)
+			logger.Info("Use --force-restart to start a fresh upgrade, or --clear-state to clear state")
+		} else if state.Stage == ports.ResumableStageProposalRejected {
+			logger.Warn("Proposal was rejected")
+			logger.Info("Use --force-restart to start a fresh upgrade, or --clear-state to clear state")
+		}
+	} else {
+		logger.Info("Upgrade is in progress at stage: %s", state.Stage)
+		logger.Info("Use --resume to continue the upgrade, or --force-restart to start fresh")
+	}
+}
+
+// UpgradeStateJSON represents the JSON output for upgrade state operations.
+type UpgradeStateJSON struct {
+	Status  string              `json:"status"`
+	Message string              `json:"message,omitempty"`
+	State   *ports.UpgradeState `json:"state,omitempty"`
+}
+
+// outputUpgradeStateJSON outputs the upgrade state as JSON.
+func outputUpgradeStateJSON(state *ports.UpgradeState, status, message string) error {
+	result := UpgradeStateJSON{
+		Status:  status,
+		Message: message,
+		State:   state,
+	}
+
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(string(data))
+	return nil
+}
+
+// checkForExistingUpgradeState checks if there's an existing upgrade state and handles it.
+// Returns the state to resume from, or nil to start fresh.
+func checkForExistingUpgradeState(ctx context.Context, homeDir string, logger *output.Logger, jsonMode bool) (*ports.UpgradeState, error) {
+	stateManager := persistence.NewFileUpgradeStateManager(homeDir)
+
+	// Check for existing state
+	state, err := stateManager.LoadState(ctx)
+	if err != nil {
+		if _, ok := err.(*ports.StateCorruptionError); ok {
+			if jsonMode {
+				return nil, fmt.Errorf("upgrade state is corrupted: %w (use --clear-state to remove)", err)
+			}
+			logger.Warn("Upgrade state file is corrupted: %v", err)
+			logger.Info("Use --clear-state to remove the corrupted state, or --force-restart to start fresh")
+			return nil, fmt.Errorf("upgrade state is corrupted")
+		}
+		return nil, fmt.Errorf("failed to load state: %w", err)
+	}
+
+	// No existing state
+	if state == nil {
+		if upgradeResume {
+			return nil, fmt.Errorf("no upgrade in progress to resume")
+		}
+		return nil, nil // Start fresh
+	}
+
+	// Handle --force-restart: clear state and start fresh
+	if upgradeForceRestart {
+		if err := stateManager.DeleteState(ctx); err != nil {
+			logger.Warn("Failed to clear existing state: %v", err)
+		} else {
+			logger.Info("Cleared existing upgrade state (--force-restart)")
+		}
+		return nil, nil // Start fresh
+	}
+
+	// Existing state found - prompt user or require --resume flag
+	if state.Stage.IsTerminal() {
+		// Terminal state - need explicit action
+		if state.Stage == ports.ResumableStageCompleted {
+			if !jsonMode {
+				logger.Success("Previous upgrade completed successfully!")
+				logger.Info("Use --clear-state to remove the state file, or --force-restart to start a new upgrade")
+			}
+			return nil, fmt.Errorf("previous upgrade completed (use --force-restart to start a new upgrade)")
+		}
+
+		if !jsonMode {
+			logger.Warn("Previous upgrade %s at stage: %s", state.Stage, state.Error)
+			logger.Info("Use --force-restart to start a fresh upgrade, or --clear-state to clear state")
+		}
+		return nil, fmt.Errorf("previous upgrade failed (use --force-restart to start a new upgrade)")
+	}
+
+	// In-progress state - prompt for resume
+	if !upgradeResume {
+		if !jsonMode {
+			logger.Warn("Found existing upgrade in progress:")
+			logger.Warn("  Upgrade: %s, Stage: %s", state.UpgradeName, state.Stage)
+			logger.Info("Use --resume to continue, or --force-restart to start fresh")
+		}
+		return nil, fmt.Errorf("upgrade already in progress (use --resume to continue)")
+	}
+
+	// --resume flag set - validate resume-from stage if specified
+	if upgradeResumeFrom != "" {
+		targetStage := ports.ResumableStage(upgradeResumeFrom)
+		if !isValidStage(targetStage) {
+			return nil, fmt.Errorf("invalid stage: %s", upgradeResumeFrom)
+		}
+		// Override the current stage (advanced feature)
+		state.Stage = targetStage
+		logger.Info("Resuming from override stage: %s", targetStage)
+	}
+
+	logger.Info("Resuming upgrade: %s from stage: %s", state.UpgradeName, state.Stage)
+	return state, nil
+}
+
+// isValidStage checks if a stage string is a valid ResumableStage.
+func isValidStage(stage ports.ResumableStage) bool {
+	validStages := []ports.ResumableStage{
+		ports.ResumableStageInitialized,
+		ports.ResumableStageProposalSubmitted,
+		ports.ResumableStageVoting,
+		ports.ResumableStageWaitingForHeight,
+		ports.ResumableStageChainHalted,
+		ports.ResumableStageSwitchingBinary,
+		ports.ResumableStageVerifyingResume,
+		ports.ResumableStageCompleted,
+		ports.ResumableStageFailed,
+		ports.ResumableStageProposalRejected,
+	}
+	for _, v := range validStages {
+		if stage == v {
+			return true
+		}
+	}
+	return false
+}
 
 func outputUpgradeText(result *dto.ExecuteUpgradeOutput) error {
 	if result.Error != nil {

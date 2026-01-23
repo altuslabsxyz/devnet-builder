@@ -6,7 +6,10 @@ import (
 	"sync"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/application/dto"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/altuslabsxyz/devnet-builder/internal/application/upgrade"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/persistence"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
 )
 
 // UpgradeUseCasesProvider provides access to upgrade-related use cases.
@@ -18,12 +21,20 @@ type UpgradeUseCasesProvider interface {
 	SwitchBinaryUseCase() *upgrade.SwitchBinaryUseCase
 	ExecuteUpgradeUseCase(devnetProvider DevnetUseCasesProvider) *upgrade.ExecuteUpgradeUseCase
 	MonitorUseCase() *upgrade.MonitorUseCase
+
+	// State management for resumable upgrades
+	StateManager() ports.UpgradeStateManager
+	StateTransitioner() ports.UpgradeStateTransitioner
+	StateDetector() ports.UpgradeStateDetector
+	ResumableExecuteUseCase(devnetProvider DevnetUseCasesProvider) *upgrade.ResumableExecuteUpgradeUseCase
+	ResumeUseCase(devnetProvider DevnetUseCasesProvider, logger *output.Logger) *upgrade.ResumeUseCase
 }
 
 // upgradeUseCases is the concrete implementation of UpgradeUseCasesProvider.
 type upgradeUseCases struct {
-	mu    sync.RWMutex
-	infra InfrastructureProvider
+	mu      sync.RWMutex
+	infra   InfrastructureProvider
+	homeDir string
 
 	// Lazy-initialized use cases
 	proposeUC        *upgrade.ProposeUseCase
@@ -31,12 +42,20 @@ type upgradeUseCases struct {
 	switchUC         *upgrade.SwitchBinaryUseCase
 	executeUpgradeUC *upgrade.ExecuteUpgradeUseCase
 	monitorUC        *upgrade.MonitorUseCase
+
+	// State management (lazy-initialized)
+	stateManager    ports.UpgradeStateManager
+	transitioner    ports.UpgradeStateTransitioner
+	stateDetector   ports.UpgradeStateDetector
+	resumableExecUC *upgrade.ResumableExecuteUpgradeUseCase
+	resumeUC        *upgrade.ResumeUseCase
 }
 
 // NewUpgradeUseCases creates a new UpgradeUseCasesProvider.
-func NewUpgradeUseCases(infra InfrastructureProvider) UpgradeUseCasesProvider {
+func NewUpgradeUseCases(infra InfrastructureProvider, homeDir string) UpgradeUseCasesProvider {
 	return &upgradeUseCases{
-		infra: infra,
+		infra:   infra,
+		homeDir: homeDir,
 	}
 }
 
@@ -147,4 +166,97 @@ func (a *exportUseCaseAdapter) Execute(ctx context.Context, input interface{}) (
 		return nil, fmt.Errorf("invalid input type for export: expected dto.ExportInput, got %T", input)
 	}
 	return a.concrete.Execute(ctx, exportInput)
+}
+
+// StateManager returns the upgrade state manager (lazy init).
+func (u *upgradeUseCases) StateManager() ports.UpgradeStateManager {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	if u.stateManager == nil {
+		u.stateManager = persistence.NewFileUpgradeStateManager(u.homeDir)
+	}
+	return u.stateManager
+}
+
+// StateTransitioner returns the state transitioner (lazy init).
+func (u *upgradeUseCases) StateTransitioner() ports.UpgradeStateTransitioner {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	if u.transitioner == nil {
+		u.transitioner = upgrade.NewStateTransitioner()
+	}
+	return u.transitioner
+}
+
+// StateDetector returns the state detector (lazy init).
+func (u *upgradeUseCases) StateDetector() ports.UpgradeStateDetector {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	if u.stateDetector == nil {
+		u.stateDetector = upgrade.NewStateDetector(u.infra.RPCClient())
+	}
+	return u.stateDetector
+}
+
+// ResumableExecuteUseCase returns the resumable execute use case (lazy init).
+func (u *upgradeUseCases) ResumableExecuteUseCase(devnetProvider DevnetUseCasesProvider) *upgrade.ResumableExecuteUpgradeUseCase {
+	// Get dependencies first without holding the lock
+	ctx := context.Background()
+	executeUC := u.ExecuteUpgradeUseCase(devnetProvider)
+	proposeUC := u.ProposeUseCase()
+	voteUC := u.VoteUseCase()
+	switchUC := u.SwitchBinaryUseCase()
+	stateManager := u.StateManager()
+	transitioner := u.StateTransitioner()
+	stateDetector := u.StateDetector()
+	exportUC := devnetProvider.ExportUseCase(ctx)
+
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	if u.resumableExecUC == nil {
+		// Create export adapter to match ports interface
+		exportAdapter := &exportUseCaseAdapter{concrete: exportUC}
+
+		u.resumableExecUC = upgrade.NewResumableExecuteUpgradeUseCase(
+			executeUC,
+			proposeUC,
+			voteUC,
+			switchUC,
+			stateManager,
+			transitioner,
+			stateDetector,
+			u.infra.RPCClient(),
+			exportAdapter,
+			u.infra.DevnetRepository(),
+			u.infra.Logger(),
+		)
+	}
+	return u.resumableExecUC
+}
+
+// ResumeUseCase returns the resume use case (lazy init).
+func (u *upgradeUseCases) ResumeUseCase(devnetProvider DevnetUseCasesProvider, logger *output.Logger) *upgrade.ResumeUseCase {
+	// Get dependencies first without holding the lock
+	stateManager := u.StateManager()
+	stateDetector := u.StateDetector()
+	transitioner := u.StateTransitioner()
+	resumableExecUC := u.ResumableExecuteUseCase(devnetProvider)
+
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	if u.resumeUC == nil {
+		u.resumeUC = upgrade.NewResumeUseCase(
+			stateManager,
+			stateDetector,
+			transitioner,
+			resumableExecUC,
+			logger,
+		)
+	}
+	return u.resumeUC
 }
