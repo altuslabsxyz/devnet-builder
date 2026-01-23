@@ -67,3 +67,12 @@ func TestConflictError(t *testing.T) {
 	assert.Contains(t, err.Error(), "conflict")
 	assert.True(t, IsConflict(err))
 }
+
+func TestAlreadyExistsError(t *testing.T) {
+	err := &AlreadyExistsError{Resource: "devnet", Name: "test"}
+	assert.Contains(t, err.Error(), "devnet")
+	assert.Contains(t, err.Error(), "test")
+	assert.Contains(t, err.Error(), "already exists")
+	assert.True(t, IsAlreadyExists(err))
+	assert.False(t, IsAlreadyExists(&NotFoundError{Resource: "devnet", Name: "test"}))
+}
