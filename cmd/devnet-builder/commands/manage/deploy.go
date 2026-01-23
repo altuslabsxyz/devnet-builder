@@ -252,7 +252,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		if isInteractive {
 			// includeNetworkSelection = false (network is already known from config)
 			// Pass deployNetwork so ConfirmSelection shows the correct network
-			selection, err := RunInteractiveVersionSelection(ctx, cmd, false, deployNetwork)
+			// Pass deployBlockchainNetwork to fetch releases from the correct repository
+			selection, err := RunInteractiveVersionSelection(ctx, cmd, false, deployNetwork, deployBlockchainNetwork)
 			if err != nil {
 				return WrapInteractiveError(cmd, err, "failed during interactive selection")
 			}

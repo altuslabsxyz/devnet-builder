@@ -10,6 +10,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/github"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/interactive"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/altuslabsxyz/devnet-builder/types/ctxconfig"
 	"github.com/spf13/cobra"
@@ -30,7 +31,8 @@ func WrapInteractiveError(cmd *cobra.Command, err error, context string) error {
 }
 
 // SetupGitHubClient creates a GitHub client with optional caching and token.
-func SetupGitHubClient(homeDir string, fileCfg *config.FileConfig) *github.Client {
+// The blockchainNetwork parameter determines which repository to fetch releases from.
+func SetupGitHubClient(homeDir string, fileCfg *config.FileConfig, blockchainNetwork string) *github.Client {
 	cacheTTL := github.DefaultCacheTTL
 	if fileCfg != nil && fileCfg.CacheTTL != nil {
 		if ttl, err := time.ParseDuration(*fileCfg.CacheTTL); err == nil {
@@ -44,6 +46,16 @@ func SetupGitHubClient(homeDir string, fileCfg *config.FileConfig) *github.Clien
 		github.WithCache(cacheManager),
 	}
 
+	// Set repository based on blockchain network module
+	if blockchainNetwork != "" {
+		if module, err := network.Get(blockchainNetwork); err == nil {
+			source := module.BinarySource()
+			if source.Owner != "" && source.Repo != "" {
+				clientOpts = append(clientOpts, github.WithOwnerRepo(source.Owner, source.Repo))
+			}
+		}
+	}
+
 	// Resolve GitHub token from keychain, environment, or config file
 	if token, found := ResolveGitHubToken(fileCfg); found {
 		clientOpts = append(clientOpts, github.WithToken(token))
@@ -53,27 +65,29 @@ func SetupGitHubClient(homeDir string, fileCfg *config.FileConfig) *github.Clien
 }
 
 // RunInteractiveVersionSelection runs the unified version selection flow.
-func RunInteractiveVersionSelection(ctx context.Context, cmd *cobra.Command, includeNetworkSelection bool, network string) (*interactive.SelectionConfig, error) {
+// The blockchainNetwork parameter determines which repository to fetch releases from.
+func RunInteractiveVersionSelection(ctx context.Context, cmd *cobra.Command, includeNetworkSelection bool, networkName string, blockchainNetwork string) (*interactive.SelectionConfig, error) {
 	cfg := ctxconfig.FromContext(cmd.Context())
 	fileCfg := cfg.FileConfig()
 
-	client := SetupGitHubClient(cfg.HomeDir(), fileCfg)
+	client := SetupGitHubClient(cfg.HomeDir(), fileCfg, blockchainNetwork)
 
 	selector := interactive.NewSelector(client)
 	if includeNetworkSelection {
 		return selector.RunSelectionFlow(ctx)
 	}
-	return selector.RunVersionSelectionFlow(ctx, network)
+	return selector.RunVersionSelectionFlow(ctx, networkName)
 }
 
 // RunInteractiveVersionSelectionWithMode runs version selection with upgrade mode support.
 // When forUpgrade is true, returns a SelectionConfig derived from UpgradeSelectionConfig.
 // When skipUpgradeName is true (e.g., --skip-gov mode), it skips the upgrade name prompt.
-func RunInteractiveVersionSelectionWithMode(ctx context.Context, cmd *cobra.Command, includeNetworkSelection bool, forUpgrade bool, network string, skipUpgradeName bool) (*interactive.SelectionConfig, error) {
+// The blockchainNetwork parameter determines which repository to fetch releases from.
+func RunInteractiveVersionSelectionWithMode(ctx context.Context, cmd *cobra.Command, includeNetworkSelection bool, forUpgrade bool, networkName string, skipUpgradeName bool, blockchainNetwork string) (*interactive.SelectionConfig, error) {
 	cfg := ctxconfig.FromContext(cmd.Context())
 	fileCfg := cfg.FileConfig()
 
-	client := SetupGitHubClient(cfg.HomeDir(), fileCfg)
+	client := SetupGitHubClient(cfg.HomeDir(), fileCfg, blockchainNetwork)
 
 	selector := interactive.NewSelector(client)
 	if forUpgrade {
@@ -91,7 +105,7 @@ func RunInteractiveVersionSelectionWithMode(ctx context.Context, cmd *cobra.Comm
 	if includeNetworkSelection {
 		return selector.RunSelectionFlow(ctx)
 	}
-	return selector.RunVersionSelectionFlow(ctx, network)
+	return selector.RunVersionSelectionFlow(ctx, networkName)
 }
 
 // ResolveGitHubToken resolves the GitHub token from environment or config.
