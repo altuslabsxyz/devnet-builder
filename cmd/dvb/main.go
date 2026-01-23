@@ -2,10 +2,11 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
+	"text/tabwriter"
 
+	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -22,7 +23,7 @@ func main() {
 		Short: "Devnet Builder CLI",
 		Long:  `dvb is a CLI for managing blockchain development networks.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Skip daemon connection for daemon subcommand
+			// Skip daemon connection for certain commands
 			if cmd.Name() == "daemon" || cmd.Parent() != nil && cmd.Parent().Name() == "daemon" {
 				return nil
 			}
@@ -57,7 +58,12 @@ func main() {
 	rootCmd.AddCommand(
 		newVersionCmd(),
 		newDaemonCmd(),
+		newDeployCmd(),
+		newListCmd(),
 		newStatusCmd(),
+		newStartCmd(),
+		newStopCmd(),
+		newDestroyCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -106,26 +112,234 @@ func newDaemonCmd() *cobra.Command {
 	return cmd
 }
 
-func newStatusCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "status [devnet]",
-		Short: "Show devnet status",
-		Args:  cobra.MaximumNArgs(1),
+func newDeployCmd() *cobra.Command {
+	var (
+		plugin     string
+		validators int
+		fullNodes  int
+		mode       string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "deploy [name]",
+		Short: "Deploy a new devnet",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient != nil {
-				return statusViaDaemon(cmd.Context(), args)
+			name := args[0]
+
+			if daemonClient == nil {
+				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
-			return statusStandalone(cmd.Context(), args)
+
+			spec := &v1.DevnetSpec{
+				Plugin:     plugin,
+				Validators: int32(validators),
+				FullNodes:  int32(fullNodes),
+				Mode:       mode,
+			}
+
+			devnet, err := daemonClient.CreateDevnet(cmd.Context(), name, spec, nil)
+			if err != nil {
+				return err
+			}
+
+			color.Green("✓ Devnet %q created", devnet.Metadata.Name)
+			fmt.Printf("  Phase: %s\n", devnet.Status.Phase)
+			fmt.Printf("  Plugin: %s\n", devnet.Spec.Plugin)
+			fmt.Printf("  Validators: %d\n", devnet.Spec.Validators)
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&plugin, "plugin", "stable", "Network plugin")
+	cmd.Flags().IntVar(&validators, "validators", 4, "Number of validators")
+	cmd.Flags().IntVar(&fullNodes, "full-nodes", 0, "Number of full nodes")
+	cmd.Flags().StringVar(&mode, "mode", "docker", "Execution mode (docker or local)")
+
+	return cmd
+}
+
+func newListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all devnets",
+		Aliases: []string{"ls"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if daemonClient == nil {
+				return fmt.Errorf("daemon not running - start with: devnetd")
+			}
+
+			devnets, err := daemonClient.ListDevnets(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			if len(devnets) == 0 {
+				fmt.Println("No devnets found")
+				return nil
+			}
+
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			fmt.Fprintln(w, "NAME\tPHASE\tNODES\tREADY\tHEIGHT")
+			for _, d := range devnets {
+				fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%d\n",
+					d.Metadata.Name,
+					d.Status.Phase,
+					d.Status.Nodes,
+					d.Status.ReadyNodes,
+					d.Status.CurrentHeight)
+			}
+			w.Flush()
+
+			return nil
 		},
 	}
 }
 
-func statusViaDaemon(ctx context.Context, args []string) error {
-	fmt.Println("Status via daemon (not implemented yet)")
-	return nil
+func newStatusCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "status [devnet]",
+		Short: "Show devnet status",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			if daemonClient == nil {
+				return fmt.Errorf("daemon not running - start with: devnetd")
+			}
+
+			devnet, err := daemonClient.GetDevnet(cmd.Context(), name)
+			if err != nil {
+				return err
+			}
+
+			printDevnetStatus(devnet)
+			return nil
+		},
+	}
 }
 
-func statusStandalone(ctx context.Context, args []string) error {
-	fmt.Println("Status in standalone mode (not implemented yet)")
-	return nil
+func newStartCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "start [devnet]",
+		Short: "Start a stopped devnet",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			if daemonClient == nil {
+				return fmt.Errorf("daemon not running - start with: devnetd")
+			}
+
+			devnet, err := daemonClient.StartDevnet(cmd.Context(), name)
+			if err != nil {
+				return err
+			}
+
+			color.Green("✓ Devnet %q starting", devnet.Metadata.Name)
+			fmt.Printf("  Phase: %s\n", devnet.Status.Phase)
+
+			return nil
+		},
+	}
+}
+
+func newStopCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "stop [devnet]",
+		Short: "Stop a running devnet",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			if daemonClient == nil {
+				return fmt.Errorf("daemon not running - start with: devnetd")
+			}
+
+			devnet, err := daemonClient.StopDevnet(cmd.Context(), name)
+			if err != nil {
+				return err
+			}
+
+			color.Green("✓ Devnet %q stopped", devnet.Metadata.Name)
+			fmt.Printf("  Phase: %s\n", devnet.Status.Phase)
+
+			return nil
+		},
+	}
+}
+
+func newDestroyCmd() *cobra.Command {
+	var force bool
+
+	cmd := &cobra.Command{
+		Use:   "destroy [devnet]",
+		Short: "Destroy a devnet",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			if daemonClient == nil {
+				return fmt.Errorf("daemon not running - start with: devnetd")
+			}
+
+			if !force {
+				fmt.Printf("Are you sure you want to destroy devnet %q? [y/N] ", name)
+				var response string
+				fmt.Scanln(&response)
+				if response != "y" && response != "Y" {
+					fmt.Println("Cancelled")
+					return nil
+				}
+			}
+
+			err := daemonClient.DeleteDevnet(cmd.Context(), name)
+			if err != nil {
+				return err
+			}
+
+			color.Green("✓ Devnet %q destroyed", name)
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "Skip confirmation")
+
+	return cmd
+}
+
+func printDevnetStatus(d *v1.Devnet) {
+	// Phase with color
+	phase := d.Status.Phase
+	switch phase {
+	case "Running":
+		color.Green("● %s", phase)
+	case "Pending", "Provisioning":
+		color.Yellow("◐ %s", phase)
+	case "Stopped":
+		color.White("○ %s", phase)
+	case "Degraded":
+		color.Red("◑ %s", phase)
+	default:
+		fmt.Printf("? %s", phase)
+	}
+
+	fmt.Printf("\nName:       %s\n", d.Metadata.Name)
+	fmt.Printf("Plugin:     %s\n", d.Spec.Plugin)
+	fmt.Printf("Mode:       %s\n", d.Spec.Mode)
+	fmt.Printf("Validators: %d\n", d.Spec.Validators)
+	if d.Spec.FullNodes > 0 {
+		fmt.Printf("Full Nodes: %d\n", d.Spec.FullNodes)
+	}
+	fmt.Printf("Nodes:      %d/%d ready\n", d.Status.ReadyNodes, d.Status.Nodes)
+	if d.Status.CurrentHeight > 0 {
+		fmt.Printf("Height:     %d\n", d.Status.CurrentHeight)
+	}
+	if d.Status.SdkVersion != "" {
+		fmt.Printf("SDK:        %s\n", d.Status.SdkVersion)
+	}
+	if d.Status.Message != "" {
+		fmt.Printf("Message:    %s\n", d.Status.Message)
+	}
 }
