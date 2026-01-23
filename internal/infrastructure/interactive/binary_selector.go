@@ -226,5 +226,7 @@ func (s *BinarySelector) RunBinarySelectionFlow(
 // Note: This is a helper function that can be called from deploy.go/upgrade.go
 // before calling RunBinarySelectionFlow to set opts.IsInteractive.
 func IsTerminalInteractive() bool {
-	return term.IsTerminal(int(os.Stdout.Fd()))
+	// Check stdin (not stdout) because promptui reads from stdin
+	// If stdin is piped/redirected, interactive prompts won't work
+	return term.IsTerminal(int(os.Stdin.Fd()))
 }
