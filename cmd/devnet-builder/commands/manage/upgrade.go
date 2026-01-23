@@ -295,7 +295,8 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		// forUpgrade = true: collects only upgrade target version (no export/start distinction)
 		// includeNetworkSelection = false: network is already determined from running devnet
 		// skipUpgradeName = skipGovernance: skip upgrade name prompt when --skip-gov is set
-		selection, err := RunInteractiveVersionSelectionWithMode(ctx, cmd, false, true, "", skipGovernance)
+		// Pass cleanMetadata.BlockchainNetwork to fetch releases from the correct repository
+		selection, err := RunInteractiveVersionSelectionWithMode(ctx, cmd, false, true, "", skipGovernance, cleanMetadata.BlockchainNetwork)
 		if err != nil {
 			if interactive.IsCancellation(err) {
 				fmt.Println("Operation cancelled.")
