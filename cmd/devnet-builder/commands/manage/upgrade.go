@@ -963,9 +963,9 @@ func printUpgradeState(state *ports.UpgradeState, logger *output.Logger) {
 
 // UpgradeStateJSON represents the JSON output for upgrade state operations.
 type UpgradeStateJSON struct {
-	Status      string             `json:"status"`
-	Message     string             `json:"message,omitempty"`
-	State       *ports.UpgradeState `json:"state,omitempty"`
+	Status  string              `json:"status"`
+	Message string              `json:"message,omitempty"`
+	State   *ports.UpgradeState `json:"state,omitempty"`
 }
 
 // outputUpgradeStateJSON outputs the upgrade state as JSON.
