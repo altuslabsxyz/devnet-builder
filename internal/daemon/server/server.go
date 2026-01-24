@@ -12,8 +12,12 @@ import (
 	"syscall"
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/checker"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/provisioner"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/upgrader"
 	"google.golang.org/grpc"
 )
 
@@ -29,6 +33,10 @@ type Config struct {
 	Workers int
 	// LogLevel is the log level (debug, info, warn, error).
 	LogLevel string
+	// EnableDocker enables Docker container runtime for nodes.
+	EnableDocker bool
+	// DockerImage is the default Docker image for nodes.
+	DockerImage string
 }
 
 // DefaultConfig returns default configuration.
@@ -85,23 +93,53 @@ func New(config *Config) (*Server, error) {
 	mgr := controller.NewManager()
 	mgr.SetLogger(logger)
 
+	// Create devnet provisioner
+	devnetProv := provisioner.NewDevnetProvisioner(st, provisioner.Config{
+		DataDir: config.DataDir,
+		Logger:  logger,
+	})
+
 	// Register controllers
-	devnetCtrl := controller.NewDevnetController(st, nil) // No provisioner yet (Phase 3)
+	devnetCtrl := controller.NewDevnetController(st, devnetProv)
 	devnetCtrl.SetLogger(logger)
 	mgr.Register("devnets", devnetCtrl)
 
-	nodeCtrl := controller.NewNodeController(st, nil) // No runtime yet
+	// Create node runtime (Docker or nil)
+	var nodeRuntime controller.NodeRuntime
+	if config.EnableDocker {
+		dockerRuntime, err := runtime.NewDockerRuntime(runtime.DockerConfig{
+			DefaultImage: config.DockerImage,
+			Logger:       logger,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create docker runtime: %w", err)
+		}
+		nodeRuntime = dockerRuntime
+		logger.Info("docker runtime enabled", "image", config.DockerImage)
+	}
+
+	nodeCtrl := controller.NewNodeController(st, nodeRuntime)
 	nodeCtrl.SetLogger(logger)
 	mgr.Register("nodes", nodeCtrl)
 
+	// Create health checker
+	healthChecker := checker.NewRPCHealthChecker(checker.Config{
+		Logger: logger,
+	})
+
 	// Create and register health controller
 	healthConfig := controller.DefaultHealthControllerConfig()
-	healthCtrl := controller.NewHealthController(st, nil, mgr, healthConfig) // No checker yet
+	healthCtrl := controller.NewHealthController(st, healthChecker, mgr, healthConfig)
 	healthCtrl.SetLogger(logger)
 	mgr.Register("health", healthCtrl)
 
+	// Create upgrade runtime
+	upgradeRuntime := upgrader.NewRuntime(st, upgrader.Config{
+		Logger: logger,
+	})
+
 	// Create and register upgrade controller
-	upgradeCtrl := controller.NewUpgradeController(st, nil) // No runtime yet
+	upgradeCtrl := controller.NewUpgradeController(st, upgradeRuntime)
 	upgradeCtrl.SetLogger(logger)
 	mgr.Register("upgrades", upgradeCtrl)
 
