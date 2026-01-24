@@ -89,16 +89,19 @@ func TestTxBuilder_SignTx_NoPrivateKey(t *testing.T) {
 		Address: "0x1234567890123456789012345678901234567890",
 		PrivKey: nil, // No private key
 	}
-	_, err := builder.SignTx(context.Background(), &network.UnsignedTx{}, key)
+	unsignedTx := &network.UnsignedTx{
+		SignDoc: []byte("test sign doc"), // Provide SignDoc so we get to private key check
+	}
+	_, err := builder.SignTx(context.Background(), unsignedTx, key)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "private key required")
 }
 
-func TestTxBuilder_BroadcastTx_NotImplemented(t *testing.T) {
-	builder := &TxBuilder{}
+func TestTxBuilder_BroadcastTx_NilBuilder(t *testing.T) {
+	var builder *TxBuilder
 	_, err := builder.BroadcastTx(context.Background(), nil)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "not implemented")
+	require.Contains(t, err.Error(), "nil TxBuilder")
 }
 
 func TestTxBuilder_InterfaceCompliance(t *testing.T) {

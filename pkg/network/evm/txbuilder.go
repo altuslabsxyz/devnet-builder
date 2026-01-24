@@ -260,6 +260,18 @@ func (b *TxBuilder) BroadcastTx(ctx context.Context, signedTx *network.SignedTx)
 	if b == nil {
 		return nil, fmt.Errorf("nil TxBuilder")
 	}
+	if signedTx == nil {
+		return nil, fmt.Errorf("signed transaction is required")
+	}
+	if len(signedTx.TxBytes) == 0 {
+		return nil, fmt.Errorf("transaction bytes are required")
+	}
+
+	// Use default HTTP client if not set
+	httpClient := b.httpClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
 
 	// Encode as hex with 0x prefix
 	rawTxHex := "0x" + hex.EncodeToString(signedTx.TxBytes)
@@ -283,7 +295,7 @@ func (b *TxBuilder) BroadcastTx(ctx context.Context, signedTx *network.SignedTx)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := b.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("broadcast: %w", err)
 	}
