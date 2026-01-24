@@ -3,7 +3,7 @@ package server
 import (
 	"time"
 
-	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/v1"
+	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

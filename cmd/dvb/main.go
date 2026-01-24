@@ -6,7 +6,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/v1"
+	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -64,6 +64,7 @@ func main() {
 		newStartCmd(),
 		newStopCmd(),
 		newDestroyCmd(),
+		newNodeCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

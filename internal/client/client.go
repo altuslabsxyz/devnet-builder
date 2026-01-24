@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/v1"
+	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 )
 
 // Client provides access to the devnetd daemon.
@@ -72,4 +72,29 @@ func (c *Client) StartDevnet(ctx context.Context, name string) (*v1.Devnet, erro
 // StopDevnet stops a running devnet.
 func (c *Client) StopDevnet(ctx context.Context, name string) (*v1.Devnet, error) {
 	return c.grpc.StopDevnet(ctx, name)
+}
+
+// GetNode retrieves a node by devnet name and index.
+func (c *Client) GetNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
+	return c.grpc.GetNode(ctx, devnetName, index)
+}
+
+// ListNodes lists all nodes in a devnet.
+func (c *Client) ListNodes(ctx context.Context, devnetName string) ([]*v1.Node, error) {
+	return c.grpc.ListNodes(ctx, devnetName)
+}
+
+// StartNode starts a stopped node.
+func (c *Client) StartNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
+	return c.grpc.StartNode(ctx, devnetName, index)
+}
+
+// StopNode stops a running node.
+func (c *Client) StopNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
+	return c.grpc.StopNode(ctx, devnetName, index)
+}
+
+// RestartNode restarts a node.
+func (c *Client) RestartNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
+	return c.grpc.RestartNode(ctx, devnetName, index)
 }

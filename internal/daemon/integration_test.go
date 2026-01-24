@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/v1"
+	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/server"
 	"github.com/stretchr/testify/assert"
@@ -170,6 +170,188 @@ func TestDevnetLifecycle(t *testing.T) {
 		assert.Len(t, devnets, 1)
 		assert.Equal(t, "test-devnet-2", devnets[0].Metadata.Name)
 	})
+
+	// Shutdown server
+	cancel()
+
+	// Wait for server to stop (or timeout)
+	select {
+	case <-errCh:
+		// Server stopped
+	case <-time.After(5 * time.Second):
+		t.Log("Server shutdown timed out")
+	}
+}
+
+func TestNodeLifecycle(t *testing.T) {
+	// Create temp directory for test
+	tmpDir, err := os.MkdirTemp("", "devnetd-node-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	socketPath := filepath.Join(tmpDir, "devnetd.sock")
+
+	// Create and start server
+	cfg := &server.Config{
+		SocketPath: socketPath,
+		DataDir:    tmpDir,
+		Foreground: true,
+		Workers:    1,
+		LogLevel:   "error", // Quiet logs for tests
+	}
+
+	srv, err := server.New(cfg)
+	require.NoError(t, err)
+
+	// Start server in background
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.Run(ctx)
+	}()
+
+	// Wait for server to be ready
+	require.Eventually(t, func() bool {
+		return client.IsDaemonRunningAt(socketPath)
+	}, 5*time.Second, 100*time.Millisecond, "server should be ready")
+
+	// Connect client
+	c, err := client.NewWithSocket(socketPath)
+	require.NoError(t, err)
+	defer c.Close()
+
+	// Create a devnet first (required for node operations)
+	spec := &v1.DevnetSpec{
+		Plugin:     "stable",
+		Validators: 2,
+		FullNodes:  1,
+		Mode:       "docker",
+	}
+	devnet, err := c.CreateDevnet(ctx, "node-test-devnet", spec, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "node-test-devnet", devnet.Metadata.Name)
+
+	// Test: List nodes (initially empty)
+	t.Run("ListNodesEmpty", func(t *testing.T) {
+		nodes, err := c.ListNodes(ctx, "node-test-devnet")
+		require.NoError(t, err)
+		assert.Len(t, nodes, 0)
+	})
+
+	// Test: Get node not found
+	t.Run("GetNodeNotFound", func(t *testing.T) {
+		_, err := c.GetNode(ctx, "node-test-devnet", 0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	// Test: List nodes for non-existent devnet
+	t.Run("ListNodesDevnetNotFound", func(t *testing.T) {
+		_, err := c.ListNodes(ctx, "non-existent-devnet")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	// Test: Start node (should fail since no nodes exist yet)
+	t.Run("StartNodeNotFound", func(t *testing.T) {
+		_, err := c.StartNode(ctx, "node-test-devnet", 0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	// Test: Stop node not found
+	t.Run("StopNodeNotFound", func(t *testing.T) {
+		_, err := c.StopNode(ctx, "node-test-devnet", 0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	// Test: Restart node not found
+	t.Run("RestartNodeNotFound", func(t *testing.T) {
+		_, err := c.RestartNode(ctx, "node-test-devnet", 0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	// Shutdown server
+	cancel()
+
+	// Wait for server to stop (or timeout)
+	select {
+	case <-errCh:
+		// Server stopped
+	case <-time.After(5 * time.Second):
+		t.Log("Server shutdown timed out")
+	}
+}
+
+func TestCascadeDelete(t *testing.T) {
+	// Create temp directory for test
+	tmpDir, err := os.MkdirTemp("", "devnetd-cascade-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	socketPath := filepath.Join(tmpDir, "devnetd.sock")
+
+	// Create and start server
+	cfg := &server.Config{
+		SocketPath: socketPath,
+		DataDir:    tmpDir,
+		Foreground: true,
+		Workers:    1,
+		LogLevel:   "error", // Quiet logs for tests
+	}
+
+	srv, err := server.New(cfg)
+	require.NoError(t, err)
+
+	// Start server in background
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.Run(ctx)
+	}()
+
+	// Wait for server to be ready
+	require.Eventually(t, func() bool {
+		return client.IsDaemonRunningAt(socketPath)
+	}, 5*time.Second, 100*time.Millisecond, "server should be ready")
+
+	// Connect client
+	c, err := client.NewWithSocket(socketPath)
+	require.NoError(t, err)
+	defer c.Close()
+
+	// Create a devnet
+	spec := &v1.DevnetSpec{
+		Plugin:     "stable",
+		Validators: 3,
+		Mode:       "docker",
+	}
+	_, err = c.CreateDevnet(ctx, "cascade-devnet", spec, nil)
+	require.NoError(t, err)
+
+	// Note: In a full implementation, nodes would be created by the DevnetController
+	// when the devnet is provisioned. For now, we're testing that cascade delete
+	// doesn't fail when there are no nodes (since NodeController doesn't create nodes yet).
+
+	// Delete the devnet (cascade delete should handle any associated nodes)
+	err = c.DeleteDevnet(ctx, "cascade-devnet")
+	require.NoError(t, err)
+
+	// Verify devnet is deleted
+	_, err = c.GetDevnet(ctx, "cascade-devnet")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+
+	// Verify listing nodes for deleted devnet fails
+	_, err = c.ListNodes(ctx, "cascade-devnet")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
 
 	// Shutdown server
 	cancel()

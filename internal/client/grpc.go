@@ -5,17 +5,18 @@ import (
 	"context"
 	"fmt"
 
-	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/v1"
+	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
 
-// GRPCClient wraps the gRPC DevnetServiceClient.
+// GRPCClient wraps the gRPC DevnetServiceClient and NodeServiceClient.
 type GRPCClient struct {
 	conn   *grpc.ClientConn
 	devnet v1.DevnetServiceClient
+	node   v1.NodeServiceClient
 }
 
 // NewGRPCClient creates a new gRPC client connected to the daemon.
@@ -32,6 +33,7 @@ func NewGRPCClient(socketPath string) (*GRPCClient, error) {
 	return &GRPCClient{
 		conn:   conn,
 		devnet: v1.NewDevnetServiceClient(conn),
+		node:   v1.NewNodeServiceClient(conn),
 	}, nil
 }
 
@@ -56,7 +58,7 @@ func (c *GRPCClient) CreateDevnet(ctx context.Context, name string, spec *v1.Dev
 		return nil, wrapGRPCError(err)
 	}
 
-	return resp, nil
+	return resp.Devnet, nil
 }
 
 // GetDevnet retrieves a devnet by name.
@@ -65,7 +67,7 @@ func (c *GRPCClient) GetDevnet(ctx context.Context, name string) (*v1.Devnet, er
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}
-	return resp, nil
+	return resp.Devnet, nil
 }
 
 // ListDevnets lists all devnets.
@@ -92,7 +94,7 @@ func (c *GRPCClient) StartDevnet(ctx context.Context, name string) (*v1.Devnet, 
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}
-	return resp, nil
+	return resp.Devnet, nil
 }
 
 // StopDevnet stops a running devnet.
@@ -101,7 +103,66 @@ func (c *GRPCClient) StopDevnet(ctx context.Context, name string) (*v1.Devnet, e
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}
-	return resp, nil
+	return resp.Devnet, nil
+}
+
+// GetNode retrieves a node by devnet name and index.
+func (c *GRPCClient) GetNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
+	resp, err := c.node.GetNode(ctx, &v1.GetNodeRequest{
+		DevnetName: devnetName,
+		Index:      int32(index),
+	})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp.Node, nil
+}
+
+// ListNodes lists all nodes in a devnet.
+func (c *GRPCClient) ListNodes(ctx context.Context, devnetName string) ([]*v1.Node, error) {
+	resp, err := c.node.ListNodes(ctx, &v1.ListNodesRequest{
+		DevnetName: devnetName,
+	})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp.Nodes, nil
+}
+
+// StartNode starts a stopped node.
+func (c *GRPCClient) StartNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
+	resp, err := c.node.StartNode(ctx, &v1.StartNodeRequest{
+		DevnetName: devnetName,
+		Index:      int32(index),
+	})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp.Node, nil
+}
+
+// StopNode stops a running node.
+func (c *GRPCClient) StopNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
+	resp, err := c.node.StopNode(ctx, &v1.StopNodeRequest{
+		DevnetName: devnetName,
+		Index:      int32(index),
+	})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp.Node, nil
+}
+
+// RestartNode restarts a node.
+func (c *GRPCClient) RestartNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
+	resp, err := c.node.RestartNode(ctx, &v1.RestartNodeRequest{
+		DevnetName: devnetName,
+		Index:      int32(index),
+	})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp.Node, nil
 }
 
 // wrapGRPCError converts gRPC errors to user-friendly messages.

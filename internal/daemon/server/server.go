@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/v1"
+	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"google.golang.org/grpc"
@@ -89,6 +89,10 @@ func New(config *Config) (*Server, error) {
 	devnetCtrl.SetLogger(logger)
 	mgr.Register("devnets", devnetCtrl)
 
+	nodeCtrl := controller.NewNodeController(st, nil) // No runtime yet
+	nodeCtrl.SetLogger(logger)
+	mgr.Register("nodes", nodeCtrl)
+
 	// Create gRPC server
 	grpcServer := grpc.NewServer()
 
@@ -96,6 +100,10 @@ func New(config *Config) (*Server, error) {
 	devnetSvc := NewDevnetService(st, mgr)
 	devnetSvc.SetLogger(logger)
 	v1.RegisterDevnetServiceServer(grpcServer, devnetSvc)
+
+	nodeSvc := NewNodeService(st, mgr)
+	nodeSvc.SetLogger(logger)
+	v1.RegisterNodeServiceServer(grpcServer, nodeSvc)
 
 	return &Server{
 		config:     config,

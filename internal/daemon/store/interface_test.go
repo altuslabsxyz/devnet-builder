@@ -33,6 +33,7 @@ func (m *mockStore) DeleteNode(ctx context.Context, devnetName string, index int
 func (m *mockStore) ListNodes(ctx context.Context, devnetName string) ([]*Node, error) {
 	return nil, nil
 }
+func (m *mockStore) DeleteNodesByDevnet(ctx context.Context, devnetName string) error { return nil }
 
 func (m *mockStore) CreateUpgrade(ctx context.Context, upgrade *Upgrade) error     { return nil }
 func (m *mockStore) GetUpgrade(ctx context.Context, name string) (*Upgrade, error) { return nil, nil }

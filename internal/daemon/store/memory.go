@@ -3,6 +3,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
@@ -173,6 +174,19 @@ func (m *MemoryStore) ListNodes(ctx context.Context, devnetName string) ([]*type
 	return result, nil
 }
 
+// DeleteNodesByDevnet deletes all nodes belonging to a devnet.
+func (m *MemoryStore) DeleteNodesByDevnet(ctx context.Context, devnetName string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for key, node := range m.nodes {
+		if node.Spec.DevnetRef == devnetName {
+			delete(m.nodes, key)
+		}
+	}
+	return nil
+}
+
 // CreateUpgrade creates a new upgrade.
 func (m *MemoryStore) CreateUpgrade(ctx context.Context, upgrade *types.Upgrade) error {
 	m.mu.Lock()
@@ -313,7 +327,7 @@ func (m *MemoryStore) Close() error {
 }
 
 func nodeKey(devnetName string, index int) string {
-	return devnetName + "/" + string(rune('0'+index))
+	return fmt.Sprintf("%s/%d", devnetName, index)
 }
 
 // Ensure MemoryStore implements Store.

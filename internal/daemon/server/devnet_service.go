@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/v1"
+	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
@@ -37,7 +37,7 @@ func (s *DevnetService) SetLogger(logger *slog.Logger) {
 }
 
 // CreateDevnet creates a new devnet.
-func (s *DevnetService) CreateDevnet(ctx context.Context, req *v1.CreateDevnetRequest) (*v1.Devnet, error) {
+func (s *DevnetService) CreateDevnet(ctx context.Context, req *v1.CreateDevnetRequest) (*v1.CreateDevnetResponse, error) {
 	// Validate request
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
@@ -63,11 +63,11 @@ func (s *DevnetService) CreateDevnet(ctx context.Context, req *v1.CreateDevnetRe
 		s.manager.Enqueue("devnets", req.Name)
 	}
 
-	return DevnetToProto(devnet), nil
+	return &v1.CreateDevnetResponse{Devnet: DevnetToProto(devnet)}, nil
 }
 
 // GetDevnet retrieves a devnet by name.
-func (s *DevnetService) GetDevnet(ctx context.Context, req *v1.GetDevnetRequest) (*v1.Devnet, error) {
+func (s *DevnetService) GetDevnet(ctx context.Context, req *v1.GetDevnetRequest) (*v1.GetDevnetResponse, error) {
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
@@ -81,7 +81,7 @@ func (s *DevnetService) GetDevnet(ctx context.Context, req *v1.GetDevnetRequest)
 		return nil, status.Errorf(codes.Internal, "failed to get devnet: %v", err)
 	}
 
-	return DevnetToProto(devnet), nil
+	return &v1.GetDevnetResponse{Devnet: DevnetToProto(devnet)}, nil
 }
 
 // ListDevnets lists all devnets.
@@ -106,13 +106,19 @@ func (s *DevnetService) ListDevnets(ctx context.Context, req *v1.ListDevnetsRequ
 	return resp, nil
 }
 
-// DeleteDevnet deletes a devnet.
+// DeleteDevnet deletes a devnet and all its nodes (cascade delete).
 func (s *DevnetService) DeleteDevnet(ctx context.Context, req *v1.DeleteDevnetRequest) (*v1.DeleteDevnetResponse, error) {
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
 	s.logger.Info("deleting devnet", "name", req.Name)
+
+	// Cascade delete: remove all nodes belonging to this devnet first
+	if err := s.store.DeleteNodesByDevnet(ctx, req.Name); err != nil {
+		s.logger.Warn("failed to delete nodes during cascade delete", "devnet", req.Name, "error", err)
+		// Continue with devnet deletion even if node deletion fails
+	}
 
 	err := s.store.DeleteDevnet(ctx, req.Name)
 	if err != nil {
@@ -129,7 +135,7 @@ func (s *DevnetService) DeleteDevnet(ctx context.Context, req *v1.DeleteDevnetRe
 }
 
 // StartDevnet starts a stopped devnet.
-func (s *DevnetService) StartDevnet(ctx context.Context, req *v1.StartDevnetRequest) (*v1.Devnet, error) {
+func (s *DevnetService) StartDevnet(ctx context.Context, req *v1.StartDevnetRequest) (*v1.StartDevnetResponse, error) {
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
@@ -160,11 +166,11 @@ func (s *DevnetService) StartDevnet(ctx context.Context, req *v1.StartDevnetRequ
 		s.manager.Enqueue("devnets", req.Name)
 	}
 
-	return DevnetToProto(devnet), nil
+	return &v1.StartDevnetResponse{Devnet: DevnetToProto(devnet)}, nil
 }
 
 // StopDevnet stops a running devnet.
-func (s *DevnetService) StopDevnet(ctx context.Context, req *v1.StopDevnetRequest) (*v1.Devnet, error) {
+func (s *DevnetService) StopDevnet(ctx context.Context, req *v1.StopDevnetRequest) (*v1.StopDevnetResponse, error) {
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
@@ -193,5 +199,5 @@ func (s *DevnetService) StopDevnet(ctx context.Context, req *v1.StopDevnetReques
 
 	// TODO: In Phase 3, enqueue for actual container stopping
 
-	return DevnetToProto(devnet), nil
+	return &v1.StopDevnetResponse{Devnet: DevnetToProto(devnet)}, nil
 }

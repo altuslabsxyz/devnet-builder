@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/v1"
+	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -29,14 +29,14 @@ func TestDevnetService_Create(t *testing.T) {
 		t.Fatalf("CreateDevnet failed: %v", err)
 	}
 
-	if resp.Metadata.Name != "test-devnet" {
-		t.Errorf("expected name test-devnet, got %s", resp.Metadata.Name)
+	if resp.Devnet.Metadata.Name != "test-devnet" {
+		t.Errorf("expected name test-devnet, got %s", resp.Devnet.Metadata.Name)
 	}
-	if resp.Spec.Plugin != "stable" {
-		t.Errorf("expected plugin stable, got %s", resp.Spec.Plugin)
+	if resp.Devnet.Spec.Plugin != "stable" {
+		t.Errorf("expected plugin stable, got %s", resp.Devnet.Spec.Plugin)
 	}
-	if resp.Status.Phase != "Pending" {
-		t.Errorf("expected phase Pending, got %s", resp.Status.Phase)
+	if resp.Devnet.Status.Phase != "Pending" {
+		t.Errorf("expected phase Pending, got %s", resp.Devnet.Status.Phase)
 	}
 
 	// Verify it's in the store
@@ -131,8 +131,8 @@ func TestDevnetService_Get(t *testing.T) {
 		t.Fatalf("GetDevnet failed: %v", err)
 	}
 
-	if resp.Metadata.Name != "get-test" {
-		t.Errorf("expected name get-test, got %s", resp.Metadata.Name)
+	if resp.Devnet.Metadata.Name != "get-test" {
+		t.Errorf("expected name get-test, got %s", resp.Devnet.Metadata.Name)
 	}
 }
 
@@ -268,8 +268,8 @@ func TestDevnetService_StartDevnet(t *testing.T) {
 	}
 
 	// Should transition to Pending (to be reconciled)
-	if resp.Status.Phase != "Pending" {
-		t.Errorf("expected phase Pending after start, got %s", resp.Status.Phase)
+	if resp.Devnet.Status.Phase != "Pending" {
+		t.Errorf("expected phase Pending after start, got %s", resp.Devnet.Status.Phase)
 	}
 }
 
@@ -301,7 +301,7 @@ func TestDevnetService_StopDevnet(t *testing.T) {
 		t.Fatalf("StopDevnet failed: %v", err)
 	}
 
-	if resp.Status.Phase != "Stopped" {
-		t.Errorf("expected phase Stopped, got %s", resp.Status.Phase)
+	if resp.Devnet.Status.Phase != "Stopped" {
+		t.Errorf("expected phase Stopped, got %s", resp.Devnet.Status.Phase)
 	}
 }
