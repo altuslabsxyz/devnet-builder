@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/checker"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/provisioner"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
@@ -120,9 +121,14 @@ func New(config *Config) (*Server, error) {
 	nodeCtrl.SetLogger(logger)
 	mgr.Register("nodes", nodeCtrl)
 
+	// Create health checker
+	healthChecker := checker.NewRPCHealthChecker(checker.Config{
+		Logger: logger,
+	})
+
 	// Create and register health controller
 	healthConfig := controller.DefaultHealthControllerConfig()
-	healthCtrl := controller.NewHealthController(st, nil, mgr, healthConfig) // No checker yet
+	healthCtrl := controller.NewHealthController(st, healthChecker, mgr, healthConfig)
 	healthCtrl.SetLogger(logger)
 	mgr.Register("health", healthCtrl)
 
