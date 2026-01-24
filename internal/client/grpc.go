@@ -12,11 +12,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// GRPCClient wraps the gRPC DevnetServiceClient and NodeServiceClient.
+// GRPCClient wraps the gRPC DevnetServiceClient, NodeServiceClient, and UpgradeServiceClient.
 type GRPCClient struct {
-	conn   *grpc.ClientConn
-	devnet v1.DevnetServiceClient
-	node   v1.NodeServiceClient
+	conn    *grpc.ClientConn
+	devnet  v1.DevnetServiceClient
+	node    v1.NodeServiceClient
+	upgrade v1.UpgradeServiceClient
 }
 
 // NewGRPCClient creates a new gRPC client connected to the daemon.
@@ -31,9 +32,10 @@ func NewGRPCClient(socketPath string) (*GRPCClient, error) {
 	}
 
 	return &GRPCClient{
-		conn:   conn,
-		devnet: v1.NewDevnetServiceClient(conn),
-		node:   v1.NewNodeServiceClient(conn),
+		conn:    conn,
+		devnet:  v1.NewDevnetServiceClient(conn),
+		node:    v1.NewNodeServiceClient(conn),
+		upgrade: v1.NewUpgradeServiceClient(conn),
 	}, nil
 }
 
@@ -163,6 +165,66 @@ func (c *GRPCClient) RestartNode(ctx context.Context, devnetName string, index i
 		return nil, wrapGRPCError(err)
 	}
 	return resp.Node, nil
+}
+
+// CreateUpgrade creates a new upgrade.
+func (c *GRPCClient) CreateUpgrade(ctx context.Context, name string, spec *v1.UpgradeSpec) (*v1.Upgrade, error) {
+	req := &v1.CreateUpgradeRequest{
+		Name: name,
+		Spec: spec,
+	}
+
+	resp, err := c.upgrade.CreateUpgrade(ctx, req)
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+
+	return resp.Upgrade, nil
+}
+
+// GetUpgrade retrieves an upgrade by name.
+func (c *GRPCClient) GetUpgrade(ctx context.Context, name string) (*v1.Upgrade, error) {
+	resp, err := c.upgrade.GetUpgrade(ctx, &v1.GetUpgradeRequest{Name: name})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp.Upgrade, nil
+}
+
+// ListUpgrades lists all upgrades for a devnet.
+func (c *GRPCClient) ListUpgrades(ctx context.Context, devnetName string) ([]*v1.Upgrade, error) {
+	resp, err := c.upgrade.ListUpgrades(ctx, &v1.ListUpgradesRequest{DevnetName: devnetName})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp.Upgrades, nil
+}
+
+// DeleteUpgrade deletes an upgrade.
+func (c *GRPCClient) DeleteUpgrade(ctx context.Context, name string) error {
+	_, err := c.upgrade.DeleteUpgrade(ctx, &v1.DeleteUpgradeRequest{Name: name})
+	if err != nil {
+		return wrapGRPCError(err)
+	}
+	return nil
+}
+
+// CancelUpgrade cancels a running upgrade.
+func (c *GRPCClient) CancelUpgrade(ctx context.Context, name string) (*v1.Upgrade, error) {
+	resp, err := c.upgrade.CancelUpgrade(ctx, &v1.CancelUpgradeRequest{Name: name})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp.Upgrade, nil
+}
+
+// RetryUpgrade retries a failed upgrade.
+func (c *GRPCClient) RetryUpgrade(ctx context.Context, name string) (*v1.Upgrade, error) {
+	resp, err := c.upgrade.RetryUpgrade(ctx, &v1.RetryUpgradeRequest{Name: name})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp.Upgrade, nil
 }
 
 // wrapGRPCError converts gRPC errors to user-friendly messages.
