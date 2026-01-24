@@ -141,16 +141,8 @@ func buildTxBytesAndSignDoc(
 		},
 	}
 
-	// Create sign doc
-	signDocStruct := &SignDoc{
-		BodyBytes:     nil, // Will be set after marshaling
-		AuthInfoBytes: nil, // Will be set after marshaling
-		ChainID:       chainID,
-		AccountNumber: accountNumber,
-	}
-
-	// For now, we create a simple JSON representation that can be signed
-	// TODO(Task 6): Use proper protobuf encoding with TxConfig
+	// For now, we create a simple JSON representation that can be signed.
+	// TODO(Task 6): Use proper protobuf encoding with TxConfig and SignDoc struct.
 	txBytesData, err := json.Marshal(map[string]interface{}{
 		"body":      txBody,
 		"auth_info": authInfo,
@@ -170,8 +162,6 @@ func buildTxBytesAndSignDoc(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal sign doc: %w", err)
 	}
-
-	_ = signDocStruct // Suppress unused warning for now
 
 	return txBytesData, signDocData, nil
 }

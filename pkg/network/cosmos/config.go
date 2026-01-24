@@ -67,20 +67,20 @@ func SetupSDKConfig(bech32Prefix string) error {
 
 	// Set bech32 prefixes for account addresses
 	config.SetBech32PrefixForAccount(
-		bech32Prefix,                    // account address prefix
-		bech32Prefix+"pub",              // account public key prefix
+		bech32Prefix,       // account address prefix
+		bech32Prefix+"pub", // account public key prefix
 	)
 
 	// Set bech32 prefixes for validator addresses
 	config.SetBech32PrefixForValidator(
-		bech32Prefix+"valoper",          // validator operator address prefix
-		bech32Prefix+"valoperpub",       // validator operator public key prefix
+		bech32Prefix+"valoper",    // validator operator address prefix
+		bech32Prefix+"valoperpub", // validator operator public key prefix
 	)
 
 	// Set bech32 prefixes for consensus node addresses
 	config.SetBech32PrefixForConsensusNode(
-		bech32Prefix+"valcons",          // consensus node address prefix
-		bech32Prefix+"valconspub",       // consensus node public key prefix
+		bech32Prefix+"valcons",    // consensus node address prefix
+		bech32Prefix+"valconspub", // consensus node public key prefix
 	)
 
 	// Note: We intentionally do NOT call config.Seal() to allow reconfiguration

@@ -22,7 +22,7 @@ func TestSignTx(t *testing.T) {
 
 	// Create unsigned tx (normally from BuildTx)
 	unsignedTx := &network.UnsignedTx{
-		TxBytes:  []byte{}, // Would be RLP-encoded tx
+		TxBytes:  []byte{},                         // Would be RLP-encoded tx
 		SignDoc:  crypto.Keccak256([]byte("test")), // Would be tx hash
 		Sequence: 0,
 	}
