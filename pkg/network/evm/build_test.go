@@ -17,10 +17,11 @@ func TestBuildTx_NativeTransfer(t *testing.T) {
 		chainID:     big.NewInt(2200),
 	}
 
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, err := json.Marshal(map[string]interface{}{
 		"to_address": "0x742d35Cc6634C0532925a3b844Bc9e7595f7bD60",
 		"amount":     "1000000000000000000",
 	})
+	require.NoError(t, err)
 
 	req := &network.TxBuildRequest{
 		TxType:   network.TxTypeBankSend,
@@ -36,6 +37,7 @@ func TestBuildTx_NativeTransfer(t *testing.T) {
 	require.NotNil(t, unsignedTx)
 	require.NotEmpty(t, unsignedTx.TxBytes)
 	require.NotEmpty(t, unsignedTx.SignDoc)
+	require.Equal(t, uint64(0), unsignedTx.Sequence) // nonce is 0 when no client
 }
 
 func TestBuildTx_NativeTransfer_WithData(t *testing.T) {
@@ -44,11 +46,12 @@ func TestBuildTx_NativeTransfer_WithData(t *testing.T) {
 		chainID:     big.NewInt(2200),
 	}
 
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, err := json.Marshal(map[string]interface{}{
 		"to_address": "0x742d35Cc6634C0532925a3b844Bc9e7595f7bD60",
 		"amount":     "1000000000000000000",
 		"data":       "0x68656c6c6f", // "hello" in hex
 	})
+	require.NoError(t, err)
 
 	req := &network.TxBuildRequest{
 		TxType:   network.TxTypeBankSend,
@@ -64,6 +67,7 @@ func TestBuildTx_NativeTransfer_WithData(t *testing.T) {
 	require.NotNil(t, unsignedTx)
 	require.NotEmpty(t, unsignedTx.TxBytes)
 	require.NotEmpty(t, unsignedTx.SignDoc)
+	require.Equal(t, uint64(0), unsignedTx.Sequence) // nonce is 0 when no client
 }
 
 func TestBuildTx_NilRequest(t *testing.T) {
@@ -103,10 +107,11 @@ func TestBuildTx_InvalidToAddress(t *testing.T) {
 		chainID:     big.NewInt(2200),
 	}
 
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, err := json.Marshal(map[string]interface{}{
 		"to_address": "invalid-address",
 		"amount":     "1000000000000000000",
 	})
+	require.NoError(t, err)
 
 	req := &network.TxBuildRequest{
 		TxType:   network.TxTypeBankSend,
@@ -129,10 +134,11 @@ func TestBuildTx_InvalidAmount(t *testing.T) {
 		chainID:     big.NewInt(2200),
 	}
 
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, err := json.Marshal(map[string]interface{}{
 		"to_address": "0x742d35Cc6634C0532925a3b844Bc9e7595f7bD60",
 		"amount":     "not-a-number",
 	})
+	require.NoError(t, err)
 
 	req := &network.TxBuildRequest{
 		TxType:   network.TxTypeBankSend,
@@ -155,10 +161,11 @@ func TestBuildTx_DefaultGasLimit(t *testing.T) {
 		chainID:     big.NewInt(2200),
 	}
 
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, err := json.Marshal(map[string]interface{}{
 		"to_address": "0x742d35Cc6634C0532925a3b844Bc9e7595f7bD60",
 		"amount":     "1000000000000000000",
 	})
+	require.NoError(t, err)
 
 	req := &network.TxBuildRequest{
 		TxType:   network.TxTypeBankSend,
@@ -210,12 +217,31 @@ func TestParseNativeTransferPayload(t *testing.T) {
 			errorMsg:    "invalid to_address",
 		},
 		{
+			name: "empty to_address",
+			payload: json.RawMessage(`{
+				"to_address": "",
+				"amount": "1000000000000000000"
+			}`),
+			expectError: true,
+			errorMsg:    "to_address is required",
+		},
+		{
 			name: "missing to_address",
 			payload: json.RawMessage(`{
 				"amount": "1000000000000000000"
 			}`),
 			expectError: true,
 			errorMsg:    "to_address is required",
+		},
+		{
+			name: "invalid data hex",
+			payload: json.RawMessage(`{
+				"to_address": "0x742d35Cc6634C0532925a3b844Bc9e7595f7bD60",
+				"amount": "1000000000000000000",
+				"data": "0xGGGGGG"
+			}`),
+			expectError: true,
+			errorMsg:    "invalid data",
 		},
 		{
 			name: "missing amount",

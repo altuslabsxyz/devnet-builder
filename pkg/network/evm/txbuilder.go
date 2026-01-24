@@ -16,6 +16,10 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
+// DefaultGasPriceGwei is the default gas price in wei (1 Gwei) used when no gas price is provided
+// and no client is available to query the network.
+const DefaultGasPriceGwei = 1000000000 // 1 Gwei in wei
+
 // TxBuilder implements the network.TxBuilder interface for EVM chains.
 // It handles transaction building, signing, and broadcasting for EVM-compatible networks.
 type TxBuilder struct {
@@ -204,7 +208,7 @@ func (b *TxBuilder) getGasPrice(ctx context.Context, gasPriceStr string) (*big.I
 	}
 
 	// Default gas price for testing (1 Gwei)
-	return big.NewInt(1000000000), nil
+	return big.NewInt(DefaultGasPriceGwei), nil
 }
 
 // SignTx signs an unsigned transaction with the provided key.
