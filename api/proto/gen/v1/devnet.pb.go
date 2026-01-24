@@ -2205,6 +2205,932 @@ func (x *ExecInNodeResponse) GetStderr() string {
 	return ""
 }
 
+// Upgrade represents a chain upgrade operation.
+type Upgrade struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Metadata      *UpgradeMetadata       `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	Spec          *UpgradeSpec           `protobuf:"bytes,2,opt,name=spec,proto3" json:"spec,omitempty"`
+	Status        *UpgradeStatus         `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Upgrade) Reset() {
+	*x = Upgrade{}
+	mi := &file_v1_devnet_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Upgrade) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Upgrade) ProtoMessage() {}
+
+func (x *Upgrade) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Upgrade.ProtoReflect.Descriptor instead.
+func (*Upgrade) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *Upgrade) GetMetadata() *UpgradeMetadata {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+func (x *Upgrade) GetSpec() *UpgradeSpec {
+	if x != nil {
+		return x.Spec
+	}
+	return nil
+}
+
+func (x *Upgrade) GetStatus() *UpgradeStatus {
+	if x != nil {
+		return x.Status
+	}
+	return nil
+}
+
+type UpgradeMetadata struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"` // Unique upgrade name
+	Generation    int64                  `protobuf:"varint,2,opt,name=generation,proto3" json:"generation,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpgradeMetadata) Reset() {
+	*x = UpgradeMetadata{}
+	mi := &file_v1_devnet_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpgradeMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpgradeMetadata) ProtoMessage() {}
+
+func (x *UpgradeMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpgradeMetadata.ProtoReflect.Descriptor instead.
+func (*UpgradeMetadata) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *UpgradeMetadata) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *UpgradeMetadata) GetGeneration() int64 {
+	if x != nil {
+		return x.Generation
+	}
+	return 0
+}
+
+func (x *UpgradeMetadata) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *UpgradeMetadata) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+type UpgradeSpec struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DevnetRef     string                 `protobuf:"bytes,1,opt,name=devnet_ref,json=devnetRef,proto3" json:"devnet_ref,omitempty"`           // Target devnet name
+	UpgradeName   string                 `protobuf:"bytes,2,opt,name=upgrade_name,json=upgradeName,proto3" json:"upgrade_name,omitempty"`     // On-chain upgrade name
+	TargetHeight  int64                  `protobuf:"varint,3,opt,name=target_height,json=targetHeight,proto3" json:"target_height,omitempty"` // Block height for upgrade (0 = auto-calculate)
+	NewBinary     *BinarySource          `protobuf:"bytes,4,opt,name=new_binary,json=newBinary,proto3" json:"new_binary,omitempty"`           // Upgraded binary source
+	WithExport    bool                   `protobuf:"varint,5,opt,name=with_export,json=withExport,proto3" json:"with_export,omitempty"`       // Enable state export before/after
+	AutoVote      bool                   `protobuf:"varint,6,opt,name=auto_vote,json=autoVote,proto3" json:"auto_vote,omitempty"`             // Auto-vote yes with all validators
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpgradeSpec) Reset() {
+	*x = UpgradeSpec{}
+	mi := &file_v1_devnet_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpgradeSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpgradeSpec) ProtoMessage() {}
+
+func (x *UpgradeSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpgradeSpec.ProtoReflect.Descriptor instead.
+func (*UpgradeSpec) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *UpgradeSpec) GetDevnetRef() string {
+	if x != nil {
+		return x.DevnetRef
+	}
+	return ""
+}
+
+func (x *UpgradeSpec) GetUpgradeName() string {
+	if x != nil {
+		return x.UpgradeName
+	}
+	return ""
+}
+
+func (x *UpgradeSpec) GetTargetHeight() int64 {
+	if x != nil {
+		return x.TargetHeight
+	}
+	return 0
+}
+
+func (x *UpgradeSpec) GetNewBinary() *BinarySource {
+	if x != nil {
+		return x.NewBinary
+	}
+	return nil
+}
+
+func (x *UpgradeSpec) GetWithExport() bool {
+	if x != nil {
+		return x.WithExport
+	}
+	return false
+}
+
+func (x *UpgradeSpec) GetAutoVote() bool {
+	if x != nil {
+		return x.AutoVote
+	}
+	return false
+}
+
+type BinarySource struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`       // "cache", "url", "local"
+	Version       string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"` // Version identifier
+	Url           string                 `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`         // URL for remote binary (if type=url)
+	Path          string                 `protobuf:"bytes,4,opt,name=path,proto3" json:"path,omitempty"`       // Local path (if type=local)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BinarySource) Reset() {
+	*x = BinarySource{}
+	mi := &file_v1_devnet_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BinarySource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BinarySource) ProtoMessage() {}
+
+func (x *BinarySource) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BinarySource.ProtoReflect.Descriptor instead.
+func (*BinarySource) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *BinarySource) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *BinarySource) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *BinarySource) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *BinarySource) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type UpgradeStatus struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Phase          string                 `protobuf:"bytes,1,opt,name=phase,proto3" json:"phase,omitempty"`                              // Pending, Proposing, Voting, Waiting, Switching, Verifying, Completed, Failed
+	ProposalId     uint64                 `protobuf:"varint,2,opt,name=proposal_id,json=proposalId,proto3" json:"proposal_id,omitempty"` // Governance proposal ID
+	VotesReceived  int32                  `protobuf:"varint,3,opt,name=votes_received,json=votesReceived,proto3" json:"votes_received,omitempty"`
+	VotesRequired  int32                  `protobuf:"varint,4,opt,name=votes_required,json=votesRequired,proto3" json:"votes_required,omitempty"`
+	CurrentHeight  int64                  `protobuf:"varint,5,opt,name=current_height,json=currentHeight,proto3" json:"current_height,omitempty"`
+	PreExportPath  string                 `protobuf:"bytes,6,opt,name=pre_export_path,json=preExportPath,proto3" json:"pre_export_path,omitempty"`    // Path to pre-upgrade state export
+	PostExportPath string                 `protobuf:"bytes,7,opt,name=post_export_path,json=postExportPath,proto3" json:"post_export_path,omitempty"` // Path to post-upgrade state export
+	Message        string                 `protobuf:"bytes,8,opt,name=message,proto3" json:"message,omitempty"`
+	Error          string                 `protobuf:"bytes,9,opt,name=error,proto3" json:"error,omitempty"` // Error details if phase is Failed
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *UpgradeStatus) Reset() {
+	*x = UpgradeStatus{}
+	mi := &file_v1_devnet_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpgradeStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpgradeStatus) ProtoMessage() {}
+
+func (x *UpgradeStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpgradeStatus.ProtoReflect.Descriptor instead.
+func (*UpgradeStatus) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *UpgradeStatus) GetPhase() string {
+	if x != nil {
+		return x.Phase
+	}
+	return ""
+}
+
+func (x *UpgradeStatus) GetProposalId() uint64 {
+	if x != nil {
+		return x.ProposalId
+	}
+	return 0
+}
+
+func (x *UpgradeStatus) GetVotesReceived() int32 {
+	if x != nil {
+		return x.VotesReceived
+	}
+	return 0
+}
+
+func (x *UpgradeStatus) GetVotesRequired() int32 {
+	if x != nil {
+		return x.VotesRequired
+	}
+	return 0
+}
+
+func (x *UpgradeStatus) GetCurrentHeight() int64 {
+	if x != nil {
+		return x.CurrentHeight
+	}
+	return 0
+}
+
+func (x *UpgradeStatus) GetPreExportPath() string {
+	if x != nil {
+		return x.PreExportPath
+	}
+	return ""
+}
+
+func (x *UpgradeStatus) GetPostExportPath() string {
+	if x != nil {
+		return x.PostExportPath
+	}
+	return ""
+}
+
+func (x *UpgradeStatus) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *UpgradeStatus) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+// UpgradeService request/response messages
+type CreateUpgradeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"` // Unique upgrade name
+	Spec          *UpgradeSpec           `protobuf:"bytes,2,opt,name=spec,proto3" json:"spec,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateUpgradeRequest) Reset() {
+	*x = CreateUpgradeRequest{}
+	mi := &file_v1_devnet_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateUpgradeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateUpgradeRequest) ProtoMessage() {}
+
+func (x *CreateUpgradeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateUpgradeRequest.ProtoReflect.Descriptor instead.
+func (*CreateUpgradeRequest) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *CreateUpgradeRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateUpgradeRequest) GetSpec() *UpgradeSpec {
+	if x != nil {
+		return x.Spec
+	}
+	return nil
+}
+
+type CreateUpgradeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Upgrade       *Upgrade               `protobuf:"bytes,1,opt,name=upgrade,proto3" json:"upgrade,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateUpgradeResponse) Reset() {
+	*x = CreateUpgradeResponse{}
+	mi := &file_v1_devnet_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateUpgradeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateUpgradeResponse) ProtoMessage() {}
+
+func (x *CreateUpgradeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateUpgradeResponse.ProtoReflect.Descriptor instead.
+func (*CreateUpgradeResponse) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *CreateUpgradeResponse) GetUpgrade() *Upgrade {
+	if x != nil {
+		return x.Upgrade
+	}
+	return nil
+}
+
+type GetUpgradeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetUpgradeRequest) Reset() {
+	*x = GetUpgradeRequest{}
+	mi := &file_v1_devnet_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetUpgradeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetUpgradeRequest) ProtoMessage() {}
+
+func (x *GetUpgradeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetUpgradeRequest.ProtoReflect.Descriptor instead.
+func (*GetUpgradeRequest) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *GetUpgradeRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type GetUpgradeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Upgrade       *Upgrade               `protobuf:"bytes,1,opt,name=upgrade,proto3" json:"upgrade,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetUpgradeResponse) Reset() {
+	*x = GetUpgradeResponse{}
+	mi := &file_v1_devnet_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetUpgradeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetUpgradeResponse) ProtoMessage() {}
+
+func (x *GetUpgradeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetUpgradeResponse.ProtoReflect.Descriptor instead.
+func (*GetUpgradeResponse) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *GetUpgradeResponse) GetUpgrade() *Upgrade {
+	if x != nil {
+		return x.Upgrade
+	}
+	return nil
+}
+
+type ListUpgradesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DevnetName    string                 `protobuf:"bytes,1,opt,name=devnet_name,json=devnetName,proto3" json:"devnet_name,omitempty"` // Optional: filter by devnet
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListUpgradesRequest) Reset() {
+	*x = ListUpgradesRequest{}
+	mi := &file_v1_devnet_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListUpgradesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListUpgradesRequest) ProtoMessage() {}
+
+func (x *ListUpgradesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListUpgradesRequest.ProtoReflect.Descriptor instead.
+func (*ListUpgradesRequest) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *ListUpgradesRequest) GetDevnetName() string {
+	if x != nil {
+		return x.DevnetName
+	}
+	return ""
+}
+
+type ListUpgradesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Upgrades      []*Upgrade             `protobuf:"bytes,1,rep,name=upgrades,proto3" json:"upgrades,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListUpgradesResponse) Reset() {
+	*x = ListUpgradesResponse{}
+	mi := &file_v1_devnet_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListUpgradesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListUpgradesResponse) ProtoMessage() {}
+
+func (x *ListUpgradesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListUpgradesResponse.ProtoReflect.Descriptor instead.
+func (*ListUpgradesResponse) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *ListUpgradesResponse) GetUpgrades() []*Upgrade {
+	if x != nil {
+		return x.Upgrades
+	}
+	return nil
+}
+
+type DeleteUpgradeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteUpgradeRequest) Reset() {
+	*x = DeleteUpgradeRequest{}
+	mi := &file_v1_devnet_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteUpgradeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteUpgradeRequest) ProtoMessage() {}
+
+func (x *DeleteUpgradeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteUpgradeRequest.ProtoReflect.Descriptor instead.
+func (*DeleteUpgradeRequest) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *DeleteUpgradeRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type DeleteUpgradeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Deleted       bool                   `protobuf:"varint,1,opt,name=deleted,proto3" json:"deleted,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteUpgradeResponse) Reset() {
+	*x = DeleteUpgradeResponse{}
+	mi := &file_v1_devnet_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteUpgradeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteUpgradeResponse) ProtoMessage() {}
+
+func (x *DeleteUpgradeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteUpgradeResponse.ProtoReflect.Descriptor instead.
+func (*DeleteUpgradeResponse) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *DeleteUpgradeResponse) GetDeleted() bool {
+	if x != nil {
+		return x.Deleted
+	}
+	return false
+}
+
+type CancelUpgradeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelUpgradeRequest) Reset() {
+	*x = CancelUpgradeRequest{}
+	mi := &file_v1_devnet_proto_msgTypes[50]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelUpgradeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelUpgradeRequest) ProtoMessage() {}
+
+func (x *CancelUpgradeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[50]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelUpgradeRequest.ProtoReflect.Descriptor instead.
+func (*CancelUpgradeRequest) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{50}
+}
+
+func (x *CancelUpgradeRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type CancelUpgradeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Upgrade       *Upgrade               `protobuf:"bytes,1,opt,name=upgrade,proto3" json:"upgrade,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelUpgradeResponse) Reset() {
+	*x = CancelUpgradeResponse{}
+	mi := &file_v1_devnet_proto_msgTypes[51]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelUpgradeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelUpgradeResponse) ProtoMessage() {}
+
+func (x *CancelUpgradeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[51]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelUpgradeResponse.ProtoReflect.Descriptor instead.
+func (*CancelUpgradeResponse) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{51}
+}
+
+func (x *CancelUpgradeResponse) GetUpgrade() *Upgrade {
+	if x != nil {
+		return x.Upgrade
+	}
+	return nil
+}
+
+type RetryUpgradeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RetryUpgradeRequest) Reset() {
+	*x = RetryUpgradeRequest{}
+	mi := &file_v1_devnet_proto_msgTypes[52]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RetryUpgradeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RetryUpgradeRequest) ProtoMessage() {}
+
+func (x *RetryUpgradeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[52]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RetryUpgradeRequest.ProtoReflect.Descriptor instead.
+func (*RetryUpgradeRequest) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{52}
+}
+
+func (x *RetryUpgradeRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type RetryUpgradeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Upgrade       *Upgrade               `protobuf:"bytes,1,opt,name=upgrade,proto3" json:"upgrade,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RetryUpgradeResponse) Reset() {
+	*x = RetryUpgradeResponse{}
+	mi := &file_v1_devnet_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RetryUpgradeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RetryUpgradeResponse) ProtoMessage() {}
+
+func (x *RetryUpgradeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RetryUpgradeResponse.ProtoReflect.Descriptor instead.
+func (*RetryUpgradeResponse) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *RetryUpgradeResponse) GetUpgrade() *Upgrade {
+	if x != nil {
+		return x.Upgrade
+	}
+	return nil
+}
+
 var File_v1_devnet_proto protoreflect.FileDescriptor
 
 const file_v1_devnet_proto_rawDesc = "" +
@@ -2385,7 +3311,72 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\x12ExecInNodeResponse\x12\x1b\n" +
 	"\texit_code\x18\x01 \x01(\x05R\bexitCode\x12\x16\n" +
 	"\x06stdout\x18\x02 \x01(\tR\x06stdout\x12\x16\n" +
-	"\x06stderr\x18\x03 \x01(\tR\x06stderr*\x9b\x01\n" +
+	"\x06stderr\x18\x03 \x01(\tR\x06stderr\"\xb4\x01\n" +
+	"\aUpgrade\x12=\n" +
+	"\bmetadata\x18\x01 \x01(\v2!.devnetbuilder.v1.UpgradeMetadataR\bmetadata\x121\n" +
+	"\x04spec\x18\x02 \x01(\v2\x1d.devnetbuilder.v1.UpgradeSpecR\x04spec\x127\n" +
+	"\x06status\x18\x03 \x01(\v2\x1f.devnetbuilder.v1.UpgradeStatusR\x06status\"\xbb\x01\n" +
+	"\x0fUpgradeMetadata\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
+	"\n" +
+	"generation\x18\x02 \x01(\x03R\n" +
+	"generation\x129\n" +
+	"\n" +
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xf1\x01\n" +
+	"\vUpgradeSpec\x12\x1d\n" +
+	"\n" +
+	"devnet_ref\x18\x01 \x01(\tR\tdevnetRef\x12!\n" +
+	"\fupgrade_name\x18\x02 \x01(\tR\vupgradeName\x12#\n" +
+	"\rtarget_height\x18\x03 \x01(\x03R\ftargetHeight\x12=\n" +
+	"\n" +
+	"new_binary\x18\x04 \x01(\v2\x1e.devnetbuilder.v1.BinarySourceR\tnewBinary\x12\x1f\n" +
+	"\vwith_export\x18\x05 \x01(\bR\n" +
+	"withExport\x12\x1b\n" +
+	"\tauto_vote\x18\x06 \x01(\bR\bautoVote\"b\n" +
+	"\fBinarySource\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\x12\x10\n" +
+	"\x03url\x18\x03 \x01(\tR\x03url\x12\x12\n" +
+	"\x04path\x18\x04 \x01(\tR\x04path\"\xbd\x02\n" +
+	"\rUpgradeStatus\x12\x14\n" +
+	"\x05phase\x18\x01 \x01(\tR\x05phase\x12\x1f\n" +
+	"\vproposal_id\x18\x02 \x01(\x04R\n" +
+	"proposalId\x12%\n" +
+	"\x0evotes_received\x18\x03 \x01(\x05R\rvotesReceived\x12%\n" +
+	"\x0evotes_required\x18\x04 \x01(\x05R\rvotesRequired\x12%\n" +
+	"\x0ecurrent_height\x18\x05 \x01(\x03R\rcurrentHeight\x12&\n" +
+	"\x0fpre_export_path\x18\x06 \x01(\tR\rpreExportPath\x12(\n" +
+	"\x10post_export_path\x18\a \x01(\tR\x0epostExportPath\x12\x18\n" +
+	"\amessage\x18\b \x01(\tR\amessage\x12\x14\n" +
+	"\x05error\x18\t \x01(\tR\x05error\"]\n" +
+	"\x14CreateUpgradeRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x121\n" +
+	"\x04spec\x18\x02 \x01(\v2\x1d.devnetbuilder.v1.UpgradeSpecR\x04spec\"L\n" +
+	"\x15CreateUpgradeResponse\x123\n" +
+	"\aupgrade\x18\x01 \x01(\v2\x19.devnetbuilder.v1.UpgradeR\aupgrade\"'\n" +
+	"\x11GetUpgradeRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"I\n" +
+	"\x12GetUpgradeResponse\x123\n" +
+	"\aupgrade\x18\x01 \x01(\v2\x19.devnetbuilder.v1.UpgradeR\aupgrade\"6\n" +
+	"\x13ListUpgradesRequest\x12\x1f\n" +
+	"\vdevnet_name\x18\x01 \x01(\tR\n" +
+	"devnetName\"M\n" +
+	"\x14ListUpgradesResponse\x125\n" +
+	"\bupgrades\x18\x01 \x03(\v2\x19.devnetbuilder.v1.UpgradeR\bupgrades\"*\n" +
+	"\x14DeleteUpgradeRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"1\n" +
+	"\x15DeleteUpgradeResponse\x12\x18\n" +
+	"\adeleted\x18\x01 \x01(\bR\adeleted\"*\n" +
+	"\x14CancelUpgradeRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"L\n" +
+	"\x15CancelUpgradeResponse\x123\n" +
+	"\aupgrade\x18\x01 \x01(\v2\x19.devnetbuilder.v1.UpgradeR\aupgrade\")\n" +
+	"\x13RetryUpgradeRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"K\n" +
+	"\x14RetryUpgradeResponse\x123\n" +
+	"\aupgrade\x18\x01 \x01(\v2\x19.devnetbuilder.v1.UpgradeR\aupgrade*\x9b\x01\n" +
 	"\x11NodeRestartPolicy\x12#\n" +
 	"\x1fNODE_RESTART_POLICY_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19NODE_RESTART_POLICY_NEVER\x10\x01\x12\"\n" +
@@ -2408,7 +3399,15 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\rGetNodeHealth\x12&.devnetbuilder.v1.GetNodeHealthRequest\x1a'.devnetbuilder.v1.GetNodeHealthResponse\x12e\n" +
 	"\x0eStreamNodeLogs\x12'.devnetbuilder.v1.StreamNodeLogsRequest\x1a(.devnetbuilder.v1.StreamNodeLogsResponse0\x01\x12W\n" +
 	"\n" +
-	"ExecInNode\x12#.devnetbuilder.v1.ExecInNodeRequest\x1a$.devnetbuilder.v1.ExecInNodeResponseB\xcd\x01\n" +
+	"ExecInNode\x12#.devnetbuilder.v1.ExecInNodeRequest\x1a$.devnetbuilder.v1.ExecInNodeResponse2\xcd\x04\n" +
+	"\x0eUpgradeService\x12`\n" +
+	"\rCreateUpgrade\x12&.devnetbuilder.v1.CreateUpgradeRequest\x1a'.devnetbuilder.v1.CreateUpgradeResponse\x12W\n" +
+	"\n" +
+	"GetUpgrade\x12#.devnetbuilder.v1.GetUpgradeRequest\x1a$.devnetbuilder.v1.GetUpgradeResponse\x12]\n" +
+	"\fListUpgrades\x12%.devnetbuilder.v1.ListUpgradesRequest\x1a&.devnetbuilder.v1.ListUpgradesResponse\x12`\n" +
+	"\rDeleteUpgrade\x12&.devnetbuilder.v1.DeleteUpgradeRequest\x1a'.devnetbuilder.v1.DeleteUpgradeResponse\x12`\n" +
+	"\rCancelUpgrade\x12&.devnetbuilder.v1.CancelUpgradeRequest\x1a'.devnetbuilder.v1.CancelUpgradeResponse\x12]\n" +
+	"\fRetryUpgrade\x12%.devnetbuilder.v1.RetryUpgradeRequest\x1a&.devnetbuilder.v1.RetryUpgradeResponseB\xcd\x01\n" +
 	"\x14com.devnetbuilder.v1B\vDevnetProtoP\x01ZGgithub.com/altuslabsxyz/devnet-builder/api/proto/gen/v1;devnetbuilderv1\xa2\x02\x03DXX\xaa\x02\x10Devnetbuilder.V1\xca\x02\x10Devnetbuilder\\V1\xe2\x02\x1cDevnetbuilder\\V1\\GPBMetadata\xea\x02\x11Devnetbuilder::V1b\x06proto3"
 
 var (
@@ -2424,7 +3423,7 @@ func file_v1_devnet_proto_rawDescGZIP() []byte {
 }
 
 var file_v1_devnet_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_v1_devnet_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
+var file_v1_devnet_proto_msgTypes = make([]protoimpl.MessageInfo, 57)
 var file_v1_devnet_proto_goTypes = []any{
 	(NodeRestartPolicy)(0),         // 0: devnetbuilder.v1.NodeRestartPolicy
 	(*Devnet)(nil),                 // 1: devnetbuilder.v1.Devnet
@@ -2464,22 +3463,39 @@ var file_v1_devnet_proto_goTypes = []any{
 	(*StreamNodeLogsResponse)(nil), // 35: devnetbuilder.v1.StreamNodeLogsResponse
 	(*ExecInNodeRequest)(nil),      // 36: devnetbuilder.v1.ExecInNodeRequest
 	(*ExecInNodeResponse)(nil),     // 37: devnetbuilder.v1.ExecInNodeResponse
-	nil,                            // 38: devnetbuilder.v1.DevnetMetadata.LabelsEntry
-	nil,                            // 39: devnetbuilder.v1.DevnetMetadata.AnnotationsEntry
-	nil,                            // 40: devnetbuilder.v1.CreateDevnetRequest.LabelsEntry
-	(*timestamppb.Timestamp)(nil),  // 41: google.protobuf.Timestamp
+	(*Upgrade)(nil),                // 38: devnetbuilder.v1.Upgrade
+	(*UpgradeMetadata)(nil),        // 39: devnetbuilder.v1.UpgradeMetadata
+	(*UpgradeSpec)(nil),            // 40: devnetbuilder.v1.UpgradeSpec
+	(*BinarySource)(nil),           // 41: devnetbuilder.v1.BinarySource
+	(*UpgradeStatus)(nil),          // 42: devnetbuilder.v1.UpgradeStatus
+	(*CreateUpgradeRequest)(nil),   // 43: devnetbuilder.v1.CreateUpgradeRequest
+	(*CreateUpgradeResponse)(nil),  // 44: devnetbuilder.v1.CreateUpgradeResponse
+	(*GetUpgradeRequest)(nil),      // 45: devnetbuilder.v1.GetUpgradeRequest
+	(*GetUpgradeResponse)(nil),     // 46: devnetbuilder.v1.GetUpgradeResponse
+	(*ListUpgradesRequest)(nil),    // 47: devnetbuilder.v1.ListUpgradesRequest
+	(*ListUpgradesResponse)(nil),   // 48: devnetbuilder.v1.ListUpgradesResponse
+	(*DeleteUpgradeRequest)(nil),   // 49: devnetbuilder.v1.DeleteUpgradeRequest
+	(*DeleteUpgradeResponse)(nil),  // 50: devnetbuilder.v1.DeleteUpgradeResponse
+	(*CancelUpgradeRequest)(nil),   // 51: devnetbuilder.v1.CancelUpgradeRequest
+	(*CancelUpgradeResponse)(nil),  // 52: devnetbuilder.v1.CancelUpgradeResponse
+	(*RetryUpgradeRequest)(nil),    // 53: devnetbuilder.v1.RetryUpgradeRequest
+	(*RetryUpgradeResponse)(nil),   // 54: devnetbuilder.v1.RetryUpgradeResponse
+	nil,                            // 55: devnetbuilder.v1.DevnetMetadata.LabelsEntry
+	nil,                            // 56: devnetbuilder.v1.DevnetMetadata.AnnotationsEntry
+	nil,                            // 57: devnetbuilder.v1.CreateDevnetRequest.LabelsEntry
+	(*timestamppb.Timestamp)(nil),  // 58: google.protobuf.Timestamp
 }
 var file_v1_devnet_proto_depIdxs = []int32{
 	2,  // 0: devnetbuilder.v1.Devnet.metadata:type_name -> devnetbuilder.v1.DevnetMetadata
 	3,  // 1: devnetbuilder.v1.Devnet.spec:type_name -> devnetbuilder.v1.DevnetSpec
 	4,  // 2: devnetbuilder.v1.Devnet.status:type_name -> devnetbuilder.v1.DevnetStatus
-	41, // 3: devnetbuilder.v1.DevnetMetadata.created_at:type_name -> google.protobuf.Timestamp
-	41, // 4: devnetbuilder.v1.DevnetMetadata.updated_at:type_name -> google.protobuf.Timestamp
-	38, // 5: devnetbuilder.v1.DevnetMetadata.labels:type_name -> devnetbuilder.v1.DevnetMetadata.LabelsEntry
-	39, // 6: devnetbuilder.v1.DevnetMetadata.annotations:type_name -> devnetbuilder.v1.DevnetMetadata.AnnotationsEntry
-	41, // 7: devnetbuilder.v1.DevnetStatus.last_health_check:type_name -> google.protobuf.Timestamp
+	58, // 3: devnetbuilder.v1.DevnetMetadata.created_at:type_name -> google.protobuf.Timestamp
+	58, // 4: devnetbuilder.v1.DevnetMetadata.updated_at:type_name -> google.protobuf.Timestamp
+	55, // 5: devnetbuilder.v1.DevnetMetadata.labels:type_name -> devnetbuilder.v1.DevnetMetadata.LabelsEntry
+	56, // 6: devnetbuilder.v1.DevnetMetadata.annotations:type_name -> devnetbuilder.v1.DevnetMetadata.AnnotationsEntry
+	58, // 7: devnetbuilder.v1.DevnetStatus.last_health_check:type_name -> google.protobuf.Timestamp
 	3,  // 8: devnetbuilder.v1.CreateDevnetRequest.spec:type_name -> devnetbuilder.v1.DevnetSpec
-	40, // 9: devnetbuilder.v1.CreateDevnetRequest.labels:type_name -> devnetbuilder.v1.CreateDevnetRequest.LabelsEntry
+	57, // 9: devnetbuilder.v1.CreateDevnetRequest.labels:type_name -> devnetbuilder.v1.CreateDevnetRequest.LabelsEntry
 	1,  // 10: devnetbuilder.v1.CreateDevnetResponse.devnet:type_name -> devnetbuilder.v1.Devnet
 	1,  // 11: devnetbuilder.v1.GetDevnetResponse.devnet:type_name -> devnetbuilder.v1.Devnet
 	1,  // 12: devnetbuilder.v1.ListDevnetsResponse.devnets:type_name -> devnetbuilder.v1.Devnet
@@ -2488,51 +3504,75 @@ var file_v1_devnet_proto_depIdxs = []int32{
 	18, // 15: devnetbuilder.v1.Node.metadata:type_name -> devnetbuilder.v1.NodeMetadata
 	19, // 16: devnetbuilder.v1.Node.spec:type_name -> devnetbuilder.v1.NodeSpec
 	20, // 17: devnetbuilder.v1.Node.status:type_name -> devnetbuilder.v1.NodeStatus
-	41, // 18: devnetbuilder.v1.NodeMetadata.created_at:type_name -> google.protobuf.Timestamp
-	41, // 19: devnetbuilder.v1.NodeMetadata.updated_at:type_name -> google.protobuf.Timestamp
+	58, // 18: devnetbuilder.v1.NodeMetadata.created_at:type_name -> google.protobuf.Timestamp
+	58, // 19: devnetbuilder.v1.NodeMetadata.updated_at:type_name -> google.protobuf.Timestamp
 	0,  // 20: devnetbuilder.v1.NodeSpec.restart_policy:type_name -> devnetbuilder.v1.NodeRestartPolicy
 	21, // 21: devnetbuilder.v1.NodeStatus.health:type_name -> devnetbuilder.v1.NodeHealth
-	41, // 22: devnetbuilder.v1.NodeHealth.last_check:type_name -> google.protobuf.Timestamp
+	58, // 22: devnetbuilder.v1.NodeHealth.last_check:type_name -> google.protobuf.Timestamp
 	17, // 23: devnetbuilder.v1.StartNodeResponse.node:type_name -> devnetbuilder.v1.Node
 	17, // 24: devnetbuilder.v1.StopNodeResponse.node:type_name -> devnetbuilder.v1.Node
 	17, // 25: devnetbuilder.v1.RestartNodeResponse.node:type_name -> devnetbuilder.v1.Node
 	17, // 26: devnetbuilder.v1.GetNodeResponse.node:type_name -> devnetbuilder.v1.Node
 	17, // 27: devnetbuilder.v1.ListNodesResponse.nodes:type_name -> devnetbuilder.v1.Node
 	21, // 28: devnetbuilder.v1.GetNodeHealthResponse.health:type_name -> devnetbuilder.v1.NodeHealth
-	41, // 29: devnetbuilder.v1.StreamNodeLogsResponse.timestamp:type_name -> google.protobuf.Timestamp
-	5,  // 30: devnetbuilder.v1.DevnetService.CreateDevnet:input_type -> devnetbuilder.v1.CreateDevnetRequest
-	7,  // 31: devnetbuilder.v1.DevnetService.GetDevnet:input_type -> devnetbuilder.v1.GetDevnetRequest
-	9,  // 32: devnetbuilder.v1.DevnetService.ListDevnets:input_type -> devnetbuilder.v1.ListDevnetsRequest
-	11, // 33: devnetbuilder.v1.DevnetService.DeleteDevnet:input_type -> devnetbuilder.v1.DeleteDevnetRequest
-	13, // 34: devnetbuilder.v1.DevnetService.StartDevnet:input_type -> devnetbuilder.v1.StartDevnetRequest
-	15, // 35: devnetbuilder.v1.DevnetService.StopDevnet:input_type -> devnetbuilder.v1.StopDevnetRequest
-	22, // 36: devnetbuilder.v1.NodeService.StartNode:input_type -> devnetbuilder.v1.StartNodeRequest
-	24, // 37: devnetbuilder.v1.NodeService.StopNode:input_type -> devnetbuilder.v1.StopNodeRequest
-	26, // 38: devnetbuilder.v1.NodeService.RestartNode:input_type -> devnetbuilder.v1.RestartNodeRequest
-	28, // 39: devnetbuilder.v1.NodeService.GetNode:input_type -> devnetbuilder.v1.GetNodeRequest
-	30, // 40: devnetbuilder.v1.NodeService.ListNodes:input_type -> devnetbuilder.v1.ListNodesRequest
-	32, // 41: devnetbuilder.v1.NodeService.GetNodeHealth:input_type -> devnetbuilder.v1.GetNodeHealthRequest
-	34, // 42: devnetbuilder.v1.NodeService.StreamNodeLogs:input_type -> devnetbuilder.v1.StreamNodeLogsRequest
-	36, // 43: devnetbuilder.v1.NodeService.ExecInNode:input_type -> devnetbuilder.v1.ExecInNodeRequest
-	6,  // 44: devnetbuilder.v1.DevnetService.CreateDevnet:output_type -> devnetbuilder.v1.CreateDevnetResponse
-	8,  // 45: devnetbuilder.v1.DevnetService.GetDevnet:output_type -> devnetbuilder.v1.GetDevnetResponse
-	10, // 46: devnetbuilder.v1.DevnetService.ListDevnets:output_type -> devnetbuilder.v1.ListDevnetsResponse
-	12, // 47: devnetbuilder.v1.DevnetService.DeleteDevnet:output_type -> devnetbuilder.v1.DeleteDevnetResponse
-	14, // 48: devnetbuilder.v1.DevnetService.StartDevnet:output_type -> devnetbuilder.v1.StartDevnetResponse
-	16, // 49: devnetbuilder.v1.DevnetService.StopDevnet:output_type -> devnetbuilder.v1.StopDevnetResponse
-	23, // 50: devnetbuilder.v1.NodeService.StartNode:output_type -> devnetbuilder.v1.StartNodeResponse
-	25, // 51: devnetbuilder.v1.NodeService.StopNode:output_type -> devnetbuilder.v1.StopNodeResponse
-	27, // 52: devnetbuilder.v1.NodeService.RestartNode:output_type -> devnetbuilder.v1.RestartNodeResponse
-	29, // 53: devnetbuilder.v1.NodeService.GetNode:output_type -> devnetbuilder.v1.GetNodeResponse
-	31, // 54: devnetbuilder.v1.NodeService.ListNodes:output_type -> devnetbuilder.v1.ListNodesResponse
-	33, // 55: devnetbuilder.v1.NodeService.GetNodeHealth:output_type -> devnetbuilder.v1.GetNodeHealthResponse
-	35, // 56: devnetbuilder.v1.NodeService.StreamNodeLogs:output_type -> devnetbuilder.v1.StreamNodeLogsResponse
-	37, // 57: devnetbuilder.v1.NodeService.ExecInNode:output_type -> devnetbuilder.v1.ExecInNodeResponse
-	44, // [44:58] is the sub-list for method output_type
-	30, // [30:44] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	58, // 29: devnetbuilder.v1.StreamNodeLogsResponse.timestamp:type_name -> google.protobuf.Timestamp
+	39, // 30: devnetbuilder.v1.Upgrade.metadata:type_name -> devnetbuilder.v1.UpgradeMetadata
+	40, // 31: devnetbuilder.v1.Upgrade.spec:type_name -> devnetbuilder.v1.UpgradeSpec
+	42, // 32: devnetbuilder.v1.Upgrade.status:type_name -> devnetbuilder.v1.UpgradeStatus
+	58, // 33: devnetbuilder.v1.UpgradeMetadata.created_at:type_name -> google.protobuf.Timestamp
+	58, // 34: devnetbuilder.v1.UpgradeMetadata.updated_at:type_name -> google.protobuf.Timestamp
+	41, // 35: devnetbuilder.v1.UpgradeSpec.new_binary:type_name -> devnetbuilder.v1.BinarySource
+	40, // 36: devnetbuilder.v1.CreateUpgradeRequest.spec:type_name -> devnetbuilder.v1.UpgradeSpec
+	38, // 37: devnetbuilder.v1.CreateUpgradeResponse.upgrade:type_name -> devnetbuilder.v1.Upgrade
+	38, // 38: devnetbuilder.v1.GetUpgradeResponse.upgrade:type_name -> devnetbuilder.v1.Upgrade
+	38, // 39: devnetbuilder.v1.ListUpgradesResponse.upgrades:type_name -> devnetbuilder.v1.Upgrade
+	38, // 40: devnetbuilder.v1.CancelUpgradeResponse.upgrade:type_name -> devnetbuilder.v1.Upgrade
+	38, // 41: devnetbuilder.v1.RetryUpgradeResponse.upgrade:type_name -> devnetbuilder.v1.Upgrade
+	5,  // 42: devnetbuilder.v1.DevnetService.CreateDevnet:input_type -> devnetbuilder.v1.CreateDevnetRequest
+	7,  // 43: devnetbuilder.v1.DevnetService.GetDevnet:input_type -> devnetbuilder.v1.GetDevnetRequest
+	9,  // 44: devnetbuilder.v1.DevnetService.ListDevnets:input_type -> devnetbuilder.v1.ListDevnetsRequest
+	11, // 45: devnetbuilder.v1.DevnetService.DeleteDevnet:input_type -> devnetbuilder.v1.DeleteDevnetRequest
+	13, // 46: devnetbuilder.v1.DevnetService.StartDevnet:input_type -> devnetbuilder.v1.StartDevnetRequest
+	15, // 47: devnetbuilder.v1.DevnetService.StopDevnet:input_type -> devnetbuilder.v1.StopDevnetRequest
+	22, // 48: devnetbuilder.v1.NodeService.StartNode:input_type -> devnetbuilder.v1.StartNodeRequest
+	24, // 49: devnetbuilder.v1.NodeService.StopNode:input_type -> devnetbuilder.v1.StopNodeRequest
+	26, // 50: devnetbuilder.v1.NodeService.RestartNode:input_type -> devnetbuilder.v1.RestartNodeRequest
+	28, // 51: devnetbuilder.v1.NodeService.GetNode:input_type -> devnetbuilder.v1.GetNodeRequest
+	30, // 52: devnetbuilder.v1.NodeService.ListNodes:input_type -> devnetbuilder.v1.ListNodesRequest
+	32, // 53: devnetbuilder.v1.NodeService.GetNodeHealth:input_type -> devnetbuilder.v1.GetNodeHealthRequest
+	34, // 54: devnetbuilder.v1.NodeService.StreamNodeLogs:input_type -> devnetbuilder.v1.StreamNodeLogsRequest
+	36, // 55: devnetbuilder.v1.NodeService.ExecInNode:input_type -> devnetbuilder.v1.ExecInNodeRequest
+	43, // 56: devnetbuilder.v1.UpgradeService.CreateUpgrade:input_type -> devnetbuilder.v1.CreateUpgradeRequest
+	45, // 57: devnetbuilder.v1.UpgradeService.GetUpgrade:input_type -> devnetbuilder.v1.GetUpgradeRequest
+	47, // 58: devnetbuilder.v1.UpgradeService.ListUpgrades:input_type -> devnetbuilder.v1.ListUpgradesRequest
+	49, // 59: devnetbuilder.v1.UpgradeService.DeleteUpgrade:input_type -> devnetbuilder.v1.DeleteUpgradeRequest
+	51, // 60: devnetbuilder.v1.UpgradeService.CancelUpgrade:input_type -> devnetbuilder.v1.CancelUpgradeRequest
+	53, // 61: devnetbuilder.v1.UpgradeService.RetryUpgrade:input_type -> devnetbuilder.v1.RetryUpgradeRequest
+	6,  // 62: devnetbuilder.v1.DevnetService.CreateDevnet:output_type -> devnetbuilder.v1.CreateDevnetResponse
+	8,  // 63: devnetbuilder.v1.DevnetService.GetDevnet:output_type -> devnetbuilder.v1.GetDevnetResponse
+	10, // 64: devnetbuilder.v1.DevnetService.ListDevnets:output_type -> devnetbuilder.v1.ListDevnetsResponse
+	12, // 65: devnetbuilder.v1.DevnetService.DeleteDevnet:output_type -> devnetbuilder.v1.DeleteDevnetResponse
+	14, // 66: devnetbuilder.v1.DevnetService.StartDevnet:output_type -> devnetbuilder.v1.StartDevnetResponse
+	16, // 67: devnetbuilder.v1.DevnetService.StopDevnet:output_type -> devnetbuilder.v1.StopDevnetResponse
+	23, // 68: devnetbuilder.v1.NodeService.StartNode:output_type -> devnetbuilder.v1.StartNodeResponse
+	25, // 69: devnetbuilder.v1.NodeService.StopNode:output_type -> devnetbuilder.v1.StopNodeResponse
+	27, // 70: devnetbuilder.v1.NodeService.RestartNode:output_type -> devnetbuilder.v1.RestartNodeResponse
+	29, // 71: devnetbuilder.v1.NodeService.GetNode:output_type -> devnetbuilder.v1.GetNodeResponse
+	31, // 72: devnetbuilder.v1.NodeService.ListNodes:output_type -> devnetbuilder.v1.ListNodesResponse
+	33, // 73: devnetbuilder.v1.NodeService.GetNodeHealth:output_type -> devnetbuilder.v1.GetNodeHealthResponse
+	35, // 74: devnetbuilder.v1.NodeService.StreamNodeLogs:output_type -> devnetbuilder.v1.StreamNodeLogsResponse
+	37, // 75: devnetbuilder.v1.NodeService.ExecInNode:output_type -> devnetbuilder.v1.ExecInNodeResponse
+	44, // 76: devnetbuilder.v1.UpgradeService.CreateUpgrade:output_type -> devnetbuilder.v1.CreateUpgradeResponse
+	46, // 77: devnetbuilder.v1.UpgradeService.GetUpgrade:output_type -> devnetbuilder.v1.GetUpgradeResponse
+	48, // 78: devnetbuilder.v1.UpgradeService.ListUpgrades:output_type -> devnetbuilder.v1.ListUpgradesResponse
+	50, // 79: devnetbuilder.v1.UpgradeService.DeleteUpgrade:output_type -> devnetbuilder.v1.DeleteUpgradeResponse
+	52, // 80: devnetbuilder.v1.UpgradeService.CancelUpgrade:output_type -> devnetbuilder.v1.CancelUpgradeResponse
+	54, // 81: devnetbuilder.v1.UpgradeService.RetryUpgrade:output_type -> devnetbuilder.v1.RetryUpgradeResponse
+	62, // [62:82] is the sub-list for method output_type
+	42, // [42:62] is the sub-list for method input_type
+	42, // [42:42] is the sub-list for extension type_name
+	42, // [42:42] is the sub-list for extension extendee
+	0,  // [0:42] is the sub-list for field type_name
 }
 
 func init() { file_v1_devnet_proto_init() }
@@ -2546,9 +3586,9 @@ func file_v1_devnet_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_devnet_proto_rawDesc), len(file_v1_devnet_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   40,
+			NumMessages:   57,
 			NumExtensions: 0,
-			NumServices:   2,
+			NumServices:   3,
 		},
 		GoTypes:           file_v1_devnet_proto_goTypes,
 		DependencyIndexes: file_v1_devnet_proto_depIdxs,

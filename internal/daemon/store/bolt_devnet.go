@@ -151,24 +151,6 @@ func (s *BoltStore) ListDevnets(ctx context.Context) ([]*Devnet, error) {
 	return devnets, nil
 }
 
-// Upgrade operations (stub implementations for now)
-
-func (s *BoltStore) CreateUpgrade(ctx context.Context, upgrade *Upgrade) error {
-	return fmt.Errorf("not implemented")
-}
-
-func (s *BoltStore) GetUpgrade(ctx context.Context, name string) (*Upgrade, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (s *BoltStore) UpdateUpgrade(ctx context.Context, upgrade *Upgrade) error {
-	return fmt.Errorf("not implemented")
-}
-
-func (s *BoltStore) ListUpgrades(ctx context.Context, devnetName string) ([]*Upgrade, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
 // Transaction operations (stub implementations for now)
 
 func (s *BoltStore) CreateTransaction(ctx context.Context, tx *Transaction) error {

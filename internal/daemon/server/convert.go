@@ -155,3 +155,169 @@ func statusFromProto(pb *v1.DevnetStatus) types.DevnetStatus {
 
 	return s
 }
+
+// =============================================================================
+// Upgrade converters
+// =============================================================================
+
+// UpgradeToProto converts a domain Upgrade to a proto Upgrade.
+func UpgradeToProto(u *types.Upgrade) *v1.Upgrade {
+	if u == nil {
+		return nil
+	}
+
+	return &v1.Upgrade{
+		Metadata: upgradeMetadataToProto(&u.Metadata),
+		Spec:     upgradeSpecToProto(&u.Spec),
+		Status:   upgradeStatusToProto(&u.Status),
+	}
+}
+
+// UpgradeFromProto converts a proto Upgrade to a domain Upgrade.
+func UpgradeFromProto(pb *v1.Upgrade) *types.Upgrade {
+	if pb == nil {
+		return nil
+	}
+
+	return &types.Upgrade{
+		Metadata: upgradeMetadataFromProto(pb.Metadata),
+		Spec:     upgradeSpecFromProto(pb.Spec),
+		Status:   upgradeStatusFromProto(pb.Status),
+	}
+}
+
+// CreateUpgradeRequestToUpgrade converts a CreateUpgradeRequest to a domain Upgrade.
+func CreateUpgradeRequestToUpgrade(req *v1.CreateUpgradeRequest) *types.Upgrade {
+	now := time.Now()
+
+	upgrade := &types.Upgrade{
+		Metadata: types.ResourceMeta{
+			Name:       req.Name,
+			Generation: 1,
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		},
+		Status: types.UpgradeStatus{
+			Phase: types.UpgradePhasePending,
+		},
+	}
+
+	if req.Spec != nil {
+		upgrade.Spec = upgradeSpecFromProto(req.Spec)
+	}
+
+	return upgrade
+}
+
+func upgradeMetadataToProto(m *types.ResourceMeta) *v1.UpgradeMetadata {
+	return &v1.UpgradeMetadata{
+		Name:       m.Name,
+		Generation: m.Generation,
+		CreatedAt:  timestamppb.New(m.CreatedAt),
+		UpdatedAt:  timestamppb.New(m.UpdatedAt),
+	}
+}
+
+func upgradeMetadataFromProto(pb *v1.UpgradeMetadata) types.ResourceMeta {
+	if pb == nil {
+		return types.ResourceMeta{}
+	}
+
+	m := types.ResourceMeta{
+		Name:       pb.Name,
+		Generation: pb.Generation,
+	}
+
+	if pb.CreatedAt != nil {
+		m.CreatedAt = pb.CreatedAt.AsTime()
+	}
+	if pb.UpdatedAt != nil {
+		m.UpdatedAt = pb.UpdatedAt.AsTime()
+	}
+
+	return m
+}
+
+func upgradeSpecToProto(s *types.UpgradeSpec) *v1.UpgradeSpec {
+	return &v1.UpgradeSpec{
+		DevnetRef:    s.DevnetRef,
+		UpgradeName:  s.UpgradeName,
+		TargetHeight: s.TargetHeight,
+		NewBinary:    binarySourceToProto(&s.NewBinary),
+		WithExport:   s.WithExport,
+		AutoVote:     s.AutoVote,
+	}
+}
+
+func upgradeSpecFromProto(pb *v1.UpgradeSpec) types.UpgradeSpec {
+	if pb == nil {
+		return types.UpgradeSpec{}
+	}
+
+	return types.UpgradeSpec{
+		DevnetRef:    pb.DevnetRef,
+		UpgradeName:  pb.UpgradeName,
+		TargetHeight: pb.TargetHeight,
+		NewBinary:    binarySourceFromProto(pb.NewBinary),
+		WithExport:   pb.WithExport,
+		AutoVote:     pb.AutoVote,
+	}
+}
+
+func upgradeStatusToProto(s *types.UpgradeStatus) *v1.UpgradeStatus {
+	return &v1.UpgradeStatus{
+		Phase:          s.Phase,
+		ProposalId:     s.ProposalID,
+		VotesReceived:  int32(s.VotesReceived),
+		VotesRequired:  int32(s.VotesRequired),
+		CurrentHeight:  s.CurrentHeight,
+		PreExportPath:  s.PreExportPath,
+		PostExportPath: s.PostExportPath,
+		Message:        s.Message,
+		Error:          s.Error,
+	}
+}
+
+func upgradeStatusFromProto(pb *v1.UpgradeStatus) types.UpgradeStatus {
+	if pb == nil {
+		return types.UpgradeStatus{}
+	}
+
+	return types.UpgradeStatus{
+		Phase:          pb.Phase,
+		ProposalID:     pb.ProposalId,
+		VotesReceived:  int(pb.VotesReceived),
+		VotesRequired:  int(pb.VotesRequired),
+		CurrentHeight:  pb.CurrentHeight,
+		PreExportPath:  pb.PreExportPath,
+		PostExportPath: pb.PostExportPath,
+		Message:        pb.Message,
+		Error:          pb.Error,
+	}
+}
+
+func binarySourceToProto(b *types.BinarySource) *v1.BinarySource {
+	if b == nil {
+		return nil
+	}
+
+	return &v1.BinarySource{
+		Type:    b.Type,
+		Version: b.Version,
+		Url:     b.URL,
+		Path:    b.Path,
+	}
+}
+
+func binarySourceFromProto(pb *v1.BinarySource) types.BinarySource {
+	if pb == nil {
+		return types.BinarySource{}
+	}
+
+	return types.BinarySource{
+		Type:    pb.Type,
+		Version: pb.Version,
+		URL:     pb.Url,
+		Path:    pb.Path,
+	}
+}
