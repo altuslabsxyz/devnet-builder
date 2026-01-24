@@ -5,10 +5,10 @@ import "time"
 
 // Health condition types.
 const (
-	ConditionTypeReady      = "Ready"
-	ConditionTypeHealthy    = "Healthy"
+	ConditionTypeReady       = "Ready"
+	ConditionTypeHealthy     = "Healthy"
 	ConditionTypeProgressing = "Progressing"
-	ConditionTypeDegraded   = "Degraded"
+	ConditionTypeDegraded    = "Degraded"
 )
 
 // Condition status values.
