@@ -100,6 +100,11 @@ func New(config *Config) (*Server, error) {
 	healthCtrl.SetLogger(logger)
 	mgr.Register("health", healthCtrl)
 
+	// Create and register upgrade controller
+	upgradeCtrl := controller.NewUpgradeController(st, nil) // No runtime yet
+	upgradeCtrl.SetLogger(logger)
+	mgr.Register("upgrades", upgradeCtrl)
+
 	// Create gRPC server
 	grpcServer := grpc.NewServer()
 
@@ -111,6 +116,10 @@ func New(config *Config) (*Server, error) {
 	nodeSvc := NewNodeService(st, mgr)
 	nodeSvc.SetLogger(logger)
 	v1.RegisterNodeServiceServer(grpcServer, nodeSvc)
+
+	upgradeSvc := NewUpgradeService(st, mgr)
+	upgradeSvc.SetLogger(logger)
+	v1.RegisterUpgradeServiceServer(grpcServer, upgradeSvc)
 
 	return &Server{
 		config:     config,
