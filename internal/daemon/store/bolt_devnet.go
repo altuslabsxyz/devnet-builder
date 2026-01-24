@@ -151,28 +151,6 @@ func (s *BoltStore) ListDevnets(ctx context.Context) ([]*Devnet, error) {
 	return devnets, nil
 }
 
-// Node operations (stub implementations for now)
-
-func (s *BoltStore) CreateNode(ctx context.Context, node *Node) error {
-	return fmt.Errorf("not implemented")
-}
-
-func (s *BoltStore) GetNode(ctx context.Context, devnetName string, index int) (*Node, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (s *BoltStore) UpdateNode(ctx context.Context, node *Node) error {
-	return fmt.Errorf("not implemented")
-}
-
-func (s *BoltStore) DeleteNode(ctx context.Context, devnetName string, index int) error {
-	return fmt.Errorf("not implemented")
-}
-
-func (s *BoltStore) ListNodes(ctx context.Context, devnetName string) ([]*Node, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
 // Upgrade operations (stub implementations for now)
 
 func (s *BoltStore) CreateUpgrade(ctx context.Context, upgrade *Upgrade) error {

@@ -1,0 +1,263 @@
+// Devnet API Protocol Buffers
+// This file defines the gRPC service for managing devnets via the daemon.
+
+syntax = "proto3";
+
+package devnetbuilder.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1;devnetbuilderv1";
+
+// DevnetService provides operations for managing devnets.
+service DevnetService {
+  // Lifecycle
+  rpc CreateDevnet(CreateDevnetRequest) returns (CreateDevnetResponse);
+  rpc GetDevnet(GetDevnetRequest) returns (GetDevnetResponse);
+  rpc ListDevnets(ListDevnetsRequest) returns (ListDevnetsResponse);
+  rpc DeleteDevnet(DeleteDevnetRequest) returns (DeleteDevnetResponse);
+  rpc StartDevnet(StartDevnetRequest) returns (StartDevnetResponse);
+  rpc StopDevnet(StopDevnetRequest) returns (StopDevnetResponse);
+}
+
+// Devnet represents a local development network.
+message Devnet {
+  DevnetMetadata metadata = 1;
+  DevnetSpec spec = 2;
+  DevnetStatus status = 3;
+}
+
+message DevnetMetadata {
+  string name = 1;
+  int64 generation = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp updated_at = 4;
+  map<string, string> labels = 5;
+  map<string, string> annotations = 6;
+}
+
+message DevnetSpec {
+  string plugin = 1;  // Network plugin name (e.g., "stable", "osmosis")
+  string network_type = 2;  // "cosmos", "evm", "tempo"
+  int32 validators = 3;
+  int32 full_nodes = 4;
+  string mode = 5;  // "docker" or "local"
+  string sdk_version = 6;  // Binary version
+  string genesis_path = 7;  // Custom genesis file path
+  string snapshot_url = 8;  // Chain state snapshot URL
+}
+
+message DevnetStatus {
+  string phase = 1;
+  int32 nodes = 2;
+  int32 ready_nodes = 3;
+  int64 current_height = 4;
+  string sdk_version = 5;
+  google.protobuf.Timestamp last_health_check = 6;
+  string message = 7;
+}
+
+// DevnetService request/response messages
+message CreateDevnetRequest {
+  string name = 1;
+  DevnetSpec spec = 2;
+  map<string, string> labels = 3;
+}
+
+message CreateDevnetResponse {
+  Devnet devnet = 1;
+}
+
+message GetDevnetRequest {
+  string name = 1;
+}
+
+message GetDevnetResponse {
+  Devnet devnet = 1;
+}
+
+message ListDevnetsRequest {
+  string label_selector = 1;
+}
+
+message ListDevnetsResponse {
+  repeated Devnet devnets = 1;
+}
+
+message DeleteDevnetRequest {
+  string name = 1;
+}
+
+message DeleteDevnetResponse {
+  bool deleted = 1;
+}
+
+message StartDevnetRequest {
+  string name = 1;
+}
+
+message StartDevnetResponse {
+  Devnet devnet = 1;
+}
+
+message StopDevnetRequest {
+  string name = 1;
+}
+
+message StopDevnetResponse {
+  Devnet devnet = 1;
+}
+
+// =============================================================================
+// Node - Individual blockchain node within a devnet
+// =============================================================================
+
+// Node represents a single blockchain node within a devnet.
+message Node {
+  NodeMetadata metadata = 1;
+  NodeSpec spec = 2;
+  NodeStatus status = 3;
+}
+
+message NodeMetadata {
+  string id = 1;  // UUID for global lookup
+  string devnet_name = 2;  // Parent devnet reference
+  int32 index = 3;  // Index within devnet (0-based)
+  int64 generation = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message NodeSpec {
+  string role = 1;  // "validator" or "fullnode"
+  string binary_path = 2;
+  string home_dir = 3;
+  string desired_phase = 4;  // "Running" or "Stopped"
+  NodeRestartPolicy restart_policy = 5;
+}
+
+enum NodeRestartPolicy {
+  NODE_RESTART_POLICY_UNSPECIFIED = 0;
+  NODE_RESTART_POLICY_NEVER = 1;
+  NODE_RESTART_POLICY_ON_FAILURE = 2;
+  NODE_RESTART_POLICY_ALWAYS = 3;
+}
+
+message NodeStatus {
+  string phase = 1;  // Pending, Starting, Running, Stopping, Stopped, Unhealthy
+  string container_id = 2;
+  int32 pid = 3;
+  NodeHealth health = 4;
+  int64 block_height = 5;
+  int32 peer_count = 6;
+  bool catching_up = 7;
+  int32 restart_count = 8;
+  string message = 9;
+  int64 observed_generation = 10;
+}
+
+message NodeHealth {
+  string status = 1;  // Unknown, Healthy, Unhealthy, Degraded
+  string message = 2;
+  google.protobuf.Timestamp last_check = 3;
+  int32 consecutive_failures = 4;
+}
+
+// NodeService provides operations for managing individual nodes within devnets.
+service NodeService {
+  // Lifecycle
+  rpc StartNode(StartNodeRequest) returns (StartNodeResponse);
+  rpc StopNode(StopNodeRequest) returns (StopNodeResponse);
+  rpc RestartNode(RestartNodeRequest) returns (RestartNodeResponse);
+
+  // Observation
+  rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
+  rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
+  rpc GetNodeHealth(GetNodeHealthRequest) returns (GetNodeHealthResponse);
+  rpc StreamNodeLogs(StreamNodeLogsRequest) returns (stream StreamNodeLogsResponse);
+
+  // Mutation
+  rpc ExecInNode(ExecInNodeRequest) returns (ExecInNodeResponse);
+}
+
+// NodeService request/response messages
+message StartNodeRequest {
+  string devnet_name = 1;
+  int32 index = 2;
+}
+
+message StartNodeResponse {
+  Node node = 1;
+}
+
+message StopNodeRequest {
+  string devnet_name = 1;
+  int32 index = 2;
+  int32 timeout_seconds = 3;  // Grace period, default 30
+}
+
+message StopNodeResponse {
+  Node node = 1;
+}
+
+message RestartNodeRequest {
+  string devnet_name = 1;
+  int32 index = 2;
+}
+
+message RestartNodeResponse {
+  Node node = 1;
+}
+
+message GetNodeRequest {
+  string devnet_name = 1;
+  int32 index = 2;
+}
+
+message GetNodeResponse {
+  Node node = 1;
+}
+
+message ListNodesRequest {
+  string devnet_name = 1;  // Required: filter by devnet
+}
+
+message ListNodesResponse {
+  repeated Node nodes = 1;
+}
+
+message GetNodeHealthRequest {
+  string devnet_name = 1;
+  int32 index = 2;
+}
+
+message GetNodeHealthResponse {
+  NodeHealth health = 1;
+}
+
+message StreamNodeLogsRequest {
+  string devnet_name = 1;
+  int32 index = 2;
+  bool follow = 3;
+  string since = 4;  // RFC3339 timestamp
+  int32 tail = 5;    // Number of lines from end
+}
+
+message StreamNodeLogsResponse {
+  google.protobuf.Timestamp timestamp = 1;
+  string stream = 2;  // "stdout" or "stderr"
+  string message = 3;
+}
+
+message ExecInNodeRequest {
+  string devnet_name = 1;
+  int32 index = 2;
+  repeated string command = 3;
+  int32 timeout_seconds = 4;
+}
+
+message ExecInNodeResponse {
+  int32 exit_code = 1;
+  string stdout = 2;
+  string stderr = 3;
+}

@@ -43,6 +43,7 @@ type Store interface {
 	UpdateNode(ctx context.Context, node *Node) error
 	DeleteNode(ctx context.Context, devnetName string, index int) error
 	ListNodes(ctx context.Context, devnetName string) ([]*Node, error)
+	DeleteNodesByDevnet(ctx context.Context, devnetName string) error
 
 	// Upgrade operations
 	CreateUpgrade(ctx context.Context, upgrade *Upgrade) error

@@ -23,8 +23,8 @@ require (
 	github.com/zalando/go-keyring v0.2.6
 	go.etcd.io/bbolt v1.4.0-alpha.1
 	golang.org/x/term v0.37.0
-	google.golang.org/grpc v1.75.1
-	google.golang.org/protobuf v1.36.10
+	google.golang.org/grpc v1.78.0
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
@@ -195,8 +195,8 @@ require (
 	golang.org/x/text v0.31.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/genproto v0.0.0-20250715232539-7130f93afb79 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20250825161204-c5933d9347a5 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250825161204-c5933d9347a5 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20251029180050-ab9386a59fda // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	nhooyr.io/websocket v1.8.11 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect

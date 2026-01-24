@@ -42,3 +42,4 @@ tests/e2e/results/
 tests/e2e/TEST_RESULTS.md
 .e2e-test.env
 .git-askpass.sh
+.worktrees/

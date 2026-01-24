@@ -3,9 +3,11 @@ package types
 
 // Node phase constants.
 const (
-	NodePhaseStopped  = "Stopped"
+	NodePhasePending  = "Pending"
 	NodePhaseStarting = "Starting"
 	NodePhaseRunning  = "Running"
+	NodePhaseStopping = "Stopping"
+	NodePhaseStopped  = "Stopped"
 	NodePhaseCrashed  = "Crashed"
 )
 

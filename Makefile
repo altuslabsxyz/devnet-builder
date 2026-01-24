@@ -247,7 +247,51 @@ e2e-clean:
 	@echo "E2E test artifacts cleaned"
 
 # =============================================================================
-# Protobuf Targets
+# Daemon API Protobuf Targets (buf)
+# =============================================================================
+
+# Generate Go code from daemon API protos using buf
+proto:
+	@echo "Generating daemon API protobuf code..."
+	@if ! command -v buf &> /dev/null; then \
+		echo "Error: buf is not installed. Install with:"; \
+		echo "  brew install bufbuild/buf/buf"; \
+		exit 1; \
+	fi
+	@buf generate
+	@echo "Daemon API protobuf generation complete"
+
+# Lint daemon API protos for style violations
+proto-lint:
+	@echo "Linting daemon API protos..."
+	@buf lint
+	@echo "Proto lint complete"
+
+# Check for breaking changes against main branch
+proto-breaking:
+	@echo "Checking for breaking changes..."
+	@buf breaking --against '.git#branch=main'
+	@echo "No breaking changes detected"
+
+# Verify generated code is up-to-date (for CI)
+proto-check: proto
+	@if [ -n "$$(git status --porcelain api/proto/gen)" ]; then \
+		echo "Error: Generated proto code is out of date. Run 'make proto' and commit."; \
+		git diff api/proto/gen; \
+		exit 1; \
+	fi
+	@echo "Generated proto code is up-to-date"
+
+# Clean generated daemon API protobuf files
+proto-api-clean:
+	@echo "Cleaning generated daemon API protobuf files..."
+	@rm -rf api/proto/gen
+	@mkdir -p api/proto/gen
+	@touch api/proto/gen/.gitkeep
+	@echo "Daemon API protobuf cleanup complete"
+
+# =============================================================================
+# Plugin SDK Protobuf Targets (protoc)
 # =============================================================================
 
 # Public SDK proto (used by plugin developers)
@@ -387,9 +431,16 @@ help:
 	@echo "  e2e-test-with-binary - Run E2E with specific binary (BINARY=/path)"
 	@echo "  e2e-clean            - Clean E2E test artifacts"
 	@echo ""
-	@echo "Protobuf Targets:"
-	@echo "  proto-gen       - Generate Go code from protobuf"
-	@echo "  proto-clean     - Clean generated protobuf files"
+	@echo "Daemon API Protobuf (buf):"
+	@echo "  proto           - Generate Go code from daemon API protos"
+	@echo "  proto-lint      - Lint daemon API protos for style"
+	@echo "  proto-breaking  - Check for breaking changes vs main"
+	@echo "  proto-check     - Verify generated code is up-to-date (CI)"
+	@echo "  proto-api-clean - Clean generated daemon API protos"
+	@echo ""
+	@echo "Plugin SDK Protobuf (protoc):"
+	@echo "  proto-gen       - Generate Go code from plugin SDK proto"
+	@echo "  proto-clean     - Clean generated plugin SDK protos"
 	@echo ""
 	@echo "Utility Targets:"
 	@echo "  clean           - Remove build artifacts"
@@ -411,6 +462,7 @@ help:
         plugins plugins-private plugins-all \
         test test-private test-coverage \
         e2e-setup e2e-test e2e-test-quick e2e-test-with-binary e2e-clean \
+        proto proto-lint proto-breaking proto-check proto-api-clean \
         proto-gen proto-clean \
         clean fmt lint verify \
         build-versioned list-plugins help
