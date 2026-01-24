@@ -146,7 +146,9 @@ func (s *BoltStore) DeleteTransaction(ctx context.Context, name string) error {
 
 		// Parse for notification
 		var tx types.Transaction
-		json.Unmarshal(data, &tx)
+		if err := json.Unmarshal(data, &tx); err != nil {
+			return err
+		}
 
 		if err := b.Delete(key); err != nil {
 			return err

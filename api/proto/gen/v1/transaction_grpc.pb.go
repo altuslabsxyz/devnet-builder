@@ -37,13 +37,13 @@ const (
 // TransactionService provides operations for managing blockchain transactions.
 type TransactionServiceClient interface {
 	// Core transaction operations
-	SubmitTransaction(ctx context.Context, in *SubmitTransactionRequest, opts ...grpc.CallOption) (*Transaction, error)
-	GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*Transaction, error)
+	SubmitTransaction(ctx context.Context, in *SubmitTransactionRequest, opts ...grpc.CallOption) (*SubmitTransactionResponse, error)
+	GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*GetTransactionResponse, error)
 	ListTransactions(ctx context.Context, in *ListTransactionsRequest, opts ...grpc.CallOption) (*ListTransactionsResponse, error)
-	CancelTransaction(ctx context.Context, in *CancelTransactionRequest, opts ...grpc.CallOption) (*Transaction, error)
+	CancelTransaction(ctx context.Context, in *CancelTransactionRequest, opts ...grpc.CallOption) (*CancelTransactionResponse, error)
 	// Governance convenience methods
-	SubmitGovVote(ctx context.Context, in *SubmitGovVoteRequest, opts ...grpc.CallOption) (*Transaction, error)
-	SubmitGovProposal(ctx context.Context, in *SubmitGovProposalRequest, opts ...grpc.CallOption) (*Transaction, error)
+	SubmitGovVote(ctx context.Context, in *SubmitGovVoteRequest, opts ...grpc.CallOption) (*SubmitGovVoteResponse, error)
+	SubmitGovProposal(ctx context.Context, in *SubmitGovProposalRequest, opts ...grpc.CallOption) (*SubmitGovProposalResponse, error)
 }
 
 type transactionServiceClient struct {
@@ -54,9 +54,9 @@ func NewTransactionServiceClient(cc grpc.ClientConnInterface) TransactionService
 	return &transactionServiceClient{cc}
 }
 
-func (c *transactionServiceClient) SubmitTransaction(ctx context.Context, in *SubmitTransactionRequest, opts ...grpc.CallOption) (*Transaction, error) {
+func (c *transactionServiceClient) SubmitTransaction(ctx context.Context, in *SubmitTransactionRequest, opts ...grpc.CallOption) (*SubmitTransactionResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Transaction)
+	out := new(SubmitTransactionResponse)
 	err := c.cc.Invoke(ctx, TransactionService_SubmitTransaction_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -64,9 +64,9 @@ func (c *transactionServiceClient) SubmitTransaction(ctx context.Context, in *Su
 	return out, nil
 }
 
-func (c *transactionServiceClient) GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*Transaction, error) {
+func (c *transactionServiceClient) GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*GetTransactionResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Transaction)
+	out := new(GetTransactionResponse)
 	err := c.cc.Invoke(ctx, TransactionService_GetTransaction_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -84,9 +84,9 @@ func (c *transactionServiceClient) ListTransactions(ctx context.Context, in *Lis
 	return out, nil
 }
 
-func (c *transactionServiceClient) CancelTransaction(ctx context.Context, in *CancelTransactionRequest, opts ...grpc.CallOption) (*Transaction, error) {
+func (c *transactionServiceClient) CancelTransaction(ctx context.Context, in *CancelTransactionRequest, opts ...grpc.CallOption) (*CancelTransactionResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Transaction)
+	out := new(CancelTransactionResponse)
 	err := c.cc.Invoke(ctx, TransactionService_CancelTransaction_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -94,9 +94,9 @@ func (c *transactionServiceClient) CancelTransaction(ctx context.Context, in *Ca
 	return out, nil
 }
 
-func (c *transactionServiceClient) SubmitGovVote(ctx context.Context, in *SubmitGovVoteRequest, opts ...grpc.CallOption) (*Transaction, error) {
+func (c *transactionServiceClient) SubmitGovVote(ctx context.Context, in *SubmitGovVoteRequest, opts ...grpc.CallOption) (*SubmitGovVoteResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Transaction)
+	out := new(SubmitGovVoteResponse)
 	err := c.cc.Invoke(ctx, TransactionService_SubmitGovVote_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -104,9 +104,9 @@ func (c *transactionServiceClient) SubmitGovVote(ctx context.Context, in *Submit
 	return out, nil
 }
 
-func (c *transactionServiceClient) SubmitGovProposal(ctx context.Context, in *SubmitGovProposalRequest, opts ...grpc.CallOption) (*Transaction, error) {
+func (c *transactionServiceClient) SubmitGovProposal(ctx context.Context, in *SubmitGovProposalRequest, opts ...grpc.CallOption) (*SubmitGovProposalResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Transaction)
+	out := new(SubmitGovProposalResponse)
 	err := c.cc.Invoke(ctx, TransactionService_SubmitGovProposal_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -121,13 +121,13 @@ func (c *transactionServiceClient) SubmitGovProposal(ctx context.Context, in *Su
 // TransactionService provides operations for managing blockchain transactions.
 type TransactionServiceServer interface {
 	// Core transaction operations
-	SubmitTransaction(context.Context, *SubmitTransactionRequest) (*Transaction, error)
-	GetTransaction(context.Context, *GetTransactionRequest) (*Transaction, error)
+	SubmitTransaction(context.Context, *SubmitTransactionRequest) (*SubmitTransactionResponse, error)
+	GetTransaction(context.Context, *GetTransactionRequest) (*GetTransactionResponse, error)
 	ListTransactions(context.Context, *ListTransactionsRequest) (*ListTransactionsResponse, error)
-	CancelTransaction(context.Context, *CancelTransactionRequest) (*Transaction, error)
+	CancelTransaction(context.Context, *CancelTransactionRequest) (*CancelTransactionResponse, error)
 	// Governance convenience methods
-	SubmitGovVote(context.Context, *SubmitGovVoteRequest) (*Transaction, error)
-	SubmitGovProposal(context.Context, *SubmitGovProposalRequest) (*Transaction, error)
+	SubmitGovVote(context.Context, *SubmitGovVoteRequest) (*SubmitGovVoteResponse, error)
+	SubmitGovProposal(context.Context, *SubmitGovProposalRequest) (*SubmitGovProposalResponse, error)
 	mustEmbedUnimplementedTransactionServiceServer()
 }
 
@@ -138,22 +138,22 @@ type TransactionServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedTransactionServiceServer struct{}
 
-func (UnimplementedTransactionServiceServer) SubmitTransaction(context.Context, *SubmitTransactionRequest) (*Transaction, error) {
+func (UnimplementedTransactionServiceServer) SubmitTransaction(context.Context, *SubmitTransactionRequest) (*SubmitTransactionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SubmitTransaction not implemented")
 }
-func (UnimplementedTransactionServiceServer) GetTransaction(context.Context, *GetTransactionRequest) (*Transaction, error) {
+func (UnimplementedTransactionServiceServer) GetTransaction(context.Context, *GetTransactionRequest) (*GetTransactionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetTransaction not implemented")
 }
 func (UnimplementedTransactionServiceServer) ListTransactions(context.Context, *ListTransactionsRequest) (*ListTransactionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListTransactions not implemented")
 }
-func (UnimplementedTransactionServiceServer) CancelTransaction(context.Context, *CancelTransactionRequest) (*Transaction, error) {
+func (UnimplementedTransactionServiceServer) CancelTransaction(context.Context, *CancelTransactionRequest) (*CancelTransactionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CancelTransaction not implemented")
 }
-func (UnimplementedTransactionServiceServer) SubmitGovVote(context.Context, *SubmitGovVoteRequest) (*Transaction, error) {
+func (UnimplementedTransactionServiceServer) SubmitGovVote(context.Context, *SubmitGovVoteRequest) (*SubmitGovVoteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SubmitGovVote not implemented")
 }
-func (UnimplementedTransactionServiceServer) SubmitGovProposal(context.Context, *SubmitGovProposalRequest) (*Transaction, error) {
+func (UnimplementedTransactionServiceServer) SubmitGovProposal(context.Context, *SubmitGovProposalRequest) (*SubmitGovProposalResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SubmitGovProposal not implemented")
 }
 func (UnimplementedTransactionServiceServer) mustEmbedUnimplementedTransactionServiceServer() {}

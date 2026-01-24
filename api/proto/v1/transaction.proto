@@ -12,14 +12,14 @@ option go_package = "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1;dev
 // TransactionService provides operations for managing blockchain transactions.
 service TransactionService {
   // Core transaction operations
-  rpc SubmitTransaction(SubmitTransactionRequest) returns (Transaction);
-  rpc GetTransaction(GetTransactionRequest) returns (Transaction);
+  rpc SubmitTransaction(SubmitTransactionRequest) returns (SubmitTransactionResponse);
+  rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
   rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse);
-  rpc CancelTransaction(CancelTransactionRequest) returns (Transaction);
+  rpc CancelTransaction(CancelTransactionRequest) returns (CancelTransactionResponse);
 
   // Governance convenience methods
-  rpc SubmitGovVote(SubmitGovVoteRequest) returns (Transaction);
-  rpc SubmitGovProposal(SubmitGovProposalRequest) returns (Transaction);
+  rpc SubmitGovVote(SubmitGovVoteRequest) returns (SubmitGovVoteResponse);
+  rpc SubmitGovProposal(SubmitGovProposalRequest) returns (SubmitGovProposalResponse);
 }
 
 // Transaction represents a blockchain transaction managed by the daemon.
@@ -70,6 +70,31 @@ message ListTransactionsResponse {
 // CancelTransactionRequest cancels a pending transaction.
 message CancelTransactionRequest {
   string name = 1;
+}
+
+// SubmitTransactionResponse contains the submitted transaction.
+message SubmitTransactionResponse {
+  Transaction transaction = 1;
+}
+
+// GetTransactionResponse contains the requested transaction.
+message GetTransactionResponse {
+  Transaction transaction = 1;
+}
+
+// CancelTransactionResponse contains the cancelled transaction.
+message CancelTransactionResponse {
+  Transaction transaction = 1;
+}
+
+// SubmitGovVoteResponse contains the vote transaction.
+message SubmitGovVoteResponse {
+  Transaction transaction = 1;
+}
+
+// SubmitGovProposalResponse contains the proposal transaction.
+message SubmitGovProposalResponse {
+  Transaction transaction = 1;
 }
 
 // SubmitGovVoteRequest votes on a governance proposal.

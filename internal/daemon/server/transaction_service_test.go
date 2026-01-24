@@ -25,10 +25,10 @@ func TestTransactionService_SubmitTransaction(t *testing.T) {
 		t.Fatalf("SubmitTransaction: %v", err)
 	}
 
-	if resp.Phase != types.TxPhasePending {
-		t.Errorf("Phase = %q, want %q", resp.Phase, types.TxPhasePending)
+	if resp.Transaction.Phase != types.TxPhasePending {
+		t.Errorf("Phase = %q, want %q", resp.Transaction.Phase, types.TxPhasePending)
 	}
-	if resp.Name == "" {
+	if resp.Transaction.Name == "" {
 		t.Error("Name is empty")
 	}
 }
@@ -55,8 +55,8 @@ func TestTransactionService_GetTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTransaction: %v", err)
 	}
-	if resp.TxType != "bank/send" {
-		t.Errorf("TxType = %q, want %q", resp.TxType, "bank/send")
+	if resp.Transaction.TxType != "bank/send" {
+		t.Errorf("TxType = %q, want %q", resp.Transaction.TxType, "bank/send")
 	}
 }
 
@@ -99,7 +99,7 @@ func TestTransactionService_SubmitGovVote(t *testing.T) {
 		t.Fatalf("SubmitGovVote: %v", err)
 	}
 
-	if resp.TxType != "gov/vote" {
-		t.Errorf("TxType = %q, want %q", resp.TxType, "gov/vote")
+	if resp.Transaction.TxType != "gov/vote" {
+		t.Errorf("TxType = %q, want %q", resp.Transaction.TxType, "gov/vote")
 	}
 }

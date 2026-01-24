@@ -150,4 +150,3 @@ func (s *BoltStore) ListDevnets(ctx context.Context) ([]*Devnet, error) {
 
 	return devnets, nil
 }
-

@@ -455,6 +455,231 @@ func (x *CancelTransactionRequest) GetName() string {
 	return ""
 }
 
+// SubmitTransactionResponse contains the submitted transaction.
+type SubmitTransactionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Transaction   *Transaction           `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitTransactionResponse) Reset() {
+	*x = SubmitTransactionResponse{}
+	mi := &file_v1_transaction_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitTransactionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitTransactionResponse) ProtoMessage() {}
+
+func (x *SubmitTransactionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_transaction_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitTransactionResponse.ProtoReflect.Descriptor instead.
+func (*SubmitTransactionResponse) Descriptor() ([]byte, []int) {
+	return file_v1_transaction_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *SubmitTransactionResponse) GetTransaction() *Transaction {
+	if x != nil {
+		return x.Transaction
+	}
+	return nil
+}
+
+// GetTransactionResponse contains the requested transaction.
+type GetTransactionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Transaction   *Transaction           `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTransactionResponse) Reset() {
+	*x = GetTransactionResponse{}
+	mi := &file_v1_transaction_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTransactionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTransactionResponse) ProtoMessage() {}
+
+func (x *GetTransactionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_transaction_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTransactionResponse.ProtoReflect.Descriptor instead.
+func (*GetTransactionResponse) Descriptor() ([]byte, []int) {
+	return file_v1_transaction_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *GetTransactionResponse) GetTransaction() *Transaction {
+	if x != nil {
+		return x.Transaction
+	}
+	return nil
+}
+
+// CancelTransactionResponse contains the cancelled transaction.
+type CancelTransactionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Transaction   *Transaction           `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelTransactionResponse) Reset() {
+	*x = CancelTransactionResponse{}
+	mi := &file_v1_transaction_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelTransactionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelTransactionResponse) ProtoMessage() {}
+
+func (x *CancelTransactionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_transaction_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelTransactionResponse.ProtoReflect.Descriptor instead.
+func (*CancelTransactionResponse) Descriptor() ([]byte, []int) {
+	return file_v1_transaction_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *CancelTransactionResponse) GetTransaction() *Transaction {
+	if x != nil {
+		return x.Transaction
+	}
+	return nil
+}
+
+// SubmitGovVoteResponse contains the vote transaction.
+type SubmitGovVoteResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Transaction   *Transaction           `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitGovVoteResponse) Reset() {
+	*x = SubmitGovVoteResponse{}
+	mi := &file_v1_transaction_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitGovVoteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitGovVoteResponse) ProtoMessage() {}
+
+func (x *SubmitGovVoteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_transaction_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitGovVoteResponse.ProtoReflect.Descriptor instead.
+func (*SubmitGovVoteResponse) Descriptor() ([]byte, []int) {
+	return file_v1_transaction_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *SubmitGovVoteResponse) GetTransaction() *Transaction {
+	if x != nil {
+		return x.Transaction
+	}
+	return nil
+}
+
+// SubmitGovProposalResponse contains the proposal transaction.
+type SubmitGovProposalResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Transaction   *Transaction           `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitGovProposalResponse) Reset() {
+	*x = SubmitGovProposalResponse{}
+	mi := &file_v1_transaction_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitGovProposalResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitGovProposalResponse) ProtoMessage() {}
+
+func (x *SubmitGovProposalResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_transaction_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitGovProposalResponse.ProtoReflect.Descriptor instead.
+func (*SubmitGovProposalResponse) Descriptor() ([]byte, []int) {
+	return file_v1_transaction_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *SubmitGovProposalResponse) GetTransaction() *Transaction {
+	if x != nil {
+		return x.Transaction
+	}
+	return nil
+}
+
 // SubmitGovVoteRequest votes on a governance proposal.
 type SubmitGovVoteRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -468,7 +693,7 @@ type SubmitGovVoteRequest struct {
 
 func (x *SubmitGovVoteRequest) Reset() {
 	*x = SubmitGovVoteRequest{}
-	mi := &file_v1_transaction_proto_msgTypes[6]
+	mi := &file_v1_transaction_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -480,7 +705,7 @@ func (x *SubmitGovVoteRequest) String() string {
 func (*SubmitGovVoteRequest) ProtoMessage() {}
 
 func (x *SubmitGovVoteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_transaction_proto_msgTypes[6]
+	mi := &file_v1_transaction_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -493,7 +718,7 @@ func (x *SubmitGovVoteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitGovVoteRequest.ProtoReflect.Descriptor instead.
 func (*SubmitGovVoteRequest) Descriptor() ([]byte, []int) {
-	return file_v1_transaction_proto_rawDescGZIP(), []int{6}
+	return file_v1_transaction_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SubmitGovVoteRequest) GetDevnet() string {
@@ -539,7 +764,7 @@ type SubmitGovProposalRequest struct {
 
 func (x *SubmitGovProposalRequest) Reset() {
 	*x = SubmitGovProposalRequest{}
-	mi := &file_v1_transaction_proto_msgTypes[7]
+	mi := &file_v1_transaction_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -551,7 +776,7 @@ func (x *SubmitGovProposalRequest) String() string {
 func (*SubmitGovProposalRequest) ProtoMessage() {}
 
 func (x *SubmitGovProposalRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_transaction_proto_msgTypes[7]
+	mi := &file_v1_transaction_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -564,7 +789,7 @@ func (x *SubmitGovProposalRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitGovProposalRequest.ProtoReflect.Descriptor instead.
 func (*SubmitGovProposalRequest) Descriptor() ([]byte, []int) {
-	return file_v1_transaction_proto_rawDescGZIP(), []int{7}
+	return file_v1_transaction_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SubmitGovProposalRequest) GetDevnet() string {
@@ -649,7 +874,17 @@ const file_v1_transaction_proto_rawDesc = "" +
 	"\x18ListTransactionsResponse\x12A\n" +
 	"\ftransactions\x18\x01 \x03(\v2\x1d.devnetbuilder.v1.TransactionR\ftransactions\".\n" +
 	"\x18CancelTransactionRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x86\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\\\n" +
+	"\x19SubmitTransactionResponse\x12?\n" +
+	"\vtransaction\x18\x01 \x01(\v2\x1d.devnetbuilder.v1.TransactionR\vtransaction\"Y\n" +
+	"\x16GetTransactionResponse\x12?\n" +
+	"\vtransaction\x18\x01 \x01(\v2\x1d.devnetbuilder.v1.TransactionR\vtransaction\"\\\n" +
+	"\x19CancelTransactionResponse\x12?\n" +
+	"\vtransaction\x18\x01 \x01(\v2\x1d.devnetbuilder.v1.TransactionR\vtransaction\"X\n" +
+	"\x15SubmitGovVoteResponse\x12?\n" +
+	"\vtransaction\x18\x01 \x01(\v2\x1d.devnetbuilder.v1.TransactionR\vtransaction\"\\\n" +
+	"\x19SubmitGovProposalResponse\x12?\n" +
+	"\vtransaction\x18\x01 \x01(\v2\x1d.devnetbuilder.v1.TransactionR\vtransaction\"\x86\x01\n" +
 	"\x14SubmitGovVoteRequest\x12\x16\n" +
 	"\x06devnet\x18\x01 \x01(\tR\x06devnet\x12\x1f\n" +
 	"\vproposal_id\x18\x02 \x01(\x04R\n" +
@@ -663,14 +898,14 @@ const file_v1_transaction_proto_rawDesc = "" +
 	"\x05title\x18\x03 \x01(\tR\x05title\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12\x18\n" +
 	"\acontent\x18\x05 \x01(\fR\acontent\x12\x1a\n" +
-	"\bproposer\x18\x06 \x01(\tR\bproposer2\xd1\x04\n" +
-	"\x12TransactionService\x12^\n" +
-	"\x11SubmitTransaction\x12*.devnetbuilder.v1.SubmitTransactionRequest\x1a\x1d.devnetbuilder.v1.Transaction\x12X\n" +
-	"\x0eGetTransaction\x12'.devnetbuilder.v1.GetTransactionRequest\x1a\x1d.devnetbuilder.v1.Transaction\x12i\n" +
-	"\x10ListTransactions\x12).devnetbuilder.v1.ListTransactionsRequest\x1a*.devnetbuilder.v1.ListTransactionsResponse\x12^\n" +
-	"\x11CancelTransaction\x12*.devnetbuilder.v1.CancelTransactionRequest\x1a\x1d.devnetbuilder.v1.Transaction\x12V\n" +
-	"\rSubmitGovVote\x12&.devnetbuilder.v1.SubmitGovVoteRequest\x1a\x1d.devnetbuilder.v1.Transaction\x12^\n" +
-	"\x11SubmitGovProposal\x12*.devnetbuilder.v1.SubmitGovProposalRequest\x1a\x1d.devnetbuilder.v1.TransactionB\xd2\x01\n" +
+	"\bproposer\x18\x06 \x01(\tR\bproposer2\x90\x05\n" +
+	"\x12TransactionService\x12l\n" +
+	"\x11SubmitTransaction\x12*.devnetbuilder.v1.SubmitTransactionRequest\x1a+.devnetbuilder.v1.SubmitTransactionResponse\x12c\n" +
+	"\x0eGetTransaction\x12'.devnetbuilder.v1.GetTransactionRequest\x1a(.devnetbuilder.v1.GetTransactionResponse\x12i\n" +
+	"\x10ListTransactions\x12).devnetbuilder.v1.ListTransactionsRequest\x1a*.devnetbuilder.v1.ListTransactionsResponse\x12l\n" +
+	"\x11CancelTransaction\x12*.devnetbuilder.v1.CancelTransactionRequest\x1a+.devnetbuilder.v1.CancelTransactionResponse\x12`\n" +
+	"\rSubmitGovVote\x12&.devnetbuilder.v1.SubmitGovVoteRequest\x1a'.devnetbuilder.v1.SubmitGovVoteResponse\x12l\n" +
+	"\x11SubmitGovProposal\x12*.devnetbuilder.v1.SubmitGovProposalRequest\x1a+.devnetbuilder.v1.SubmitGovProposalResponseB\xd2\x01\n" +
 	"\x14com.devnetbuilder.v1B\x10TransactionProtoP\x01ZGgithub.com/altuslabsxyz/devnet-builder/api/proto/gen/v1;devnetbuilderv1\xa2\x02\x03DXX\xaa\x02\x10Devnetbuilder.V1\xca\x02\x10Devnetbuilder\\V1\xe2\x02\x1cDevnetbuilder\\V1\\GPBMetadata\xea\x02\x11Devnetbuilder::V1b\x06proto3"
 
 var (
@@ -685,39 +920,49 @@ func file_v1_transaction_proto_rawDescGZIP() []byte {
 	return file_v1_transaction_proto_rawDescData
 }
 
-var file_v1_transaction_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_v1_transaction_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_v1_transaction_proto_goTypes = []any{
-	(*Transaction)(nil),              // 0: devnetbuilder.v1.Transaction
-	(*SubmitTransactionRequest)(nil), // 1: devnetbuilder.v1.SubmitTransactionRequest
-	(*GetTransactionRequest)(nil),    // 2: devnetbuilder.v1.GetTransactionRequest
-	(*ListTransactionsRequest)(nil),  // 3: devnetbuilder.v1.ListTransactionsRequest
-	(*ListTransactionsResponse)(nil), // 4: devnetbuilder.v1.ListTransactionsResponse
-	(*CancelTransactionRequest)(nil), // 5: devnetbuilder.v1.CancelTransactionRequest
-	(*SubmitGovVoteRequest)(nil),     // 6: devnetbuilder.v1.SubmitGovVoteRequest
-	(*SubmitGovProposalRequest)(nil), // 7: devnetbuilder.v1.SubmitGovProposalRequest
-	(*timestamppb.Timestamp)(nil),    // 8: google.protobuf.Timestamp
+	(*Transaction)(nil),               // 0: devnetbuilder.v1.Transaction
+	(*SubmitTransactionRequest)(nil),  // 1: devnetbuilder.v1.SubmitTransactionRequest
+	(*GetTransactionRequest)(nil),     // 2: devnetbuilder.v1.GetTransactionRequest
+	(*ListTransactionsRequest)(nil),   // 3: devnetbuilder.v1.ListTransactionsRequest
+	(*ListTransactionsResponse)(nil),  // 4: devnetbuilder.v1.ListTransactionsResponse
+	(*CancelTransactionRequest)(nil),  // 5: devnetbuilder.v1.CancelTransactionRequest
+	(*SubmitTransactionResponse)(nil), // 6: devnetbuilder.v1.SubmitTransactionResponse
+	(*GetTransactionResponse)(nil),    // 7: devnetbuilder.v1.GetTransactionResponse
+	(*CancelTransactionResponse)(nil), // 8: devnetbuilder.v1.CancelTransactionResponse
+	(*SubmitGovVoteResponse)(nil),     // 9: devnetbuilder.v1.SubmitGovVoteResponse
+	(*SubmitGovProposalResponse)(nil), // 10: devnetbuilder.v1.SubmitGovProposalResponse
+	(*SubmitGovVoteRequest)(nil),      // 11: devnetbuilder.v1.SubmitGovVoteRequest
+	(*SubmitGovProposalRequest)(nil),  // 12: devnetbuilder.v1.SubmitGovProposalRequest
+	(*timestamppb.Timestamp)(nil),     // 13: google.protobuf.Timestamp
 }
 var file_v1_transaction_proto_depIdxs = []int32{
-	8, // 0: devnetbuilder.v1.Transaction.created_at:type_name -> google.protobuf.Timestamp
-	8, // 1: devnetbuilder.v1.Transaction.updated_at:type_name -> google.protobuf.Timestamp
-	0, // 2: devnetbuilder.v1.ListTransactionsResponse.transactions:type_name -> devnetbuilder.v1.Transaction
-	1, // 3: devnetbuilder.v1.TransactionService.SubmitTransaction:input_type -> devnetbuilder.v1.SubmitTransactionRequest
-	2, // 4: devnetbuilder.v1.TransactionService.GetTransaction:input_type -> devnetbuilder.v1.GetTransactionRequest
-	3, // 5: devnetbuilder.v1.TransactionService.ListTransactions:input_type -> devnetbuilder.v1.ListTransactionsRequest
-	5, // 6: devnetbuilder.v1.TransactionService.CancelTransaction:input_type -> devnetbuilder.v1.CancelTransactionRequest
-	6, // 7: devnetbuilder.v1.TransactionService.SubmitGovVote:input_type -> devnetbuilder.v1.SubmitGovVoteRequest
-	7, // 8: devnetbuilder.v1.TransactionService.SubmitGovProposal:input_type -> devnetbuilder.v1.SubmitGovProposalRequest
-	0, // 9: devnetbuilder.v1.TransactionService.SubmitTransaction:output_type -> devnetbuilder.v1.Transaction
-	0, // 10: devnetbuilder.v1.TransactionService.GetTransaction:output_type -> devnetbuilder.v1.Transaction
-	4, // 11: devnetbuilder.v1.TransactionService.ListTransactions:output_type -> devnetbuilder.v1.ListTransactionsResponse
-	0, // 12: devnetbuilder.v1.TransactionService.CancelTransaction:output_type -> devnetbuilder.v1.Transaction
-	0, // 13: devnetbuilder.v1.TransactionService.SubmitGovVote:output_type -> devnetbuilder.v1.Transaction
-	0, // 14: devnetbuilder.v1.TransactionService.SubmitGovProposal:output_type -> devnetbuilder.v1.Transaction
-	9, // [9:15] is the sub-list for method output_type
-	3, // [3:9] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	13, // 0: devnetbuilder.v1.Transaction.created_at:type_name -> google.protobuf.Timestamp
+	13, // 1: devnetbuilder.v1.Transaction.updated_at:type_name -> google.protobuf.Timestamp
+	0,  // 2: devnetbuilder.v1.ListTransactionsResponse.transactions:type_name -> devnetbuilder.v1.Transaction
+	0,  // 3: devnetbuilder.v1.SubmitTransactionResponse.transaction:type_name -> devnetbuilder.v1.Transaction
+	0,  // 4: devnetbuilder.v1.GetTransactionResponse.transaction:type_name -> devnetbuilder.v1.Transaction
+	0,  // 5: devnetbuilder.v1.CancelTransactionResponse.transaction:type_name -> devnetbuilder.v1.Transaction
+	0,  // 6: devnetbuilder.v1.SubmitGovVoteResponse.transaction:type_name -> devnetbuilder.v1.Transaction
+	0,  // 7: devnetbuilder.v1.SubmitGovProposalResponse.transaction:type_name -> devnetbuilder.v1.Transaction
+	1,  // 8: devnetbuilder.v1.TransactionService.SubmitTransaction:input_type -> devnetbuilder.v1.SubmitTransactionRequest
+	2,  // 9: devnetbuilder.v1.TransactionService.GetTransaction:input_type -> devnetbuilder.v1.GetTransactionRequest
+	3,  // 10: devnetbuilder.v1.TransactionService.ListTransactions:input_type -> devnetbuilder.v1.ListTransactionsRequest
+	5,  // 11: devnetbuilder.v1.TransactionService.CancelTransaction:input_type -> devnetbuilder.v1.CancelTransactionRequest
+	11, // 12: devnetbuilder.v1.TransactionService.SubmitGovVote:input_type -> devnetbuilder.v1.SubmitGovVoteRequest
+	12, // 13: devnetbuilder.v1.TransactionService.SubmitGovProposal:input_type -> devnetbuilder.v1.SubmitGovProposalRequest
+	6,  // 14: devnetbuilder.v1.TransactionService.SubmitTransaction:output_type -> devnetbuilder.v1.SubmitTransactionResponse
+	7,  // 15: devnetbuilder.v1.TransactionService.GetTransaction:output_type -> devnetbuilder.v1.GetTransactionResponse
+	4,  // 16: devnetbuilder.v1.TransactionService.ListTransactions:output_type -> devnetbuilder.v1.ListTransactionsResponse
+	8,  // 17: devnetbuilder.v1.TransactionService.CancelTransaction:output_type -> devnetbuilder.v1.CancelTransactionResponse
+	9,  // 18: devnetbuilder.v1.TransactionService.SubmitGovVote:output_type -> devnetbuilder.v1.SubmitGovVoteResponse
+	10, // 19: devnetbuilder.v1.TransactionService.SubmitGovProposal:output_type -> devnetbuilder.v1.SubmitGovProposalResponse
+	14, // [14:20] is the sub-list for method output_type
+	8,  // [8:14] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_v1_transaction_proto_init() }
@@ -731,7 +976,7 @@ func file_v1_transaction_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_transaction_proto_rawDesc), len(file_v1_transaction_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -240,7 +240,7 @@ func (c *GRPCClient) SubmitTransaction(ctx context.Context, devnet, txType, sign
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}
-	return resp, nil
+	return resp.Transaction, nil
 }
 
 // GetTransaction retrieves a transaction by name.
@@ -249,7 +249,7 @@ func (c *GRPCClient) GetTransaction(ctx context.Context, name string) (*v1.Trans
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}
-	return resp, nil
+	return resp.Transaction, nil
 }
 
 // ListTransactions lists transactions for a devnet.
@@ -272,7 +272,7 @@ func (c *GRPCClient) CancelTransaction(ctx context.Context, name string) (*v1.Tr
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}
-	return resp, nil
+	return resp.Transaction, nil
 }
 
 // SubmitGovVote submits a governance vote.
@@ -286,7 +286,7 @@ func (c *GRPCClient) SubmitGovVote(ctx context.Context, devnet string, proposalI
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}
-	return resp, nil
+	return resp.Transaction, nil
 }
 
 // SubmitGovProposal submits a governance proposal.
@@ -302,7 +302,7 @@ func (c *GRPCClient) SubmitGovProposal(ctx context.Context, devnet, proposer, pr
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}
-	return resp, nil
+	return resp.Transaction, nil
 }
 
 // wrapGRPCError converts gRPC errors to user-friendly messages.
