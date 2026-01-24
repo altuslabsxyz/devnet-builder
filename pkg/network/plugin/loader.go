@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/go-plugin"
+	hclog "github.com/hashicorp/go-hclog"
+	hcplugin "github.com/hashicorp/go-plugin"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/paths"
 	"github.com/altuslabsxyz/devnet-builder/pkg/network"
@@ -123,7 +123,7 @@ func (c VersionConstraint) CheckVersion(version string) error {
 
 // PluginClient represents a loaded plugin client.
 type PluginClient struct {
-	client *plugin.Client
+	client *hcplugin.Client
 	module network.Module
 	name   string
 }
@@ -359,13 +359,13 @@ func (l *Loader) loadLocked(name string) (*PluginClient, error) {
 	}
 
 	// Create the plugin client
-	client := plugin.NewClient(&plugin.ClientConfig{
+	client := hcplugin.NewClient(&hcplugin.ClientConfig{
 		HandshakeConfig: Handshake,
-		Plugins: map[string]plugin.Plugin{
+		Plugins: map[string]hcplugin.Plugin{
 			"network": &NetworkModulePlugin{},
 		},
 		Cmd:              exec.Command(pluginPath),
-		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
+		AllowedProtocols: []hcplugin.Protocol{hcplugin.ProtocolGRPC},
 		Logger:           l.logger,
 	})
 
@@ -579,13 +579,13 @@ func (l *Loader) ValidatePlugin(name string) error {
 	}
 
 	// Create a temporary client for validation
-	client := plugin.NewClient(&plugin.ClientConfig{
+	client := hcplugin.NewClient(&hcplugin.ClientConfig{
 		HandshakeConfig: Handshake,
-		Plugins: map[string]plugin.Plugin{
+		Plugins: map[string]hcplugin.Plugin{
 			"network": &NetworkModulePlugin{},
 		},
 		Cmd:              exec.Command(pluginPath),
-		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
+		AllowedProtocols: []hcplugin.Protocol{hcplugin.ProtocolGRPC},
 		Logger:           l.logger,
 	})
 	defer client.Kill()
@@ -642,13 +642,13 @@ func (l *Loader) GetPluginVersion(name string) (string, error) {
 		return "", &PluginError{Op: "get-version", PluginName: name, Err: ErrPluginNotFound}
 	}
 
-	client := plugin.NewClient(&plugin.ClientConfig{
+	client := hcplugin.NewClient(&hcplugin.ClientConfig{
 		HandshakeConfig: Handshake,
-		Plugins: map[string]plugin.Plugin{
+		Plugins: map[string]hcplugin.Plugin{
 			"network": &NetworkModulePlugin{},
 		},
 		Cmd:              exec.Command(pluginPath),
-		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
+		AllowedProtocols: []hcplugin.Protocol{hcplugin.ProtocolGRPC},
 		Logger:           l.logger,
 	})
 	defer client.Kill()
