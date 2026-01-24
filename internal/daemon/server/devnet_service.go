@@ -106,7 +106,7 @@ func (s *DevnetService) ListDevnets(ctx context.Context, req *v1.ListDevnetsRequ
 	return resp, nil
 }
 
-// DeleteDevnet deletes a devnet and all its nodes (cascade delete).
+// DeleteDevnet deletes a devnet and all its nodes and upgrades (cascade delete).
 func (s *DevnetService) DeleteDevnet(ctx context.Context, req *v1.DeleteDevnetRequest) (*v1.DeleteDevnetResponse, error) {
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
@@ -118,6 +118,12 @@ func (s *DevnetService) DeleteDevnet(ctx context.Context, req *v1.DeleteDevnetRe
 	if err := s.store.DeleteNodesByDevnet(ctx, req.Name); err != nil {
 		s.logger.Warn("failed to delete nodes during cascade delete", "devnet", req.Name, "error", err)
 		// Continue with devnet deletion even if node deletion fails
+	}
+
+	// Cascade delete: remove all upgrades belonging to this devnet
+	if err := s.store.DeleteUpgradesByDevnet(ctx, req.Name); err != nil {
+		s.logger.Warn("failed to delete upgrades during cascade delete", "devnet", req.Name, "error", err)
+		// Continue with devnet deletion even if upgrade deletion fails
 	}
 
 	err := s.store.DeleteDevnet(ctx, req.Name)
