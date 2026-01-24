@@ -13,6 +13,7 @@ import (
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/provisioner"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"google.golang.org/grpc"
@@ -90,8 +91,14 @@ func New(config *Config) (*Server, error) {
 	mgr := controller.NewManager()
 	mgr.SetLogger(logger)
 
+	// Create devnet provisioner
+	devnetProv := provisioner.NewDevnetProvisioner(st, provisioner.Config{
+		DataDir: config.DataDir,
+		Logger:  logger,
+	})
+
 	// Register controllers
-	devnetCtrl := controller.NewDevnetController(st, nil) // No provisioner yet (Phase 3)
+	devnetCtrl := controller.NewDevnetController(st, devnetProv)
 	devnetCtrl.SetLogger(logger)
 	mgr.Register("devnets", devnetCtrl)
 
