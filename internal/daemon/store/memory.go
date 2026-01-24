@@ -238,12 +238,38 @@ func (m *MemoryStore) ListUpgrades(ctx context.Context, devnetName string) ([]*t
 
 	var result []*types.Upgrade
 	for _, u := range m.upgrades {
-		if u.Spec.DevnetRef == devnetName {
+		if devnetName == "" || u.Spec.DevnetRef == devnetName {
 			copy := *u
 			result = append(result, &copy)
 		}
 	}
 	return result, nil
+}
+
+// DeleteUpgrade deletes an upgrade.
+func (m *MemoryStore) DeleteUpgrade(ctx context.Context, name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, exists := m.upgrades[name]; !exists {
+		return ErrNotFound
+	}
+
+	delete(m.upgrades, name)
+	return nil
+}
+
+// DeleteUpgradesByDevnet deletes all upgrades belonging to a devnet.
+func (m *MemoryStore) DeleteUpgradesByDevnet(ctx context.Context, devnetName string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for name, upgrade := range m.upgrades {
+		if upgrade.Spec.DevnetRef == devnetName {
+			delete(m.upgrades, name)
+		}
+	}
+	return nil
 }
 
 // CreateTransaction creates a new transaction.

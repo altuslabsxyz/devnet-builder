@@ -49,7 +49,9 @@ type Store interface {
 	CreateUpgrade(ctx context.Context, upgrade *Upgrade) error
 	GetUpgrade(ctx context.Context, name string) (*Upgrade, error)
 	UpdateUpgrade(ctx context.Context, upgrade *Upgrade) error
+	DeleteUpgrade(ctx context.Context, name string) error
 	ListUpgrades(ctx context.Context, devnetName string) ([]*Upgrade, error)
+	DeleteUpgradesByDevnet(ctx context.Context, devnetName string) error
 
 	// Transaction operations
 	CreateTransaction(ctx context.Context, tx *Transaction) error

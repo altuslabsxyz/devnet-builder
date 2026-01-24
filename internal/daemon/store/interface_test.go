@@ -38,9 +38,11 @@ func (m *mockStore) DeleteNodesByDevnet(ctx context.Context, devnetName string) 
 func (m *mockStore) CreateUpgrade(ctx context.Context, upgrade *Upgrade) error     { return nil }
 func (m *mockStore) GetUpgrade(ctx context.Context, name string) (*Upgrade, error) { return nil, nil }
 func (m *mockStore) UpdateUpgrade(ctx context.Context, upgrade *Upgrade) error     { return nil }
+func (m *mockStore) DeleteUpgrade(ctx context.Context, name string) error          { return nil }
 func (m *mockStore) ListUpgrades(ctx context.Context, devnetName string) ([]*Upgrade, error) {
 	return nil, nil
 }
+func (m *mockStore) DeleteUpgradesByDevnet(ctx context.Context, devnetName string) error { return nil }
 
 func (m *mockStore) CreateTransaction(ctx context.Context, tx *Transaction) error { return nil }
 func (m *mockStore) GetTransaction(ctx context.Context, id string) (*Transaction, error) {
