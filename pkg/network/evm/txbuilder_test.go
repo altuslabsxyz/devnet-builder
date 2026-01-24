@@ -76,11 +76,11 @@ func TestSupportedTxTypes(t *testing.T) {
 	require.Contains(t, types, network.TxTypeBankSend)
 }
 
-func TestTxBuilder_BuildTx_NotImplemented(t *testing.T) {
+func TestTxBuilder_BuildTx_NilRequest(t *testing.T) {
 	builder := &TxBuilder{}
 	_, err := builder.BuildTx(context.Background(), nil)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "not implemented")
+	require.Contains(t, err.Error(), "request is required")
 }
 
 func TestTxBuilder_SignTx_NotImplemented(t *testing.T) {
