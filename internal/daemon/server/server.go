@@ -49,6 +49,7 @@ type Server struct {
 	config     *Config
 	store      store.Store
 	manager    *controller.Manager
+	healthCtrl *controller.HealthController
 	grpcServer *grpc.Server
 	listener   net.Listener
 	logger     *slog.Logger
@@ -93,6 +94,12 @@ func New(config *Config) (*Server, error) {
 	nodeCtrl.SetLogger(logger)
 	mgr.Register("nodes", nodeCtrl)
 
+	// Create and register health controller
+	healthConfig := controller.DefaultHealthControllerConfig()
+	healthCtrl := controller.NewHealthController(st, nil, mgr, healthConfig) // No checker yet
+	healthCtrl.SetLogger(logger)
+	mgr.Register("health", healthCtrl)
+
 	// Create gRPC server
 	grpcServer := grpc.NewServer()
 
@@ -109,6 +116,7 @@ func New(config *Config) (*Server, error) {
 		config:     config,
 		store:      st,
 		manager:    mgr,
+		healthCtrl: healthCtrl,
 		grpcServer: grpcServer,
 		logger:     logger,
 	}, nil
@@ -146,6 +154,9 @@ func (s *Server) Run(ctx context.Context) error {
 	// Start controller manager in background
 	go s.manager.Start(ctx, s.config.Workers)
 
+	// Start health controller's periodic health check loop
+	s.healthCtrl.Start(ctx)
+
 	// Handle shutdown signals
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -175,6 +186,11 @@ func (s *Server) Run(ctx context.Context) error {
 // Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown() error {
 	s.logger.Info("shutting down")
+
+	// Stop health controller
+	if s.healthCtrl != nil {
+		s.healthCtrl.Stop()
+	}
 
 	// Graceful gRPC shutdown
 	if s.grpcServer != nil {

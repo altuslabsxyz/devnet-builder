@@ -1,6 +1,8 @@
 // internal/daemon/types/node.go
 package types
 
+import "time"
+
 // Node phase constants.
 const (
 	NodePhasePending  = "Pending"
@@ -70,4 +72,16 @@ type NodeStatus struct {
 
 	// Message provides additional status information.
 	Message string `json:"message,omitempty"`
+
+	// LastHealthCheck is when the node was last health-checked.
+	LastHealthCheck time.Time `json:"lastHealthCheck,omitempty"`
+
+	// LastBlockTime is when we last saw a new block on this node.
+	LastBlockTime time.Time `json:"lastBlockTime,omitempty"`
+
+	// ConsecutiveFailures counts consecutive health check failures.
+	ConsecutiveFailures int `json:"consecutiveFailures"`
+
+	// NextRestartTime is when the next restart attempt is allowed (backoff).
+	NextRestartTime time.Time `json:"nextRestartTime,omitempty"`
 }

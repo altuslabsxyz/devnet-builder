@@ -13,11 +13,11 @@ func TestDevnetToProto(t *testing.T) {
 
 	devnet := &types.Devnet{
 		Metadata: types.ResourceMeta{
-			Name:       "test-devnet",
-			Generation: 3,
-			CreatedAt:  now,
-			UpdatedAt:  now.Add(time.Hour),
-			Labels:     map[string]string{"env": "test"},
+			Name:        "test-devnet",
+			Generation:  3,
+			CreatedAt:   now,
+			UpdatedAt:   now.Add(time.Hour),
+			Labels:      map[string]string{"env": "test"},
 			Annotations: map[string]string{"note": "example"},
 		},
 		Spec: types.DevnetSpec{

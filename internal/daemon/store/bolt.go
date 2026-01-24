@@ -86,8 +86,7 @@ func (s *BoltStore) Watch(ctx context.Context, resourceType string, handler Watc
 	s.mu.Unlock()
 
 	// Send initial list as ADDED events
-	switch resourceType {
-	case "devnets":
+	if resourceType == "devnets" {
 		devnets, err := s.ListDevnets(ctx)
 		if err != nil {
 			return err
