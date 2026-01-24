@@ -2,9 +2,12 @@
 package cosmos
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -234,9 +237,74 @@ func (b *TxBuilder) SignTx(ctx context.Context, unsignedTx *network.UnsignedTx, 
 }
 
 // BroadcastTx submits a signed transaction to the network.
-// This is a stub implementation that will be completed in a later task.
 func (b *TxBuilder) BroadcastTx(ctx context.Context, tx *network.SignedTx) (*network.TxBroadcastResult, error) {
-	return nil, fmt.Errorf("BroadcastTx not yet implemented")
+	// Validate input
+	if tx == nil {
+		return nil, fmt.Errorf("signed transaction is required")
+	}
+	if len(tx.TxBytes) == 0 {
+		return nil, fmt.Errorf("transaction bytes are required")
+	}
+
+	// Encode tx as base64
+	txBase64 := base64.StdEncoding.EncodeToString(tx.TxBytes)
+
+	// Create JSON-RPC request
+	reqBody := BroadcastRequest{
+		JSONRPC: "2.0",
+		ID:      1,
+		Method:  "broadcast_tx_sync",
+		Params:  map[string]string{"tx": txBase64},
+	}
+
+	// Marshal request
+	reqBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal broadcast request: %w", err)
+	}
+
+	// Create HTTP request
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.rpcEndpoint, bytes.NewReader(reqBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Send request
+	resp, err := b.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send broadcast request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read broadcast response: %w", err)
+	}
+
+	// Check HTTP status code
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	// Parse response
+	var broadcastResp BroadcastResponse
+	if err := json.Unmarshal(respBody, &broadcastResp); err != nil {
+		return nil, fmt.Errorf("failed to parse broadcast response: %w", err)
+	}
+
+	// Check for RPC error
+	if broadcastResp.Error != nil {
+		return nil, fmt.Errorf("RPC error %d: %s", broadcastResp.Error.Code, broadcastResp.Error.Message)
+	}
+
+	// Return result
+	return &network.TxBroadcastResult{
+		TxHash: broadcastResp.Result.Hash,
+		Code:   broadcastResp.Result.Code,
+		Log:    broadcastResp.Result.Log,
+	}, nil
 }
 
 // SupportedTxTypes returns the transaction types this builder supports.
@@ -286,3 +354,6 @@ func (b *TxBuilder) ChainID() string {
 func (b *TxBuilder) SDKVersion() *network.SDKVersion {
 	return b.sdkVersion
 }
+
+// Ensure TxBuilder fully implements network.TxBuilder.
+var _ network.TxBuilder = (*TxBuilder)(nil)
