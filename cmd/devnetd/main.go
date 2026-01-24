@@ -32,6 +32,8 @@ func main() {
 	rootCmd.Flags().BoolVar(&config.Foreground, "foreground", true, "Run in foreground")
 	rootCmd.Flags().IntVar(&config.Workers, "workers", defaults.Workers, "Workers per controller")
 	rootCmd.Flags().StringVar(&config.LogLevel, "log-level", defaults.LogLevel, "Log level (debug, info, warn, error)")
+	rootCmd.Flags().BoolVar(&config.EnableDocker, "docker", false, "Enable Docker container runtime")
+	rootCmd.Flags().StringVar(&config.DockerImage, "docker-image", "stablelabs/stabled:latest", "Default Docker image for nodes")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

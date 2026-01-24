@@ -13,6 +13,7 @@ import (
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"google.golang.org/grpc"
 )
@@ -29,6 +30,10 @@ type Config struct {
 	Workers int
 	// LogLevel is the log level (debug, info, warn, error).
 	LogLevel string
+	// EnableDocker enables Docker container runtime for nodes.
+	EnableDocker bool
+	// DockerImage is the default Docker image for nodes.
+	DockerImage string
 }
 
 // DefaultConfig returns default configuration.
@@ -90,7 +95,21 @@ func New(config *Config) (*Server, error) {
 	devnetCtrl.SetLogger(logger)
 	mgr.Register("devnets", devnetCtrl)
 
-	nodeCtrl := controller.NewNodeController(st, nil) // No runtime yet
+	// Create node runtime (Docker or nil)
+	var nodeRuntime controller.NodeRuntime
+	if config.EnableDocker {
+		dockerRuntime, err := runtime.NewDockerRuntime(runtime.DockerConfig{
+			DefaultImage: config.DockerImage,
+			Logger:       logger,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create docker runtime: %w", err)
+		}
+		nodeRuntime = dockerRuntime
+		logger.Info("docker runtime enabled", "image", config.DockerImage)
+	}
+
+	nodeCtrl := controller.NewNodeController(st, nodeRuntime)
 	nodeCtrl.SetLogger(logger)
 	mgr.Register("nodes", nodeCtrl)
 
