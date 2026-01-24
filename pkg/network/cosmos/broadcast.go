@@ -7,6 +7,7 @@ type BroadcastMode string
 const (
 	BroadcastModeSync  BroadcastMode = "sync"
 	BroadcastModeAsync BroadcastMode = "async"
+	BroadcastModeBlock BroadcastMode = "block"
 )
 
 // BroadcastRequest is the JSON-RPC request for broadcast_tx_sync.
