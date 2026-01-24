@@ -98,3 +98,33 @@ func (c *Client) StopNode(ctx context.Context, devnetName string, index int) (*v
 func (c *Client) RestartNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
 	return c.grpc.RestartNode(ctx, devnetName, index)
 }
+
+// CreateUpgrade creates a new upgrade.
+func (c *Client) CreateUpgrade(ctx context.Context, name string, spec *v1.UpgradeSpec) (*v1.Upgrade, error) {
+	return c.grpc.CreateUpgrade(ctx, name, spec)
+}
+
+// GetUpgrade retrieves an upgrade by name.
+func (c *Client) GetUpgrade(ctx context.Context, name string) (*v1.Upgrade, error) {
+	return c.grpc.GetUpgrade(ctx, name)
+}
+
+// ListUpgrades lists all upgrades for a devnet.
+func (c *Client) ListUpgrades(ctx context.Context, devnetName string) ([]*v1.Upgrade, error) {
+	return c.grpc.ListUpgrades(ctx, devnetName)
+}
+
+// DeleteUpgrade deletes an upgrade.
+func (c *Client) DeleteUpgrade(ctx context.Context, name string) error {
+	return c.grpc.DeleteUpgrade(ctx, name)
+}
+
+// CancelUpgrade cancels a running upgrade.
+func (c *Client) CancelUpgrade(ctx context.Context, name string) (*v1.Upgrade, error) {
+	return c.grpc.CancelUpgrade(ctx, name)
+}
+
+// RetryUpgrade retries a failed upgrade.
+func (c *Client) RetryUpgrade(ctx context.Context, name string) (*v1.Upgrade, error) {
+	return c.grpc.RetryUpgrade(ctx, name)
+}

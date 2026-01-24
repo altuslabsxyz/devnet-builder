@@ -700,3 +700,303 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "v1/devnet.proto",
 }
+
+const (
+	UpgradeService_CreateUpgrade_FullMethodName = "/devnetbuilder.v1.UpgradeService/CreateUpgrade"
+	UpgradeService_GetUpgrade_FullMethodName    = "/devnetbuilder.v1.UpgradeService/GetUpgrade"
+	UpgradeService_ListUpgrades_FullMethodName  = "/devnetbuilder.v1.UpgradeService/ListUpgrades"
+	UpgradeService_DeleteUpgrade_FullMethodName = "/devnetbuilder.v1.UpgradeService/DeleteUpgrade"
+	UpgradeService_CancelUpgrade_FullMethodName = "/devnetbuilder.v1.UpgradeService/CancelUpgrade"
+	UpgradeService_RetryUpgrade_FullMethodName  = "/devnetbuilder.v1.UpgradeService/RetryUpgrade"
+)
+
+// UpgradeServiceClient is the client API for UpgradeService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// UpgradeService provides operations for managing chain upgrades.
+type UpgradeServiceClient interface {
+	// Lifecycle
+	CreateUpgrade(ctx context.Context, in *CreateUpgradeRequest, opts ...grpc.CallOption) (*CreateUpgradeResponse, error)
+	GetUpgrade(ctx context.Context, in *GetUpgradeRequest, opts ...grpc.CallOption) (*GetUpgradeResponse, error)
+	ListUpgrades(ctx context.Context, in *ListUpgradesRequest, opts ...grpc.CallOption) (*ListUpgradesResponse, error)
+	DeleteUpgrade(ctx context.Context, in *DeleteUpgradeRequest, opts ...grpc.CallOption) (*DeleteUpgradeResponse, error)
+	// Actions
+	CancelUpgrade(ctx context.Context, in *CancelUpgradeRequest, opts ...grpc.CallOption) (*CancelUpgradeResponse, error)
+	RetryUpgrade(ctx context.Context, in *RetryUpgradeRequest, opts ...grpc.CallOption) (*RetryUpgradeResponse, error)
+}
+
+type upgradeServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewUpgradeServiceClient(cc grpc.ClientConnInterface) UpgradeServiceClient {
+	return &upgradeServiceClient{cc}
+}
+
+func (c *upgradeServiceClient) CreateUpgrade(ctx context.Context, in *CreateUpgradeRequest, opts ...grpc.CallOption) (*CreateUpgradeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateUpgradeResponse)
+	err := c.cc.Invoke(ctx, UpgradeService_CreateUpgrade_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *upgradeServiceClient) GetUpgrade(ctx context.Context, in *GetUpgradeRequest, opts ...grpc.CallOption) (*GetUpgradeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetUpgradeResponse)
+	err := c.cc.Invoke(ctx, UpgradeService_GetUpgrade_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *upgradeServiceClient) ListUpgrades(ctx context.Context, in *ListUpgradesRequest, opts ...grpc.CallOption) (*ListUpgradesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListUpgradesResponse)
+	err := c.cc.Invoke(ctx, UpgradeService_ListUpgrades_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *upgradeServiceClient) DeleteUpgrade(ctx context.Context, in *DeleteUpgradeRequest, opts ...grpc.CallOption) (*DeleteUpgradeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteUpgradeResponse)
+	err := c.cc.Invoke(ctx, UpgradeService_DeleteUpgrade_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *upgradeServiceClient) CancelUpgrade(ctx context.Context, in *CancelUpgradeRequest, opts ...grpc.CallOption) (*CancelUpgradeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CancelUpgradeResponse)
+	err := c.cc.Invoke(ctx, UpgradeService_CancelUpgrade_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *upgradeServiceClient) RetryUpgrade(ctx context.Context, in *RetryUpgradeRequest, opts ...grpc.CallOption) (*RetryUpgradeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RetryUpgradeResponse)
+	err := c.cc.Invoke(ctx, UpgradeService_RetryUpgrade_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// UpgradeServiceServer is the server API for UpgradeService service.
+// All implementations must embed UnimplementedUpgradeServiceServer
+// for forward compatibility.
+//
+// UpgradeService provides operations for managing chain upgrades.
+type UpgradeServiceServer interface {
+	// Lifecycle
+	CreateUpgrade(context.Context, *CreateUpgradeRequest) (*CreateUpgradeResponse, error)
+	GetUpgrade(context.Context, *GetUpgradeRequest) (*GetUpgradeResponse, error)
+	ListUpgrades(context.Context, *ListUpgradesRequest) (*ListUpgradesResponse, error)
+	DeleteUpgrade(context.Context, *DeleteUpgradeRequest) (*DeleteUpgradeResponse, error)
+	// Actions
+	CancelUpgrade(context.Context, *CancelUpgradeRequest) (*CancelUpgradeResponse, error)
+	RetryUpgrade(context.Context, *RetryUpgradeRequest) (*RetryUpgradeResponse, error)
+	mustEmbedUnimplementedUpgradeServiceServer()
+}
+
+// UnimplementedUpgradeServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedUpgradeServiceServer struct{}
+
+func (UnimplementedUpgradeServiceServer) CreateUpgrade(context.Context, *CreateUpgradeRequest) (*CreateUpgradeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateUpgrade not implemented")
+}
+func (UnimplementedUpgradeServiceServer) GetUpgrade(context.Context, *GetUpgradeRequest) (*GetUpgradeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetUpgrade not implemented")
+}
+func (UnimplementedUpgradeServiceServer) ListUpgrades(context.Context, *ListUpgradesRequest) (*ListUpgradesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListUpgrades not implemented")
+}
+func (UnimplementedUpgradeServiceServer) DeleteUpgrade(context.Context, *DeleteUpgradeRequest) (*DeleteUpgradeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteUpgrade not implemented")
+}
+func (UnimplementedUpgradeServiceServer) CancelUpgrade(context.Context, *CancelUpgradeRequest) (*CancelUpgradeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelUpgrade not implemented")
+}
+func (UnimplementedUpgradeServiceServer) RetryUpgrade(context.Context, *RetryUpgradeRequest) (*RetryUpgradeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RetryUpgrade not implemented")
+}
+func (UnimplementedUpgradeServiceServer) mustEmbedUnimplementedUpgradeServiceServer() {}
+func (UnimplementedUpgradeServiceServer) testEmbeddedByValue()                        {}
+
+// UnsafeUpgradeServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to UpgradeServiceServer will
+// result in compilation errors.
+type UnsafeUpgradeServiceServer interface {
+	mustEmbedUnimplementedUpgradeServiceServer()
+}
+
+func RegisterUpgradeServiceServer(s grpc.ServiceRegistrar, srv UpgradeServiceServer) {
+	// If the following call panics, it indicates UnimplementedUpgradeServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&UpgradeService_ServiceDesc, srv)
+}
+
+func _UpgradeService_CreateUpgrade_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateUpgradeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UpgradeServiceServer).CreateUpgrade(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UpgradeService_CreateUpgrade_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UpgradeServiceServer).CreateUpgrade(ctx, req.(*CreateUpgradeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UpgradeService_GetUpgrade_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUpgradeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UpgradeServiceServer).GetUpgrade(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UpgradeService_GetUpgrade_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UpgradeServiceServer).GetUpgrade(ctx, req.(*GetUpgradeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UpgradeService_ListUpgrades_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListUpgradesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UpgradeServiceServer).ListUpgrades(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UpgradeService_ListUpgrades_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UpgradeServiceServer).ListUpgrades(ctx, req.(*ListUpgradesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UpgradeService_DeleteUpgrade_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteUpgradeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UpgradeServiceServer).DeleteUpgrade(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UpgradeService_DeleteUpgrade_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UpgradeServiceServer).DeleteUpgrade(ctx, req.(*DeleteUpgradeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UpgradeService_CancelUpgrade_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelUpgradeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UpgradeServiceServer).CancelUpgrade(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UpgradeService_CancelUpgrade_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UpgradeServiceServer).CancelUpgrade(ctx, req.(*CancelUpgradeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UpgradeService_RetryUpgrade_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RetryUpgradeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UpgradeServiceServer).RetryUpgrade(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UpgradeService_RetryUpgrade_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UpgradeServiceServer).RetryUpgrade(ctx, req.(*RetryUpgradeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// UpgradeService_ServiceDesc is the grpc.ServiceDesc for UpgradeService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var UpgradeService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "devnetbuilder.v1.UpgradeService",
+	HandlerType: (*UpgradeServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "CreateUpgrade",
+			Handler:    _UpgradeService_CreateUpgrade_Handler,
+		},
+		{
+			MethodName: "GetUpgrade",
+			Handler:    _UpgradeService_GetUpgrade_Handler,
+		},
+		{
+			MethodName: "ListUpgrades",
+			Handler:    _UpgradeService_ListUpgrades_Handler,
+		},
+		{
+			MethodName: "DeleteUpgrade",
+			Handler:    _UpgradeService_DeleteUpgrade_Handler,
+		},
+		{
+			MethodName: "CancelUpgrade",
+			Handler:    _UpgradeService_CancelUpgrade_Handler,
+		},
+		{
+			MethodName: "RetryUpgrade",
+			Handler:    _UpgradeService_RetryUpgrade_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "v1/devnet.proto",
+}

@@ -261,3 +261,112 @@ message ExecInNodeResponse {
   string stdout = 2;
   string stderr = 3;
 }
+
+// =============================================================================
+// Upgrade - Chain upgrade operation for a devnet
+// =============================================================================
+
+// Upgrade represents a chain upgrade operation.
+message Upgrade {
+  UpgradeMetadata metadata = 1;
+  UpgradeSpec spec = 2;
+  UpgradeStatus status = 3;
+}
+
+message UpgradeMetadata {
+  string name = 1;  // Unique upgrade name
+  int64 generation = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp updated_at = 4;
+}
+
+message UpgradeSpec {
+  string devnet_ref = 1;  // Target devnet name
+  string upgrade_name = 2;  // On-chain upgrade name
+  int64 target_height = 3;  // Block height for upgrade (0 = auto-calculate)
+  BinarySource new_binary = 4;  // Upgraded binary source
+  bool with_export = 5;  // Enable state export before/after
+  bool auto_vote = 6;  // Auto-vote yes with all validators
+}
+
+message BinarySource {
+  string type = 1;  // "cache", "url", "local"
+  string version = 2;  // Version identifier
+  string url = 3;  // URL for remote binary (if type=url)
+  string path = 4;  // Local path (if type=local)
+}
+
+message UpgradeStatus {
+  string phase = 1;  // Pending, Proposing, Voting, Waiting, Switching, Verifying, Completed, Failed
+  uint64 proposal_id = 2;  // Governance proposal ID
+  int32 votes_received = 3;
+  int32 votes_required = 4;
+  int64 current_height = 5;
+  string pre_export_path = 6;  // Path to pre-upgrade state export
+  string post_export_path = 7;  // Path to post-upgrade state export
+  string message = 8;
+  string error = 9;  // Error details if phase is Failed
+}
+
+// UpgradeService provides operations for managing chain upgrades.
+service UpgradeService {
+  // Lifecycle
+  rpc CreateUpgrade(CreateUpgradeRequest) returns (CreateUpgradeResponse);
+  rpc GetUpgrade(GetUpgradeRequest) returns (GetUpgradeResponse);
+  rpc ListUpgrades(ListUpgradesRequest) returns (ListUpgradesResponse);
+  rpc DeleteUpgrade(DeleteUpgradeRequest) returns (DeleteUpgradeResponse);
+
+  // Actions
+  rpc CancelUpgrade(CancelUpgradeRequest) returns (CancelUpgradeResponse);
+  rpc RetryUpgrade(RetryUpgradeRequest) returns (RetryUpgradeResponse);
+}
+
+// UpgradeService request/response messages
+message CreateUpgradeRequest {
+  string name = 1;  // Unique upgrade name
+  UpgradeSpec spec = 2;
+}
+
+message CreateUpgradeResponse {
+  Upgrade upgrade = 1;
+}
+
+message GetUpgradeRequest {
+  string name = 1;
+}
+
+message GetUpgradeResponse {
+  Upgrade upgrade = 1;
+}
+
+message ListUpgradesRequest {
+  string devnet_name = 1;  // Optional: filter by devnet
+}
+
+message ListUpgradesResponse {
+  repeated Upgrade upgrades = 1;
+}
+
+message DeleteUpgradeRequest {
+  string name = 1;
+}
+
+message DeleteUpgradeResponse {
+  bool deleted = 1;
+}
+
+message CancelUpgradeRequest {
+  string name = 1;
+}
+
+message CancelUpgradeResponse {
+  Upgrade upgrade = 1;
+}
+
+message RetryUpgradeRequest {
+  string name = 1;
+}
+
+message RetryUpgradeResponse {
+  Upgrade upgrade = 1;
+}
