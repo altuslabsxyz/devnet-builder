@@ -67,29 +67,45 @@ func NewTxBuilder(ctx context.Context, cfg *network.TxBuilderConfig) (*TxBuilder
 
 // SupportedTxTypes returns the transaction types this builder supports.
 func (b *TxBuilder) SupportedTxTypes() []network.TxType {
+	if b == nil {
+		return nil
+	}
 	return []network.TxType{network.TxTypeBankSend}
 }
 
 // BuildTx constructs an unsigned transaction from a request.
 // This is a placeholder implementation that returns "not implemented" error.
 func (b *TxBuilder) BuildTx(ctx context.Context, req *network.TxBuildRequest) (*network.UnsignedTx, error) {
+	if b == nil {
+		return nil, fmt.Errorf("nil TxBuilder")
+	}
 	return nil, fmt.Errorf("BuildTx: not implemented")
 }
 
 // SignTx signs an unsigned transaction with the provided key.
 // This is a placeholder implementation that returns "not implemented" error.
 func (b *TxBuilder) SignTx(ctx context.Context, unsignedTx *network.UnsignedTx, key *network.SigningKey) (*network.SignedTx, error) {
+	if b == nil {
+		return nil, fmt.Errorf("nil TxBuilder")
+	}
 	return nil, fmt.Errorf("SignTx: not implemented")
 }
 
 // BroadcastTx submits a signed transaction to the network.
 // This is a placeholder implementation that returns "not implemented" error.
 func (b *TxBuilder) BroadcastTx(ctx context.Context, tx *network.SignedTx) (*network.TxBroadcastResult, error) {
+	if b == nil {
+		return nil, fmt.Errorf("nil TxBuilder")
+	}
 	return nil, fmt.Errorf("BroadcastTx: not implemented")
 }
 
 // Close closes the ethclient connection.
+// It is safe to call on a nil receiver and is idempotent.
 func (b *TxBuilder) Close() {
+	if b == nil {
+		return
+	}
 	if b.client != nil {
 		b.client.Close()
 	}
@@ -97,10 +113,17 @@ func (b *TxBuilder) Close() {
 
 // RPCEndpoint returns the configured RPC endpoint.
 func (b *TxBuilder) RPCEndpoint() string {
+	if b == nil {
+		return ""
+	}
 	return b.rpcEndpoint
 }
 
-// ChainID returns the configured chain ID.
+// ChainID returns a copy of the configured chain ID.
+// Returns nil if the builder is nil.
 func (b *TxBuilder) ChainID() *big.Int {
-	return b.chainID
+	if b == nil || b.chainID == nil {
+		return nil
+	}
+	return new(big.Int).Set(b.chainID)
 }
