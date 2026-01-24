@@ -36,4 +36,73 @@ func TestSignTx(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, signedTx)
 	require.NotEmpty(t, signedTx.Signature)
+
+	// Verify signature is valid using Ecrecover
+	recoveredPubKey, err := crypto.Ecrecover(unsignedTx.SignDoc, signedTx.Signature)
+	require.NoError(t, err)
+	require.Equal(t, crypto.FromECDSAPub(&privKey.PublicKey), recoveredPubKey)
+}
+
+func TestSignTx_NilUnsignedTx(t *testing.T) {
+	builder := &TxBuilder{
+		chainID: big.NewInt(2200),
+	}
+	privKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	key := &network.SigningKey{
+		PrivKey: crypto.FromECDSA(privKey),
+	}
+
+	_, err = builder.SignTx(context.Background(), nil, key)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsigned transaction is required")
+}
+
+func TestSignTx_NilKey(t *testing.T) {
+	builder := &TxBuilder{
+		chainID: big.NewInt(2200),
+	}
+	unsignedTx := &network.UnsignedTx{
+		SignDoc: crypto.Keccak256([]byte("test")),
+	}
+
+	_, err := builder.SignTx(context.Background(), unsignedTx, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "signing key is required")
+}
+
+func TestSignTx_EmptySignDoc(t *testing.T) {
+	builder := &TxBuilder{
+		chainID: big.NewInt(2200),
+	}
+	privKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	unsignedTx := &network.UnsignedTx{
+		SignDoc: []byte{}, // Empty SignDoc
+	}
+	key := &network.SigningKey{
+		PrivKey: crypto.FromECDSA(privKey),
+	}
+
+	_, err = builder.SignTx(context.Background(), unsignedTx, key)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "sign document is required")
+}
+
+func TestSignTx_EmptyPrivateKey(t *testing.T) {
+	builder := &TxBuilder{
+		chainID: big.NewInt(2200),
+	}
+	unsignedTx := &network.UnsignedTx{
+		SignDoc: crypto.Keccak256([]byte("test")),
+	}
+	key := &network.SigningKey{
+		PrivKey: []byte{}, // Empty
+	}
+
+	_, err := builder.SignTx(context.Background(), unsignedTx, key)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "private key required")
 }

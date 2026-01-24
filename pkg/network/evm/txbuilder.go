@@ -217,6 +217,15 @@ func (b *TxBuilder) SignTx(ctx context.Context, unsignedTx *network.UnsignedTx, 
 	if b == nil {
 		return nil, fmt.Errorf("nil TxBuilder")
 	}
+	if unsignedTx == nil {
+		return nil, fmt.Errorf("unsigned transaction is required")
+	}
+	if len(unsignedTx.SignDoc) == 0 {
+		return nil, fmt.Errorf("sign document is required")
+	}
+	if key == nil {
+		return nil, fmt.Errorf("signing key is required")
+	}
 	if len(key.PrivKey) == 0 {
 		return nil, fmt.Errorf("private key required")
 	}
