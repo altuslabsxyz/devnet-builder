@@ -83,11 +83,15 @@ func TestTxBuilder_BuildTx_NilRequest(t *testing.T) {
 	require.Contains(t, err.Error(), "request is required")
 }
 
-func TestTxBuilder_SignTx_NotImplemented(t *testing.T) {
+func TestTxBuilder_SignTx_NoPrivateKey(t *testing.T) {
 	builder := &TxBuilder{}
-	_, err := builder.SignTx(context.Background(), nil, nil)
+	key := &network.SigningKey{
+		Address: "0x1234567890123456789012345678901234567890",
+		PrivKey: nil, // No private key
+	}
+	_, err := builder.SignTx(context.Background(), &network.UnsignedTx{}, key)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "not implemented")
+	require.Contains(t, err.Error(), "private key required")
 }
 
 func TestTxBuilder_BroadcastTx_NotImplemented(t *testing.T) {

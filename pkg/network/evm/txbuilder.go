@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rlp"
 
@@ -211,13 +212,35 @@ func (b *TxBuilder) getGasPrice(ctx context.Context, gasPriceStr string) (*big.I
 	return big.NewInt(DefaultGasPriceGwei), nil
 }
 
-// SignTx signs an unsigned transaction with the provided key.
-// This is a placeholder implementation that returns "not implemented" error.
+// SignTx signs an EVM transaction.
 func (b *TxBuilder) SignTx(ctx context.Context, unsignedTx *network.UnsignedTx, key *network.SigningKey) (*network.SignedTx, error) {
 	if b == nil {
 		return nil, fmt.Errorf("nil TxBuilder")
 	}
-	return nil, fmt.Errorf("SignTx: not implemented")
+	if len(key.PrivKey) == 0 {
+		return nil, fmt.Errorf("private key required")
+	}
+
+	// Load ECDSA private key
+	privKey, err := crypto.ToECDSA(key.PrivKey)
+	if err != nil {
+		return nil, fmt.Errorf("load private key: %w", err)
+	}
+
+	// Sign the hash
+	signature, err := crypto.Sign(unsignedTx.SignDoc, privKey)
+	if err != nil {
+		return nil, fmt.Errorf("sign: %w", err)
+	}
+
+	// Get public key bytes
+	pubKeyBytes := crypto.FromECDSAPub(&privKey.PublicKey)
+
+	return &network.SignedTx{
+		TxBytes:   unsignedTx.TxBytes, // Will be updated to include signature
+		Signature: signature,
+		PubKey:    pubKeyBytes,
+	}, nil
 }
 
 // BroadcastTx submits a signed transaction to the network.
