@@ -203,9 +203,31 @@ type SignDoc struct {
 }
 
 // SignTx signs an unsigned transaction with the provided key.
-// This is a stub implementation that will be completed in a later task.
-func (b *TxBuilder) SignTx(ctx context.Context, tx *network.UnsignedTx, key *network.SigningKey) (*network.SignedTx, error) {
-	return nil, fmt.Errorf("SignTx not yet implemented")
+func (b *TxBuilder) SignTx(ctx context.Context, unsignedTx *network.UnsignedTx, key *network.SigningKey) (*network.SignedTx, error) {
+	// Validate key
+	if len(key.PrivKey) == 0 {
+		return nil, fmt.Errorf("private key required for signing")
+	}
+
+	// Load the private key
+	privKey, err := LoadPrivateKey(key.PrivKey)
+	if err != nil {
+		return nil, fmt.Errorf("load private key: %w", err)
+	}
+
+	// Sign the sign doc
+	signature, err := SignBytes(privKey, unsignedTx.SignDoc)
+	if err != nil {
+		return nil, fmt.Errorf("sign: %w", err)
+	}
+
+	pubKey := privKey.PubKey()
+
+	return &network.SignedTx{
+		TxBytes:   unsignedTx.TxBytes, // Will be updated with signature in Task 6
+		Signature: signature,
+		PubKey:    pubKey.Bytes(),
+	}, nil
 }
 
 // BroadcastTx submits a signed transaction to the network.
