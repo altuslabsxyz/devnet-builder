@@ -12,12 +12,13 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// GRPCClient wraps the gRPC DevnetServiceClient, NodeServiceClient, and UpgradeServiceClient.
+// GRPCClient wraps the gRPC DevnetServiceClient, NodeServiceClient, UpgradeServiceClient, and TransactionServiceClient.
 type GRPCClient struct {
-	conn    *grpc.ClientConn
-	devnet  v1.DevnetServiceClient
-	node    v1.NodeServiceClient
-	upgrade v1.UpgradeServiceClient
+	conn        *grpc.ClientConn
+	devnet      v1.DevnetServiceClient
+	node        v1.NodeServiceClient
+	upgrade     v1.UpgradeServiceClient
+	transaction v1.TransactionServiceClient
 }
 
 // NewGRPCClient creates a new gRPC client connected to the daemon.
@@ -32,10 +33,11 @@ func NewGRPCClient(socketPath string) (*GRPCClient, error) {
 	}
 
 	return &GRPCClient{
-		conn:    conn,
-		devnet:  v1.NewDevnetServiceClient(conn),
-		node:    v1.NewNodeServiceClient(conn),
-		upgrade: v1.NewUpgradeServiceClient(conn),
+		conn:        conn,
+		devnet:      v1.NewDevnetServiceClient(conn),
+		node:        v1.NewNodeServiceClient(conn),
+		upgrade:     v1.NewUpgradeServiceClient(conn),
+		transaction: v1.NewTransactionServiceClient(conn),
 	}, nil
 }
 
@@ -225,6 +227,82 @@ func (c *GRPCClient) RetryUpgrade(ctx context.Context, name string) (*v1.Upgrade
 		return nil, wrapGRPCError(err)
 	}
 	return resp.Upgrade, nil
+}
+
+// SubmitTransaction submits a new transaction.
+func (c *GRPCClient) SubmitTransaction(ctx context.Context, devnet, txType, signer string, payload []byte) (*v1.Transaction, error) {
+	resp, err := c.transaction.SubmitTransaction(ctx, &v1.SubmitTransactionRequest{
+		Devnet:  devnet,
+		TxType:  txType,
+		Signer:  signer,
+		Payload: payload,
+	})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp, nil
+}
+
+// GetTransaction retrieves a transaction by name.
+func (c *GRPCClient) GetTransaction(ctx context.Context, name string) (*v1.Transaction, error) {
+	resp, err := c.transaction.GetTransaction(ctx, &v1.GetTransactionRequest{Name: name})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp, nil
+}
+
+// ListTransactions lists transactions for a devnet.
+func (c *GRPCClient) ListTransactions(ctx context.Context, devnet string, txType, phase string, limit int) ([]*v1.Transaction, error) {
+	resp, err := c.transaction.ListTransactions(ctx, &v1.ListTransactionsRequest{
+		Devnet: devnet,
+		TxType: txType,
+		Phase:  phase,
+		Limit:  int32(limit),
+	})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp.Transactions, nil
+}
+
+// CancelTransaction cancels a pending transaction.
+func (c *GRPCClient) CancelTransaction(ctx context.Context, name string) (*v1.Transaction, error) {
+	resp, err := c.transaction.CancelTransaction(ctx, &v1.CancelTransactionRequest{Name: name})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp, nil
+}
+
+// SubmitGovVote submits a governance vote.
+func (c *GRPCClient) SubmitGovVote(ctx context.Context, devnet string, proposalID uint64, voter, option string) (*v1.Transaction, error) {
+	resp, err := c.transaction.SubmitGovVote(ctx, &v1.SubmitGovVoteRequest{
+		Devnet:     devnet,
+		ProposalId: proposalID,
+		Voter:      voter,
+		VoteOption: option,
+	})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp, nil
+}
+
+// SubmitGovProposal submits a governance proposal.
+func (c *GRPCClient) SubmitGovProposal(ctx context.Context, devnet, proposer, proposalType, title, description string, content []byte) (*v1.Transaction, error) {
+	resp, err := c.transaction.SubmitGovProposal(ctx, &v1.SubmitGovProposalRequest{
+		Devnet:       devnet,
+		Proposer:     proposer,
+		ProposalType: proposalType,
+		Title:        title,
+		Description:  description,
+		Content:      content,
+	})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp, nil
 }
 
 // wrapGRPCError converts gRPC errors to user-friendly messages.
