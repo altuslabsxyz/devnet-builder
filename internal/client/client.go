@@ -128,3 +128,33 @@ func (c *Client) CancelUpgrade(ctx context.Context, name string) (*v1.Upgrade, e
 func (c *Client) RetryUpgrade(ctx context.Context, name string) (*v1.Upgrade, error) {
 	return c.grpc.RetryUpgrade(ctx, name)
 }
+
+// SubmitTransaction submits a new transaction.
+func (c *Client) SubmitTransaction(ctx context.Context, devnet, txType, signer string, payload []byte) (*v1.Transaction, error) {
+	return c.grpc.SubmitTransaction(ctx, devnet, txType, signer, payload)
+}
+
+// GetTransaction retrieves a transaction by name.
+func (c *Client) GetTransaction(ctx context.Context, name string) (*v1.Transaction, error) {
+	return c.grpc.GetTransaction(ctx, name)
+}
+
+// ListTransactions lists transactions for a devnet.
+func (c *Client) ListTransactions(ctx context.Context, devnet string, txType, phase string, limit int) ([]*v1.Transaction, error) {
+	return c.grpc.ListTransactions(ctx, devnet, txType, phase, limit)
+}
+
+// CancelTransaction cancels a pending transaction.
+func (c *Client) CancelTransaction(ctx context.Context, name string) (*v1.Transaction, error) {
+	return c.grpc.CancelTransaction(ctx, name)
+}
+
+// SubmitGovVote submits a governance vote.
+func (c *Client) SubmitGovVote(ctx context.Context, devnet string, proposalID uint64, voter, option string) (*v1.Transaction, error) {
+	return c.grpc.SubmitGovVote(ctx, devnet, proposalID, voter, option)
+}
+
+// SubmitGovProposal submits a governance proposal.
+func (c *Client) SubmitGovProposal(ctx context.Context, devnet, proposer, proposalType, title, description string, content []byte) (*v1.Transaction, error) {
+	return c.grpc.SubmitGovProposal(ctx, devnet, proposer, proposalType, title, description, content)
+}
