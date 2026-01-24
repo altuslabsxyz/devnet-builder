@@ -150,21 +150,3 @@ func (s *BoltStore) ListDevnets(ctx context.Context) ([]*Devnet, error) {
 
 	return devnets, nil
 }
-
-// Transaction operations (stub implementations for now)
-
-func (s *BoltStore) CreateTransaction(ctx context.Context, tx *Transaction) error {
-	return fmt.Errorf("not implemented")
-}
-
-func (s *BoltStore) GetTransaction(ctx context.Context, id string) (*Transaction, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (s *BoltStore) UpdateTransaction(ctx context.Context, tx *Transaction) error {
-	return fmt.Errorf("not implemented")
-}
-
-func (s *BoltStore) ListTransactions(ctx context.Context, devnetName string, opts ListTxOptions) ([]*Transaction, error) {
-	return nil, fmt.Errorf("not implemented")
-}

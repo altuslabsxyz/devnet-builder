@@ -66,6 +66,8 @@ func main() {
 		newDestroyCmd(),
 		newNodeCmd(),
 		newUpgradeCmd(),
+		newTxCmd(),
+		newGovCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
