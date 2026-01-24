@@ -84,6 +84,10 @@ func buildBankSendMsg(sender string, payload json.RawMessage) (sdk.Msg, error) {
 		return nil, fmt.Errorf("failed to unmarshal bank send payload: %w", err)
 	}
 
+	if p.ToAddress == "" {
+		return nil, fmt.Errorf("to_address is required")
+	}
+
 	coin, err := ParseAmount(p.Amount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse amount: %w", err)
@@ -103,6 +107,10 @@ func buildStakingDelegateMsg(delegator string, payload json.RawMessage) (sdk.Msg
 	var p StakingDelegatePayload
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal staking delegate payload: %w", err)
+	}
+
+	if p.ValidatorAddress == "" {
+		return nil, fmt.Errorf("validator_address is required")
 	}
 
 	coin, err := ParseAmount(p.Amount)
@@ -180,6 +188,10 @@ func ParseAmount(s string) (sdk.Coin, error) {
 	amount, ok := sdkmath.NewIntFromString(amountStr)
 	if !ok {
 		return sdk.Coin{}, fmt.Errorf("failed to parse amount: %s", amountStr)
+	}
+
+	if amount.IsZero() || amount.IsNegative() {
+		return sdk.Coin{}, fmt.Errorf("amount must be positive: %s", s)
 	}
 
 	return sdk.NewCoin(denom, amount), nil

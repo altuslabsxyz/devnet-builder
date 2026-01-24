@@ -404,6 +404,11 @@ func TestParseVoteOption(t *testing.T) {
 			wantOption: 4, // VOTE_OPTION_NO_WITH_VETO
 		},
 		{
+			name:       "nowithveto without underscore",
+			input:      "nowithveto",
+			wantOption: 4, // VOTE_OPTION_NO_WITH_VETO
+		},
+		{
 			name:        "invalid",
 			input:       "invalid",
 			expectError: true,
@@ -451,6 +456,16 @@ func TestParseAmount(t *testing.T) {
 		{
 			name:        "empty",
 			input:       "",
+			expectError: true,
+		},
+		{
+			name:        "decimal amount rejected",
+			input:       "1000.5stake",
+			expectError: true,
+		},
+		{
+			name:        "zero amount rejected",
+			input:       "0stake",
 			expectError: true,
 		},
 	}
