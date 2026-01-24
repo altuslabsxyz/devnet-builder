@@ -2,7 +2,10 @@
 package evm
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -252,13 +255,63 @@ func (b *TxBuilder) SignTx(ctx context.Context, unsignedTx *network.UnsignedTx, 
 	}, nil
 }
 
-// BroadcastTx submits a signed transaction to the network.
-// This is a placeholder implementation that returns "not implemented" error.
-func (b *TxBuilder) BroadcastTx(ctx context.Context, tx *network.SignedTx) (*network.TxBroadcastResult, error) {
+// BroadcastTx submits a signed EVM transaction.
+func (b *TxBuilder) BroadcastTx(ctx context.Context, signedTx *network.SignedTx) (*network.TxBroadcastResult, error) {
 	if b == nil {
 		return nil, fmt.Errorf("nil TxBuilder")
 	}
-	return nil, fmt.Errorf("BroadcastTx: not implemented")
+
+	// Encode as hex with 0x prefix
+	rawTxHex := "0x" + hex.EncodeToString(signedTx.TxBytes)
+
+	// Create JSON-RPC request
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "eth_sendRawTransaction",
+		"params":  []string{rawTxHex},
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.rpcEndpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := b.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("broadcast: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var rpcResp struct {
+		Result string `json:"result"`
+		Error  *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error,omitempty"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	if rpcResp.Error != nil {
+		return &network.TxBroadcastResult{
+			Code: uint32(rpcResp.Error.Code),
+			Log:  rpcResp.Error.Message,
+		}, nil
+	}
+
+	return &network.TxBroadcastResult{
+		TxHash: rpcResp.Result,
+		Code:   0,
+	}, nil
 }
 
 // Close closes the ethclient connection.
