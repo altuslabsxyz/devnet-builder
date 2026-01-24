@@ -101,6 +101,9 @@ func (m *MockTxBuilder) SupportedTxTypes() []network.TxType {
 	return m.supportTypes
 }
 
+// Close is a no-op for the mock builder.
+func (m *MockTxBuilder) Close() {}
+
 // GetBroadcasts returns all broadcast transactions (for test assertions).
 func (m *MockTxBuilder) GetBroadcasts() []*network.SignedTx {
 	m.mu.Lock()
