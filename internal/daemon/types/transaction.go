@@ -6,6 +6,8 @@ import "encoding/json"
 // Transaction phase constants.
 const (
 	TxPhasePending   = "Pending"
+	TxPhaseBuilding  = "Building"
+	TxPhaseSigning   = "Signing"
 	TxPhaseSubmitted = "Submitted"
 	TxPhaseConfirmed = "Confirmed"
 	TxPhaseFailed    = "Failed"
@@ -40,6 +42,9 @@ type TransactionSpec struct {
 type TransactionStatus struct {
 	// Phase is the current phase.
 	Phase string `json:"phase"`
+
+	// Message is a human-readable status message.
+	Message string `json:"message,omitempty"`
 
 	// TxHash is the transaction hash.
 	TxHash string `json:"txHash,omitempty"`
