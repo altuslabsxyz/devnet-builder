@@ -6,6 +6,7 @@ import (
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -303,5 +304,91 @@ func TestDevnetService_StopDevnet(t *testing.T) {
 
 	if resp.Devnet.Status.Phase != "Stopped" {
 		t.Errorf("expected phase Stopped, got %s", resp.Devnet.Status.Phase)
+	}
+}
+
+func TestDevnetService_DeleteCascade(t *testing.T) {
+	ctx := context.Background()
+	s := store.NewMemoryStore()
+	svc := NewDevnetService(s, nil)
+
+	// Create a devnet
+	createReq := &v1.CreateDevnetRequest{
+		Name: "cascade-test",
+		Spec: &v1.DevnetSpec{
+			Plugin:     "stable",
+			Validators: 2,
+		},
+	}
+	_, err := svc.CreateDevnet(ctx, createReq)
+	if err != nil {
+		t.Fatalf("CreateDevnet failed: %v", err)
+	}
+
+	// Create nodes for the devnet
+	node0 := &types.Node{
+		Spec: types.NodeSpec{
+			DevnetRef: "cascade-test",
+			Index:     0,
+		},
+		Status: types.NodeStatus{Phase: "Running"},
+	}
+	node1 := &types.Node{
+		Spec: types.NodeSpec{
+			DevnetRef: "cascade-test",
+			Index:     1,
+		},
+		Status: types.NodeStatus{Phase: "Running"},
+	}
+	if err := s.CreateNode(ctx, node0); err != nil {
+		t.Fatalf("CreateNode failed: %v", err)
+	}
+	if err := s.CreateNode(ctx, node1); err != nil {
+		t.Fatalf("CreateNode failed: %v", err)
+	}
+
+	// Create an upgrade for the devnet
+	upgrade := &types.Upgrade{
+		Metadata: types.ResourceMeta{Name: "test-upgrade"},
+		Spec: types.UpgradeSpec{
+			DevnetRef:   "cascade-test",
+			UpgradeName: "v2",
+		},
+		Status: types.UpgradeStatus{Phase: "Pending"},
+	}
+	if err := s.CreateUpgrade(ctx, upgrade); err != nil {
+		t.Fatalf("CreateUpgrade failed: %v", err)
+	}
+
+	// Verify nodes and upgrades exist
+	nodes, _ := s.ListNodes(ctx, "cascade-test")
+	if len(nodes) != 2 {
+		t.Fatalf("expected 2 nodes, got %d", len(nodes))
+	}
+	upgrades, _ := s.ListUpgrades(ctx, "cascade-test")
+	if len(upgrades) != 1 {
+		t.Fatalf("expected 1 upgrade, got %d", len(upgrades))
+	}
+
+	// Delete the devnet
+	deleteReq := &v1.DeleteDevnetRequest{Name: "cascade-test"}
+	resp, err := svc.DeleteDevnet(ctx, deleteReq)
+	if err != nil {
+		t.Fatalf("DeleteDevnet failed: %v", err)
+	}
+	if !resp.Deleted {
+		t.Error("expected deleted=true")
+	}
+
+	// Verify nodes are cascade deleted
+	nodes, _ = s.ListNodes(ctx, "cascade-test")
+	if len(nodes) != 0 {
+		t.Errorf("expected 0 nodes after cascade delete, got %d", len(nodes))
+	}
+
+	// Verify upgrades are cascade deleted
+	upgrades, _ = s.ListUpgrades(ctx, "cascade-test")
+	if len(upgrades) != 0 {
+		t.Errorf("expected 0 upgrades after cascade delete, got %d", len(upgrades))
 	}
 }
