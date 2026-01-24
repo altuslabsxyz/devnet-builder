@@ -33,16 +33,23 @@ func TestNewTxConfig(t *testing.T) {
 func TestSetupSDKConfig(t *testing.T) {
 	t.Run("sets bech32 prefixes", func(t *testing.T) {
 		// Test with cosmos prefix
-		SetupSDKConfig("cosmos")
+		err := SetupSDKConfig("cosmos")
+		require.NoError(t, err)
 
 		// Verify prefixes were set by checking the config
 		// Note: We can't easily verify the prefixes without using internal SDK functions,
-		// but we can verify the function doesn't panic
+		// but we can verify the function doesn't panic and returns no error
 	})
 
 	t.Run("handles custom prefix", func(t *testing.T) {
 		// Test with a custom prefix (e.g., for osmosis)
-		SetupSDKConfig("osmo")
-		// Function should complete without error
+		err := SetupSDKConfig("osmo")
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects empty prefix", func(t *testing.T) {
+		err := SetupSDKConfig("")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "bech32 prefix cannot be empty")
 	})
 }
