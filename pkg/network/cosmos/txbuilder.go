@@ -214,6 +214,9 @@ func (b *TxBuilder) SignTx(ctx context.Context, unsignedTx *network.UnsignedTx, 
 	if err != nil {
 		return nil, fmt.Errorf("load private key: %w", err)
 	}
+	if privKey == nil {
+		return nil, fmt.Errorf("loaded private key is nil")
+	}
 
 	// Sign the sign doc
 	signature, err := SignBytes(privKey, unsignedTx.SignDoc)

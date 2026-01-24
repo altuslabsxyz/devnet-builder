@@ -127,6 +127,24 @@ func TestSignBytes_EmptyDocument(t *testing.T) {
 	require.True(t, pubKey.VerifySignature(emptyDoc, signature))
 }
 
+func TestSignBytes_NilPrivateKey(t *testing.T) {
+	signDoc := []byte("test sign document")
+
+	signature, err := SignBytes(nil, signDoc)
+	require.Error(t, err)
+	require.Nil(t, signature)
+	require.Contains(t, err.Error(), "private key is required")
+}
+
+func TestSignBytes_NilSignDoc(t *testing.T) {
+	privKey := secp256k1.GenPrivKey()
+
+	signature, err := SignBytes(privKey, nil)
+	require.Error(t, err)
+	require.Nil(t, signature)
+	require.Contains(t, err.Error(), "sign document cannot be nil")
+}
+
 func TestSignTx(t *testing.T) {
 	// Generate a test key
 	privKey := secp256k1.GenPrivKey()
