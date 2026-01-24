@@ -3,9 +3,12 @@ package cosmos
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
@@ -58,9 +61,145 @@ func NewTxBuilder(ctx context.Context, cfg *network.TxBuilderConfig) (*TxBuilder
 }
 
 // BuildTx constructs an unsigned transaction from a request.
-// This is a stub implementation that will be completed in a later task.
+// It creates the SDK message, queries account info, and builds the transaction.
 func (b *TxBuilder) BuildTx(ctx context.Context, req *network.TxBuildRequest) (*network.UnsignedTx, error) {
-	return nil, fmt.Errorf("BuildTx not yet implemented")
+	// 1. Build the SDK message from the request
+	msg, err := BuildMessage(req.TxType, req.Sender, req.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build message: %w", err)
+	}
+
+	// 2. Query account info to get account number and sequence
+	accountInfo, err := b.QueryAccount(ctx, req.Sender)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query account: %w", err)
+	}
+
+	// 3. Parse gas price if provided
+	var gasPrice sdk.DecCoin
+	if req.GasPrice != "" {
+		gasPrice, err = ParseGasPrice(req.GasPrice)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse gas price: %w", err)
+		}
+	}
+
+	// 4. Calculate fee from gas limit and gas price
+	var fees sdk.Coins
+	if req.GasLimit > 0 && !gasPrice.IsZero() {
+		// Fee = gasLimit * gasPrice
+		feeAmount := gasPrice.Amount.MulInt64(int64(req.GasLimit)).TruncateInt()
+		fees = sdk.NewCoins(sdk.NewCoin(gasPrice.Denom, feeAmount))
+	}
+
+	// 5. Build the transaction body and auth info
+	// TODO(Task 6): Replace with proper TxConfig implementation
+	txBytes, signDoc, err := buildTxBytesAndSignDoc(
+		b.chainID,
+		accountInfo.AccountNumber,
+		accountInfo.Sequence,
+		req.GasLimit,
+		fees,
+		req.Memo,
+		msg,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build tx bytes: %w", err)
+	}
+
+	return &network.UnsignedTx{
+		TxBytes:       txBytes,
+		SignDoc:       signDoc,
+		AccountNumber: accountInfo.AccountNumber,
+		Sequence:      accountInfo.Sequence,
+	}, nil
+}
+
+// buildTxBytesAndSignDoc creates the transaction bytes and sign document.
+// TODO(Task 6): This will be replaced with proper TxConfig and TxBuilder from the SDK.
+func buildTxBytesAndSignDoc(
+	chainID string,
+	accountNumber, sequence, gasLimit uint64,
+	fees sdk.Coins,
+	memo string,
+	msgs ...sdk.Msg,
+) (txBytes, signDoc []byte, err error) {
+	// Create transaction body
+	txBody := &TxBody{
+		Messages: msgs,
+		Memo:     memo,
+	}
+
+	// Create auth info
+	authInfo := &AuthInfo{
+		Fee: &Fee{
+			Amount:   fees,
+			GasLimit: gasLimit,
+		},
+	}
+
+	// Create sign doc
+	signDocStruct := &SignDoc{
+		BodyBytes:     nil, // Will be set after marshaling
+		AuthInfoBytes: nil, // Will be set after marshaling
+		ChainID:       chainID,
+		AccountNumber: accountNumber,
+	}
+
+	// For now, we create a simple JSON representation that can be signed
+	// TODO(Task 6): Use proper protobuf encoding with TxConfig
+	txBytesData, err := json.Marshal(map[string]interface{}{
+		"body":      txBody,
+		"auth_info": authInfo,
+		"chain_id":  chainID,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal tx: %w", err)
+	}
+
+	signDocData, err := json.Marshal(map[string]interface{}{
+		"chain_id":       chainID,
+		"account_number": accountNumber,
+		"sequence":       sequence,
+		"body":           txBody,
+		"auth_info":      authInfo,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal sign doc: %w", err)
+	}
+
+	_ = signDocStruct // Suppress unused warning for now
+
+	return txBytesData, signDocData, nil
+}
+
+// TxBody represents the body of a transaction.
+// TODO(Task 6): Use proper protobuf types from the SDK.
+type TxBody struct {
+	Messages []sdk.Msg `json:"messages"`
+	Memo     string    `json:"memo"`
+}
+
+// AuthInfo represents the authentication info of a transaction.
+// TODO(Task 6): Use proper protobuf types from the SDK.
+type AuthInfo struct {
+	Fee *Fee `json:"fee"`
+}
+
+// Fee represents the fee for a transaction.
+// TODO(Task 6): Use proper protobuf types from the SDK.
+type Fee struct {
+	Amount   sdk.Coins `json:"amount"`
+	GasLimit uint64    `json:"gas_limit"`
+}
+
+// SignDoc represents the document to be signed.
+// TODO(Task 6): Use proper protobuf types from the SDK.
+type SignDoc struct {
+	BodyBytes     []byte `json:"body_bytes"`
+	AuthInfoBytes []byte `json:"auth_info_bytes"`
+	ChainID       string `json:"chain_id"`
+	AccountNumber uint64 `json:"account_number"`
 }
 
 // SignTx signs an unsigned transaction with the provided key.
