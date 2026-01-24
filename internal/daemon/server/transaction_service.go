@@ -41,7 +41,7 @@ func (s *TransactionService) SetLogger(logger *slog.Logger) {
 }
 
 // SubmitTransaction creates and submits a new transaction.
-func (s *TransactionService) SubmitTransaction(ctx context.Context, req *v1.SubmitTransactionRequest) (*v1.Transaction, error) {
+func (s *TransactionService) SubmitTransaction(ctx context.Context, req *v1.SubmitTransactionRequest) (*v1.SubmitTransactionResponse, error) {
 	if req.Devnet == "" {
 		return nil, status.Error(codes.InvalidArgument, "devnet is required")
 	}
@@ -85,11 +85,11 @@ func (s *TransactionService) SubmitTransaction(ctx context.Context, req *v1.Subm
 		s.manager.Enqueue("transactions", tx.Metadata.Name)
 	}
 
-	return transactionToProto(tx), nil
+	return &v1.SubmitTransactionResponse{Transaction: transactionToProto(tx)}, nil
 }
 
 // GetTransaction retrieves a transaction by name.
-func (s *TransactionService) GetTransaction(ctx context.Context, req *v1.GetTransactionRequest) (*v1.Transaction, error) {
+func (s *TransactionService) GetTransaction(ctx context.Context, req *v1.GetTransactionRequest) (*v1.GetTransactionResponse, error) {
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
@@ -102,7 +102,7 @@ func (s *TransactionService) GetTransaction(ctx context.Context, req *v1.GetTran
 		return nil, status.Errorf(codes.Internal, "failed to get transaction: %v", err)
 	}
 
-	return transactionToProto(tx), nil
+	return &v1.GetTransactionResponse{Transaction: transactionToProto(tx)}, nil
 }
 
 // ListTransactions lists transactions with optional filters.
@@ -133,7 +133,7 @@ func (s *TransactionService) ListTransactions(ctx context.Context, req *v1.ListT
 }
 
 // CancelTransaction cancels a pending transaction.
-func (s *TransactionService) CancelTransaction(ctx context.Context, req *v1.CancelTransactionRequest) (*v1.Transaction, error) {
+func (s *TransactionService) CancelTransaction(ctx context.Context, req *v1.CancelTransactionRequest) (*v1.CancelTransactionResponse, error) {
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
@@ -160,11 +160,11 @@ func (s *TransactionService) CancelTransaction(ctx context.Context, req *v1.Canc
 		return nil, status.Errorf(codes.Internal, "failed to update transaction: %v", err)
 	}
 
-	return transactionToProto(tx), nil
+	return &v1.CancelTransactionResponse{Transaction: transactionToProto(tx)}, nil
 }
 
 // SubmitGovVote submits a governance vote transaction.
-func (s *TransactionService) SubmitGovVote(ctx context.Context, req *v1.SubmitGovVoteRequest) (*v1.Transaction, error) {
+func (s *TransactionService) SubmitGovVote(ctx context.Context, req *v1.SubmitGovVoteRequest) (*v1.SubmitGovVoteResponse, error) {
 	if req.Devnet == "" {
 		return nil, status.Error(codes.InvalidArgument, "devnet is required")
 	}
@@ -183,16 +183,20 @@ func (s *TransactionService) SubmitGovVote(ctx context.Context, req *v1.SubmitGo
 		"option":      req.VoteOption,
 	})
 
-	return s.SubmitTransaction(ctx, &v1.SubmitTransactionRequest{
+	resp, err := s.SubmitTransaction(ctx, &v1.SubmitTransactionRequest{
 		Devnet:  req.Devnet,
 		TxType:  "gov/vote",
 		Signer:  req.Voter,
 		Payload: payload,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return &v1.SubmitGovVoteResponse{Transaction: resp.Transaction}, nil
 }
 
 // SubmitGovProposal submits a governance proposal transaction.
-func (s *TransactionService) SubmitGovProposal(ctx context.Context, req *v1.SubmitGovProposalRequest) (*v1.Transaction, error) {
+func (s *TransactionService) SubmitGovProposal(ctx context.Context, req *v1.SubmitGovProposalRequest) (*v1.SubmitGovProposalResponse, error) {
 	if req.Devnet == "" {
 		return nil, status.Error(codes.InvalidArgument, "devnet is required")
 	}
@@ -210,12 +214,16 @@ func (s *TransactionService) SubmitGovProposal(ctx context.Context, req *v1.Subm
 		"content":     req.Content,
 	})
 
-	return s.SubmitTransaction(ctx, &v1.SubmitTransactionRequest{
+	resp, err := s.SubmitTransaction(ctx, &v1.SubmitTransactionRequest{
 		Devnet:  req.Devnet,
 		TxType:  "gov/proposal",
 		Signer:  req.Proposer,
 		Payload: payload,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return &v1.SubmitGovProposalResponse{Transaction: resp.Transaction}, nil
 }
 
 // transactionToProto converts a Transaction to its proto representation.
