@@ -132,3 +132,43 @@ func TestQueryAccount_ParsesAddress(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "cosmos1abc123", info.Address)
 }
+
+func TestQueryAccount_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error": "internal server error"}`))
+	}))
+	defer server.Close()
+
+	builder := &TxBuilder{
+		rpcEndpoint: server.URL,
+		chainID:     "test-1",
+		client:      &http.Client{},
+	}
+
+	info, err := builder.QueryAccount(context.Background(), "cosmos1test")
+	require.Error(t, err)
+	require.Nil(t, info)
+	require.Contains(t, err.Error(), "unexpected status code 500")
+}
+
+func TestQueryAccount_MalformedJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{invalid json`))
+	}))
+	defer server.Close()
+
+	builder := &TxBuilder{
+		rpcEndpoint: server.URL,
+		chainID:     "test-1",
+		client:      &http.Client{},
+	}
+
+	info, err := builder.QueryAccount(context.Background(), "cosmos1test")
+	require.Error(t, err)
+	require.Nil(t, info)
+	require.Contains(t, err.Error(), "failed to parse account response")
+}
