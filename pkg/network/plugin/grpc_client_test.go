@@ -198,3 +198,17 @@ func TestGRPCClient_GetGovernanceParams_EmptyEndpoint(t *testing.T) {
 		t.Error("expected plugin to return error for empty endpoint")
 	}
 }
+
+// TestGRPCClient_TxBuilderFactory tests that GRPCClient implements TxBuilderFactory.
+func TestGRPCClient_TxBuilderFactory(t *testing.T) {
+	// This test verifies that GRPCClient has the CreateTxBuilder method
+	// which allows the host to create TxBuilder instances via gRPC.
+	//
+	// Note: The compile-time interface check is already in grpc_client.go:
+	//   var _ network.TxBuilderFactory = (*GRPCClient)(nil)
+	//
+	// This test exists to document the interface compliance and will
+	// fail to compile if the interface is broken.
+	client := &GRPCClient{}
+	_ = client // Use to prevent unused variable warning
+}

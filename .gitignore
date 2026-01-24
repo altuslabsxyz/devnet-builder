@@ -51,3 +51,4 @@ docs/plans/
 devnetd
 dvb
 *.test
+.serena/

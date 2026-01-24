@@ -165,3 +165,8 @@ const (
 	FeatureNFT      = "nft"      // NFT module
 	FeatureFeegrant = "feegrant" // Fee grant module
 )
+
+// TxBuilderFactory is implemented by modules that can create TxBuilders.
+type TxBuilderFactory interface {
+	CreateTxBuilder(ctx context.Context, cfg *TxBuilderConfig) (TxBuilder, error)
+}

@@ -77,6 +77,13 @@ service NetworkModule {
     rpc GetProposal(ProposalRequest) returns (ProposalResponse);
     rpc GetUpgradePlan(UpgradePlanRequest) returns (UpgradePlanResponse);
     rpc GetAppVersion(AppVersionRequest) returns (AppVersionResponse);
+
+    // TxBuilder Operations
+    rpc CreateTxBuilder(CreateTxBuilderRequest) returns (CreateTxBuilderResponse);
+    rpc BuildTx(BuildTxRequest) returns (BuildTxResponse);
+    rpc SignTx(SignTxRequest) returns (SignTxResponse);
+    rpc BroadcastTx(BroadcastTxRequest) returns (BroadcastTxResponse);
+    rpc DestroyTxBuilder(DestroyTxBuilderRequest) returns (DestroyTxBuilderResponse);
 }
 
 message Empty {}
@@ -359,4 +366,85 @@ message AppVersionRequest {
 message AppVersionResponse {
     string version = 1;
     string error = 2;
+}
+
+// TxBuilder Messages
+
+message SDKVersion {
+    string framework = 1;
+    string version = 2;
+    repeated string features = 3;
+}
+
+message CreateTxBuilderRequest {
+    string rpc_endpoint = 1;
+    string chain_id = 2;
+    SDKVersion sdk_version = 3;
+}
+
+message CreateTxBuilderResponse {
+    string builder_id = 1;
+    string error = 2;
+}
+
+message BuildTxRequest {
+    string builder_id = 1;
+    string tx_type = 2;
+    string sender = 3;
+    bytes payload = 4;
+    string chain_id = 5;
+    uint64 gas_limit = 6;
+    string gas_price = 7;
+    string memo = 8;
+}
+
+message BuildTxResponse {
+    bytes tx_bytes = 1;
+    bytes sign_doc = 2;
+    uint64 account_number = 3;
+    uint64 sequence = 4;
+    string error = 5;
+}
+
+message SigningKeyProto {
+    string address = 1;
+    bytes priv_key = 2;
+    string keyring_ref = 3;
+}
+
+message SignTxRequest {
+    string builder_id = 1;
+    bytes tx_bytes = 2;
+    bytes sign_doc = 3;
+    uint64 account_number = 4;
+    uint64 sequence = 5;
+    SigningKeyProto key = 6;
+}
+
+message SignTxResponse {
+    bytes tx_bytes = 1;
+    bytes signature = 2;
+    bytes pub_key = 3;
+    string error = 4;
+}
+
+message BroadcastTxRequest {
+    string builder_id = 1;
+    bytes tx_bytes = 2;
+}
+
+message BroadcastTxResponse {
+    string tx_hash = 1;
+    uint32 code = 2;
+    string log = 3;
+    int64 height = 4;
+    string error = 5;
+}
+
+message DestroyTxBuilderRequest {
+    string builder_id = 1;
+}
+
+message DestroyTxBuilderResponse {
+    string error = 1;
 }
