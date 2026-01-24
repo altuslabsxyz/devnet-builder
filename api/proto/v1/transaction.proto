@@ -1,0 +1,91 @@
+// Transaction API Protocol Buffers
+// This file defines the gRPC service for managing blockchain transactions.
+
+syntax = "proto3";
+
+package devnetbuilder.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1;devnetbuilderv1";
+
+// TransactionService provides operations for managing blockchain transactions.
+service TransactionService {
+  // Core transaction operations
+  rpc SubmitTransaction(SubmitTransactionRequest) returns (Transaction);
+  rpc GetTransaction(GetTransactionRequest) returns (Transaction);
+  rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse);
+  rpc CancelTransaction(CancelTransactionRequest) returns (Transaction);
+
+  // Governance convenience methods
+  rpc SubmitGovVote(SubmitGovVoteRequest) returns (Transaction);
+  rpc SubmitGovProposal(SubmitGovProposalRequest) returns (Transaction);
+}
+
+// Transaction represents a blockchain transaction managed by the daemon.
+message Transaction {
+  string name = 1;
+  string devnet_ref = 2;
+  string tx_type = 3;
+  string signer = 4;
+  bytes payload = 5;
+  string phase = 6;
+  string tx_hash = 7;
+  int64 height = 8;
+  int64 gas_used = 9;
+  string error = 10;
+  string message = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+}
+
+// SubmitTransactionRequest creates a new transaction.
+message SubmitTransactionRequest {
+  string devnet = 1;
+  string tx_type = 2;
+  string signer = 3;
+  bytes payload = 4;
+  uint64 gas_limit = 5;
+  string memo = 6;
+}
+
+// GetTransactionRequest retrieves a transaction by name.
+message GetTransactionRequest {
+  string name = 1;
+}
+
+// ListTransactionsRequest lists transactions with filters.
+message ListTransactionsRequest {
+  string devnet = 1;
+  string tx_type = 2;
+  string phase = 3;
+  int32 limit = 4;
+}
+
+// ListTransactionsResponse contains the list of transactions.
+message ListTransactionsResponse {
+  repeated Transaction transactions = 1;
+}
+
+// CancelTransactionRequest cancels a pending transaction.
+message CancelTransactionRequest {
+  string name = 1;
+}
+
+// SubmitGovVoteRequest votes on a governance proposal.
+message SubmitGovVoteRequest {
+  string devnet = 1;
+  uint64 proposal_id = 2;
+  string vote_option = 3;  // yes, no, abstain, no_with_veto
+  string voter = 4;        // validator index or address
+}
+
+// SubmitGovProposalRequest creates a governance proposal.
+message SubmitGovProposalRequest {
+  string devnet = 1;
+  string proposal_type = 2;  // upgrade, param_change, text
+  string title = 3;
+  string description = 4;
+  bytes content = 5;         // type-specific content
+  string proposer = 6;
+}
