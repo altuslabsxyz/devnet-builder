@@ -143,6 +143,12 @@ func New(config *Config) (*Server, error) {
 	upgradeCtrl.SetLogger(logger)
 	mgr.Register("upgrades", upgradeCtrl)
 
+	// Create and register transaction controller
+	// TxRuntime is nil for now - will be connected when network plugins are loaded
+	txCtrl := controller.NewTxController(st, nil)
+	txCtrl.SetLogger(logger)
+	mgr.Register("transactions", txCtrl)
+
 	// Create gRPC server
 	grpcServer := grpc.NewServer()
 
@@ -158,6 +164,10 @@ func New(config *Config) (*Server, error) {
 	upgradeSvc := NewUpgradeService(st, mgr)
 	upgradeSvc.SetLogger(logger)
 	v1.RegisterUpgradeServiceServer(grpcServer, upgradeSvc)
+
+	txSvc := NewTransactionService(st, mgr)
+	txSvc.SetLogger(logger)
+	v1.RegisterTransactionServiceServer(grpcServer, txSvc)
 
 	return &Server{
 		config:     config,
