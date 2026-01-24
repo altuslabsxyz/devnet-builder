@@ -17,6 +17,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/provisioner"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/upgrader"
 	"google.golang.org/grpc"
 )
 
@@ -132,8 +133,13 @@ func New(config *Config) (*Server, error) {
 	healthCtrl.SetLogger(logger)
 	mgr.Register("health", healthCtrl)
 
+	// Create upgrade runtime
+	upgradeRuntime := upgrader.NewRuntime(st, upgrader.Config{
+		Logger: logger,
+	})
+
 	// Create and register upgrade controller
-	upgradeCtrl := controller.NewUpgradeController(st, nil) // No runtime yet
+	upgradeCtrl := controller.NewUpgradeController(st, upgradeRuntime)
 	upgradeCtrl.SetLogger(logger)
 	mgr.Register("upgrades", upgradeCtrl)
 
