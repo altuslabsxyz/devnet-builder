@@ -43,3 +43,12 @@ tests/e2e/TEST_RESULTS.md
 .e2e-test.env
 .git-askpass.sh
 .worktrees/
+
+# Implementation plans (local only)
+docs/plans/
+
+# Compiled binaries
+devnetd
+dvb
+*.test
+.serena/

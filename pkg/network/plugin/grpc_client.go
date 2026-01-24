@@ -546,3 +546,157 @@ func (c *GRPCClient) GetAppVersion(ctx context.Context, rpcEndpoint string) (*Ap
 	}
 	return resp, nil
 }
+
+// TxBuilder Operations
+
+// Ensure GRPCClient implements TxBuilderFactory
+var _ network.TxBuilderFactory = (*GRPCClient)(nil)
+
+// grpcTxBuilder wraps a remote TxBuilder accessed via gRPC.
+type grpcTxBuilder struct {
+	client    NetworkModuleClient
+	builderID string
+}
+
+// CreateTxBuilder creates a new TxBuilder via gRPC.
+func (c *GRPCClient) CreateTxBuilder(ctx context.Context, cfg *network.TxBuilderConfig) (network.TxBuilder, error) {
+	if cfg == nil {
+		return nil, errors.New("config is required")
+	}
+
+	req := &CreateTxBuilderRequest{
+		RpcEndpoint: cfg.RPCEndpoint,
+		ChainId:     cfg.ChainID,
+	}
+
+	if cfg.SDKVersion != nil {
+		req.SdkVersion = &SDKVersion{
+			Framework: cfg.SDKVersion.Framework,
+			Version:   cfg.SDKVersion.Version,
+			Features:  cfg.SDKVersion.Features,
+		}
+	}
+
+	resp, err := c.client.CreateTxBuilder(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Error != "" {
+		return nil, errors.New(resp.Error)
+	}
+
+	return &grpcTxBuilder{
+		client:    c.client,
+		builderID: resp.BuilderId,
+	}, nil
+}
+
+// grpcTxBuilder implements network.TxBuilder via gRPC calls.
+
+func (b *grpcTxBuilder) SupportedTxTypes() []network.TxType {
+	// This information would need to be cached from CreateTxBuilder
+	// or require a separate RPC call. For now, return nil.
+	return nil
+}
+
+func (b *grpcTxBuilder) BuildTx(ctx context.Context, req *network.TxBuildRequest) (*network.UnsignedTx, error) {
+	if req == nil {
+		return nil, errors.New("request is required")
+	}
+
+	resp, err := b.client.BuildTx(ctx, &BuildTxRequest{
+		BuilderId: b.builderID,
+		TxType:    string(req.TxType),
+		Sender:    req.Sender,
+		Payload:   req.Payload,
+		ChainId:   req.ChainID,
+		GasLimit:  req.GasLimit,
+		GasPrice:  req.GasPrice,
+		Memo:      req.Memo,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp.Error != "" {
+		return nil, errors.New(resp.Error)
+	}
+
+	return &network.UnsignedTx{
+		TxBytes:       resp.TxBytes,
+		SignDoc:       resp.SignDoc,
+		AccountNumber: resp.AccountNumber,
+		Sequence:      resp.Sequence,
+	}, nil
+}
+
+func (b *grpcTxBuilder) SignTx(ctx context.Context, tx *network.UnsignedTx, key *network.SigningKey) (*network.SignedTx, error) {
+	if tx == nil {
+		return nil, errors.New("unsigned transaction is required")
+	}
+	if key == nil {
+		return nil, errors.New("signing key is required")
+	}
+
+	resp, err := b.client.SignTx(ctx, &SignTxRequest{
+		BuilderId:     b.builderID,
+		TxBytes:       tx.TxBytes,
+		SignDoc:       tx.SignDoc,
+		AccountNumber: tx.AccountNumber,
+		Sequence:      tx.Sequence,
+		Key: &SigningKeyProto{
+			Address:    key.Address,
+			PrivKey:    key.PrivKey,
+			KeyringRef: key.KeyringRef,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp.Error != "" {
+		return nil, errors.New(resp.Error)
+	}
+
+	return &network.SignedTx{
+		TxBytes:   resp.TxBytes,
+		Signature: resp.Signature,
+		PubKey:    resp.PubKey,
+	}, nil
+}
+
+func (b *grpcTxBuilder) BroadcastTx(ctx context.Context, tx *network.SignedTx) (*network.TxBroadcastResult, error) {
+	if tx == nil {
+		return nil, errors.New("signed transaction is required")
+	}
+
+	resp, err := b.client.BroadcastTx(ctx, &BroadcastTxRequest{
+		BuilderId: b.builderID,
+		TxBytes:   tx.TxBytes,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp.Error != "" {
+		return nil, errors.New(resp.Error)
+	}
+
+	return &network.TxBroadcastResult{
+		TxHash: resp.TxHash,
+		Code:   resp.Code,
+		Log:    resp.Log,
+		Height: resp.Height,
+	}, nil
+}
+
+// Close releases the TxBuilder resources on the server.
+func (b *grpcTxBuilder) Close() {
+	if b.client == nil || b.builderID == "" {
+		return
+	}
+	// Best-effort cleanup - ignore errors
+	_, _ = b.client.DestroyTxBuilder(context.Background(), &DestroyTxBuilderRequest{
+		BuilderId: b.builderID,
+	})
+}
+
+// Ensure grpcTxBuilder implements network.TxBuilder
+var _ network.TxBuilder = (*grpcTxBuilder)(nil)

@@ -10,27 +10,28 @@ import (
 
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
+	"github.com/altuslabsxyz/devnet-builder/pkg/network"
 	"github.com/altuslabsxyz/devnet-builder/pkg/network/plugin"
 )
 
 // mockTxRuntime implements TxRuntime for testing.
 type mockTxRuntime struct {
-	builder    plugin.TxBuilder
-	signingKey *plugin.SigningKey
+	builder    network.TxBuilder
+	signingKey *network.SigningKey
 	receipt    *TxReceipt
 	builderErr error
 	keyErr     error
 	confirmErr error
 }
 
-func (m *mockTxRuntime) GetTxBuilder(ctx context.Context, devnetName string) (plugin.TxBuilder, error) {
+func (m *mockTxRuntime) GetTxBuilder(ctx context.Context, devnetName string) (network.TxBuilder, error) {
 	if m.builderErr != nil {
 		return nil, m.builderErr
 	}
 	return m.builder, nil
 }
 
-func (m *mockTxRuntime) GetSigningKey(ctx context.Context, devnetName string, signer string) (*plugin.SigningKey, error) {
+func (m *mockTxRuntime) GetSigningKey(ctx context.Context, devnetName string, signer string) (*network.SigningKey, error) {
 	if m.keyErr != nil {
 		return nil, m.keyErr
 	}
@@ -48,7 +49,7 @@ func TestTxController_Reconcile_PendingToBuilding(t *testing.T) {
 	ms := store.NewMemoryStore()
 	runtime := &mockTxRuntime{
 		builder:    plugin.NewMockTxBuilder(),
-		signingKey: &plugin.SigningKey{Address: "cosmos1abc"},
+		signingKey: &network.SigningKey{Address: "cosmos1abc"},
 		receipt:    &TxReceipt{TxHash: "abc123", Height: 100, Success: true},
 	}
 	tc := NewTxController(ms, runtime)
@@ -90,7 +91,7 @@ func TestTxController_Reconcile_FullCycle(t *testing.T) {
 	ms := store.NewMemoryStore()
 	runtime := &mockTxRuntime{
 		builder:    plugin.NewMockTxBuilder(),
-		signingKey: &plugin.SigningKey{Address: "cosmos1abc"},
+		signingKey: &network.SigningKey{Address: "cosmos1abc"},
 		receipt:    &TxReceipt{TxHash: "abc123", Height: 100, Success: true},
 	}
 	tc := NewTxController(ms, runtime)

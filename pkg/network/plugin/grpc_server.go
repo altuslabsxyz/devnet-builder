@@ -2,7 +2,9 @@ package plugin
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -15,6 +17,11 @@ import (
 type GRPCServer struct {
 	UnimplementedNetworkModuleServer
 	impl network.Module
+
+	// TxBuilder management
+	builders   map[string]network.TxBuilder
+	buildersMu sync.RWMutex
+	builderSeq uint64
 }
 
 // NewGRPCServer creates a new GRPCServer for the given network module.
@@ -444,6 +451,157 @@ func (s *GRPCServer) GetAppVersion(ctx context.Context, req *AppVersionRequest) 
 		return rpc.GetAppVersion(ctx, req.RpcEndpoint)
 	}
 	return nil, status.Errorf(codes.Unimplemented, "method GetAppVersion not implemented")
+}
+
+// TxBuilder Operations
+
+// CreateTxBuilder creates a new TxBuilder instance.
+func (s *GRPCServer) CreateTxBuilder(ctx context.Context, req *CreateTxBuilderRequest) (*CreateTxBuilderResponse, error) {
+	// Check if module implements TxBuilderFactory
+	factory, ok := s.impl.(network.TxBuilderFactory)
+	if !ok {
+		return &CreateTxBuilderResponse{Error: "module does not support TxBuilder"}, nil
+	}
+
+	cfg := &network.TxBuilderConfig{
+		RPCEndpoint: req.RpcEndpoint,
+		ChainID:     req.ChainId,
+	}
+
+	if req.SdkVersion != nil {
+		cfg.SDKVersion = &network.SDKVersion{
+			Framework: req.SdkVersion.Framework,
+			Version:   req.SdkVersion.Version,
+			Features:  req.SdkVersion.Features,
+		}
+	}
+
+	builder, err := factory.CreateTxBuilder(ctx, cfg)
+	if err != nil {
+		return &CreateTxBuilderResponse{Error: err.Error()}, nil
+	}
+
+	// Generate unique builder ID
+	s.buildersMu.Lock()
+	s.builderSeq++
+	builderID := fmt.Sprintf("builder-%d", s.builderSeq)
+	if s.builders == nil {
+		s.builders = make(map[string]network.TxBuilder)
+	}
+	s.builders[builderID] = builder
+	s.buildersMu.Unlock()
+
+	return &CreateTxBuilderResponse{BuilderId: builderID}, nil
+}
+
+// BuildTx builds an unsigned transaction.
+func (s *GRPCServer) BuildTx(ctx context.Context, req *BuildTxRequest) (*BuildTxResponse, error) {
+	builder, err := s.getBuilder(req.BuilderId)
+	if err != nil {
+		return &BuildTxResponse{Error: err.Error()}, nil
+	}
+
+	buildReq := &network.TxBuildRequest{
+		TxType:   network.TxType(req.TxType),
+		Sender:   req.Sender,
+		Payload:  req.Payload,
+		ChainID:  req.ChainId,
+		GasLimit: req.GasLimit,
+		GasPrice: req.GasPrice,
+		Memo:     req.Memo,
+	}
+
+	unsignedTx, err := builder.BuildTx(ctx, buildReq)
+	if err != nil {
+		return &BuildTxResponse{Error: err.Error()}, nil
+	}
+
+	return &BuildTxResponse{
+		TxBytes:       unsignedTx.TxBytes,
+		SignDoc:       unsignedTx.SignDoc,
+		AccountNumber: unsignedTx.AccountNumber,
+		Sequence:      unsignedTx.Sequence,
+	}, nil
+}
+
+// SignTx signs a transaction.
+func (s *GRPCServer) SignTx(ctx context.Context, req *SignTxRequest) (*SignTxResponse, error) {
+	builder, err := s.getBuilder(req.BuilderId)
+	if err != nil {
+		return &SignTxResponse{Error: err.Error()}, nil
+	}
+
+	unsignedTx := &network.UnsignedTx{
+		TxBytes:       req.TxBytes,
+		SignDoc:       req.SignDoc,
+		AccountNumber: req.AccountNumber,
+		Sequence:      req.Sequence,
+	}
+
+	key := &network.SigningKey{
+		Address:    req.Key.Address,
+		PrivKey:    req.Key.PrivKey,
+		KeyringRef: req.Key.KeyringRef,
+	}
+
+	signedTx, err := builder.SignTx(ctx, unsignedTx, key)
+	if err != nil {
+		return &SignTxResponse{Error: err.Error()}, nil
+	}
+
+	return &SignTxResponse{
+		TxBytes:   signedTx.TxBytes,
+		Signature: signedTx.Signature,
+		PubKey:    signedTx.PubKey,
+	}, nil
+}
+
+// BroadcastTx broadcasts a signed transaction.
+func (s *GRPCServer) BroadcastTx(ctx context.Context, req *BroadcastTxRequest) (*BroadcastTxResponse, error) {
+	builder, err := s.getBuilder(req.BuilderId)
+	if err != nil {
+		return &BroadcastTxResponse{Error: err.Error()}, nil
+	}
+
+	signedTx := &network.SignedTx{
+		TxBytes: req.TxBytes,
+	}
+
+	result, err := builder.BroadcastTx(ctx, signedTx)
+	if err != nil {
+		return &BroadcastTxResponse{Error: err.Error()}, nil
+	}
+
+	return &BroadcastTxResponse{
+		TxHash: result.TxHash,
+		Code:   result.Code,
+		Log:    result.Log,
+		Height: result.Height,
+	}, nil
+}
+
+// DestroyTxBuilder releases a TxBuilder.
+func (s *GRPCServer) DestroyTxBuilder(ctx context.Context, req *DestroyTxBuilderRequest) (*DestroyTxBuilderResponse, error) {
+	s.buildersMu.Lock()
+	if builder, ok := s.builders[req.BuilderId]; ok {
+		if closer, ok := builder.(interface{ Close() }); ok {
+			closer.Close()
+		}
+		delete(s.builders, req.BuilderId)
+	}
+	s.buildersMu.Unlock()
+	return &DestroyTxBuilderResponse{}, nil
+}
+
+func (s *GRPCServer) getBuilder(id string) (network.TxBuilder, error) {
+	s.buildersMu.RLock()
+	defer s.buildersMu.RUnlock()
+
+	builder, ok := s.builders[id]
+	if !ok {
+		return nil, fmt.Errorf("builder not found: %s", id)
+	}
+	return builder, nil
 }
 
 // Helper to convert Duration

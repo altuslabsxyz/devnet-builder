@@ -9,7 +9,7 @@ import (
 
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
-	"github.com/altuslabsxyz/devnet-builder/pkg/network/plugin"
+	"github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
 // TxController reconciles Transaction resources.
@@ -19,7 +19,7 @@ type TxController struct {
 	logger  *slog.Logger
 
 	// Cache for in-flight transactions (unsigned tx bytes)
-	unsignedTxCache map[string]*plugin.UnsignedTx
+	unsignedTxCache map[string]*network.UnsignedTx
 }
 
 // NewTxController creates a new TxController.
@@ -28,7 +28,7 @@ func NewTxController(s store.Store, r TxRuntime) *TxController {
 		store:           s,
 		runtime:         r,
 		logger:          slog.Default(),
-		unsignedTxCache: make(map[string]*plugin.UnsignedTx),
+		unsignedTxCache: make(map[string]*network.UnsignedTx),
 	}
 }
 
@@ -87,8 +87,8 @@ func (c *TxController) reconcileBuilding(ctx context.Context, tx *types.Transact
 		return c.setFailed(ctx, tx, fmt.Sprintf("failed to get TxBuilder: %v", err))
 	}
 
-	unsignedTx, err := builder.BuildTx(ctx, &plugin.BuildTxRequest{
-		TxType:   plugin.TxType(tx.Spec.TxType),
+	unsignedTx, err := builder.BuildTx(ctx, &network.TxBuildRequest{
+		TxType:   network.TxType(tx.Spec.TxType),
 		Sender:   tx.Spec.Signer,
 		Payload:  tx.Spec.Payload,
 		GasLimit: 200000, // TODO: make configurable
@@ -118,8 +118,8 @@ func (c *TxController) reconcileSigning(ctx context.Context, tx *types.Transacti
 		if err != nil {
 			return c.setFailed(ctx, tx, fmt.Sprintf("failed to get TxBuilder: %v", err))
 		}
-		unsignedTx, err = builder.BuildTx(ctx, &plugin.BuildTxRequest{
-			TxType:  plugin.TxType(tx.Spec.TxType),
+		unsignedTx, err = builder.BuildTx(ctx, &network.TxBuildRequest{
+			TxType:  network.TxType(tx.Spec.TxType),
 			Sender:  tx.Spec.Signer,
 			Payload: tx.Spec.Payload,
 		})

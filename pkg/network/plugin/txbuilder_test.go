@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+
+	"github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
 func TestMockTxBuilder_BuildSignBroadcast(t *testing.T) {
@@ -13,8 +15,8 @@ func TestMockTxBuilder_BuildSignBroadcast(t *testing.T) {
 	ctx := context.Background()
 
 	// Build
-	req := &BuildTxRequest{
-		TxType:  TxTypeGovVote,
+	req := &network.TxBuildRequest{
+		TxType:  network.TxTypeGovVote,
 		Sender:  "cosmos1abc",
 		Payload: json.RawMessage(`{"proposal_id":1,"option":"yes"}`),
 		ChainID: "test-chain",
@@ -29,7 +31,7 @@ func TestMockTxBuilder_BuildSignBroadcast(t *testing.T) {
 	}
 
 	// Sign
-	key := &SigningKey{Address: "cosmos1abc"}
+	key := &network.SigningKey{Address: "cosmos1abc"}
 	signed, err := builder.SignTx(ctx, unsigned, key)
 	if err != nil {
 		t.Fatalf("SignTx: %v", err)
@@ -63,23 +65,23 @@ func TestMockTxBuilder_Errors(t *testing.T) {
 
 	// Test build error
 	builder.BuildErr = errors.New("build failed")
-	_, err := builder.BuildTx(ctx, &BuildTxRequest{})
+	_, err := builder.BuildTx(ctx, &network.TxBuildRequest{})
 	if err == nil {
 		t.Error("Expected build error")
 	}
 	builder.BuildErr = nil
 
 	// Test sign error
-	unsigned := &UnsignedTx{SignDoc: []byte("test")}
+	unsigned := &network.UnsignedTx{SignDoc: []byte("test")}
 	builder.SignErr = errors.New("sign failed")
-	_, err = builder.SignTx(ctx, unsigned, &SigningKey{})
+	_, err = builder.SignTx(ctx, unsigned, &network.SigningKey{})
 	if err == nil {
 		t.Error("Expected sign error")
 	}
 	builder.SignErr = nil
 
 	// Test broadcast error
-	signed := &SignedTx{TxBytes: []byte("test")}
+	signed := &network.SignedTx{TxBytes: []byte("test")}
 	builder.BroadcastErr = errors.New("broadcast failed")
 	_, err = builder.BroadcastTx(ctx, signed)
 	if err == nil {
@@ -98,7 +100,7 @@ func TestMockTxBuilder_SupportedTypes(t *testing.T) {
 	// Check for expected types
 	found := false
 	for _, tt := range types {
-		if tt == TxTypeGovVote {
+		if tt == network.TxTypeGovVote {
 			found = true
 			break
 		}
