@@ -163,8 +163,8 @@ func newDeployCmd() *cobra.Command {
 
 func newListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List all devnets",
+		Use:     "list",
+		Short:   "List all devnets",
 		Aliases: []string{"ls"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
@@ -288,8 +288,7 @@ func newDestroyCmd() *cobra.Command {
 			if !force {
 				fmt.Printf("Are you sure you want to destroy devnet %q? [y/N] ", name)
 				var response string
-				fmt.Scanln(&response)
-				if response != "y" && response != "Y" {
+				if _, err := fmt.Scanln(&response); err != nil || (response != "y" && response != "Y") {
 					fmt.Println("Cancelled")
 					return nil
 				}

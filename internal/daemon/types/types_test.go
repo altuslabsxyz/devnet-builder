@@ -54,6 +54,8 @@ func TestDevnetStatus_SDKVersionHistory(t *testing.T) {
 		},
 	}
 
+	assert.Equal(t, PhaseRunning, status.Phase)
+	assert.Equal(t, "0.53.4", status.SDKVersion)
 	assert.Len(t, status.SDKVersionHistory, 1)
 	assert.Equal(t, "0.50.9", status.SDKVersionHistory[0].FromVersion)
 }

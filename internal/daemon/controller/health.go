@@ -172,7 +172,9 @@ func (c *HealthController) checkNodeHealth(ctx context.Context, node *types.Node
 			// Update failure count
 			node.Status.ConsecutiveFailures++
 			node.Status.LastHealthCheck = time.Now()
-			c.store.UpdateNode(ctx, node)
+			if updateErr := c.store.UpdateNode(ctx, node); updateErr != nil {
+				c.logger.Error("failed to update node after health check error", "node", node.Metadata.Name, "error", updateErr)
+			}
 
 			return result
 		}

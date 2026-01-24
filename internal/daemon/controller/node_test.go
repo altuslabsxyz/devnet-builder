@@ -315,10 +315,10 @@ func TestNodeController_Reconcile_FullLifecycle(t *testing.T) {
 
 func TestParseNodeKey(t *testing.T) {
 	tests := []struct {
-		key         string
-		wantDevnet  string
-		wantIndex   int
-		wantErr     bool
+		key        string
+		wantDevnet string
+		wantIndex  int
+		wantErr    bool
 	}{
 		{"mydevnet/0", "mydevnet", 0, false},
 		{"mydevnet/10", "mydevnet", 10, false},
