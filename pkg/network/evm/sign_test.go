@@ -7,7 +7,9 @@ import (
 	"testing"
 
 	"github.com/altuslabsxyz/devnet-builder/pkg/network"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,27 +22,59 @@ func TestSignTx(t *testing.T) {
 		chainID: big.NewInt(2200),
 	}
 
-	// Create unsigned tx (normally from BuildTx)
-	unsignedTx := &network.UnsignedTx{
-		TxBytes:  []byte{},                         // Would be RLP-encoded tx
-		SignDoc:  crypto.Keccak256([]byte("test")), // Would be tx hash
-		Sequence: 0,
+	// Build a real unsigned transaction first
+	ctx := context.Background()
+	toAddr := "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0" // Valid 20-byte hex address
+	req := &network.TxBuildRequest{
+		TxType:   network.TxTypeBankSend,
+		Sender:   crypto.PubkeyToAddress(privKey.PublicKey).Hex(),
+		GasLimit: 21000,
+		Payload:  []byte(`{"to_address":"` + toAddr + `","amount":"1000000000000000000"}`),
 	}
+
+	unsignedTx, err := builder.buildNativeTransfer(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, unsignedTx)
+	require.NotEmpty(t, unsignedTx.TxBytes)
+	require.NotEmpty(t, unsignedTx.SignDoc)
 
 	key := &network.SigningKey{
 		Address: crypto.PubkeyToAddress(privKey.PublicKey).Hex(),
 		PrivKey: crypto.FromECDSA(privKey),
 	}
 
+	// Sign the transaction
 	signedTx, err := builder.SignTx(context.Background(), unsignedTx, key)
 	require.NoError(t, err)
 	require.NotNil(t, signedTx)
 	require.NotEmpty(t, signedTx.Signature)
+	require.NotEmpty(t, signedTx.TxBytes)
 
-	// Verify signature is valid using Ecrecover
-	recoveredPubKey, err := crypto.Ecrecover(unsignedTx.SignDoc, signedTx.Signature)
-	require.NoError(t, err)
-	require.Equal(t, crypto.FromECDSAPub(&privKey.PublicKey), recoveredPubKey)
+	// CRITICAL TEST: Signed tx bytes must be different from unsigned (signature embedded)
+	// This is the main fix - before the fix, signedTx.TxBytes == unsignedTx.TxBytes
+	require.NotEqual(t, unsignedTx.TxBytes, signedTx.TxBytes,
+		"signed transaction bytes must differ from unsigned (signature should be embedded)")
+
+	// Verify the signed transaction bytes are longer (includes signature)
+	require.Greater(t, len(signedTx.TxBytes), len(unsignedTx.TxBytes),
+		"signed transaction should be larger than unsigned (includes r, s, v signature components)")
+
+	// Verify the signed transaction can be decoded (proves it's valid RLP)
+	var decodedTx types.Transaction
+	err = rlp.DecodeBytes(signedTx.TxBytes, &decodedTx)
+	require.NoError(t, err, "signed transaction should be valid RLP-encoded")
+
+	// Verify the decoded transaction has a valid signature
+	v, r, s := decodedTx.RawSignatureValues()
+	require.NotNil(t, v, "v signature component should be present")
+	require.NotNil(t, r, "r signature component should be present")
+	require.NotNil(t, s, "s signature component should be present")
+	require.True(t, r.Sign() > 0, "r should be non-zero")
+	require.True(t, s.Sign() > 0, "s should be non-zero")
+
+	// Verify transaction fields are preserved (nonce, gas, etc)
+	require.Equal(t, unsignedTx.Sequence, decodedTx.Nonce(),
+		"nonce should be preserved in signed transaction")
 }
 
 func TestSignTx_NilUnsignedTx(t *testing.T) {

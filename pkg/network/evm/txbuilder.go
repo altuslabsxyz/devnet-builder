@@ -233,23 +233,45 @@ func (b *TxBuilder) SignTx(ctx context.Context, unsignedTx *network.UnsignedTx, 
 		return nil, fmt.Errorf("private key required")
 	}
 
+	// Decode the unsigned transaction from bytes
+	var tx types.Transaction
+	if err := rlp.DecodeBytes(unsignedTx.TxBytes, &tx); err != nil {
+		return nil, fmt.Errorf("decode unsigned transaction: %w", err)
+	}
+
 	// Load ECDSA private key
 	privKey, err := crypto.ToECDSA(key.PrivKey)
 	if err != nil {
 		return nil, fmt.Errorf("load private key: %w", err)
 	}
 
-	// Sign the hash
-	signature, err := crypto.Sign(unsignedTx.SignDoc, privKey)
+	// Create signer for the chain
+	signer := types.LatestSignerForChainID(b.chainID)
+
+	// Sign the transaction (this returns a new signed transaction with signature embedded)
+	signedTx, err := types.SignTx(&tx, signer, privKey)
 	if err != nil {
-		return nil, fmt.Errorf("sign: %w", err)
+		return nil, fmt.Errorf("sign transaction: %w", err)
 	}
+
+	// Re-encode the signed transaction (now includes signature)
+	signedTxBytes, err := rlp.EncodeToBytes(signedTx)
+	if err != nil {
+		return nil, fmt.Errorf("encode signed transaction: %w", err)
+	}
+
+	// Extract signature components for storage (useful for debugging/verification)
+	v, r, s := signedTx.RawSignatureValues()
+	signature := make([]byte, 65)
+	r.FillBytes(signature[0:32])
+	s.FillBytes(signature[32:64])
+	signature[64] = byte(v.Uint64())
 
 	// Get public key bytes
 	pubKeyBytes := crypto.FromECDSAPub(&privKey.PublicKey)
 
 	return &network.SignedTx{
-		TxBytes:   unsignedTx.TxBytes, // Will be updated to include signature
+		TxBytes:   signedTxBytes, // Now properly includes the signature
 		Signature: signature,
 		PubKey:    pubKeyBytes,
 	}, nil
