@@ -69,6 +69,8 @@ func (s *TransactionService) SubmitTransaction(ctx context.Context, req *v1.Subm
 			TxType:    req.TxType,
 			Signer:    req.Signer,
 			Payload:   req.Payload,
+			GasLimit:  req.GasLimit,
+			Memo:      req.Memo,
 		},
 		Status: types.TransactionStatus{
 			Phase:   types.TxPhasePending,
