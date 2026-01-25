@@ -87,11 +87,17 @@ func (c *TxController) reconcileBuilding(ctx context.Context, tx *types.Transact
 		return c.setFailed(ctx, tx, fmt.Sprintf("failed to get TxBuilder: %v", err))
 	}
 
+	// Use configured gas limit, defaulting to 200000 if not specified
+	gasLimit := tx.Spec.GasLimit
+	if gasLimit == 0 {
+		gasLimit = 200000
+	}
+
 	unsignedTx, err := builder.BuildTx(ctx, &network.TxBuildRequest{
 		TxType:   network.TxType(tx.Spec.TxType),
 		Sender:   tx.Spec.Signer,
 		Payload:  tx.Spec.Payload,
-		GasLimit: 200000, // TODO: make configurable
+		GasLimit: gasLimit,
 	})
 	if err != nil {
 		return c.setFailed(ctx, tx, fmt.Sprintf("failed to build tx: %v", err))
@@ -110,18 +116,25 @@ func (c *TxController) reconcileBuilding(ctx context.Context, tx *types.Transact
 func (c *TxController) reconcileSigning(ctx context.Context, tx *types.Transaction) error {
 	c.logger.Debug("signing transaction", "name", tx.Metadata.Name)
 
+	// Get TxBuilder for signing
+	builder, err := c.runtime.GetTxBuilder(ctx, tx.Spec.DevnetRef)
+	if err != nil {
+		return c.setFailed(ctx, tx, fmt.Sprintf("failed to get TxBuilder: %v", err))
+	}
+
 	// Get cached unsigned tx
 	unsignedTx, ok := c.unsignedTxCache[tx.Metadata.Name]
 	if !ok {
-		// If not in cache, rebuild it
-		builder, err := c.runtime.GetTxBuilder(ctx, tx.Spec.DevnetRef)
-		if err != nil {
-			return c.setFailed(ctx, tx, fmt.Sprintf("failed to get TxBuilder: %v", err))
+		// If not in cache, rebuild it with same gas limit as building phase
+		gasLimit := tx.Spec.GasLimit
+		if gasLimit == 0 {
+			gasLimit = 200000
 		}
 		unsignedTx, err = builder.BuildTx(ctx, &network.TxBuildRequest{
-			TxType:  network.TxType(tx.Spec.TxType),
-			Sender:  tx.Spec.Signer,
-			Payload: tx.Spec.Payload,
+			TxType:   network.TxType(tx.Spec.TxType),
+			Sender:   tx.Spec.Signer,
+			Payload:  tx.Spec.Payload,
+			GasLimit: gasLimit,
 		})
 		if err != nil {
 			return c.setFailed(ctx, tx, fmt.Sprintf("failed to rebuild tx: %v", err))
@@ -135,7 +148,6 @@ func (c *TxController) reconcileSigning(ctx context.Context, tx *types.Transacti
 	}
 
 	// Sign
-	builder, _ := c.runtime.GetTxBuilder(ctx, tx.Spec.DevnetRef)
 	signedTx, err := builder.SignTx(ctx, unsignedTx, key)
 	if err != nil {
 		return c.setFailed(ctx, tx, fmt.Sprintf("failed to sign tx: %v", err))

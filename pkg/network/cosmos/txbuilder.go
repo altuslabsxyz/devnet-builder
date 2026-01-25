@@ -11,7 +11,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cosmos/cosmos-sdk/client"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/tx/signing"
+	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 
 	"github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
@@ -23,6 +26,7 @@ type TxBuilder struct {
 	chainID     string
 	sdkVersion  *network.SDKVersion
 	client      *http.Client
+	txConfig    client.TxConfig
 }
 
 // NewTxBuilder creates a new TxBuilder for Cosmos SDK chains.
@@ -51,20 +55,25 @@ func NewTxBuilder(ctx context.Context, cfg *network.TxBuilderConfig) (*TxBuilder
 	}
 
 	// Create HTTP client for RPC communication
-	client := &http.Client{
+	httpClient := &http.Client{
 		Timeout: 30 * time.Second,
 	}
+
+	// Initialize TxConfig for proper protobuf encoding
+	txConfig := NewTxConfig()
 
 	return &TxBuilder{
 		rpcEndpoint: cfg.RPCEndpoint,
 		chainID:     cfg.ChainID,
 		sdkVersion:  sdkVersion,
-		client:      client,
+		client:      httpClient,
+		txConfig:    txConfig,
 	}, nil
 }
 
 // BuildTx constructs an unsigned transaction from a request.
-// It creates the SDK message, queries account info, and builds the transaction.
+// It creates the SDK message, queries account info, and builds the transaction
+// using proper protobuf encoding via the SDK's TxBuilder.
 func (b *TxBuilder) BuildTx(ctx context.Context, req *network.TxBuildRequest) (*network.UnsignedTx, error) {
 	// 1. Build the SDK message from the request
 	msg, err := BuildMessage(req.TxType, req.Sender, req.Payload)
@@ -95,107 +104,50 @@ func (b *TxBuilder) BuildTx(ctx context.Context, req *network.TxBuildRequest) (*
 		fees = sdk.NewCoins(sdk.NewCoin(gasPrice.Denom, feeAmount))
 	}
 
-	// 5. Build the transaction body and auth info
-	// TODO(Task 6): Replace with proper TxConfig implementation
-	txBytes, signDoc, err := buildTxBytesAndSignDoc(
-		b.chainID,
-		accountInfo.AccountNumber,
-		accountInfo.Sequence,
-		req.GasLimit,
-		fees,
-		req.Memo,
-		msg,
+	// 5. Build the transaction using SDK's TxBuilder with proper protobuf encoding
+	sdkTxBuilder := b.txConfig.NewTxBuilder()
+	if err := sdkTxBuilder.SetMsgs(msg); err != nil {
+		return nil, fmt.Errorf("failed to set messages: %w", err)
+	}
+	sdkTxBuilder.SetMemo(req.Memo)
+	sdkTxBuilder.SetGasLimit(req.GasLimit)
+	sdkTxBuilder.SetFeeAmount(fees)
+
+	// 6. Encode the unsigned transaction to protobuf bytes
+	// Note: This encodes the tx without signatures for reference
+	txBytes, err := b.txConfig.TxEncoder()(sdkTxBuilder.GetTx())
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode tx: %w", err)
+	}
+
+	// 7. Generate the sign bytes using SIGN_MODE_DIRECT
+	signerData := authsigning.SignerData{
+		ChainID:       b.chainID,
+		AccountNumber: accountInfo.AccountNumber,
+		Sequence:      accountInfo.Sequence,
+	}
+
+	signBytes, err := authsigning.GetSignBytesAdapter(
+		ctx,
+		b.txConfig.SignModeHandler(),
+		signing.SignMode_SIGN_MODE_DIRECT,
+		signerData,
+		sdkTxBuilder.GetTx(),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build tx bytes: %w", err)
+		return nil, fmt.Errorf("failed to get sign bytes: %w", err)
 	}
 
 	return &network.UnsignedTx{
 		TxBytes:       txBytes,
-		SignDoc:       signDoc,
+		SignDoc:       signBytes,
 		AccountNumber: accountInfo.AccountNumber,
 		Sequence:      accountInfo.Sequence,
 	}, nil
 }
 
-// buildTxBytesAndSignDoc creates the transaction bytes and sign document.
-// TODO(Task 6): This will be replaced with proper TxConfig and TxBuilder from the SDK.
-func buildTxBytesAndSignDoc(
-	chainID string,
-	accountNumber, sequence, gasLimit uint64,
-	fees sdk.Coins,
-	memo string,
-	msgs ...sdk.Msg,
-) (txBytes, signDoc []byte, err error) {
-	// Create transaction body
-	txBody := &TxBody{
-		Messages: msgs,
-		Memo:     memo,
-	}
-
-	// Create auth info
-	authInfo := &AuthInfo{
-		Fee: &Fee{
-			Amount:   fees,
-			GasLimit: gasLimit,
-		},
-	}
-
-	// For now, we create a simple JSON representation that can be signed.
-	// TODO(Task 6): Use proper protobuf encoding with TxConfig and SignDoc struct.
-	txBytesData, err := json.Marshal(map[string]interface{}{
-		"body":      txBody,
-		"auth_info": authInfo,
-		"chain_id":  chainID,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal tx: %w", err)
-	}
-
-	signDocData, err := json.Marshal(map[string]interface{}{
-		"chain_id":       chainID,
-		"account_number": accountNumber,
-		"sequence":       sequence,
-		"body":           txBody,
-		"auth_info":      authInfo,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal sign doc: %w", err)
-	}
-
-	return txBytesData, signDocData, nil
-}
-
-// TxBody represents the body of a transaction.
-// TODO(Task 6): Use proper protobuf types from the SDK.
-type TxBody struct {
-	Messages []sdk.Msg `json:"messages"`
-	Memo     string    `json:"memo"`
-}
-
-// AuthInfo represents the authentication info of a transaction.
-// TODO(Task 6): Use proper protobuf types from the SDK.
-type AuthInfo struct {
-	Fee *Fee `json:"fee"`
-}
-
-// Fee represents the fee for a transaction.
-// TODO(Task 6): Use proper protobuf types from the SDK.
-type Fee struct {
-	Amount   sdk.Coins `json:"amount"`
-	GasLimit uint64    `json:"gas_limit"`
-}
-
-// SignDoc represents the document to be signed.
-// TODO(Task 6): Use proper protobuf types from the SDK.
-type SignDoc struct {
-	BodyBytes     []byte `json:"body_bytes"`
-	AuthInfoBytes []byte `json:"auth_info_bytes"`
-	ChainID       string `json:"chain_id"`
-	AccountNumber uint64 `json:"account_number"`
-}
-
 // SignTx signs an unsigned transaction with the provided key.
+// It decodes the unsigned tx, adds the signature, and re-encodes with proper protobuf format.
 func (b *TxBuilder) SignTx(ctx context.Context, unsignedTx *network.UnsignedTx, key *network.SigningKey) (*network.SignedTx, error) {
 	// Validate key
 	if len(key.PrivKey) == 0 {
@@ -219,8 +171,41 @@ func (b *TxBuilder) SignTx(ctx context.Context, unsignedTx *network.UnsignedTx, 
 
 	pubKey := privKey.PubKey()
 
+	// Decode the unsigned transaction
+	tx, err := b.txConfig.TxDecoder()(unsignedTx.TxBytes)
+	if err != nil {
+		return nil, fmt.Errorf("decode unsigned tx: %w", err)
+	}
+
+	// Wrap the tx to allow modifications
+	sdkTxBuilder, err := b.txConfig.WrapTxBuilder(tx)
+	if err != nil {
+		return nil, fmt.Errorf("wrap tx builder: %w", err)
+	}
+
+	// Set the signature with proper signing mode
+	sigData := signing.SingleSignatureData{
+		SignMode:  signing.SignMode_SIGN_MODE_DIRECT,
+		Signature: signature,
+	}
+	sig := signing.SignatureV2{
+		PubKey:   pubKey,
+		Data:     &sigData,
+		Sequence: unsignedTx.Sequence,
+	}
+
+	if err := sdkTxBuilder.SetSignatures(sig); err != nil {
+		return nil, fmt.Errorf("set signatures: %w", err)
+	}
+
+	// Encode the signed transaction
+	signedTxBytes, err := b.txConfig.TxEncoder()(sdkTxBuilder.GetTx())
+	if err != nil {
+		return nil, fmt.Errorf("encode signed tx: %w", err)
+	}
+
 	return &network.SignedTx{
-		TxBytes:   unsignedTx.TxBytes, // Will be updated with signature in Task 6
+		TxBytes:   signedTxBytes,
 		Signature: signature,
 		PubKey:    pubKey.Bytes(),
 	}, nil

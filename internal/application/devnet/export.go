@@ -327,9 +327,19 @@ func (uc *ExportUseCase) Inspect(ctx context.Context, exportPath string) (*dto.E
 	// Calculate directory size
 	size, _ := calculateDirectorySize(exportPath)
 
+	// Calculate genesis file checksum if the file exists
+	var genesisChecksum string
+	if result.Export.GenesisFilePath != "" {
+		checksum, err := uc.hashCalc.CalculateHash(result.Export.GenesisFilePath)
+		if err == nil {
+			genesisChecksum = checksum
+		}
+		// If file doesn't exist or can't be read, leave checksum empty
+	}
+
 	output := &dto.ExportInspectOutput{
 		Metadata:        result.Export.Metadata,
-		GenesisChecksum: "", // TODO: Calculate SHA256 of genesis file
+		GenesisChecksum: genesisChecksum,
 		IsComplete:      result.IsComplete,
 		MissingFiles:    result.MissingFiles,
 		SizeBytes:       size,
