@@ -195,6 +195,8 @@ func registerCommands(rootCmd *cobra.Command) {
 	destroyCmd.GroupID = GroupMain
 	applyCmd := manage.NewApplyCmd()
 	applyCmd.GroupID = GroupMain
+	diffCmd := manage.NewDiffCmd()
+	diffCmd.GroupID = GroupMain
 
 	// Monitoring commands
 	statusCmd := core.NewStatusCmd()
@@ -237,6 +239,7 @@ func registerCommands(rootCmd *cobra.Command) {
 		initCmd,
 		destroyCmd,
 		applyCmd,
+		diffCmd,
 
 		// Monitoring commands
 		statusCmd,
