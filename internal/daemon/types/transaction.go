@@ -40,6 +40,10 @@ type TransactionSpec struct {
 	// GasLimit sets the gas limit for the transaction.
 	// If not specified, defaults to 200000.
 	GasLimit uint64 `json:"gasLimit,omitempty"`
+
+	// Memo is an optional transaction memo.
+	// Used for validator reward distribution tags or other metadata.
+	Memo string `json:"memo,omitempty"`
 }
 
 // TransactionStatus defines the observed state of a Transaction.
