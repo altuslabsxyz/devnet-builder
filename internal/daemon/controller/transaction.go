@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
@@ -19,6 +20,7 @@ type TxController struct {
 	logger  *slog.Logger
 
 	// Cache for in-flight transactions (unsigned tx bytes)
+	cacheMu         sync.RWMutex
 	unsignedTxCache map[string]*network.UnsignedTx
 }
 
@@ -39,6 +41,13 @@ func (c *TxController) SetLogger(logger *slog.Logger) {
 
 // Reconcile processes a single transaction by name.
 func (c *TxController) Reconcile(ctx context.Context, key string) error {
+	// Check context deadline before starting reconciliation
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("context cancelled before reconciliation: %w", ctx.Err())
+	default:
+	}
+
 	c.logger.Debug("reconciling transaction", "key", key)
 
 	tx, err := c.store.GetTransaction(ctx, key)
@@ -80,6 +89,13 @@ func (c *TxController) reconcilePending(ctx context.Context, tx *types.Transacti
 }
 
 func (c *TxController) reconcileBuilding(ctx context.Context, tx *types.Transaction) error {
+	// Check context deadline
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("context cancelled during building: %w", ctx.Err())
+	default:
+	}
+
 	c.logger.Debug("building transaction", "name", tx.Metadata.Name)
 
 	builder, err := c.runtime.GetTxBuilder(ctx, tx.Spec.DevnetRef)
@@ -98,13 +114,16 @@ func (c *TxController) reconcileBuilding(ctx context.Context, tx *types.Transact
 		Sender:   tx.Spec.Signer,
 		Payload:  tx.Spec.Payload,
 		GasLimit: gasLimit,
+		Memo:     tx.Spec.Memo,
 	})
 	if err != nil {
 		return c.setFailed(ctx, tx, fmt.Sprintf("failed to build tx: %v", err))
 	}
 
-	// Cache unsigned tx for signing phase
+	// Cache unsigned tx for signing phase (thread-safe)
+	c.cacheMu.Lock()
 	c.unsignedTxCache[tx.Metadata.Name] = unsignedTx
+	c.cacheMu.Unlock()
 
 	tx.Status.Phase = types.TxPhaseSigning
 	tx.Status.Message = "Signing transaction"
@@ -114,6 +133,13 @@ func (c *TxController) reconcileBuilding(ctx context.Context, tx *types.Transact
 }
 
 func (c *TxController) reconcileSigning(ctx context.Context, tx *types.Transaction) error {
+	// Check context deadline
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("context cancelled during signing: %w", ctx.Err())
+	default:
+	}
+
 	c.logger.Debug("signing transaction", "name", tx.Metadata.Name)
 
 	// Get TxBuilder for signing
@@ -122,10 +148,13 @@ func (c *TxController) reconcileSigning(ctx context.Context, tx *types.Transacti
 		return c.setFailed(ctx, tx, fmt.Sprintf("failed to get TxBuilder: %v", err))
 	}
 
-	// Get cached unsigned tx
+	// Get cached unsigned tx (thread-safe read)
+	c.cacheMu.RLock()
 	unsignedTx, ok := c.unsignedTxCache[tx.Metadata.Name]
+	c.cacheMu.RUnlock()
+
 	if !ok {
-		// If not in cache, rebuild it with same gas limit as building phase
+		// If not in cache, rebuild it with same parameters as building phase
 		gasLimit := tx.Spec.GasLimit
 		if gasLimit == 0 {
 			gasLimit = 200000
@@ -135,6 +164,7 @@ func (c *TxController) reconcileSigning(ctx context.Context, tx *types.Transacti
 			Sender:   tx.Spec.Signer,
 			Payload:  tx.Spec.Payload,
 			GasLimit: gasLimit,
+			Memo:     tx.Spec.Memo,
 		})
 		if err != nil {
 			return c.setFailed(ctx, tx, fmt.Sprintf("failed to rebuild tx: %v", err))
@@ -159,8 +189,10 @@ func (c *TxController) reconcileSigning(ctx context.Context, tx *types.Transacti
 		return c.setFailed(ctx, tx, fmt.Sprintf("failed to broadcast tx: %v", err))
 	}
 
-	// Clean up cache
+	// Clean up cache (thread-safe delete)
+	c.cacheMu.Lock()
 	delete(c.unsignedTxCache, tx.Metadata.Name)
+	c.cacheMu.Unlock()
 
 	tx.Status.Phase = types.TxPhaseSubmitted
 	tx.Status.TxHash = result.TxHash
@@ -171,6 +203,13 @@ func (c *TxController) reconcileSigning(ctx context.Context, tx *types.Transacti
 }
 
 func (c *TxController) reconcileSubmitted(ctx context.Context, tx *types.Transaction) error {
+	// Check context deadline
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("context cancelled during confirmation: %w", ctx.Err())
+	default:
+	}
+
 	c.logger.Debug("waiting for confirmation", "name", tx.Metadata.Name, "txHash", tx.Status.TxHash)
 
 	receipt, err := c.runtime.WaitForConfirmation(ctx, tx.Spec.DevnetRef, tx.Status.TxHash)
@@ -204,8 +243,10 @@ func (c *TxController) setFailed(ctx context.Context, tx *types.Transaction, err
 	tx.Status.Message = "Transaction failed"
 	tx.Metadata.UpdatedAt = time.Now()
 
-	// Clean up cache
+	// Clean up cache (thread-safe delete)
+	c.cacheMu.Lock()
 	delete(c.unsignedTxCache, tx.Metadata.Name)
+	c.cacheMu.Unlock()
 
 	return c.store.UpdateTransaction(ctx, tx)
 }
