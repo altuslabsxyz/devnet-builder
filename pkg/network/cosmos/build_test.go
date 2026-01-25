@@ -38,6 +38,7 @@ func TestBuildTx_GovVote(t *testing.T) {
 			Version:   "v0.50.0",
 			Features:  []string{network.FeatureGovV1},
 		},
+		txConfig: NewTxConfig(),
 	}
 
 	// Create request with TxTypeGovVote payload
@@ -93,6 +94,7 @@ func TestBuildTx_GovVote_InvalidOption(t *testing.T) {
 			Version:   "v0.50.0",
 			Features:  []string{network.FeatureGovV1},
 		},
+		txConfig: NewTxConfig(),
 	}
 
 	payload, err := json.Marshal(map[string]interface{}{
@@ -140,6 +142,7 @@ func TestBuildTx_BankSend(t *testing.T) {
 			Version:   "v0.50.0",
 			Features:  []string{network.FeatureGovV1},
 		},
+		txConfig: NewTxConfig(),
 	}
 
 	payload, err := json.Marshal(map[string]interface{}{
@@ -189,6 +192,7 @@ func TestBuildTx_StakingDelegate(t *testing.T) {
 			Version:   "v0.50.0",
 			Features:  []string{network.FeatureGovV1},
 		},
+		txConfig: NewTxConfig(),
 	}
 
 	payload, err := json.Marshal(map[string]interface{}{
@@ -224,6 +228,7 @@ func TestBuildTx_UnsupportedTxType(t *testing.T) {
 			Version:   "v0.50.0",
 			Features:  []string{network.FeatureGovV1},
 		},
+		txConfig: NewTxConfig(),
 	}
 
 	payload, err := json.Marshal(map[string]interface{}{})
@@ -261,6 +266,7 @@ func TestBuildTx_AccountQueryFails(t *testing.T) {
 			Version:   "v0.50.0",
 			Features:  []string{network.FeatureGovV1},
 		},
+		txConfig: NewTxConfig(),
 	}
 
 	payload, err := json.Marshal(map[string]interface{}{

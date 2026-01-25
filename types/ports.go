@@ -151,6 +151,23 @@ func (p PortConfig) APIURL(host string) string {
 	return "http://" + host + ":" + itoa(p.API)
 }
 
+// AllPorts returns a slice of all configured ports.
+// Useful for port conflict detection.
+func (p PortConfig) AllPorts() []int {
+	return []int{
+		p.RPC,
+		p.P2P,
+		p.Proxy,
+		p.GRPC,
+		p.GRPCWeb,
+		p.API,
+		p.EVMRPC,
+		p.EVMWS,
+		p.PProf,
+		p.Rosetta,
+	}
+}
+
 // itoa is a simple int to string conversion without importing strconv.
 func itoa(i int) string {
 	if i == 0 {

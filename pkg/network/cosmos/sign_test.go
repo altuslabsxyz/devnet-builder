@@ -150,6 +150,18 @@ func TestSignTx(t *testing.T) {
 	privKey := secp256k1.GenPrivKey()
 	pubKey := privKey.PubKey()
 
+	// Create TxConfig for proper protobuf encoding
+	txConfig := NewTxConfig()
+
+	// Build a real unsigned tx using SDK's TxBuilder
+	sdkTxBuilder := txConfig.NewTxBuilder()
+	sdkTxBuilder.SetMemo("test memo")
+	sdkTxBuilder.SetGasLimit(200000)
+
+	// Encode to get valid protobuf bytes
+	txBytes, err := txConfig.TxEncoder()(sdkTxBuilder.GetTx())
+	require.NoError(t, err)
+
 	builder := &TxBuilder{
 		rpcEndpoint: "http://localhost:26657",
 		chainID:     "test-1",
@@ -159,10 +171,11 @@ func TestSignTx(t *testing.T) {
 			Version:   "v0.50.0",
 			Features:  []string{network.FeatureGovV1},
 		},
+		txConfig: txConfig,
 	}
 
 	unsignedTx := &network.UnsignedTx{
-		TxBytes:       []byte("unsigned-tx-placeholder"),
+		TxBytes:       txBytes,
 		SignDoc:       []byte("test sign document"),
 		AccountNumber: 5,
 		Sequence:      10,
@@ -186,6 +199,9 @@ func TestSignTx(t *testing.T) {
 	// Assert: signature is valid
 	isValid := pubKey.VerifySignature(unsignedTx.SignDoc, signedTx.Signature)
 	require.True(t, isValid, "signature should be valid")
+
+	// Assert: signed tx bytes are different (they include the signature)
+	require.NotEqual(t, txBytes, signedTx.TxBytes)
 }
 
 func TestSignTx_MissingPrivateKey(t *testing.T) {
@@ -197,6 +213,7 @@ func TestSignTx_MissingPrivateKey(t *testing.T) {
 			Framework: network.FrameworkCosmosSDK,
 			Version:   "v0.50.0",
 		},
+		txConfig: NewTxConfig(),
 	}
 
 	unsignedTx := &network.UnsignedTx{
@@ -227,6 +244,7 @@ func TestSignTx_NilPrivateKey(t *testing.T) {
 			Framework: network.FrameworkCosmosSDK,
 			Version:   "v0.50.0",
 		},
+		txConfig: NewTxConfig(),
 	}
 
 	unsignedTx := &network.UnsignedTx{
@@ -257,6 +275,7 @@ func TestSignTx_InvalidKeyLength(t *testing.T) {
 			Framework: network.FrameworkCosmosSDK,
 			Version:   "v0.50.0",
 		},
+		txConfig: NewTxConfig(),
 	}
 
 	unsignedTx := &network.UnsignedTx{
@@ -308,8 +327,20 @@ func TestSignTx_InvalidKeyLength(t *testing.T) {
 	}
 }
 
-func TestSignTx_PreservesUnsignedTxBytes(t *testing.T) {
+func TestSignTx_EncodesSignedTx(t *testing.T) {
 	privKey := secp256k1.GenPrivKey()
+
+	// Create TxConfig for proper protobuf encoding
+	txConfig := NewTxConfig()
+
+	// Build a real unsigned tx using SDK's TxBuilder
+	sdkTxBuilder := txConfig.NewTxBuilder()
+	sdkTxBuilder.SetMemo("test memo")
+	sdkTxBuilder.SetGasLimit(100000)
+
+	// Encode to get valid protobuf bytes
+	originalTxBytes, err := txConfig.TxEncoder()(sdkTxBuilder.GetTx())
+	require.NoError(t, err)
 
 	builder := &TxBuilder{
 		rpcEndpoint: "http://localhost:26657",
@@ -319,9 +350,9 @@ func TestSignTx_PreservesUnsignedTxBytes(t *testing.T) {
 			Framework: network.FrameworkCosmosSDK,
 			Version:   "v0.50.0",
 		},
+		txConfig: txConfig,
 	}
 
-	originalTxBytes := []byte("original-tx-bytes")
 	unsignedTx := &network.UnsignedTx{
 		TxBytes:       originalTxBytes,
 		SignDoc:       []byte("sign doc"),
@@ -337,14 +368,34 @@ func TestSignTx_PreservesUnsignedTxBytes(t *testing.T) {
 	signedTx, err := builder.SignTx(context.Background(), unsignedTx, key)
 	require.NoError(t, err)
 
-	// TxBytes should be passed through (will be updated with signature in Task 6)
-	require.Equal(t, originalTxBytes, signedTx.TxBytes)
+	// TxBytes should be different - they now include the signature
+	require.NotEqual(t, originalTxBytes, signedTx.TxBytes)
+
+	// Signed tx bytes should be longer (includes signature data)
+	require.Greater(t, len(signedTx.TxBytes), len(originalTxBytes))
+
+	// Should be able to decode the signed tx
+	decodedTx, err := txConfig.TxDecoder()(signedTx.TxBytes)
+	require.NoError(t, err)
+	require.NotNil(t, decodedTx)
 }
 
 func TestSignTx_DifferentKeys(t *testing.T) {
 	// Generate two different keys
 	privKey1 := secp256k1.GenPrivKey()
 	privKey2 := secp256k1.GenPrivKey()
+
+	// Create TxConfig for proper protobuf encoding
+	txConfig := NewTxConfig()
+
+	// Build a real unsigned tx using SDK's TxBuilder
+	sdkTxBuilder := txConfig.NewTxBuilder()
+	sdkTxBuilder.SetMemo("test memo for different keys")
+	sdkTxBuilder.SetGasLimit(100000)
+
+	// Encode to get valid protobuf bytes
+	txBytes, err := txConfig.TxEncoder()(sdkTxBuilder.GetTx())
+	require.NoError(t, err)
 
 	builder := &TxBuilder{
 		rpcEndpoint: "http://localhost:26657",
@@ -354,10 +405,11 @@ func TestSignTx_DifferentKeys(t *testing.T) {
 			Framework: network.FrameworkCosmosSDK,
 			Version:   "v0.50.0",
 		},
+		txConfig: txConfig,
 	}
 
 	unsignedTx := &network.UnsignedTx{
-		TxBytes:       []byte("tx-bytes"),
+		TxBytes:       txBytes,
 		SignDoc:       []byte("same sign document"),
 		AccountNumber: 1,
 		Sequence:      0,

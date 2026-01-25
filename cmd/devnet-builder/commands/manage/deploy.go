@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
@@ -303,6 +304,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		return fmt.Errorf("invalid mode: %s (must be 'docker' or 'local')", deployMode)
+	}
+
+	// Validate port availability for local mode before proceeding
+	if deployMode == string(types.ExecutionModeLocal) {
+		if err := validateLocalModePorts(deployValidators); err != nil {
+			return err
+		}
 	}
 
 	// Check for deprecated --binary flag usage
@@ -871,4 +879,38 @@ func validateBinaryPath(binaryPath string) (string, error) {
 	}
 
 	return absPath, nil
+}
+
+// validateLocalModePorts checks if the ports needed for local mode deployment are available.
+// Returns an error with conflicting ports if any are already in use.
+func validateLocalModePorts(validatorCount int) error {
+	var conflicts []int
+
+	// Check ports for each validator
+	for i := 0; i < validatorCount; i++ {
+		portConfig := types.PortConfigForNode(i)
+		for _, port := range portConfig.AllPorts() {
+			if isPortInUse(port) {
+				conflicts = append(conflicts, port)
+			}
+		}
+	}
+
+	if len(conflicts) > 0 {
+		return fmt.Errorf("port conflict detected: ports %v already in use", conflicts)
+	}
+
+	return nil
+}
+
+// isPortInUse checks if a TCP port is currently in use by attempting to listen on it.
+func isPortInUse(port int) bool {
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		// Port is in use or unavailable
+		return true
+	}
+	listener.Close()
+	return false
 }

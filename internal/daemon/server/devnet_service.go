@@ -92,15 +92,18 @@ func (s *DevnetService) ListDevnets(ctx context.Context, req *v1.ListDevnetsRequ
 		return nil, status.Errorf(codes.Internal, "failed to list devnets: %v", err)
 	}
 
-	// TODO: Implement label selector filtering
-	// For now, return all devnets
+	// Filter by label selector if provided
+	// Format: "key1=value1,key2=value2" (all must match)
+	labelFilter := parseLabelSelector(req.GetLabelSelector())
 
 	resp := &v1.ListDevnetsResponse{
 		Devnets: make([]*v1.Devnet, 0, len(devnets)),
 	}
 
 	for _, d := range devnets {
-		resp.Devnets = append(resp.Devnets, DevnetToProto(d))
+		if matchesLabels(d.Metadata.Labels, labelFilter) {
+			resp.Devnets = append(resp.Devnets, DevnetToProto(d))
+		}
 	}
 
 	return resp, nil
@@ -135,7 +138,10 @@ func (s *DevnetService) DeleteDevnet(ctx context.Context, req *v1.DeleteDevnetRe
 		return nil, status.Errorf(codes.Internal, "failed to delete devnet: %v", err)
 	}
 
-	// TODO: In Phase 3, enqueue for deprovisioning before actual deletion
+	// Enqueue for deprovisioning (controller will handle cleanup)
+	if s.manager != nil {
+		s.manager.Enqueue("devnets", req.Name)
+	}
 
 	return &v1.DeleteDevnetResponse{Deleted: true}, nil
 }
@@ -203,7 +209,96 @@ func (s *DevnetService) StopDevnet(ctx context.Context, req *v1.StopDevnetReques
 		return nil, status.Errorf(codes.Internal, "failed to update devnet: %v", err)
 	}
 
-	// TODO: In Phase 3, enqueue for actual container stopping
+	// Enqueue for container stopping (controller will handle the actual stop)
+	if s.manager != nil {
+		s.manager.Enqueue("devnets", req.Name)
+	}
 
 	return &v1.StopDevnetResponse{Devnet: DevnetToProto(devnet)}, nil
+}
+
+// parseLabelSelector parses a comma-separated label selector string into a map.
+// Format: "key1=value1,key2=value2"
+// Returns an empty map if the selector is empty.
+func parseLabelSelector(selector string) map[string]string {
+	result := make(map[string]string)
+	if selector == "" {
+		return result
+	}
+
+	pairs := splitTrimmed(selector, ",")
+	for _, pair := range pairs {
+		if pair == "" {
+			continue
+		}
+		kv := splitTrimmed(pair, "=")
+		if len(kv) == 2 && kv[0] != "" {
+			result[kv[0]] = kv[1]
+		}
+	}
+	return result
+}
+
+// matchesLabels returns true if the resource labels match all the filter labels.
+// An empty filter matches everything.
+func matchesLabels(resourceLabels, filter map[string]string) bool {
+	for k, v := range filter {
+		if resourceLabels == nil || resourceLabels[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+// splitTrimmed splits a string and trims whitespace from each part.
+func splitTrimmed(s, sep string) []string {
+	parts := make([]string, 0)
+	for _, part := range splitString(s, sep) {
+		trimmed := trimSpace(part)
+		parts = append(parts, trimmed)
+	}
+	return parts
+}
+
+// splitString splits a string by separator without using strings package.
+func splitString(s, sep string) []string {
+	var result []string
+	for {
+		i := indexOf(s, sep)
+		if i < 0 {
+			result = append(result, s)
+			break
+		}
+		result = append(result, s[:i])
+		s = s[i+len(sep):]
+	}
+	return result
+}
+
+// indexOf returns the index of sep in s, or -1 if not found.
+func indexOf(s, sep string) int {
+	for i := 0; i <= len(s)-len(sep); i++ {
+		if s[i:i+len(sep)] == sep {
+			return i
+		}
+	}
+	return -1
+}
+
+// trimSpace removes leading and trailing whitespace.
+func trimSpace(s string) string {
+	start := 0
+	for start < len(s) && isSpace(s[start]) {
+		start++
+	}
+	end := len(s)
+	for end > start && isSpace(s[end-1]) {
+		end--
+	}
+	return s[start:end]
+}
+
+// isSpace returns true if c is a whitespace character.
+func isSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
 }

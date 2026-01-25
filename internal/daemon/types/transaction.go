@@ -36,6 +36,10 @@ type TransactionSpec struct {
 
 	// SDKVersion overrides auto-detected SDK version.
 	SDKVersion string `json:"sdkVersion,omitempty"`
+
+	// GasLimit sets the gas limit for the transaction.
+	// If not specified, defaults to 200000.
+	GasLimit uint64 `json:"gasLimit,omitempty"`
 }
 
 // TransactionStatus defines the observed state of a Transaction.
