@@ -40,3 +40,66 @@ spec:
 		t.Errorf("expected 4 validators, got %d", devnet.Spec.Validators)
 	}
 }
+
+func TestYAMLDevnet_Validate_Valid(t *testing.T) {
+	devnet := YAMLDevnet{
+		APIVersion: "devnet.lagos/v1",
+		Kind:       "Devnet",
+		Metadata:   YAMLMetadata{Name: "test"},
+		Spec: YAMLDevnetSpec{
+			Network:    "stable",
+			Validators: 4,
+			Mode:       "docker",
+		},
+	}
+
+	err := devnet.Validate()
+	if err != nil {
+		t.Errorf("Validate() failed for valid devnet: %v", err)
+	}
+}
+
+func TestYAMLDevnet_Validate_MissingName(t *testing.T) {
+	devnet := YAMLDevnet{
+		APIVersion: "devnet.lagos/v1",
+		Kind:       "Devnet",
+		Metadata:   YAMLMetadata{Name: ""},
+		Spec:       YAMLDevnetSpec{Network: "stable"},
+	}
+
+	err := devnet.Validate()
+	if err == nil {
+		t.Error("Validate() should fail for missing name")
+	}
+}
+
+func TestYAMLDevnet_Validate_InvalidAPIVersion(t *testing.T) {
+	devnet := YAMLDevnet{
+		APIVersion: "invalid/v1",
+		Kind:       "Devnet",
+		Metadata:   YAMLMetadata{Name: "test"},
+		Spec:       YAMLDevnetSpec{Network: "stable"},
+	}
+
+	err := devnet.Validate()
+	if err == nil {
+		t.Error("Validate() should fail for invalid apiVersion")
+	}
+}
+
+func TestYAMLDevnet_Validate_InvalidValidators(t *testing.T) {
+	devnet := YAMLDevnet{
+		APIVersion: "devnet.lagos/v1",
+		Kind:       "Devnet",
+		Metadata:   YAMLMetadata{Name: "test"},
+		Spec: YAMLDevnetSpec{
+			Network:    "stable",
+			Validators: 0,
+		},
+	}
+
+	err := devnet.Validate()
+	if err == nil {
+		t.Error("Validate() should fail for zero validators")
+	}
+}
