@@ -3,14 +3,17 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"text/tabwriter"
+	"time"
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/altuslabsxyz/devnet-builder/internal/version"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -65,7 +68,7 @@ func main() {
 		newDiffCmd(),
 		newDeployCmd(), // deprecated
 		newListCmd(),
-		newStatusCmd(),
+		newDescribeCmd(),
 		newStartCmd(),
 		newStopCmd(),
 		newDestroyCmd(), // deprecated
@@ -241,29 +244,6 @@ func newListCmd() *cobra.Command {
 	}
 }
 
-func newStatusCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "status [devnet]",
-		Short: "Show devnet status",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
-			}
-
-			devnet, err := daemonClient.GetDevnet(cmd.Context(), name)
-			if err != nil {
-				return err
-			}
-
-			printDevnetStatus(devnet)
-			return nil
-		},
-	}
-}
-
 func newStartCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "start [devnet]",
@@ -353,37 +333,173 @@ func newDestroyCmd() *cobra.Command {
 	return cmd
 }
 
-func printDevnetStatus(d *v1.Devnet) {
+func newDescribeCmd() *cobra.Command {
+	var outputFormat string
+
+	cmd := &cobra.Command{
+		Use:   "describe <devnet>",
+		Short: "Show detailed devnet information",
+		Long: `Show detailed information about a devnet including status conditions,
+recent events, and node details. Similar to kubectl describe.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			if daemonClient == nil {
+				return fmt.Errorf("daemon not running - start with: devnetd")
+			}
+
+			devnet, err := daemonClient.GetDevnet(cmd.Context(), name)
+			if err != nil {
+				return err
+			}
+
+			nodes, err := daemonClient.ListNodes(cmd.Context(), name)
+			if err != nil {
+				// Don't fail if nodes can't be listed
+				nodes = nil
+			}
+
+			if outputFormat == "yaml" {
+				return printDescribeYAML(devnet, nodes)
+			}
+
+			formatDescribeOutput(os.Stdout, devnet, nodes)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&outputFormat, "output", "o", "", "Output format (yaml)")
+	return cmd
+}
+
+func formatDescribeOutput(w io.Writer, d *v1.Devnet, nodes []*v1.Node) {
+	if d == nil {
+		fmt.Fprintf(w, "No devnet data available\n")
+		return
+	}
+	if d.Status == nil {
+		d.Status = &v1.DevnetStatus{}
+	}
+	if d.Metadata == nil {
+		d.Metadata = &v1.DevnetMetadata{}
+	}
+	if d.Spec == nil {
+		d.Spec = &v1.DevnetSpec{}
+	}
+
 	// Phase with color
 	phase := d.Status.Phase
 	switch phase {
 	case "Running":
-		color.Green("● %s", phase)
+		color.New(color.FgGreen).Fprintf(w, "● %s\n", phase)
 	case "Pending", "Provisioning":
-		color.Yellow("◐ %s", phase)
+		color.New(color.FgYellow).Fprintf(w, "◐ %s\n", phase)
 	case "Stopped":
-		color.White("○ %s", phase)
+		color.New(color.FgWhite).Fprintf(w, "○ %s\n", phase)
 	case "Degraded":
-		color.Red("◑ %s", phase)
+		color.New(color.FgRed).Fprintf(w, "◑ %s\n", phase)
 	default:
-		fmt.Printf("? %s", phase)
+		fmt.Fprintf(w, "? %s\n", phase)
 	}
 
-	fmt.Printf("\nName:       %s\n", d.Metadata.Name)
-	fmt.Printf("Plugin:     %s\n", d.Spec.Plugin)
-	fmt.Printf("Mode:       %s\n", d.Spec.Mode)
-	fmt.Printf("Validators: %d\n", d.Spec.Validators)
-	if d.Spec.FullNodes > 0 {
-		fmt.Printf("Full Nodes: %d\n", d.Spec.FullNodes)
+	// Basic info
+	fmt.Fprintf(w, "\nName:         %s\n", d.Metadata.Name)
+	if d.Metadata.CreatedAt != nil {
+		age := time.Since(d.Metadata.CreatedAt.AsTime()).Round(time.Second)
+		fmt.Fprintf(w, "Age:          %s\n", age)
 	}
-	fmt.Printf("Nodes:      %d/%d ready\n", d.Status.ReadyNodes, d.Status.Nodes)
+	fmt.Fprintf(w, "Plugin:       %s\n", d.Spec.Plugin)
+	fmt.Fprintf(w, "Mode:         %s\n", d.Spec.Mode)
+	fmt.Fprintf(w, "Validators:   %d\n", d.Spec.Validators)
+	if d.Spec.FullNodes > 0 {
+		fmt.Fprintf(w, "Full Nodes:   %d\n", d.Spec.FullNodes)
+	}
+
+	// Status section
+	fmt.Fprintf(w, "\nStatus:\n")
+	fmt.Fprintf(w, "  Nodes:        %d/%d ready\n", d.Status.ReadyNodes, d.Status.Nodes)
 	if d.Status.CurrentHeight > 0 {
-		fmt.Printf("Height:     %d\n", d.Status.CurrentHeight)
+		fmt.Fprintf(w, "  Height:       %d\n", d.Status.CurrentHeight)
 	}
 	if d.Status.SdkVersion != "" {
-		fmt.Printf("SDK:        %s\n", d.Status.SdkVersion)
+		fmt.Fprintf(w, "  SDK Version:  %s\n", d.Status.SdkVersion)
 	}
 	if d.Status.Message != "" {
-		fmt.Printf("Message:    %s\n", d.Status.Message)
+		fmt.Fprintf(w, "  Message:      %s\n", d.Status.Message)
 	}
+
+	// Conditions section
+	if len(d.Status.Conditions) > 0 {
+		fmt.Fprintf(w, "\nConditions:\n")
+		fmt.Fprintf(w, "  %-20s %-8s %-25s %s\n", "TYPE", "STATUS", "REASON", "MESSAGE")
+		for _, c := range d.Status.Conditions {
+			status := c.Status
+			if c.Status == "True" {
+				status = color.GreenString("True")
+			} else if c.Status == "False" {
+				status = color.RedString("False")
+			}
+			fmt.Fprintf(w, "  %-20s %-8s %-25s %s\n", c.Type, status, c.Reason, c.Message)
+		}
+	}
+
+	// Nodes section
+	if len(nodes) > 0 {
+		fmt.Fprintf(w, "\nNodes:\n")
+		fmt.Fprintf(w, "  %-6s %-10s %-10s %-10s %-8s %s\n", "INDEX", "ROLE", "PHASE", "HEIGHT", "RESTARTS", "MESSAGE")
+		for _, n := range nodes {
+			phase := n.Status.Phase
+			switch phase {
+			case "Running":
+				phase = color.GreenString(phase)
+			case "Pending", "Starting":
+				phase = color.YellowString(phase)
+			case "Crashed":
+				phase = color.RedString(phase)
+			}
+			msg := n.Status.Message
+			if len(msg) > 30 {
+				msg = msg[:27] + "..."
+			}
+			fmt.Fprintf(w, "  %-6d %-10s %-10s %-10d %-8d %s\n",
+				n.Metadata.Index,
+				n.Spec.Role,
+				phase,
+				n.Status.BlockHeight,
+				n.Status.RestartCount,
+				msg,
+			)
+		}
+	}
+
+	// Events section
+	if len(d.Status.Events) > 0 {
+		fmt.Fprintf(w, "\nEvents:\n")
+		fmt.Fprintf(w, "  %-8s %-20s %-20s %s\n", "TYPE", "REASON", "AGE", "MESSAGE")
+		for _, e := range d.Status.Events {
+			eventType := e.Type
+			if e.Type == "Warning" {
+				eventType = color.YellowString("Warning")
+			}
+			age := "Unknown"
+			if e.Timestamp != nil {
+				age = time.Since(e.Timestamp.AsTime()).Round(time.Second).String()
+			}
+			fmt.Fprintf(w, "  %-8s %-20s %-20s %s\n", eventType, e.Reason, age, e.Message)
+		}
+	}
+}
+
+func printDescribeYAML(d *v1.Devnet, nodes []*v1.Node) error {
+	data := map[string]interface{}{
+		"devnet": d,
+		"nodes":  nodes,
+	}
+	out, err := yaml.Marshal(data)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(out))
+	return nil
 }

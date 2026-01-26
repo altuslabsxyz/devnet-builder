@@ -3,19 +3,57 @@ package types
 
 import "time"
 
-// Health condition types.
+// Condition types for devnet status
 const (
-	ConditionTypeReady       = "Ready"
-	ConditionTypeHealthy     = "Healthy"
-	ConditionTypeProgressing = "Progressing"
-	ConditionTypeDegraded    = "Degraded"
+	ConditionTypeReady           = "Ready"
+	ConditionTypeHealthy         = "Healthy"
+	ConditionTypeProgressing     = "Progressing"
+	ConditionTypePluginAvailable = "PluginAvailable"
+	ConditionTypeNodesCreated    = "NodesCreated"
+	ConditionTypeNodesRunning    = "NodesRunning"
+	ConditionTypeDegraded        = "Degraded"
 )
 
-// Condition status values.
+// Condition status values
 const (
 	ConditionTrue    = "True"
 	ConditionFalse   = "False"
 	ConditionUnknown = "Unknown"
+)
+
+// Event types
+const (
+	EventTypeNormal  = "Normal"
+	EventTypeWarning = "Warning"
+)
+
+// Condition reasons - CamelCase identifiers
+const (
+	// Progressing reasons
+	ReasonProvisioning    = "Provisioning"
+	ReasonCreatingNodes   = "CreatingNodes"
+	ReasonStartingNodes   = "StartingNodes"
+	ReasonWaitingForNodes = "WaitingForNodes"
+
+	// Ready reasons
+	ReasonAllNodesReady = "AllNodesReady"
+	ReasonNodesNotReady = "NodesNotReady"
+
+	// Degraded reasons
+	ReasonNodesCrashed      = "NodesCrashed"
+	ReasonHealthCheckFailed = "HealthCheckFailed"
+
+	// Plugin reasons
+	ReasonPluginFound    = "PluginFound"
+	ReasonPluginNotFound = "PluginNotFound"
+
+	// Error reasons
+	ReasonImageNotFound       = "ImageNotFound"
+	ReasonCredentialsNotFound = "CredentialsNotFound"
+	ReasonModeNotSupported    = "ModeNotSupported"
+	ReasonBinaryNotFound      = "BinaryNotFound"
+	ReasonContainerFailed     = "ContainerFailed"
+	ReasonNetworkError        = "NetworkError"
 )
 
 // RestartPolicy defines how crashed nodes should be restarted.

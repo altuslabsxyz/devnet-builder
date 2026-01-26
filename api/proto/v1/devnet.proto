@@ -59,6 +59,26 @@ message DevnetStatus {
   string sdk_version = 5;
   google.protobuf.Timestamp last_health_check = 6;
   string message = 7;
+  repeated Condition conditions = 8;            // Detailed status conditions
+  repeated Event events = 9;                    // Recent events (last 10)
+}
+
+// Condition represents a status condition of a resource.
+message Condition {
+  string type = 1;                              // Type of condition (Ready, Progressing, etc.)
+  string status = 2;                            // True, False, Unknown
+  google.protobuf.Timestamp last_transition_time = 3;
+  string reason = 4;                            // CamelCase reason code
+  string message = 5;                           // Human-readable message
+}
+
+// Event represents a significant occurrence during resource lifecycle.
+message Event {
+  google.protobuf.Timestamp timestamp = 1;
+  string type = 2;                              // Normal, Warning
+  string reason = 3;                            // CamelCase reason code
+  string message = 4;                           // Human-readable message
+  string component = 5;                         // Source component (controller, runtime, etc.)
 }
 
 // DevnetService request/response messages

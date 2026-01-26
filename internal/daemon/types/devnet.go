@@ -81,6 +81,9 @@ type DevnetStatus struct {
 	// Conditions represent the current conditions of the devnet.
 	Conditions []Condition `json:"conditions,omitempty"`
 
+	// Events are recent significant occurrences (max 10).
+	Events []Event `json:"events,omitempty"`
+
 	// Message provides additional status information.
 	Message string `json:"message,omitempty"`
 }

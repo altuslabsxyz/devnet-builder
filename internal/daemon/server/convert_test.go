@@ -206,3 +206,48 @@ func TestCreateRequestToDevnet(t *testing.T) {
 		t.Errorf("expected phase Pending, got %s", devnet.Status.Phase)
 	}
 }
+
+func TestDevnetToProtoWithConditions(t *testing.T) {
+	devnet := &types.Devnet{
+		Metadata: types.ResourceMeta{
+			Name: "test-devnet",
+		},
+		Status: types.DevnetStatus{
+			Phase: types.PhaseProvisioning,
+			Conditions: []types.Condition{
+				{
+					Type:               types.ConditionTypeProgressing,
+					Status:             types.ConditionTrue,
+					LastTransitionTime: time.Now(),
+					Reason:             types.ReasonCreatingNodes,
+					Message:            "Creating 4 validator nodes",
+				},
+			},
+			Events: []types.Event{
+				{
+					Timestamp: time.Now(),
+					Type:      types.EventTypeNormal,
+					Reason:    types.ReasonProvisioning,
+					Message:   "Started provisioning",
+					Component: "devnet-controller",
+				},
+			},
+		},
+	}
+
+	proto := DevnetToProto(devnet)
+
+	if len(proto.Status.Conditions) != 1 {
+		t.Fatalf("expected 1 condition, got %d", len(proto.Status.Conditions))
+	}
+	if proto.Status.Conditions[0].Type != types.ConditionTypeProgressing {
+		t.Errorf("expected Progressing, got %s", proto.Status.Conditions[0].Type)
+	}
+
+	if len(proto.Status.Events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(proto.Status.Events))
+	}
+	if proto.Status.Events[0].Reason != types.ReasonProvisioning {
+		t.Errorf("expected Provisioning reason, got %s", proto.Status.Events[0].Reason)
+	}
+}

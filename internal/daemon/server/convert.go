@@ -177,6 +177,30 @@ func specFromProto(pb *v1.DevnetSpec) types.DevnetSpec {
 }
 
 func statusToProto(s *types.DevnetStatus) *v1.DevnetStatus {
+	// Convert conditions
+	var conditions []*v1.Condition
+	for _, c := range s.Conditions {
+		conditions = append(conditions, &v1.Condition{
+			Type:               c.Type,
+			Status:             c.Status,
+			LastTransitionTime: timestamppb.New(c.LastTransitionTime),
+			Reason:             c.Reason,
+			Message:            c.Message,
+		})
+	}
+
+	// Convert events
+	var events []*v1.Event
+	for _, e := range s.Events {
+		events = append(events, &v1.Event{
+			Timestamp: timestamppb.New(e.Timestamp),
+			Type:      e.Type,
+			Reason:    e.Reason,
+			Message:   e.Message,
+			Component: e.Component,
+		})
+	}
+
 	return &v1.DevnetStatus{
 		Phase:           s.Phase,
 		Nodes:           int32(s.Nodes),
@@ -185,12 +209,44 @@ func statusToProto(s *types.DevnetStatus) *v1.DevnetStatus {
 		SdkVersion:      s.SDKVersion,
 		LastHealthCheck: timestamppb.New(s.LastHealthCheck),
 		Message:         s.Message,
+		Conditions:      conditions,
+		Events:          events,
 	}
 }
 
 func statusFromProto(pb *v1.DevnetStatus) types.DevnetStatus {
 	if pb == nil {
 		return types.DevnetStatus{}
+	}
+
+	// Convert conditions
+	var conditions []types.Condition
+	for _, c := range pb.Conditions {
+		cond := types.Condition{
+			Type:    c.Type,
+			Status:  c.Status,
+			Reason:  c.Reason,
+			Message: c.Message,
+		}
+		if c.LastTransitionTime != nil {
+			cond.LastTransitionTime = c.LastTransitionTime.AsTime()
+		}
+		conditions = append(conditions, cond)
+	}
+
+	// Convert events
+	var events []types.Event
+	for _, e := range pb.Events {
+		evt := types.Event{
+			Type:      e.Type,
+			Reason:    e.Reason,
+			Message:   e.Message,
+			Component: e.Component,
+		}
+		if e.Timestamp != nil {
+			evt.Timestamp = e.Timestamp.AsTime()
+		}
+		events = append(events, evt)
 	}
 
 	s := types.DevnetStatus{
@@ -200,6 +256,8 @@ func statusFromProto(pb *v1.DevnetStatus) types.DevnetStatus {
 		CurrentHeight: pb.CurrentHeight,
 		SDKVersion:    pb.SdkVersion,
 		Message:       pb.Message,
+		Conditions:    conditions,
+		Events:        events,
 	}
 
 	if pb.LastHealthCheck != nil {
