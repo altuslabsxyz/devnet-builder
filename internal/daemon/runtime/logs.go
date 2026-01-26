@@ -98,6 +98,11 @@ func (lm *LogManager) tailFile(logPath string, lines int) (io.ReadCloser, error)
 	}
 	f.Close()
 
+	// Check for scanner errors
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read log file: %w", err)
+	}
+
 	// Get last N lines
 	start := len(allLines) - lines
 	if start < 0 {
@@ -105,10 +110,10 @@ func (lm *LogManager) tailFile(logPath string, lines int) (io.ReadCloser, error)
 	}
 	lastLines := allLines[start:]
 
-	// Build content string
-	var content string
-	for _, line := range lastLines {
-		content += line + "\n"
+	// Build content string efficiently using strings.Join
+	content := strings.Join(lastLines, "\n")
+	if len(lastLines) > 0 {
+		content += "\n"
 	}
 
 	// Return as a string reader wrapped in NopCloser
@@ -188,15 +193,20 @@ func (w *rotatingWriter) rotate() error {
 	// Close current file
 	w.file.Close()
 
-	// Rotate existing files
+	// Rotate existing files (errors are non-critical - old files might not exist)
 	for i := w.maxFiles - 1; i >= 1; i-- {
 		oldPath := fmt.Sprintf("%s.%d", w.path, i)
 		newPath := fmt.Sprintf("%s.%d", w.path, i+1)
-		os.Rename(oldPath, newPath)
+		if err := os.Rename(oldPath, newPath); err != nil && !os.IsNotExist(err) {
+			// Log but continue - rotation of old files is best-effort
+			_ = err // acknowledge error but continue
+		}
 	}
 
-	// Move current file to .1
-	os.Rename(w.path, fmt.Sprintf("%s.1", w.path))
+	// Move current file to .1 - this is critical for rotation
+	if err := os.Rename(w.path, fmt.Sprintf("%s.1", w.path)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to rotate current log file: %w", err)
+	}
 
 	// Delete old files beyond maxFiles
 	w.cleanOldFiles()
@@ -207,7 +217,12 @@ func (w *rotatingWriter) rotate() error {
 
 func (w *rotatingWriter) cleanOldFiles() {
 	pattern := w.path + ".*"
-	matches, _ := filepath.Glob(pattern)
+	matches, err := filepath.Glob(pattern)
+	if err != nil || matches == nil {
+		// Glob only returns error for malformed patterns, which shouldn't happen
+		// If no matches, nothing to clean
+		return
+	}
 
 	if len(matches) <= w.maxFiles {
 		return
@@ -223,9 +238,9 @@ func (w *rotatingWriter) cleanOldFiles() {
 		return iInfo.ModTime().After(jInfo.ModTime())
 	})
 
-	// Remove old files
+	// Remove old files (best-effort cleanup, ignore errors)
 	for i := w.maxFiles; i < len(matches); i++ {
-		os.Remove(matches[i])
+		_ = os.Remove(matches[i])
 	}
 }
 
