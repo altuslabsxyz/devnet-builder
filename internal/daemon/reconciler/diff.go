@@ -22,7 +22,8 @@ func (d *DiffCalculator) Calculate(current, desired *State) *Plan {
 	}
 
 	// Check for creates and updates
-	for name, desiredDevnet := range desired.Devnets {
+	for name := range desired.Devnets {
+		desiredDevnet := desired.Devnets[name]
 		currentDevnet, exists := current.Devnets[name]
 		if !exists {
 			// New devnet

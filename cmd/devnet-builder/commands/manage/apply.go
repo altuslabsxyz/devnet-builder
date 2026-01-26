@@ -59,9 +59,9 @@ func runApply(cmd *cobra.Command, args []string) error {
 	}
 
 	// For now, just print what would be done
-	for _, devnet := range devnets {
+	for i := range devnets {
 		if applyDryRun {
-			printDryRun(cmd, devnet)
+			printDryRun(cmd, &devnets[i])
 		} else {
 			return fmt.Errorf("apply without --dry-run not yet implemented")
 		}
@@ -70,7 +70,7 @@ func runApply(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func printDryRun(cmd *cobra.Command, devnet config.YAMLDevnet) {
+func printDryRun(cmd *cobra.Command, devnet *config.YAMLDevnet) {
 	fmt.Fprintf(cmd.OutOrStdout(), "Devnet: %s (dry-run)\n\n", devnet.Metadata.Name)
 	fmt.Fprintf(cmd.OutOrStdout(), "Plan: 1 to create, 0 to update, 0 to destroy\n\n")
 	fmt.Fprintf(cmd.OutOrStdout(), "+ devnet/%s\n", devnet.Metadata.Name)

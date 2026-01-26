@@ -10,8 +10,8 @@ import (
 type RingBuffer struct {
 	entries  []*LogEntry
 	capacity int
-	head     int  // Write position
-	size     int  // Current number of entries
+	head     int // Write position
+	size     int // Current number of entries
 	mu       sync.RWMutex
 }
 

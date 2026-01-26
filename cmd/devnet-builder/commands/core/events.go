@@ -27,15 +27,15 @@ var (
 
 // DockerEvent represents a Docker event from the events API.
 type DockerEvent struct {
-	Status         string            `json:"status"`
-	ID             string            `json:"id"`
-	From           string            `json:"from"`
-	Type           string            `json:"Type"`
-	Action         string            `json:"Action"`
-	Actor          DockerEventActor  `json:"Actor"`
-	Scope          string            `json:"scope"`
-	Time           int64             `json:"time"`
-	TimeNano       int64             `json:"timeNano"`
+	Status   string           `json:"status"`
+	ID       string           `json:"id"`
+	From     string           `json:"from"`
+	Type     string           `json:"Type"`
+	Action   string           `json:"Action"`
+	Actor    DockerEventActor `json:"Actor"`
+	Scope    string           `json:"scope"`
+	Time     int64            `json:"time"`
+	TimeNano int64            `json:"timeNano"`
 }
 
 // DockerEventActor contains the actor information for a Docker event.
@@ -143,8 +143,7 @@ func runEvents(cmd *cobra.Command, args []string) error {
 	dockerArgs := []string{"events", "--format", "{{json .}}"}
 
 	// Add container filter
-	dockerArgs = append(dockerArgs, "--filter", "type=container")
-	dockerArgs = append(dockerArgs, "--filter", fmt.Sprintf("container=%s", containerPrefix))
+	dockerArgs = append(dockerArgs, "--filter", "type=container", "--filter", fmt.Sprintf("container=%s", containerPrefix))
 
 	// Add time filters
 	if eventsSince != "" {

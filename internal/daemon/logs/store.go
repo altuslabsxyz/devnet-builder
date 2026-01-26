@@ -34,9 +34,9 @@ type LogQuery struct {
 
 // LogStore provides persistent storage for log entries.
 type LogStore struct {
-	db     *bolt.DB
-	idSeq  uint64 // Atomic counter for unique IDs
-	mu     sync.RWMutex
+	db    *bolt.DB
+	idSeq uint64 // Atomic counter for unique IDs
+	mu    sync.RWMutex
 }
 
 // NewLogStore creates a new log store at the given path.

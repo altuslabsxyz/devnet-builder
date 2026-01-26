@@ -46,14 +46,14 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load YAML: %w", err)
 	}
 
-	for _, devnet := range devnets {
-		printDiff(cmd, devnet)
+	for i := range devnets {
+		printDiff(cmd, &devnets[i])
 	}
 
 	return nil
 }
 
-func printDiff(cmd *cobra.Command, devnet config.YAMLDevnet) {
+func printDiff(cmd *cobra.Command, devnet *config.YAMLDevnet) {
 	fmt.Fprintf(cmd.OutOrStdout(), "Devnet: %s\n\n", devnet.Metadata.Name)
 	fmt.Fprintf(cmd.OutOrStdout(), "--- current (none)\n")
 	fmt.Fprintf(cmd.OutOrStdout(), "+++ desired\n")
