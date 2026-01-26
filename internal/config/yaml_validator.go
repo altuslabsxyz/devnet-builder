@@ -56,6 +56,13 @@ func NewYAMLValidator() *YAMLValidator {
 
 // Validate validates a YAMLDevnet and returns a ValidationResult
 func (v *YAMLValidator) Validate(devnet *YAMLDevnet) *ValidationResult {
+	if devnet == nil {
+		return &ValidationResult{
+			Valid:  false,
+			Errors: []ValidationError{{Field: "devnet", Message: "cannot be nil"}},
+		}
+	}
+
 	result := &ValidationResult{
 		Valid:  true,
 		Errors: []ValidationError{},
@@ -154,4 +161,41 @@ func (v *YAMLValidator) ValidateInvariants(devnet *YAMLDevnet) error {
 		return fmt.Errorf("validation errors: %s", result.Error())
 	}
 	return nil
+}
+
+// ValidateWithSource validates and includes source file in errors.
+func (v *YAMLValidator) ValidateWithSource(devnet *YAMLDevnet, source string) *ValidationResult {
+	result := v.Validate(devnet)
+
+	// Prepend source to field paths for context
+	for i := range result.Errors {
+		if result.Errors[i].Field != "" {
+			result.Errors[i].Field = fmt.Sprintf("%s: %s", source, result.Errors[i].Field)
+		}
+	}
+
+	return result
+}
+
+// FormatValidationErrors returns a kubectl-style error message.
+func FormatValidationErrors(result *ValidationResult, filename string) string {
+	if result.Valid {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("error: error validating %q:\n", filename))
+
+	for _, err := range result.Errors {
+		sb.WriteString(fmt.Sprintf("  - %s\n", err.Error()))
+	}
+
+	if len(result.Warnings) > 0 {
+		sb.WriteString("\nwarnings:\n")
+		for _, w := range result.Warnings {
+			sb.WriteString(fmt.Sprintf("  - %s\n", w.Error()))
+		}
+	}
+
+	return sb.String()
 }
