@@ -160,6 +160,7 @@ func newDaemonCmd() *cobra.Command {
 
 func newDeployCmd() *cobra.Command {
 	var (
+		namespace  string
 		plugin     string
 		validators int
 		fullNodes  int
@@ -185,7 +186,7 @@ func newDeployCmd() *cobra.Command {
 				Mode:       mode,
 			}
 
-			devnet, err := daemonClient.CreateDevnet(cmd.Context(), name, spec, nil)
+			devnet, err := daemonClient.CreateDevnet(cmd.Context(), namespace, name, spec, nil)
 			if err != nil {
 				return err
 			}
@@ -199,6 +200,7 @@ func newDeployCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
 	cmd.Flags().StringVar(&plugin, "plugin", "stable", "Network plugin")
 	cmd.Flags().IntVar(&validators, "validators", 4, "Number of validators")
 	cmd.Flags().IntVar(&fullNodes, "full-nodes", 0, "Number of full nodes")
@@ -208,7 +210,9 @@ func newDeployCmd() *cobra.Command {
 }
 
 func newListCmd() *cobra.Command {
-	return &cobra.Command{
+	var namespace string
+
+	cmd := &cobra.Command{
 		Use:     "list",
 		Short:   "List all devnets",
 		Aliases: []string{"ls"},
@@ -217,7 +221,7 @@ func newListCmd() *cobra.Command {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			devnets, err := daemonClient.ListDevnets(cmd.Context())
+			devnets, err := daemonClient.ListDevnets(cmd.Context(), namespace)
 			if err != nil {
 				return err
 			}
@@ -228,9 +232,10 @@ func newListCmd() *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "NAME\tPHASE\tNODES\tREADY\tHEIGHT")
+			fmt.Fprintln(w, "NAMESPACE\tNAME\tPHASE\tNODES\tREADY\tHEIGHT")
 			for _, d := range devnets {
-				fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%d\n",
+				fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%d\t%d\n",
+					d.Metadata.Namespace,
 					d.Metadata.Name,
 					d.Status.Phase,
 					d.Status.Nodes,
@@ -242,10 +247,16 @@ func newListCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Filter by namespace (empty = all namespaces)")
+
+	return cmd
 }
 
 func newStartCmd() *cobra.Command {
-	return &cobra.Command{
+	var namespace string
+
+	cmd := &cobra.Command{
 		Use:   "start [devnet]",
 		Short: "Start a stopped devnet",
 		Args:  cobra.ExactArgs(1),
@@ -256,7 +267,7 @@ func newStartCmd() *cobra.Command {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			devnet, err := daemonClient.StartDevnet(cmd.Context(), name)
+			devnet, err := daemonClient.StartDevnet(cmd.Context(), namespace, name)
 			if err != nil {
 				return err
 			}
@@ -267,10 +278,16 @@ func newStartCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+
+	return cmd
 }
 
 func newStopCmd() *cobra.Command {
-	return &cobra.Command{
+	var namespace string
+
+	cmd := &cobra.Command{
 		Use:   "stop [devnet]",
 		Short: "Stop a running devnet",
 		Args:  cobra.ExactArgs(1),
@@ -281,7 +298,7 @@ func newStopCmd() *cobra.Command {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			devnet, err := daemonClient.StopDevnet(cmd.Context(), name)
+			devnet, err := daemonClient.StopDevnet(cmd.Context(), namespace, name)
 			if err != nil {
 				return err
 			}
@@ -292,10 +309,17 @@ func newStopCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+
+	return cmd
 }
 
 func newDestroyCmd() *cobra.Command {
-	var force bool
+	var (
+		namespace string
+		force     bool
+	)
 
 	cmd := &cobra.Command{
 		Use:        "destroy [devnet]",
@@ -318,7 +342,7 @@ func newDestroyCmd() *cobra.Command {
 				}
 			}
 
-			err := daemonClient.DeleteDevnet(cmd.Context(), name)
+			err := daemonClient.DeleteDevnet(cmd.Context(), namespace, name)
 			if err != nil {
 				return err
 			}
@@ -328,13 +352,17 @@ func newDestroyCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "Skip confirmation")
 
 	return cmd
 }
 
 func newDescribeCmd() *cobra.Command {
-	var outputFormat string
+	var (
+		namespace    string
+		outputFormat string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "describe <devnet>",
@@ -349,12 +377,12 @@ recent events, and node details. Similar to kubectl describe.`,
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			devnet, err := daemonClient.GetDevnet(cmd.Context(), name)
+			devnet, err := daemonClient.GetDevnet(cmd.Context(), namespace, name)
 			if err != nil {
 				return err
 			}
 
-			nodes, err := daemonClient.ListNodes(cmd.Context(), name)
+			nodes, err := daemonClient.ListNodes(cmd.Context(), namespace, name)
 			if err != nil {
 				// Don't fail if nodes can't be listed
 				nodes = nil
@@ -369,6 +397,7 @@ recent events, and node details. Similar to kubectl describe.`,
 		},
 	}
 
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
 	cmd.Flags().StringVarP(&outputFormat, "output", "o", "", "Output format (yaml)")
 	return cmd
 }
@@ -405,6 +434,7 @@ func formatDescribeOutput(w io.Writer, d *v1.Devnet, nodes []*v1.Node) {
 
 	// Basic info
 	fmt.Fprintf(w, "\nName:         %s\n", d.Metadata.Name)
+	fmt.Fprintf(w, "Namespace:    %s\n", d.Metadata.Namespace)
 	if d.Metadata.CreatedAt != nil {
 		age := time.Since(d.Metadata.CreatedAt.AsTime()).Round(time.Second)
 		fmt.Fprintf(w, "Age:          %s\n", age)

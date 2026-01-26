@@ -46,7 +46,9 @@ Examples:
 }
 
 func newNodeListCmd() *cobra.Command {
-	return &cobra.Command{
+	var namespace string
+
+	cmd := &cobra.Command{
 		Use:   "list <devnet-name>",
 		Short: "List nodes in a devnet",
 		Args:  cobra.ExactArgs(1),
@@ -56,7 +58,7 @@ func newNodeListCmd() *cobra.Command {
 			}
 
 			devnetName := args[0]
-			nodes, err := daemonClient.ListNodes(cmd.Context(), devnetName)
+			nodes, err := daemonClient.ListNodes(cmd.Context(), namespace, devnetName)
 			if err != nil {
 				return err
 			}
@@ -88,10 +90,16 @@ func newNodeListCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+
+	return cmd
 }
 
 func newNodeGetCmd() *cobra.Command {
-	return &cobra.Command{
+	var namespace string
+
+	cmd := &cobra.Command{
 		Use:   "get <devnet-name> <index>",
 		Short: "Get details of a specific node",
 		Args:  cobra.ExactArgs(2),
@@ -106,7 +114,7 @@ func newNodeGetCmd() *cobra.Command {
 				return err
 			}
 
-			node, err := daemonClient.GetNode(cmd.Context(), devnetName, index)
+			node, err := daemonClient.GetNode(cmd.Context(), namespace, devnetName, index)
 			if err != nil {
 				return err
 			}
@@ -115,10 +123,16 @@ func newNodeGetCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+
+	return cmd
 }
 
 func newNodeStartCmd() *cobra.Command {
-	return &cobra.Command{
+	var namespace string
+
+	cmd := &cobra.Command{
 		Use:   "start <devnet-name> <index>",
 		Short: "Start a node",
 		Args:  cobra.ExactArgs(2),
@@ -133,7 +147,7 @@ func newNodeStartCmd() *cobra.Command {
 				return err
 			}
 
-			node, err := daemonClient.StartNode(cmd.Context(), devnetName, index)
+			node, err := daemonClient.StartNode(cmd.Context(), namespace, devnetName, index)
 			if err != nil {
 				return err
 			}
@@ -143,10 +157,16 @@ func newNodeStartCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+
+	return cmd
 }
 
 func newNodeStopCmd() *cobra.Command {
-	return &cobra.Command{
+	var namespace string
+
+	cmd := &cobra.Command{
 		Use:   "stop <devnet-name> <index>",
 		Short: "Stop a node",
 		Args:  cobra.ExactArgs(2),
@@ -161,7 +181,7 @@ func newNodeStopCmd() *cobra.Command {
 				return err
 			}
 
-			node, err := daemonClient.StopNode(cmd.Context(), devnetName, index)
+			node, err := daemonClient.StopNode(cmd.Context(), namespace, devnetName, index)
 			if err != nil {
 				return err
 			}
@@ -171,10 +191,16 @@ func newNodeStopCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+
+	return cmd
 }
 
 func newNodeRestartCmd() *cobra.Command {
-	return &cobra.Command{
+	var namespace string
+
+	cmd := &cobra.Command{
 		Use:   "restart <devnet-name> <index>",
 		Short: "Restart a node",
 		Args:  cobra.ExactArgs(2),
@@ -189,7 +215,7 @@ func newNodeRestartCmd() *cobra.Command {
 				return err
 			}
 
-			node, err := daemonClient.RestartNode(cmd.Context(), devnetName, index)
+			node, err := daemonClient.RestartNode(cmd.Context(), namespace, devnetName, index)
 			if err != nil {
 				return err
 			}
@@ -200,6 +226,10 @@ func newNodeRestartCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+
+	return cmd
 }
 
 func parseNodeIndex(s string) (int, error) {

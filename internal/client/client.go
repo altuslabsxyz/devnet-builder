@@ -45,33 +45,33 @@ func (c *Client) Close() error {
 }
 
 // CreateDevnet creates a new devnet.
-func (c *Client) CreateDevnet(ctx context.Context, name string, spec *v1.DevnetSpec, labels map[string]string) (*v1.Devnet, error) {
-	return c.grpc.CreateDevnet(ctx, name, spec, labels)
+func (c *Client) CreateDevnet(ctx context.Context, namespace, name string, spec *v1.DevnetSpec, labels map[string]string) (*v1.Devnet, error) {
+	return c.grpc.CreateDevnet(ctx, namespace, name, spec, labels)
 }
 
 // GetDevnet retrieves a devnet by name.
-func (c *Client) GetDevnet(ctx context.Context, name string) (*v1.Devnet, error) {
-	return c.grpc.GetDevnet(ctx, name)
+func (c *Client) GetDevnet(ctx context.Context, namespace, name string) (*v1.Devnet, error) {
+	return c.grpc.GetDevnet(ctx, namespace, name)
 }
 
-// ListDevnets lists all devnets.
-func (c *Client) ListDevnets(ctx context.Context) ([]*v1.Devnet, error) {
-	return c.grpc.ListDevnets(ctx)
+// ListDevnets lists all devnets. Empty namespace returns all namespaces.
+func (c *Client) ListDevnets(ctx context.Context, namespace string) ([]*v1.Devnet, error) {
+	return c.grpc.ListDevnets(ctx, namespace)
 }
 
 // DeleteDevnet deletes a devnet.
-func (c *Client) DeleteDevnet(ctx context.Context, name string) error {
-	return c.grpc.DeleteDevnet(ctx, name)
+func (c *Client) DeleteDevnet(ctx context.Context, namespace, name string) error {
+	return c.grpc.DeleteDevnet(ctx, namespace, name)
 }
 
 // StartDevnet starts a stopped devnet.
-func (c *Client) StartDevnet(ctx context.Context, name string) (*v1.Devnet, error) {
-	return c.grpc.StartDevnet(ctx, name)
+func (c *Client) StartDevnet(ctx context.Context, namespace, name string) (*v1.Devnet, error) {
+	return c.grpc.StartDevnet(ctx, namespace, name)
 }
 
 // StopDevnet stops a running devnet.
-func (c *Client) StopDevnet(ctx context.Context, name string) (*v1.Devnet, error) {
-	return c.grpc.StopDevnet(ctx, name)
+func (c *Client) StopDevnet(ctx context.Context, namespace, name string) (*v1.Devnet, error) {
+	return c.grpc.StopDevnet(ctx, namespace, name)
 }
 
 // ApplyDevnet creates or updates a devnet (idempotent).
@@ -85,58 +85,58 @@ func (c *Client) UpdateDevnet(ctx context.Context, name string, spec *v1.DevnetS
 }
 
 // GetNode retrieves a node by devnet name and index.
-func (c *Client) GetNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
-	return c.grpc.GetNode(ctx, devnetName, index)
+func (c *Client) GetNode(ctx context.Context, namespace, devnetName string, index int) (*v1.Node, error) {
+	return c.grpc.GetNode(ctx, namespace, devnetName, index)
 }
 
 // ListNodes lists all nodes in a devnet.
-func (c *Client) ListNodes(ctx context.Context, devnetName string) ([]*v1.Node, error) {
-	return c.grpc.ListNodes(ctx, devnetName)
+func (c *Client) ListNodes(ctx context.Context, namespace, devnetName string) ([]*v1.Node, error) {
+	return c.grpc.ListNodes(ctx, namespace, devnetName)
 }
 
 // StartNode starts a stopped node.
-func (c *Client) StartNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
-	return c.grpc.StartNode(ctx, devnetName, index)
+func (c *Client) StartNode(ctx context.Context, namespace, devnetName string, index int) (*v1.Node, error) {
+	return c.grpc.StartNode(ctx, namespace, devnetName, index)
 }
 
 // StopNode stops a running node.
-func (c *Client) StopNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
-	return c.grpc.StopNode(ctx, devnetName, index)
+func (c *Client) StopNode(ctx context.Context, namespace, devnetName string, index int) (*v1.Node, error) {
+	return c.grpc.StopNode(ctx, namespace, devnetName, index)
 }
 
 // RestartNode restarts a node.
-func (c *Client) RestartNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
-	return c.grpc.RestartNode(ctx, devnetName, index)
+func (c *Client) RestartNode(ctx context.Context, namespace, devnetName string, index int) (*v1.Node, error) {
+	return c.grpc.RestartNode(ctx, namespace, devnetName, index)
 }
 
 // CreateUpgrade creates a new upgrade.
-func (c *Client) CreateUpgrade(ctx context.Context, name string, spec *v1.UpgradeSpec) (*v1.Upgrade, error) {
-	return c.grpc.CreateUpgrade(ctx, name, spec)
+func (c *Client) CreateUpgrade(ctx context.Context, namespace, name string, spec *v1.UpgradeSpec) (*v1.Upgrade, error) {
+	return c.grpc.CreateUpgrade(ctx, namespace, name, spec)
 }
 
 // GetUpgrade retrieves an upgrade by name.
-func (c *Client) GetUpgrade(ctx context.Context, name string) (*v1.Upgrade, error) {
-	return c.grpc.GetUpgrade(ctx, name)
+func (c *Client) GetUpgrade(ctx context.Context, namespace, name string) (*v1.Upgrade, error) {
+	return c.grpc.GetUpgrade(ctx, namespace, name)
 }
 
-// ListUpgrades lists all upgrades for a devnet.
-func (c *Client) ListUpgrades(ctx context.Context, devnetName string) ([]*v1.Upgrade, error) {
-	return c.grpc.ListUpgrades(ctx, devnetName)
+// ListUpgrades lists all upgrades. Empty namespace returns all namespaces.
+func (c *Client) ListUpgrades(ctx context.Context, namespace string) ([]*v1.Upgrade, error) {
+	return c.grpc.ListUpgrades(ctx, namespace)
 }
 
 // DeleteUpgrade deletes an upgrade.
-func (c *Client) DeleteUpgrade(ctx context.Context, name string) error {
-	return c.grpc.DeleteUpgrade(ctx, name)
+func (c *Client) DeleteUpgrade(ctx context.Context, namespace, name string) error {
+	return c.grpc.DeleteUpgrade(ctx, namespace, name)
 }
 
 // CancelUpgrade cancels a running upgrade.
-func (c *Client) CancelUpgrade(ctx context.Context, name string) (*v1.Upgrade, error) {
-	return c.grpc.CancelUpgrade(ctx, name)
+func (c *Client) CancelUpgrade(ctx context.Context, namespace, name string) (*v1.Upgrade, error) {
+	return c.grpc.CancelUpgrade(ctx, namespace, name)
 }
 
 // RetryUpgrade retries a failed upgrade.
-func (c *Client) RetryUpgrade(ctx context.Context, name string) (*v1.Upgrade, error) {
-	return c.grpc.RetryUpgrade(ctx, name)
+func (c *Client) RetryUpgrade(ctx context.Context, namespace, name string) (*v1.Upgrade, error) {
+	return c.grpc.RetryUpgrade(ctx, namespace, name)
 }
 
 // SubmitTransaction submits a new transaction.

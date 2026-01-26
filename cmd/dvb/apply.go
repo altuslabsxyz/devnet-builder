@@ -112,12 +112,13 @@ func runApply(cmd *cobra.Command, filePath string, dryRun bool) error {
 func applyDevnet(cmd *cobra.Command, devnet *config.YAMLDevnet) (*v1.ApplyDevnetResponse, error) {
 	ctx := cmd.Context()
 	name := devnet.Metadata.Name
+	namespace := devnet.Metadata.Namespace
 
 	// Convert YAML to proto spec
 	spec := yamlToProtoSpec(&devnet.Spec)
 
-	// Call ApplyDevnet (idempotent create or update)
-	resp, err := daemonClient.ApplyDevnet(ctx, name, spec, devnet.Metadata.Labels, devnet.Metadata.Annotations)
+	// Call ApplyDevnet (idempotent create or update) with namespace
+	resp, err := daemonClient.ApplyDevnet(ctx, namespace, name, spec, devnet.Metadata.Labels, devnet.Metadata.Annotations)
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply devnet %q: %w", name, err)
 	}
@@ -150,8 +151,12 @@ func yamlToProtoSpec(yamlSpec *config.YAMLDevnetSpec) *v1.DevnetSpec {
 // printApplyDryRun prints dry-run information for a devnet
 func printApplyDryRun(devnet *config.YAMLDevnet) {
 	name := devnet.Metadata.Name
+	namespace := devnet.Metadata.Namespace
+	if namespace == "" {
+		namespace = "default"
+	}
 
-	fmt.Printf("\ndevnet/%s (dry-run)\n", name)
+	fmt.Printf("\ndevnet/%s (namespace: %s, dry-run)\n", name, namespace)
 	fmt.Printf("  network:    %s\n", devnet.Spec.Network)
 	if devnet.Spec.NetworkVersion != "" {
 		fmt.Printf("  version:    %s\n", devnet.Spec.NetworkVersion)
@@ -188,17 +193,21 @@ func printApplyDryRun(devnet *config.YAMLDevnet) {
 // printApplyResult prints the result of applying a devnet with kubectl-style output
 func printApplyResult(devnet *config.YAMLDevnet, resp *v1.ApplyDevnetResponse) {
 	name := devnet.Metadata.Name
+	namespace := devnet.Metadata.Namespace
+	if namespace == "" {
+		namespace = "default"
+	}
 
 	// Color based on action
 	switch resp.Action {
 	case "created":
-		color.Green("devnet/%s created", name)
+		color.Green("devnet/%s created (namespace: %s)", name, namespace)
 	case "configured":
-		color.Yellow("devnet/%s configured", name)
+		color.Yellow("devnet/%s configured (namespace: %s)", name, namespace)
 	case "unchanged":
-		fmt.Printf("devnet/%s unchanged\n", name)
+		fmt.Printf("devnet/%s unchanged (namespace: %s)\n", name, namespace)
 	default:
 		// Fallback for unknown action
-		fmt.Printf("devnet/%s %s\n", name, resp.Action)
+		fmt.Printf("devnet/%s %s (namespace: %s)\n", name, resp.Action, namespace)
 	}
 }

@@ -32,6 +32,7 @@ func newUpgradeCmd() *cobra.Command {
 
 func newUpgradeCreateCmd() *cobra.Command {
 	var (
+		namespace    string
 		devnet       string
 		upgradeName  string
 		targetHeight int64
@@ -73,7 +74,7 @@ func newUpgradeCreateCmd() *cobra.Command {
 				},
 			}
 
-			upgrade, err := daemonClient.CreateUpgrade(cmd.Context(), name, spec)
+			upgrade, err := daemonClient.CreateUpgrade(cmd.Context(), namespace, name, spec)
 			if err != nil {
 				return err
 			}
@@ -90,6 +91,7 @@ func newUpgradeCreateCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
 	cmd.Flags().StringVar(&devnet, "devnet", "", "Name of the devnet to upgrade (required)")
 	cmd.Flags().StringVar(&upgradeName, "upgrade-name", "", "Name for the on-chain upgrade proposal (required)")
 	cmd.Flags().Int64Var(&targetHeight, "target-height", 0, "Target block height for upgrade (0 = auto-calculate)")
@@ -106,7 +108,7 @@ func newUpgradeCreateCmd() *cobra.Command {
 }
 
 func newUpgradeListCmd() *cobra.Command {
-	var devnet string
+	var namespace string
 
 	cmd := &cobra.Command{
 		Use:     "list",
@@ -117,7 +119,7 @@ func newUpgradeListCmd() *cobra.Command {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			upgrades, err := daemonClient.ListUpgrades(cmd.Context(), devnet)
+			upgrades, err := daemonClient.ListUpgrades(cmd.Context(), namespace)
 			if err != nil {
 				return err
 			}
@@ -128,7 +130,7 @@ func newUpgradeListCmd() *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "NAME\tDEVNET\tUPGRADE\tPHASE\tPROGRESS")
+			fmt.Fprintln(w, "NAMESPACE\tNAME\tDEVNET\tUPGRADE\tPHASE\tPROGRESS")
 			for _, u := range upgrades {
 				progress := ""
 				switch u.Status.Phase {
@@ -142,7 +144,8 @@ func newUpgradeListCmd() *cobra.Command {
 						}
 					}
 				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+					u.Metadata.Namespace,
 					u.Metadata.Name,
 					u.Spec.DevnetRef,
 					u.Spec.UpgradeName,
@@ -155,13 +158,15 @@ func newUpgradeListCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&devnet, "devnet", "", "Filter by devnet name")
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Filter by namespace (empty = all namespaces)")
 
 	return cmd
 }
 
 func newUpgradeStatusCmd() *cobra.Command {
-	return &cobra.Command{
+	var namespace string
+
+	cmd := &cobra.Command{
 		Use:   "status [name]",
 		Short: "Show upgrade status",
 		Args:  cobra.ExactArgs(1),
@@ -172,7 +177,7 @@ func newUpgradeStatusCmd() *cobra.Command {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			upgrade, err := daemonClient.GetUpgrade(cmd.Context(), name)
+			upgrade, err := daemonClient.GetUpgrade(cmd.Context(), namespace, name)
 			if err != nil {
 				return err
 			}
@@ -181,10 +186,16 @@ func newUpgradeStatusCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+
+	return cmd
 }
 
 func newUpgradeCancelCmd() *cobra.Command {
-	return &cobra.Command{
+	var namespace string
+
+	cmd := &cobra.Command{
 		Use:   "cancel [name]",
 		Short: "Cancel a running upgrade",
 		Args:  cobra.ExactArgs(1),
@@ -195,7 +206,7 @@ func newUpgradeCancelCmd() *cobra.Command {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			upgrade, err := daemonClient.CancelUpgrade(cmd.Context(), name)
+			upgrade, err := daemonClient.CancelUpgrade(cmd.Context(), namespace, name)
 			if err != nil {
 				return err
 			}
@@ -206,10 +217,16 @@ func newUpgradeCancelCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+
+	return cmd
 }
 
 func newUpgradeRetryCmd() *cobra.Command {
-	return &cobra.Command{
+	var namespace string
+
+	cmd := &cobra.Command{
 		Use:   "retry [name]",
 		Short: "Retry a failed upgrade",
 		Args:  cobra.ExactArgs(1),
@@ -220,7 +237,7 @@ func newUpgradeRetryCmd() *cobra.Command {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			upgrade, err := daemonClient.RetryUpgrade(cmd.Context(), name)
+			upgrade, err := daemonClient.RetryUpgrade(cmd.Context(), namespace, name)
 			if err != nil {
 				return err
 			}
@@ -231,10 +248,17 @@ func newUpgradeRetryCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+
+	return cmd
 }
 
 func newUpgradeDeleteCmd() *cobra.Command {
-	var force bool
+	var (
+		namespace string
+		force     bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "delete [name]",
@@ -256,7 +280,7 @@ func newUpgradeDeleteCmd() *cobra.Command {
 				}
 			}
 
-			err := daemonClient.DeleteUpgrade(cmd.Context(), name)
+			err := daemonClient.DeleteUpgrade(cmd.Context(), namespace, name)
 			if err != nil {
 				return err
 			}
@@ -266,6 +290,7 @@ func newUpgradeDeleteCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "Skip confirmation")
 
 	return cmd
