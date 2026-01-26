@@ -19,9 +19,13 @@ GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 # ldflags for version injection
+# Inject to both internal and internal/version for backwards compatibility
 LDFLAGS = -X github.com/altuslabsxyz/devnet-builder/internal.Version=$(VERSION) \
           -X github.com/altuslabsxyz/devnet-builder/internal.GitCommit=$(GIT_COMMIT) \
-          -X github.com/altuslabsxyz/devnet-builder/internal.BuildDate=$(BUILD_DATE)
+          -X github.com/altuslabsxyz/devnet-builder/internal.BuildDate=$(BUILD_DATE) \
+          -X github.com/altuslabsxyz/devnet-builder/internal/version.Version=$(VERSION) \
+          -X github.com/altuslabsxyz/devnet-builder/internal/version.GitCommit=$(GIT_COMMIT) \
+          -X github.com/altuslabsxyz/devnet-builder/internal/version.BuildDate=$(BUILD_DATE)
 
 # Default target
 .DEFAULT_GOAL := build

@@ -8,6 +8,7 @@ import (
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
+	"github.com/altuslabsxyz/devnet-builder/internal/version"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -77,18 +78,52 @@ func main() {
 }
 
 func newVersionCmd() *cobra.Command {
-	return &cobra.Command{
+	var (
+		long       bool
+		jsonOutput bool
+	)
+
+	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print version information",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("dvb version 0.1.0")
-			if daemonClient != nil {
-				fmt.Println("Mode: daemon")
-			} else {
-				fmt.Println("Mode: standalone")
+		Long:  "Print version information including build details. Use --long for detailed dependency info.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			info := version.NewInfo("devnet-builder", "dvb")
+
+			if long {
+				info = info.WithBuildDeps()
 			}
+
+			if jsonOutput {
+				output, err := info.JSON()
+				if err != nil {
+					return err
+				}
+				fmt.Println(output)
+				return nil
+			}
+
+			if long {
+				fmt.Print(info.LongString())
+			} else {
+				fmt.Print(info.String())
+			}
+
+			// Show connection mode (dvb-specific feature)
+			if daemonClient != nil {
+				fmt.Println("mode: daemon")
+			} else {
+				fmt.Println("mode: standalone")
+			}
+
+			return nil
 		},
 	}
+
+	cmd.Flags().BoolVar(&long, "long", false, "Show detailed version info including build dependencies")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output version info in JSON format")
+
+	return cmd
 }
 
 func newDaemonCmd() *cobra.Command {
