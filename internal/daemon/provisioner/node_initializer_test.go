@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,7 +30,7 @@ func (m *mockPluginInitializer) DefaultChainID() string {
 }
 
 func (m *mockPluginInitializer) DefaultMoniker(index int) string {
-	return "validator-" + string(rune('0'+index))
+	return fmt.Sprintf("validator-%d", index)
 }
 
 func (m *mockPluginInitializer) InitCommandArgs(homeDir, moniker, chainID string) []string {
@@ -240,7 +241,7 @@ func TestNodeInitializerInitializeMultipleNodes(t *testing.T) {
 	}
 
 	for i, call := range mockInfra.initCalls {
-		expectedMoniker := "validator-" + string(rune('0'+i))
+		expectedMoniker := fmt.Sprintf("validator-%d", i)
 		if call.Moniker != expectedMoniker {
 			t.Errorf("Node %d: expected moniker '%s', got '%s'", i, expectedMoniker, call.Moniker)
 		}
@@ -458,7 +459,7 @@ func TestNodeInitializerGetAllNodeIDs(t *testing.T) {
 
 	// Create mock node directories with node_key.json files
 	for i := 0; i < 3; i++ {
-		configDir := filepath.Join(tempDir, "node"+string(rune('0'+i)), "config")
+		configDir := filepath.Join(tempDir, fmt.Sprintf("node%d", i), "config")
 		if err := os.MkdirAll(configDir, 0755); err != nil {
 			t.Fatalf("Failed to create config dir: %v", err)
 		}
