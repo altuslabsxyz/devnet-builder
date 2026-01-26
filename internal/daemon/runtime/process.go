@@ -134,18 +134,23 @@ func (pr *ProcessRuntime) StartNode(ctx context.Context, node *types.Node, opts 
 func (pr *ProcessRuntime) StopNode(ctx context.Context, nodeID string, graceful bool) error {
 	pr.mu.Lock()
 	sup, exists := pr.supervisors[nodeID]
-	pr.mu.Unlock()
-
 	if !exists {
+		pr.mu.Unlock()
 		return fmt.Errorf("node %s not found", nodeID)
 	}
+	delete(pr.supervisors, nodeID)
+	pr.mu.Unlock()
 
-	sup.stop()
+	if graceful {
+		sup.stop()
+	} else {
+		sup.forceStop()
+	}
 
 	// Close log writer
 	pr.logManager.Close(nodeID)
 
-	pr.config.Logger.Info("stopped node", "nodeID", nodeID)
+	pr.config.Logger.Info("stopped node", "nodeID", nodeID, "graceful", graceful)
 	return nil
 }
 

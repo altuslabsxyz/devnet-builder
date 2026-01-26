@@ -202,9 +202,23 @@ func (s *supervisor) stopProcess() {
 	}()
 }
 
-// stop signals the supervisor to stop
+// stop signals the supervisor to stop gracefully
 // Uses sync.Once to prevent double-close panic on stopCh
 func (s *supervisor) stop() {
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+	})
+	<-s.stoppedCh
+}
+
+// forceStop immediately kills the process with SIGKILL
+func (s *supervisor) forceStop() {
+	s.mu.Lock()
+	if s.cmd != nil && s.cmd.Process != nil {
+		_ = s.cmd.Process.Signal(syscall.SIGKILL)
+	}
+	s.mu.Unlock()
+
 	s.stopOnce.Do(func() {
 		close(s.stopCh)
 	})
