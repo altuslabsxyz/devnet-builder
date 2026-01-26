@@ -3,7 +3,9 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
@@ -89,6 +91,32 @@ func (c *DevnetController) Reconcile(ctx context.Context, key string) error {
 func (c *DevnetController) reconcilePending(ctx context.Context, devnet *types.Devnet) error {
 	c.logger.Info("starting provisioning", "name", devnet.Metadata.Name)
 
+	// Set Progressing condition
+	devnet.Status.Conditions = types.SetCondition(
+		devnet.Status.Conditions,
+		types.ConditionTypeProgressing,
+		types.ConditionTrue,
+		types.ReasonProvisioning,
+		"Starting provisioning",
+	)
+
+	// Set Ready condition to false initially
+	devnet.Status.Conditions = types.SetCondition(
+		devnet.Status.Conditions,
+		types.ConditionTypeReady,
+		types.ConditionFalse,
+		types.ReasonNodesNotReady,
+		"Waiting for nodes to be created",
+	)
+
+	// Add event
+	devnet.Status.Events = append(devnet.Status.Events, types.NewEvent(
+		types.EventTypeNormal,
+		types.ReasonProvisioning,
+		fmt.Sprintf("Starting provisioning for %d validators", devnet.Spec.Validators),
+		"devnet-controller",
+	))
+
 	devnet.Status.Phase = types.PhaseProvisioning
 	devnet.Status.Message = "Starting provisioning"
 	devnet.Metadata.UpdatedAt = time.Now()
@@ -106,6 +134,36 @@ func (c *DevnetController) reconcileProvisioning(ctx context.Context, devnet *ty
 		err := c.provisioner.Provision(ctx, devnet)
 		if err != nil {
 			c.logger.Error("provisioning failed", "name", devnet.Metadata.Name, "error", err)
+
+			// Classify the error and set appropriate conditions
+			reason, message := c.classifyProvisioningError(err)
+
+			// Set Progressing to false
+			devnet.Status.Conditions = types.SetCondition(
+				devnet.Status.Conditions,
+				types.ConditionTypeProgressing,
+				types.ConditionFalse,
+				reason,
+				message,
+			)
+
+			// Set Degraded to true
+			devnet.Status.Conditions = types.SetCondition(
+				devnet.Status.Conditions,
+				types.ConditionTypeDegraded,
+				types.ConditionTrue,
+				reason,
+				message,
+			)
+
+			// Add warning event
+			devnet.Status.Events = append(devnet.Status.Events, types.NewEvent(
+				types.EventTypeWarning,
+				reason,
+				message,
+				"devnet-controller",
+			))
+
 			devnet.Status.Phase = types.PhaseDegraded
 			devnet.Status.Message = "Provisioning failed: " + err.Error()
 			devnet.Metadata.UpdatedAt = time.Now()
@@ -115,9 +173,45 @@ func (c *DevnetController) reconcileProvisioning(ctx context.Context, devnet *ty
 
 	// For now (Phase 2), we just mark as Running
 	// Phase 3 will add actual Docker orchestration
-	devnet.Status.Phase = types.PhaseRunning
 	devnet.Status.Nodes = devnet.Spec.Validators + devnet.Spec.FullNodes
 	devnet.Status.ReadyNodes = devnet.Status.Nodes // Assume all ready for now
+
+	// Set Progressing to false (complete)
+	devnet.Status.Conditions = types.SetCondition(
+		devnet.Status.Conditions,
+		types.ConditionTypeProgressing,
+		types.ConditionFalse,
+		"ProvisioningComplete",
+		"Provisioning completed successfully",
+	)
+
+	// Set NodesCreated to true
+	devnet.Status.Conditions = types.SetCondition(
+		devnet.Status.Conditions,
+		types.ConditionTypeNodesCreated,
+		types.ConditionTrue,
+		types.ReasonAllNodesReady,
+		fmt.Sprintf("%d/%d nodes created", devnet.Status.Nodes, devnet.Status.Nodes),
+	)
+
+	// Set Ready to true
+	devnet.Status.Conditions = types.SetCondition(
+		devnet.Status.Conditions,
+		types.ConditionTypeReady,
+		types.ConditionTrue,
+		types.ReasonAllNodesReady,
+		fmt.Sprintf("%d/%d nodes ready", devnet.Status.ReadyNodes, devnet.Status.Nodes),
+	)
+
+	// Add event
+	devnet.Status.Events = append(devnet.Status.Events, types.NewEvent(
+		types.EventTypeNormal,
+		"ProvisioningComplete",
+		fmt.Sprintf("Successfully provisioned %d nodes", devnet.Status.Nodes),
+		"devnet-controller",
+	))
+
+	devnet.Status.Phase = types.PhaseRunning
 	devnet.Status.Message = "Devnet is running"
 	devnet.Status.LastHealthCheck = time.Now()
 	devnet.Metadata.UpdatedAt = time.Now()
@@ -127,6 +221,28 @@ func (c *DevnetController) reconcileProvisioning(ctx context.Context, devnet *ty
 		"nodes", devnet.Status.Nodes)
 
 	return c.store.UpdateDevnet(ctx, devnet)
+}
+
+// classifyProvisioningError determines the reason code for an error.
+func (c *DevnetController) classifyProvisioningError(err error) (reason, message string) {
+	errStr := err.Error()
+
+	switch {
+	case strings.Contains(errStr, "image") && strings.Contains(errStr, "not found"):
+		return types.ReasonImageNotFound, fmt.Sprintf("Docker image not found: %v", err)
+	case strings.Contains(errStr, "credentials"):
+		return types.ReasonCredentialsNotFound, fmt.Sprintf("Credentials not found: %v", err)
+	case strings.Contains(errStr, "mode") && strings.Contains(errStr, "not supported"):
+		return types.ReasonModeNotSupported, fmt.Sprintf("Execution mode not supported: %v", err)
+	case strings.Contains(errStr, "binary") && strings.Contains(errStr, "not found"):
+		return types.ReasonBinaryNotFound, fmt.Sprintf("Binary not found: %v", err)
+	case strings.Contains(errStr, "container"):
+		return types.ReasonContainerFailed, fmt.Sprintf("Container operation failed: %v", err)
+	case strings.Contains(errStr, "network") || strings.Contains(errStr, "connection"):
+		return types.ReasonNetworkError, fmt.Sprintf("Network error: %v", err)
+	default:
+		return "ProvisioningFailed", fmt.Sprintf("Provisioning failed: %v", err)
+	}
 }
 
 // reconcileRunning handles devnets in Running phase.
