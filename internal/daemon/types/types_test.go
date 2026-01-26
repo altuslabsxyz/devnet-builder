@@ -59,3 +59,43 @@ func TestDevnetStatus_SDKVersionHistory(t *testing.T) {
 	assert.Len(t, status.SDKVersionHistory, 1)
 	assert.Equal(t, "0.50.9", status.SDKVersionHistory[0].FromVersion)
 }
+
+func TestResourceMetaNamespace(t *testing.T) {
+	meta := ResourceMeta{
+		Name:      "test-devnet",
+		Namespace: "production",
+	}
+	if meta.Namespace != "production" {
+		t.Errorf("expected namespace 'production', got %q", meta.Namespace)
+	}
+}
+
+func TestResourceMetaFullName(t *testing.T) {
+	tests := []struct {
+		name      string
+		namespace string
+		want      string
+	}{
+		{"devnet", "prod", "prod/devnet"},
+		{"devnet", "", "default/devnet"},
+		{"devnet", "default", "default/devnet"},
+	}
+	for _, tt := range tests {
+		meta := ResourceMeta{Name: tt.name, Namespace: tt.namespace}
+		if got := meta.FullName(); got != tt.want {
+			t.Errorf("FullName() = %q, want %q", got, tt.want)
+		}
+	}
+}
+
+func TestResourceMetaEnsureNamespace(t *testing.T) {
+	// Test that empty namespace gets set to default
+	meta := ResourceMeta{Name: "test", Namespace: ""}
+	meta.EnsureNamespace()
+	assert.Equal(t, DefaultNamespace, meta.Namespace)
+
+	// Test that non-empty namespace is preserved
+	meta2 := ResourceMeta{Name: "test", Namespace: "custom"}
+	meta2.EnsureNamespace()
+	assert.Equal(t, "custom", meta2.Namespace)
+}

@@ -25,6 +25,10 @@ type NodeSpec struct {
 	// DevnetRef is the name of the parent Devnet.
 	DevnetRef string `json:"devnetRef"`
 
+	// NamespaceRef is the namespace of the parent Devnet.
+	// This allows looking up the parent devnet across namespaces.
+	NamespaceRef string `json:"namespaceRef"`
+
 	// Index is the node's index within the devnet (0-based).
 	Index int `json:"index"`
 
