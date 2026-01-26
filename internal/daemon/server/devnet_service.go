@@ -253,12 +253,17 @@ func (s *DevnetService) ApplyDevnet(ctx context.Context, req *v1.ApplyDevnetRequ
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	s.logger.Info("applying devnet", "name", req.Name)
+	namespace := req.Namespace
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+
+	s.logger.Info("applying devnet", "namespace", namespace, "name", req.Name)
 
 	// Check if devnet exists
-	existing, err := s.store.GetDevnet(ctx, req.Name)
+	existing, err := s.store.GetDevnet(ctx, namespace, req.Name)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		s.logger.Error("failed to get devnet", "name", req.Name, "error", err)
+		s.logger.Error("failed to get devnet", "namespace", namespace, "name", req.Name, "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to get devnet: %v", err)
 	}
 
@@ -267,12 +272,12 @@ func (s *DevnetService) ApplyDevnet(ctx context.Context, req *v1.ApplyDevnetRequ
 		devnet := ApplyRequestToDevnet(req)
 		err = s.store.CreateDevnet(ctx, devnet)
 		if err != nil {
-			s.logger.Error("failed to create devnet", "name", req.Name, "error", err)
+			s.logger.Error("failed to create devnet", "namespace", namespace, "name", req.Name, "error", err)
 			return nil, status.Errorf(codes.Internal, "failed to create devnet: %v", err)
 		}
 
 		if s.manager != nil {
-			s.manager.Enqueue("devnets", req.Name)
+			s.manager.Enqueue("devnets", namespace+"/"+req.Name)
 		}
 
 		return &v1.ApplyDevnetResponse{
@@ -306,12 +311,12 @@ func (s *DevnetService) ApplyDevnet(ctx context.Context, req *v1.ApplyDevnetRequ
 
 	err = s.store.UpdateDevnet(ctx, existing)
 	if err != nil {
-		s.logger.Error("failed to update devnet", "name", req.Name, "error", err)
+		s.logger.Error("failed to update devnet", "namespace", namespace, "name", req.Name, "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to update devnet: %v", err)
 	}
 
 	if s.manager != nil {
-		s.manager.Enqueue("devnets", req.Name)
+		s.manager.Enqueue("devnets", namespace+"/"+req.Name)
 	}
 
 	return &v1.ApplyDevnetResponse{
@@ -326,12 +331,17 @@ func (s *DevnetService) UpdateDevnet(ctx context.Context, req *v1.UpdateDevnetRe
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	s.logger.Info("updating devnet", "name", req.Name)
+	namespace := req.Namespace
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
 
-	existing, err := s.store.GetDevnet(ctx, req.Name)
+	s.logger.Info("updating devnet", "namespace", namespace, "name", req.Name)
+
+	existing, err := s.store.GetDevnet(ctx, namespace, req.Name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return nil, status.Errorf(codes.NotFound, "devnet %q not found", req.Name)
+			return nil, status.Errorf(codes.NotFound, "devnet %q not found in namespace %q", req.Name, namespace)
 		}
 		return nil, status.Errorf(codes.Internal, "failed to get devnet: %v", err)
 	}
@@ -350,12 +360,12 @@ func (s *DevnetService) UpdateDevnet(ctx context.Context, req *v1.UpdateDevnetRe
 
 	err = s.store.UpdateDevnet(ctx, existing)
 	if err != nil {
-		s.logger.Error("failed to update devnet", "name", req.Name, "error", err)
+		s.logger.Error("failed to update devnet", "namespace", namespace, "name", req.Name, "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to update devnet: %v", err)
 	}
 
 	if s.manager != nil {
-		s.manager.Enqueue("devnets", req.Name)
+		s.manager.Enqueue("devnets", namespace+"/"+req.Name)
 	}
 
 	return &v1.UpdateDevnetResponse{Devnet: DevnetToProto(existing)}, nil

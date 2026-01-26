@@ -1191,6 +1191,7 @@ type ApplyDevnetRequest struct {
 	Spec          *DevnetSpec            `protobuf:"bytes,2,opt,name=spec,proto3" json:"spec,omitempty"`
 	Labels        map[string]string      `protobuf:"bytes,3,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Annotations   map[string]string      `protobuf:"bytes,4,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Namespace     string                 `protobuf:"bytes,5,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1253,6 +1254,13 @@ func (x *ApplyDevnetRequest) GetAnnotations() map[string]string {
 	return nil
 }
 
+func (x *ApplyDevnetRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
 type ApplyDevnetResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Devnet        *Devnet                `protobuf:"bytes,1,opt,name=devnet,proto3" json:"devnet,omitempty"`
@@ -1311,6 +1319,7 @@ type UpdateDevnetRequest struct {
 	Spec          *DevnetSpec            `protobuf:"bytes,2,opt,name=spec,proto3" json:"spec,omitempty"`
 	Labels        map[string]string      `protobuf:"bytes,3,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Annotations   map[string]string      `protobuf:"bytes,4,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Namespace     string                 `protobuf:"bytes,5,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1371,6 +1380,13 @@ func (x *UpdateDevnetRequest) GetAnnotations() map[string]string {
 		return x.Annotations
 	}
 	return nil
+}
+
+func (x *UpdateDevnetRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
 }
 
 type UpdateDevnetResponse struct {
@@ -3827,12 +3843,13 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\"F\n" +
 	"\x12StopDevnetResponse\x120\n" +
-	"\x06devnet\x18\x01 \x01(\v2\x18.devnetbuilder.v1.DevnetR\x06devnet\"\xf8\x02\n" +
+	"\x06devnet\x18\x01 \x01(\v2\x18.devnetbuilder.v1.DevnetR\x06devnet\"\x96\x03\n" +
 	"\x12ApplyDevnetRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x120\n" +
 	"\x04spec\x18\x02 \x01(\v2\x1c.devnetbuilder.v1.DevnetSpecR\x04spec\x12H\n" +
 	"\x06labels\x18\x03 \x03(\v20.devnetbuilder.v1.ApplyDevnetRequest.LabelsEntryR\x06labels\x12W\n" +
-	"\vannotations\x18\x04 \x03(\v25.devnetbuilder.v1.ApplyDevnetRequest.AnnotationsEntryR\vannotations\x1a9\n" +
+	"\vannotations\x18\x04 \x03(\v25.devnetbuilder.v1.ApplyDevnetRequest.AnnotationsEntryR\vannotations\x12\x1c\n" +
+	"\tnamespace\x18\x05 \x01(\tR\tnamespace\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a>\n" +
@@ -3841,12 +3858,13 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"_\n" +
 	"\x13ApplyDevnetResponse\x120\n" +
 	"\x06devnet\x18\x01 \x01(\v2\x18.devnetbuilder.v1.DevnetR\x06devnet\x12\x16\n" +
-	"\x06action\x18\x02 \x01(\tR\x06action\"\xfb\x02\n" +
+	"\x06action\x18\x02 \x01(\tR\x06action\"\x99\x03\n" +
 	"\x13UpdateDevnetRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x120\n" +
 	"\x04spec\x18\x02 \x01(\v2\x1c.devnetbuilder.v1.DevnetSpecR\x04spec\x12I\n" +
 	"\x06labels\x18\x03 \x03(\v21.devnetbuilder.v1.UpdateDevnetRequest.LabelsEntryR\x06labels\x12X\n" +
-	"\vannotations\x18\x04 \x03(\v26.devnetbuilder.v1.UpdateDevnetRequest.AnnotationsEntryR\vannotations\x1a9\n" +
+	"\vannotations\x18\x04 \x03(\v26.devnetbuilder.v1.UpdateDevnetRequest.AnnotationsEntryR\vannotations\x12\x1c\n" +
+	"\tnamespace\x18\x05 \x01(\tR\tnamespace\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a>\n" +

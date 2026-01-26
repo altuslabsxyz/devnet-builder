@@ -126,8 +126,9 @@ func (c *GRPCClient) StopDevnet(ctx context.Context, namespace, name string) (*v
 }
 
 // ApplyDevnet creates or updates a devnet.
-func (c *GRPCClient) ApplyDevnet(ctx context.Context, name string, spec *v1.DevnetSpec, labels, annotations map[string]string) (*v1.ApplyDevnetResponse, error) {
+func (c *GRPCClient) ApplyDevnet(ctx context.Context, namespace, name string, spec *v1.DevnetSpec, labels, annotations map[string]string) (*v1.ApplyDevnetResponse, error) {
 	resp, err := c.devnet.ApplyDevnet(ctx, &v1.ApplyDevnetRequest{
+		Namespace:   namespace,
 		Name:        name,
 		Spec:        spec,
 		Labels:      labels,
@@ -140,8 +141,9 @@ func (c *GRPCClient) ApplyDevnet(ctx context.Context, name string, spec *v1.Devn
 }
 
 // UpdateDevnet updates an existing devnet.
-func (c *GRPCClient) UpdateDevnet(ctx context.Context, name string, spec *v1.DevnetSpec, labels, annotations map[string]string) (*v1.Devnet, error) {
+func (c *GRPCClient) UpdateDevnet(ctx context.Context, namespace, name string, spec *v1.DevnetSpec, labels, annotations map[string]string) (*v1.Devnet, error) {
 	resp, err := c.devnet.UpdateDevnet(ctx, &v1.UpdateDevnetRequest{
+		Namespace:   namespace,
 		Name:        name,
 		Spec:        spec,
 		Labels:      labels,

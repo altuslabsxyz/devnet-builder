@@ -274,7 +274,7 @@ func TestDevnetController_ReconcilePending_SetsConditions(t *testing.T) {
 	}
 
 	// Get updated devnet
-	updated, err := s.GetDevnet(context.Background(), "test-devnet")
+	updated, err := s.GetDevnet(context.Background(), types.DefaultNamespace, "test-devnet")
 	if err != nil {
 		t.Fatalf("failed to get devnet: %v", err)
 	}
@@ -349,7 +349,7 @@ func TestDevnetController_ReconcileProvisioning_SetsConditionsOnSuccess(t *testi
 	}
 
 	// Get updated devnet
-	updated, err := s.GetDevnet(context.Background(), "test-devnet")
+	updated, err := s.GetDevnet(context.Background(), types.DefaultNamespace, "test-devnet")
 	if err != nil {
 		t.Fatalf("failed to get devnet: %v", err)
 	}
@@ -453,7 +453,7 @@ func TestDevnetController_ReconcileProvisioning_SetsConditionsOnFailure(t *testi
 	}
 
 	// Get updated devnet
-	updated, err := s.GetDevnet(context.Background(), "test-devnet")
+	updated, err := s.GetDevnet(context.Background(), types.DefaultNamespace, "test-devnet")
 	if err != nil {
 		t.Fatalf("failed to get devnet: %v", err)
 	}
