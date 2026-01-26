@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/altuslabsxyz/devnet-builder/internal/plugin/types"
 )
 
@@ -90,7 +91,7 @@ func TestGenesisForkerForkFromLocal(t *testing.T) {
 	forker := NewGenesisForker(config)
 
 	// Fork from local file
-	opts := ForkOptions{
+	opts := ports.ForkOptions{
 		Source: types.GenesisSource{
 			Mode:      types.GenesisModeLocal,
 			LocalPath: genesisPath,
@@ -135,7 +136,7 @@ func TestGenesisForkerForkFromLocalMissingPath(t *testing.T) {
 	forker := NewGenesisForker(config)
 
 	// Fork from local file without specifying path
-	opts := ForkOptions{
+	opts := ports.ForkOptions{
 		Source: types.GenesisSource{
 			Mode: types.GenesisModeLocal,
 			// LocalPath intentionally empty
@@ -160,7 +161,7 @@ func TestGenesisForkerForkFromLocalFileNotFound(t *testing.T) {
 	forker := NewGenesisForker(config)
 
 	// Fork from local file that doesn't exist
-	opts := ForkOptions{
+	opts := ports.ForkOptions{
 		Source: types.GenesisSource{
 			Mode:      types.GenesisModeLocal,
 			LocalPath: filepath.Join(tempDir, "nonexistent.json"),
@@ -184,7 +185,7 @@ func TestGenesisForkerForkFromRPCNoURL(t *testing.T) {
 
 	forker := NewGenesisForker(config)
 
-	opts := ForkOptions{
+	opts := ports.ForkOptions{
 		Source: types.GenesisSource{
 			Mode: types.GenesisModeRPC,
 			// No RPCURL specified
@@ -210,7 +211,7 @@ func TestGenesisForkerForkFromSnapshotNoBinary(t *testing.T) {
 
 	forker := NewGenesisForker(config)
 
-	opts := ForkOptions{
+	opts := ports.ForkOptions{
 		Source: types.GenesisSource{
 			Mode:        types.GenesisModeSnapshot,
 			NetworkType: "mainnet",
@@ -246,7 +247,7 @@ func TestGenesisForkerApplyChainIDPatch(t *testing.T) {
 
 	forker := NewGenesisForker(config)
 
-	opts := ForkOptions{
+	opts := ports.ForkOptions{
 		Source: types.GenesisSource{
 			Mode:      types.GenesisModeLocal,
 			LocalPath: genesisPath,
@@ -283,7 +284,7 @@ func TestGenesisForkerUnsupportedMode(t *testing.T) {
 
 	forker := NewGenesisForker(config)
 
-	opts := ForkOptions{
+	opts := ports.ForkOptions{
 		Source: types.GenesisSource{
 			Mode: "invalid-mode",
 		},
@@ -317,7 +318,7 @@ func TestGenesisForkerWithNilPluginGenesis(t *testing.T) {
 
 	forker := NewGenesisForker(config)
 
-	opts := ForkOptions{
+	opts := ports.ForkOptions{
 		Source: types.GenesisSource{
 			Mode:      types.GenesisModeLocal,
 			LocalPath: genesisPath,
@@ -359,7 +360,7 @@ func TestGenesisForkerNoPatchOptions(t *testing.T) {
 
 	forker := NewGenesisForker(config)
 
-	opts := ForkOptions{
+	opts := ports.ForkOptions{
 		Source: types.GenesisSource{
 			Mode:      types.GenesisModeLocal,
 			LocalPath: genesisPath,
@@ -390,7 +391,7 @@ func TestGenesisForkerForkFromLocalRelativePathRejected(t *testing.T) {
 	forker := NewGenesisForker(config)
 
 	// Fork from local file with relative path - should be rejected for security
-	opts := ForkOptions{
+	opts := ports.ForkOptions{
 		Source: types.GenesisSource{
 			Mode:      types.GenesisModeLocal,
 			LocalPath: "relative/path/genesis.json", // Not absolute

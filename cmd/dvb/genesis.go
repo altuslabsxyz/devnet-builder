@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/provisioner"
 	"github.com/altuslabsxyz/devnet-builder/internal/plugin/cosmos"
 	"github.com/altuslabsxyz/devnet-builder/internal/plugin/types"
@@ -178,7 +179,7 @@ func runGenesisFork(ctx context.Context, opts *genesisForkOptions) error {
 	}
 
 	// Fork genesis
-	result, err := forker.Fork(ctx, provisioner.ForkOptions{
+	result, err := forker.Fork(ctx, ports.ForkOptions{
 		Source: source,
 		PatchOpts: types.GenesisPatchOptions{
 			ChainID:       opts.chainID,

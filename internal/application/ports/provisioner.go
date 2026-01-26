@@ -112,6 +112,9 @@ type ForkResult struct {
 
 // Provisioner defines the interface for provisioning devnets.
 // This is the high-level interface that DevnetProvisioner implements.
+//
+// Note: Uses interface{} for devnet parameter to avoid circular import with
+// internal/daemon/types. Callers should pass *types.Devnet.
 type Provisioner interface {
 	// Provision creates all node resources for a devnet.
 	// This includes creating Node resources in the store.

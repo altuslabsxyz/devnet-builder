@@ -32,22 +32,8 @@ type GenesisForker struct {
 	logger *slog.Logger
 }
 
-// ForkOptions specifies options for forking genesis
-type ForkOptions struct {
-	Source     types.GenesisSource
-	PatchOpts  types.GenesisPatchOptions
-	BinaryPath string // required for snapshot export
-	NoCache    bool   // skip caching
-}
-
-// ForkResult contains the result of a genesis fork
-type ForkResult struct {
-	Genesis       []byte
-	SourceChainID string
-	NewChainID    string
-	SourceMode    types.GenesisMode
-	FetchedAt     time.Time
-}
+// Compile-time interface compliance check
+var _ ports.GenesisForker = (*GenesisForker)(nil)
 
 // NewGenesisForker creates a new genesis forker
 func NewGenesisForker(config GenesisForkerConfig) *GenesisForker {
@@ -63,7 +49,7 @@ func NewGenesisForker(config GenesisForkerConfig) *GenesisForker {
 }
 
 // Fork forks genesis from the specified source
-func (f *GenesisForker) Fork(ctx context.Context, opts ForkOptions) (*ForkResult, error) {
+func (f *GenesisForker) Fork(ctx context.Context, opts ports.ForkOptions) (*ports.ForkResult, error) {
 	f.logger.Info("forking genesis",
 		"mode", opts.Source.Mode,
 		"networkType", opts.Source.NetworkType,
@@ -115,7 +101,7 @@ func (f *GenesisForker) Fork(ctx context.Context, opts ForkOptions) (*ForkResult
 		}
 	}
 
-	return &ForkResult{
+	return &ports.ForkResult{
 		Genesis:       patched,
 		SourceChainID: sourceChainID,
 		NewChainID:    opts.PatchOpts.ChainID,
@@ -125,7 +111,7 @@ func (f *GenesisForker) Fork(ctx context.Context, opts ForkOptions) (*ForkResult
 }
 
 // forkFromRPC fetches genesis from an RPC endpoint
-func (f *GenesisForker) forkFromRPC(ctx context.Context, opts ForkOptions) ([]byte, error) {
+func (f *GenesisForker) forkFromRPC(ctx context.Context, opts ports.ForkOptions) ([]byte, error) {
 	// Determine RPC endpoint
 	rpcURL := opts.Source.RPCURL
 	if rpcURL == "" && f.config.PluginGenesis != nil {
@@ -145,7 +131,7 @@ func (f *GenesisForker) forkFromRPC(ctx context.Context, opts ForkOptions) ([]by
 }
 
 // forkFromSnapshot downloads snapshot and exports genesis
-func (f *GenesisForker) forkFromSnapshot(ctx context.Context, opts ForkOptions) ([]byte, error) {
+func (f *GenesisForker) forkFromSnapshot(ctx context.Context, opts ports.ForkOptions) ([]byte, error) {
 	if opts.BinaryPath == "" {
 		return nil, fmt.Errorf("binary path required for snapshot export")
 	}
@@ -168,7 +154,7 @@ func (f *GenesisForker) forkFromSnapshot(ctx context.Context, opts ForkOptions) 
 }
 
 // forkFromSnapshotInfra uses existing infrastructure for snapshot-based forking
-func (f *GenesisForker) forkFromSnapshotInfra(ctx context.Context, opts ForkOptions, snapshotURL string) ([]byte, error) {
+func (f *GenesisForker) forkFromSnapshotInfra(ctx context.Context, opts ports.ForkOptions, snapshotURL string) ([]byte, error) {
 	// Create work directory
 	workDir := filepath.Join(f.config.DataDir, "genesis-work", fmt.Sprintf("fork-%d", time.Now().UnixNano()))
 	if err := os.MkdirAll(workDir, 0755); err != nil {
@@ -231,7 +217,7 @@ func (f *GenesisForker) forkFromSnapshotInfra(ctx context.Context, opts ForkOpti
 }
 
 // forkFromLocal reads genesis from a local file
-func (f *GenesisForker) forkFromLocal(ctx context.Context, opts ForkOptions) ([]byte, error) {
+func (f *GenesisForker) forkFromLocal(ctx context.Context, opts ports.ForkOptions) ([]byte, error) {
 	if opts.Source.LocalPath == "" {
 		return nil, fmt.Errorf("local path required for local mode")
 	}
