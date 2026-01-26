@@ -77,6 +77,7 @@ func main() {
 		newUpgradeCmd(),
 		newTxCmd(),
 		newGovCmd(),
+		newGenesisCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

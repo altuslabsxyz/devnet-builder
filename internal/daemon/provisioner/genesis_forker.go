@@ -88,7 +88,11 @@ func (f *GenesisForker) Fork(ctx context.Context, opts ForkOptions) (*ForkResult
 	}
 
 	// Extract original chain ID
-	sourceChainID, _ := extractChainID(genesis)
+	sourceChainID, err := extractChainID(genesis)
+	if err != nil {
+		f.logger.Warn("failed to extract source chain ID", "error", err)
+		sourceChainID = ""
+	}
 
 	// Validate the fetched genesis
 	if f.config.PluginGenesis != nil {
@@ -232,13 +236,22 @@ func (f *GenesisForker) forkFromLocal(ctx context.Context, opts ForkOptions) ([]
 		return nil, fmt.Errorf("local path required for local mode")
 	}
 
-	genesis, err := os.ReadFile(opts.Source.LocalPath)
+	// Validate path is absolute and clean to prevent path traversal
+	cleanPath := filepath.Clean(opts.Source.LocalPath)
+	if !filepath.IsAbs(cleanPath) {
+		return nil, fmt.Errorf("local path must be absolute: %s", opts.Source.LocalPath)
+	}
+
+	genesis, err := os.ReadFile(cleanPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read local genesis: %w", err)
 	}
 
 	return genesis, nil
 }
+
+// httpClientTimeout is the timeout for HTTP requests to RPC endpoints
+const httpClientTimeout = 30 * time.Second
 
 // fetchGenesisHTTP fetches genesis via HTTP (fallback when no infrastructure)
 func (f *GenesisForker) fetchGenesisHTTP(ctx context.Context, url string) ([]byte, error) {
@@ -247,7 +260,11 @@ func (f *GenesisForker) fetchGenesisHTTP(ctx context.Context, url string) ([]byt
 		return nil, err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	// Use client with explicit timeout to prevent hanging on slow endpoints
+	client := &http.Client{
+		Timeout: httpClientTimeout,
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

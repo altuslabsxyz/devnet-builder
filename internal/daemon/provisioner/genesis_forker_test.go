@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -375,5 +376,33 @@ func TestGenesisForkerNoPatchOptions(t *testing.T) {
 	// With no patch options, chain ID should remain original
 	if result.SourceChainID != "test-chain" {
 		t.Errorf("Expected source chain ID 'test-chain', got '%s'", result.SourceChainID)
+	}
+}
+
+func TestGenesisForkerForkFromLocalRelativePathRejected(t *testing.T) {
+	tempDir := t.TempDir()
+
+	config := GenesisForkerConfig{
+		DataDir:       tempDir,
+		PluginGenesis: &mockPluginGenesis{},
+	}
+
+	forker := NewGenesisForker(config)
+
+	// Fork from local file with relative path - should be rejected for security
+	opts := ForkOptions{
+		Source: types.GenesisSource{
+			Mode:      types.GenesisModeLocal,
+			LocalPath: "relative/path/genesis.json", // Not absolute
+		},
+	}
+
+	ctx := context.Background()
+	_, err := forker.Fork(ctx, opts)
+	if err == nil {
+		t.Fatal("Expected error for relative path")
+	}
+	if !strings.Contains(err.Error(), "must be absolute") {
+		t.Errorf("Expected 'must be absolute' error, got: %v", err)
 	}
 }
