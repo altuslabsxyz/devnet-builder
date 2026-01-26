@@ -48,8 +48,8 @@ tests/e2e/TEST_RESULTS.md
 docs/plans/
 
 # Compiled binaries
-devnetd
-dvb
+/devnetd
+/dvb
 *.test
 .serena/
 
