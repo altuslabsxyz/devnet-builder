@@ -59,6 +59,8 @@ func main() {
 	rootCmd.AddCommand(
 		newVersionCmd(),
 		newDaemonCmd(),
+		newApplyCmd(),
+		newDiffCmd(),
 		newDeployCmd(),
 		newListCmd(),
 		newStatusCmd(),
