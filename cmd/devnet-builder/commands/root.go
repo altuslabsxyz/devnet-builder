@@ -203,6 +203,8 @@ func registerCommands(rootCmd *cobra.Command) {
 	statusCmd.GroupID = GroupMonitoring
 	logsCmd := core.NewLogsCmd()
 	logsCmd.GroupID = GroupMonitoring
+	execCmd := core.NewExecCmd()
+	execCmd.GroupID = GroupMonitoring
 	nodeCmd := manage.NewNodeCmd()
 	nodeCmd.GroupID = GroupMonitoring
 
@@ -244,6 +246,7 @@ func registerCommands(rootCmd *cobra.Command) {
 		// Monitoring commands
 		statusCmd,
 		logsCmd,
+		execCmd,
 		nodeCmd,
 
 		// Advanced commands
