@@ -212,6 +212,8 @@ func registerCommands(rootCmd *cobra.Command) {
 	portsCmd.GroupID = GroupMonitoring
 	nodeCmd := manage.NewNodeCmd()
 	nodeCmd.GroupID = GroupMonitoring
+	eventsCmd := core.NewEventsCmd()
+	eventsCmd.GroupID = GroupMonitoring
 
 	// Advanced commands
 	buildCmd := core.NewBuildCmd()
@@ -257,6 +259,7 @@ func registerCommands(rootCmd *cobra.Command) {
 		portForwardCmd,
 		portsCmd,
 		nodeCmd,
+		eventsCmd,
 
 		// Advanced commands
 		buildCmd,
