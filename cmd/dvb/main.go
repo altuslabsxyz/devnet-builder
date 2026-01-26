@@ -60,6 +60,7 @@ func main() {
 		newVersionCmd(),
 		newDaemonCmd(),
 		newApplyCmd(),
+		newGetCmd(),
 		newDiffCmd(),
 		newDeployCmd(),
 		newListCmd(),
