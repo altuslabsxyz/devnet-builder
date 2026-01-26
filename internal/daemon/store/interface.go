@@ -30,34 +30,35 @@ type ListTxOptions struct {
 
 // Store defines the interface for resource persistence.
 type Store interface {
-	// Devnet operations
+	// Devnet operations - namespace-scoped
 	CreateDevnet(ctx context.Context, devnet *Devnet) error
-	GetDevnet(ctx context.Context, name string) (*Devnet, error)
+	GetDevnet(ctx context.Context, namespace, name string) (*Devnet, error)
 	UpdateDevnet(ctx context.Context, devnet *Devnet) error
-	DeleteDevnet(ctx context.Context, name string) error
-	ListDevnets(ctx context.Context) ([]*Devnet, error)
+	DeleteDevnet(ctx context.Context, namespace, name string) error
+	ListDevnets(ctx context.Context, namespace string) ([]*Devnet, error) // empty namespace = all
+	ListNamespaces(ctx context.Context) ([]string, error)                 // list all namespaces
 
-	// Node operations
+	// Node operations - namespace-scoped
 	CreateNode(ctx context.Context, node *Node) error
-	GetNode(ctx context.Context, devnetName string, index int) (*Node, error)
+	GetNode(ctx context.Context, namespace, devnetName string, index int) (*Node, error)
 	UpdateNode(ctx context.Context, node *Node) error
-	DeleteNode(ctx context.Context, devnetName string, index int) error
-	ListNodes(ctx context.Context, devnetName string) ([]*Node, error)
-	DeleteNodesByDevnet(ctx context.Context, devnetName string) error
+	DeleteNode(ctx context.Context, namespace, devnetName string, index int) error
+	ListNodes(ctx context.Context, namespace, devnetName string) ([]*Node, error)
+	DeleteNodesByDevnet(ctx context.Context, namespace, devnetName string) error
 
-	// Upgrade operations
+	// Upgrade operations - namespace-scoped
 	CreateUpgrade(ctx context.Context, upgrade *Upgrade) error
-	GetUpgrade(ctx context.Context, name string) (*Upgrade, error)
+	GetUpgrade(ctx context.Context, namespace, name string) (*Upgrade, error)
 	UpdateUpgrade(ctx context.Context, upgrade *Upgrade) error
-	DeleteUpgrade(ctx context.Context, name string) error
-	ListUpgrades(ctx context.Context, devnetName string) ([]*Upgrade, error)
-	DeleteUpgradesByDevnet(ctx context.Context, devnetName string) error
+	DeleteUpgrade(ctx context.Context, namespace, name string) error
+	ListUpgrades(ctx context.Context, namespace, devnetName string) ([]*Upgrade, error)
+	DeleteUpgradesByDevnet(ctx context.Context, namespace, devnetName string) error
 
-	// Transaction operations
+	// Transaction operations - namespace-scoped
 	CreateTransaction(ctx context.Context, tx *Transaction) error
-	GetTransaction(ctx context.Context, id string) (*Transaction, error)
+	GetTransaction(ctx context.Context, id string) (*Transaction, error) // ID is globally unique
 	UpdateTransaction(ctx context.Context, tx *Transaction) error
-	ListTransactions(ctx context.Context, devnetName string, opts ListTxOptions) ([]*Transaction, error)
+	ListTransactions(ctx context.Context, namespace, devnetName string, opts ListTxOptions) ([]*Transaction, error)
 
 	// Watch watches for resource changes.
 	Watch(ctx context.Context, resourceType string, handler WatchHandler) error
