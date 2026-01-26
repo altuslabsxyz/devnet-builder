@@ -62,7 +62,11 @@ func main() {
 	}
 
 	// Check and migrate version before executing commands
+	// Respect DEVNET_HOME env var before flag parsing (matches behavior in root.go)
 	homeDir := commands.DefaultHomeDir()
+	if envHome := os.Getenv("DEVNET_HOME"); envHome != "" {
+		homeDir = envHome
+	}
 	if err := checkAndMigrateVersion(homeDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Version migration failed: %v\n", err)
 		globalLoader.Close()

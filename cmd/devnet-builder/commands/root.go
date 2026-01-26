@@ -9,6 +9,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/commands/cache"
 	configcmd "github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/commands/config"
 	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/commands/core"
+	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/commands/daemon"
 	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/commands/export"
 	"github.com/altuslabsxyz/devnet-builder/cmd/devnet-builder/commands/manage"
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
@@ -193,14 +194,26 @@ func registerCommands(rootCmd *cobra.Command) {
 	initCmd.GroupID = GroupMain
 	destroyCmd := manage.NewDestroyCmd()
 	destroyCmd.GroupID = GroupMain
+	applyCmd := manage.NewApplyCmd()
+	applyCmd.GroupID = GroupMain
+	diffCmd := manage.NewDiffCmd()
+	diffCmd.GroupID = GroupMain
 
 	// Monitoring commands
 	statusCmd := core.NewStatusCmd()
 	statusCmd.GroupID = GroupMonitoring
 	logsCmd := core.NewLogsCmd()
 	logsCmd.GroupID = GroupMonitoring
+	execCmd := core.NewExecCmd()
+	execCmd.GroupID = GroupMonitoring
+	portForwardCmd := manage.NewPortForwardCmd()
+	portForwardCmd.GroupID = GroupMonitoring
+	portsCmd := manage.NewPortsCmd()
+	portsCmd.GroupID = GroupMonitoring
 	nodeCmd := manage.NewNodeCmd()
 	nodeCmd.GroupID = GroupMonitoring
+	eventsCmd := core.NewEventsCmd()
+	eventsCmd.GroupID = GroupMonitoring
 
 	// Advanced commands
 	buildCmd := core.NewBuildCmd()
@@ -221,6 +234,8 @@ func registerCommands(rootCmd *cobra.Command) {
 	configCmd.GroupID = GroupAdvanced
 	networksCmd := core.NewNetworksCmd()
 	networksCmd.GroupID = GroupAdvanced
+	daemonCmd := daemon.NewDaemonCmd()
+	daemonCmd.GroupID = GroupAdvanced
 
 	// Utility commands (no group - shown separately)
 	versionCmd := core.NewVersionCmd()
@@ -234,11 +249,17 @@ func registerCommands(rootCmd *cobra.Command) {
 		stopCmd,
 		initCmd,
 		destroyCmd,
+		applyCmd,
+		diffCmd,
 
 		// Monitoring commands
 		statusCmd,
 		logsCmd,
+		execCmd,
+		portForwardCmd,
+		portsCmd,
 		nodeCmd,
+		eventsCmd,
 
 		// Advanced commands
 		buildCmd,
@@ -250,6 +271,7 @@ func registerCommands(rootCmd *cobra.Command) {
 		cacheCmd,
 		configCmd,
 		networksCmd,
+		daemonCmd,
 
 		// Utility commands
 		versionCmd,

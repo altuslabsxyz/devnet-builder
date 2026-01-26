@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -105,9 +106,13 @@ func TestSourceSelectionInteractiveSimulation(t *testing.T) {
 //   - Command should proceed with GitHub release selection automatically
 //   - Command should complete within timeout period
 func TestSourceSelectionCLIIntegration(t *testing.T) {
+	// Create isolated temp home directory
+	tempHome, cleanup := createTempHomeDir(t)
+	defer cleanup()
+
 	// Build the binary for testing
-	// Need to change to project root for build to work
-	buildCmd := exec.Command("go", "build", "-o", "/tmp/devnet-builder-test", "./cmd/devnet-builder")
+	binaryPath := filepath.Join(tempHome, "devnet-builder-test")
+	buildCmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/devnet-builder")
 	buildCmd.Dir = "../../" // Go up from tests/integration to project root
 
 	output, err := buildCmd.CombinedOutput()
@@ -115,15 +120,15 @@ func TestSourceSelectionCLIIntegration(t *testing.T) {
 		t.Logf("Build output: %s", output)
 		t.Fatalf("Failed to build devnet-builder: %v", err)
 	}
-	defer os.Remove("/tmp/devnet-builder-test")
 
 	t.Run("Deploy command with non-interactive stdin", func(t *testing.T) {
 		// Run deploy command with stdin closed (non-interactive)
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		cmd := exec.CommandContext(ctx, "/tmp/devnet-builder-test", "deploy", "--help")
-		cmd.Stdin = nil // No stdin = non-interactive
+		cmd := exec.CommandContext(ctx, binaryPath, "deploy", "--help")
+		cmd.Stdin = nil                                         // No stdin = non-interactive
+		cmd.Env = append(os.Environ(), "DEVNET_HOME="+tempHome) // Use isolated home
 
 		output, err := cmd.CombinedOutput()
 		if err != nil {
@@ -144,8 +149,9 @@ func TestSourceSelectionCLIIntegration(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		cmd := exec.CommandContext(ctx, "/tmp/devnet-builder-test", "upgrade", "--help")
-		cmd.Stdin = nil // No stdin = non-interactive
+		cmd := exec.CommandContext(ctx, binaryPath, "upgrade", "--help")
+		cmd.Stdin = nil                                         // No stdin = non-interactive
+		cmd.Env = append(os.Environ(), "DEVNET_HOME="+tempHome) // Use isolated home
 
 		output, err := cmd.CombinedOutput()
 		if err != nil {
