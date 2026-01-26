@@ -239,8 +239,8 @@ func statusFromProto(pb *v1.DevnetStatus) types.DevnetStatus {
 	for _, e := range pb.Events {
 		evt := types.Event{
 			Type:      e.Type,
-			Reason:   e.Reason,
-			Message:  e.Message,
+			Reason:    e.Reason,
+			Message:   e.Message,
 			Component: e.Component,
 		}
 		if e.Timestamp != nil {
