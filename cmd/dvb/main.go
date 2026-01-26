@@ -68,7 +68,6 @@ func main() {
 		newDiffCmd(),
 		newDeployCmd(), // deprecated
 		newListCmd(),
-		newStatusCmd(),
 		newDescribeCmd(),
 		newStartCmd(),
 		newStopCmd(),
@@ -245,29 +244,6 @@ func newListCmd() *cobra.Command {
 	}
 }
 
-func newStatusCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "status [devnet]",
-		Short: "Show devnet status",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
-			}
-
-			devnet, err := daemonClient.GetDevnet(cmd.Context(), name)
-			if err != nil {
-				return err
-			}
-
-			printDevnetStatus(devnet)
-			return nil
-		},
-	}
-}
-
 func newStartCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "start [devnet]",
@@ -355,41 +331,6 @@ func newDestroyCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "Skip confirmation")
 
 	return cmd
-}
-
-func printDevnetStatus(d *v1.Devnet) {
-	// Phase with color
-	phase := d.Status.Phase
-	switch phase {
-	case "Running":
-		color.Green("● %s", phase)
-	case "Pending", "Provisioning":
-		color.Yellow("◐ %s", phase)
-	case "Stopped":
-		color.White("○ %s", phase)
-	case "Degraded":
-		color.Red("◑ %s", phase)
-	default:
-		fmt.Printf("? %s", phase)
-	}
-
-	fmt.Printf("\nName:       %s\n", d.Metadata.Name)
-	fmt.Printf("Plugin:     %s\n", d.Spec.Plugin)
-	fmt.Printf("Mode:       %s\n", d.Spec.Mode)
-	fmt.Printf("Validators: %d\n", d.Spec.Validators)
-	if d.Spec.FullNodes > 0 {
-		fmt.Printf("Full Nodes: %d\n", d.Spec.FullNodes)
-	}
-	fmt.Printf("Nodes:      %d/%d ready\n", d.Status.ReadyNodes, d.Status.Nodes)
-	if d.Status.CurrentHeight > 0 {
-		fmt.Printf("Height:     %d\n", d.Status.CurrentHeight)
-	}
-	if d.Status.SdkVersion != "" {
-		fmt.Printf("SDK:        %s\n", d.Status.SdkVersion)
-	}
-	if d.Status.Message != "" {
-		fmt.Printf("Message:    %s\n", d.Status.Message)
-	}
 }
 
 func newDescribeCmd() *cobra.Command {
