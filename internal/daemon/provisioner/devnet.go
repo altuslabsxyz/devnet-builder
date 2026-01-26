@@ -8,16 +8,36 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
+	plugintypes "github.com/altuslabsxyz/devnet-builder/internal/plugin/types"
 )
+
+// Orchestrator defines the interface for provisioning orchestration.
+// This allows DevnetProvisioner to optionally use an orchestrator for
+// the full provisioning flow (build, fork, init, start).
+type Orchestrator interface {
+	// Execute runs the full provisioning flow.
+	Execute(ctx context.Context, opts ports.ProvisionOptions) (*ports.ProvisionResult, error)
+
+	// OnProgress sets the progress callback for phase updates.
+	OnProgress(callback ProgressCallback)
+
+	// CurrentPhase returns the current provisioning phase.
+	CurrentPhase() ProvisioningPhase
+}
 
 // DevnetProvisioner implements the Provisioner interface for devnets.
 // It creates Node resources when a devnet is provisioned.
+// When an Orchestrator is provided, it also executes the full provisioning
+// flow (build, fork, init, start) before creating Node resources.
 type DevnetProvisioner struct {
-	store   store.Store
-	dataDir string
-	logger  *slog.Logger
+	store        store.Store
+	dataDir      string
+	logger       *slog.Logger
+	orchestrator Orchestrator
+	onProgress   ProgressCallback
 }
 
 // Config configures the DevnetProvisioner.
@@ -27,6 +47,15 @@ type Config struct {
 
 	// Logger for provisioner operations.
 	Logger *slog.Logger
+
+	// Orchestrator is optional. When provided, Provision() uses the orchestrator
+	// to execute the full provisioning flow (build, fork, init, start).
+	// When nil, only Node resources are created in the store (resource-only behavior).
+	Orchestrator Orchestrator
+
+	// OnProgress is an optional callback for provisioning progress updates.
+	// This is used to update devnet status in the store during provisioning.
+	OnProgress ProgressCallback
 }
 
 // NewDevnetProvisioner creates a new DevnetProvisioner.
@@ -36,20 +65,68 @@ func NewDevnetProvisioner(s store.Store, cfg Config) *DevnetProvisioner {
 		logger = slog.Default()
 	}
 
-	return &DevnetProvisioner{
-		store:   s,
-		dataDir: cfg.DataDir,
-		logger:  logger,
+	p := &DevnetProvisioner{
+		store:        s,
+		dataDir:      cfg.DataDir,
+		logger:       logger,
+		orchestrator: cfg.Orchestrator,
+		onProgress:   cfg.OnProgress,
 	}
+
+	// If orchestrator is provided and progress callback is set, wire them together
+	if p.orchestrator != nil && p.onProgress != nil {
+		p.orchestrator.OnProgress(p.onProgress)
+	}
+
+	return p
 }
 
 // Provision creates Node resources for all validators and fullnodes in the devnet.
+// When an orchestrator is configured, it first executes the full provisioning flow
+// (build, fork, init, start) before creating Node resources.
 func (p *DevnetProvisioner) Provision(ctx context.Context, devnet *types.Devnet) error {
 	p.logger.Info("provisioning devnet",
 		"name", devnet.Metadata.Name,
 		"validators", devnet.Spec.Validators,
-		"fullnodes", devnet.Spec.FullNodes)
+		"fullnodes", devnet.Spec.FullNodes,
+		"hasOrchestrator", p.orchestrator != nil)
 
+	// If orchestrator is present, execute the full provisioning flow
+	if p.orchestrator != nil {
+		if err := p.provisionWithOrchestrator(ctx, devnet); err != nil {
+			return err
+		}
+	}
+
+	// Create Node resources in the store (existing behavior)
+	return p.createNodeResources(ctx, devnet)
+}
+
+// provisionWithOrchestrator executes the full provisioning flow using the orchestrator.
+func (p *DevnetProvisioner) provisionWithOrchestrator(ctx context.Context, devnet *types.Devnet) error {
+	p.logger.Info("executing orchestrator provisioning flow",
+		"name", devnet.Metadata.Name)
+
+	// Convert devnet spec to provisioning options
+	opts := devnetToProvisionOptions(devnet, p.dataDir)
+
+	// Execute the full provisioning flow
+	result, err := p.orchestrator.Execute(ctx, opts)
+	if err != nil {
+		return fmt.Errorf("orchestrator execution failed: %w", err)
+	}
+
+	p.logger.Info("orchestrator provisioning completed",
+		"name", result.DevnetName,
+		"binaryPath", result.BinaryPath,
+		"nodeCount", result.NodeCount)
+
+	return nil
+}
+
+// createNodeResources creates Node resources in the store.
+// This is the original resource-only provisioning behavior.
+func (p *DevnetProvisioner) createNodeResources(ctx context.Context, devnet *types.Devnet) error {
 	totalNodes := devnet.Spec.Validators + devnet.Spec.FullNodes
 	devnetDataDir := filepath.Join(p.dataDir, devnet.Metadata.Name)
 
@@ -263,4 +340,61 @@ func (p *DevnetProvisioner) GetStatus(ctx context.Context, devnet *types.Devnet)
 	}
 
 	return status, nil
+}
+
+// =============================================================================
+// Devnet to ProvisionOptions Conversion
+// =============================================================================
+
+// devnetToProvisionOptions converts a Devnet spec to ProvisionOptions for the orchestrator.
+// This maps fields from the Devnet resource to the format expected by the provisioning flow.
+func devnetToProvisionOptions(devnet *types.Devnet, dataDir string) ports.ProvisionOptions {
+	opts := ports.ProvisionOptions{
+		DevnetName:    devnet.Metadata.Name,
+		ChainID:       devnet.Metadata.Name + "-1", // Generate chain ID from devnet name
+		Network:       devnet.Spec.Plugin,
+		NumValidators: devnet.Spec.Validators,
+		NumFullNodes:  devnet.Spec.FullNodes,
+		DataDir:       filepath.Join(dataDir, devnet.Metadata.Name),
+	}
+
+	// Map BinarySource to BinaryPath/BinaryVersion
+	switch devnet.Spec.BinarySource.Type {
+	case "local":
+		opts.BinaryPath = devnet.Spec.BinarySource.Path
+		opts.BinaryVersion = devnet.Spec.BinarySource.Version
+	case "cache", "github", "url":
+		// For non-local sources, version is used to build the binary
+		opts.BinaryVersion = devnet.Spec.BinarySource.Version
+	}
+
+	// Map Genesis source
+	opts.GenesisSource = mapGenesisSource(devnet)
+
+	return opts
+}
+
+// mapGenesisSource determines the genesis source from devnet spec.
+// Priority: GenesisPath (local) > SnapshotURL (snapshot) > default (RPC)
+func mapGenesisSource(devnet *types.Devnet) plugintypes.GenesisSource {
+	// If explicit genesis path is provided, use local mode
+	if devnet.Spec.GenesisPath != "" {
+		return plugintypes.GenesisSource{
+			Mode:      plugintypes.GenesisModeLocal,
+			LocalPath: devnet.Spec.GenesisPath,
+		}
+	}
+
+	// If snapshot URL is provided, use snapshot mode
+	if devnet.Spec.SnapshotURL != "" {
+		return plugintypes.GenesisSource{
+			Mode:        plugintypes.GenesisModeSnapshot,
+			SnapshotURL: devnet.Spec.SnapshotURL,
+		}
+	}
+
+	// Default to RPC mode
+	return plugintypes.GenesisSource{
+		Mode: plugintypes.GenesisModeRPC,
+	}
 }
