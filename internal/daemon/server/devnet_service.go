@@ -72,7 +72,10 @@ func (s *DevnetService) GetDevnet(ctx context.Context, req *v1.GetDevnetRequest)
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	devnet, err := s.store.GetDevnet(ctx, req.Name)
+	// Use namespace from request, empty string searches all namespaces
+	namespace := req.GetNamespace()
+
+	devnet, err := s.store.GetDevnet(ctx, namespace, req.Name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "devnet %q not found", req.Name)
@@ -86,7 +89,10 @@ func (s *DevnetService) GetDevnet(ctx context.Context, req *v1.GetDevnetRequest)
 
 // ListDevnets lists all devnets.
 func (s *DevnetService) ListDevnets(ctx context.Context, req *v1.ListDevnetsRequest) (*v1.ListDevnetsResponse, error) {
-	devnets, err := s.store.ListDevnets(ctx)
+	// Use namespace from request, empty string returns all namespaces
+	namespace := req.GetNamespace()
+
+	devnets, err := s.store.ListDevnets(ctx, namespace)
 	if err != nil {
 		s.logger.Error("failed to list devnets", "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to list devnets: %v", err)
@@ -115,21 +121,24 @@ func (s *DevnetService) DeleteDevnet(ctx context.Context, req *v1.DeleteDevnetRe
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	s.logger.Info("deleting devnet", "name", req.Name)
+	// Use namespace from request, empty string uses default namespace
+	namespace := req.GetNamespace()
+
+	s.logger.Info("deleting devnet", "namespace", namespace, "name", req.Name)
 
 	// Cascade delete: remove all nodes belonging to this devnet first
-	if err := s.store.DeleteNodesByDevnet(ctx, req.Name); err != nil {
+	if err := s.store.DeleteNodesByDevnet(ctx, namespace, req.Name); err != nil {
 		s.logger.Warn("failed to delete nodes during cascade delete", "devnet", req.Name, "error", err)
 		// Continue with devnet deletion even if node deletion fails
 	}
 
 	// Cascade delete: remove all upgrades belonging to this devnet
-	if err := s.store.DeleteUpgradesByDevnet(ctx, req.Name); err != nil {
+	if err := s.store.DeleteUpgradesByDevnet(ctx, namespace, req.Name); err != nil {
 		s.logger.Warn("failed to delete upgrades during cascade delete", "devnet", req.Name, "error", err)
 		// Continue with devnet deletion even if upgrade deletion fails
 	}
 
-	err := s.store.DeleteDevnet(ctx, req.Name)
+	err := s.store.DeleteDevnet(ctx, namespace, req.Name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "devnet %q not found", req.Name)
@@ -152,9 +161,12 @@ func (s *DevnetService) StartDevnet(ctx context.Context, req *v1.StartDevnetRequ
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	s.logger.Info("starting devnet", "name", req.Name)
+	// Use namespace from request, empty string searches all namespaces
+	namespace := req.GetNamespace()
 
-	devnet, err := s.store.GetDevnet(ctx, req.Name)
+	s.logger.Info("starting devnet", "namespace", namespace, "name", req.Name)
+
+	devnet, err := s.store.GetDevnet(ctx, namespace, req.Name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "devnet %q not found", req.Name)
@@ -187,9 +199,12 @@ func (s *DevnetService) StopDevnet(ctx context.Context, req *v1.StopDevnetReques
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	s.logger.Info("stopping devnet", "name", req.Name)
+	// Use namespace from request, empty string searches all namespaces
+	namespace := req.GetNamespace()
 
-	devnet, err := s.store.GetDevnet(ctx, req.Name)
+	s.logger.Info("stopping devnet", "namespace", namespace, "name", req.Name)
+
+	devnet, err := s.store.GetDevnet(ctx, namespace, req.Name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "devnet %q not found", req.Name)

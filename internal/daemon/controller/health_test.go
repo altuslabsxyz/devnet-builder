@@ -101,7 +101,7 @@ func TestHealthController_Reconcile_HealthyDevnet(t *testing.T) {
 	}
 
 	// Verify devnet status updated
-	got, _ := ms.GetDevnet(context.Background(), "test-devnet")
+	got, _ := ms.GetDevnet(context.Background(), "", "test-devnet")
 	if got.Status.ReadyNodes != 2 {
 		t.Errorf("ReadyNodes = %d, want 2", got.Status.ReadyNodes)
 	}
@@ -193,7 +193,7 @@ func TestHealthController_Reconcile_DegradedDevnet(t *testing.T) {
 	}
 
 	// Verify devnet becomes degraded
-	got, _ := ms.GetDevnet(context.Background(), "test-devnet")
+	got, _ := ms.GetDevnet(context.Background(), "", "test-devnet")
 	if got.Status.ReadyNodes != 1 {
 		t.Errorf("ReadyNodes = %d, want 1", got.Status.ReadyNodes)
 	}
@@ -262,7 +262,7 @@ func TestHealthController_CrashRecovery(t *testing.T) {
 	}
 
 	// Verify node transitioned to Pending for restart
-	got, _ := ms.GetNode(context.Background(), "test-devnet", 0)
+	got, _ := ms.GetNode(context.Background(), "", "test-devnet", 0)
 	if got.Status.Phase != types.NodePhasePending {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhasePending)
 	}
@@ -315,7 +315,7 @@ func TestHealthController_CrashRecovery_MaxRestartsExceeded(t *testing.T) {
 	}
 
 	// Verify node stays crashed (not restarted)
-	got, _ := ms.GetNode(context.Background(), "test-devnet", 0)
+	got, _ := ms.GetNode(context.Background(), "", "test-devnet", 0)
 	if got.Status.Phase != types.NodePhaseCrashed {
 		t.Errorf("Phase = %q, want %q (should not restart)", got.Status.Phase, types.NodePhaseCrashed)
 	}
@@ -379,7 +379,7 @@ func TestHealthController_StuckChainDetection(t *testing.T) {
 	}
 
 	// Verify devnet is degraded
-	got, _ := ms.GetDevnet(context.Background(), "test-devnet")
+	got, _ := ms.GetDevnet(context.Background(), "", "test-devnet")
 	if got.Status.Phase != types.PhaseDegraded {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.PhaseDegraded)
 	}
@@ -480,7 +480,7 @@ func TestHealthController_SkipsStoppedNodes(t *testing.T) {
 	}
 
 	// Verify devnet shows all nodes healthy (stopped nodes are healthy if desired=stopped)
-	got, _ := ms.GetDevnet(context.Background(), "test-devnet")
+	got, _ := ms.GetDevnet(context.Background(), "", "test-devnet")
 	if got.Status.ReadyNodes != 1 {
 		t.Errorf("ReadyNodes = %d, want 1", got.Status.ReadyNodes)
 	}
@@ -531,7 +531,7 @@ func TestHealthController_RestartBackoff(t *testing.T) {
 	}
 
 	// Verify node stays crashed (backoff not expired)
-	got, _ := ms.GetNode(context.Background(), "test-devnet", 0)
+	got, _ := ms.GetNode(context.Background(), "", "test-devnet", 0)
 	if got.Status.Phase != types.NodePhaseCrashed {
 		t.Errorf("Phase = %q, want %q (should wait for backoff)", got.Status.Phase, types.NodePhaseCrashed)
 	}

@@ -41,7 +41,7 @@ func TestDevnetService_Create(t *testing.T) {
 	}
 
 	// Verify it's in the store
-	devnet, err := s.GetDevnet(context.Background(), "test-devnet")
+	devnet, err := s.GetDevnet(context.Background(), "", "test-devnet")
 	if err != nil {
 		t.Fatalf("GetDevnet from store failed: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestDevnetService_StartDevnet(t *testing.T) {
 	}
 
 	// Manually set to stopped
-	devnet, _ := s.GetDevnet(context.Background(), "stopped-devnet")
+	devnet, _ := s.GetDevnet(context.Background(), "", "stopped-devnet")
 	devnet.Status.Phase = "Stopped"
 	s.UpdateDevnet(context.Background(), devnet)
 
@@ -292,7 +292,7 @@ func TestDevnetService_StopDevnet(t *testing.T) {
 	}
 
 	// Manually set to running
-	devnet, _ := s.GetDevnet(context.Background(), "running-devnet")
+	devnet, _ := s.GetDevnet(context.Background(), "", "running-devnet")
 	devnet.Status.Phase = "Running"
 	s.UpdateDevnet(context.Background(), devnet)
 
@@ -361,11 +361,11 @@ func TestDevnetService_DeleteCascade(t *testing.T) {
 	}
 
 	// Verify nodes and upgrades exist
-	nodes, _ := s.ListNodes(ctx, "cascade-test")
+	nodes, _ := s.ListNodes(ctx, "", "cascade-test")
 	if len(nodes) != 2 {
 		t.Fatalf("expected 2 nodes, got %d", len(nodes))
 	}
-	upgrades, _ := s.ListUpgrades(ctx, "cascade-test")
+	upgrades, _ := s.ListUpgrades(ctx, "", "cascade-test")
 	if len(upgrades) != 1 {
 		t.Fatalf("expected 1 upgrade, got %d", len(upgrades))
 	}
@@ -381,13 +381,13 @@ func TestDevnetService_DeleteCascade(t *testing.T) {
 	}
 
 	// Verify nodes are cascade deleted
-	nodes, _ = s.ListNodes(ctx, "cascade-test")
+	nodes, _ = s.ListNodes(ctx, "", "cascade-test")
 	if len(nodes) != 0 {
 		t.Errorf("expected 0 nodes after cascade delete, got %d", len(nodes))
 	}
 
 	// Verify upgrades are cascade deleted
-	upgrades, _ = s.ListUpgrades(ctx, "cascade-test")
+	upgrades, _ = s.ListUpgrades(ctx, "", "cascade-test")
 	if len(upgrades) != 0 {
 		t.Errorf("expected 0 upgrades after cascade delete, got %d", len(upgrades))
 	}

@@ -88,9 +88,16 @@ func (p *DevnetProvisioner) createNodeSpec(devnet *types.Devnet, index int, role
 		binaryPath = devnet.Spec.BinarySource.URL // Could be image reference
 	}
 
+	// Ensure namespace is set
+	namespace := devnet.Metadata.Namespace
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+
 	return &types.Node{
 		Metadata: types.ResourceMeta{
 			Name:      fmt.Sprintf("%s-node-%d", devnet.Metadata.Name, index),
+			Namespace: namespace,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		},
@@ -112,7 +119,7 @@ func (p *DevnetProvisioner) createNodeSpec(devnet *types.Devnet, index int, role
 // createNodeIfNotExists creates a node if it doesn't already exist.
 func (p *DevnetProvisioner) createNodeIfNotExists(ctx context.Context, node *types.Node) error {
 	// Check if node already exists
-	existing, err := p.store.GetNode(ctx, node.Spec.DevnetRef, node.Spec.Index)
+	existing, err := p.store.GetNode(ctx, node.Metadata.Namespace, node.Spec.DevnetRef, node.Spec.Index)
 	if err == nil && existing != nil {
 		p.logger.Debug("node already exists",
 			"devnet", node.Spec.DevnetRef,
@@ -138,8 +145,14 @@ func (p *DevnetProvisioner) createNodeIfNotExists(ctx context.Context, node *typ
 func (p *DevnetProvisioner) Deprovision(ctx context.Context, devnet *types.Devnet) error {
 	p.logger.Info("deprovisioning devnet", "name", devnet.Metadata.Name)
 
+	// Get namespace from devnet
+	namespace := devnet.Metadata.Namespace
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+
 	// Delete all nodes for this devnet
-	if err := p.store.DeleteNodesByDevnet(ctx, devnet.Metadata.Name); err != nil {
+	if err := p.store.DeleteNodesByDevnet(ctx, namespace, devnet.Metadata.Name); err != nil {
 		return fmt.Errorf("failed to delete nodes: %w", err)
 	}
 
@@ -151,7 +164,13 @@ func (p *DevnetProvisioner) Deprovision(ctx context.Context, devnet *types.Devne
 func (p *DevnetProvisioner) Start(ctx context.Context, devnet *types.Devnet) error {
 	p.logger.Info("starting devnet", "name", devnet.Metadata.Name)
 
-	nodes, err := p.store.ListNodes(ctx, devnet.Metadata.Name)
+	// Get namespace from devnet
+	namespace := devnet.Metadata.Namespace
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+
+	nodes, err := p.store.ListNodes(ctx, namespace, devnet.Metadata.Name)
 	if err != nil {
 		return fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -173,7 +192,13 @@ func (p *DevnetProvisioner) Start(ctx context.Context, devnet *types.Devnet) err
 func (p *DevnetProvisioner) Stop(ctx context.Context, devnet *types.Devnet) error {
 	p.logger.Info("stopping devnet", "name", devnet.Metadata.Name)
 
-	nodes, err := p.store.ListNodes(ctx, devnet.Metadata.Name)
+	// Get namespace from devnet
+	namespace := devnet.Metadata.Namespace
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+
+	nodes, err := p.store.ListNodes(ctx, namespace, devnet.Metadata.Name)
 	if err != nil {
 		return fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -193,7 +218,13 @@ func (p *DevnetProvisioner) Stop(ctx context.Context, devnet *types.Devnet) erro
 
 // GetStatus aggregates status from all nodes in the devnet.
 func (p *DevnetProvisioner) GetStatus(ctx context.Context, devnet *types.Devnet) (*types.DevnetStatus, error) {
-	nodes, err := p.store.ListNodes(ctx, devnet.Metadata.Name)
+	// Get namespace from devnet
+	namespace := devnet.Metadata.Namespace
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+
+	nodes, err := p.store.ListNodes(ctx, namespace, devnet.Metadata.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}

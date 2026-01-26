@@ -37,7 +37,7 @@ func TestNodeController_Reconcile_PendingToStarting(t *testing.T) {
 	}
 
 	// Verify transition to Starting
-	got, _ := ms.GetNode(context.Background(), "test", 0)
+	got, _ := ms.GetNode(context.Background(), "", "test", 0)
 	if got.Status.Phase != types.NodePhaseStarting {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhaseStarting)
 	}
@@ -70,7 +70,7 @@ func TestNodeController_Reconcile_StartingToRunning(t *testing.T) {
 	}
 
 	// Verify transition to Running
-	got, _ := ms.GetNode(context.Background(), "test", 0)
+	got, _ := ms.GetNode(context.Background(), "", "test", 0)
 	if got.Status.Phase != types.NodePhaseRunning {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhaseRunning)
 	}
@@ -107,7 +107,7 @@ func TestNodeController_Reconcile_RunningToStopping(t *testing.T) {
 	}
 
 	// Verify transition to Stopping
-	got, _ := ms.GetNode(context.Background(), "test", 0)
+	got, _ := ms.GetNode(context.Background(), "", "test", 0)
 	if got.Status.Phase != types.NodePhaseStopping {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhaseStopping)
 	}
@@ -140,7 +140,7 @@ func TestNodeController_Reconcile_StoppingToStopped(t *testing.T) {
 	}
 
 	// Verify transition to Stopped
-	got, _ := ms.GetNode(context.Background(), "test", 0)
+	got, _ := ms.GetNode(context.Background(), "", "test", 0)
 	if got.Status.Phase != types.NodePhaseStopped {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhaseStopped)
 	}
@@ -178,7 +178,7 @@ func TestNodeController_Reconcile_StoppedToRestarting(t *testing.T) {
 	}
 
 	// Verify transition to Pending (restart)
-	got, _ := ms.GetNode(context.Background(), "test", 0)
+	got, _ := ms.GetNode(context.Background(), "", "test", 0)
 	if got.Status.Phase != types.NodePhasePending {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhasePending)
 	}
@@ -243,7 +243,7 @@ func TestNodeController_Reconcile_CrashedToStopped(t *testing.T) {
 	}
 
 	// Verify transition to Stopped
-	got, _ := ms.GetNode(context.Background(), "test", 0)
+	got, _ := ms.GetNode(context.Background(), "", "test", 0)
 	if got.Status.Phase != types.NodePhaseStopped {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhaseStopped)
 	}
@@ -274,7 +274,7 @@ func TestNodeController_Reconcile_FullLifecycle(t *testing.T) {
 	if err := nc.Reconcile(context.Background(), "test/0"); err != nil {
 		t.Fatalf("Reconcile 1: %v", err)
 	}
-	node, _ = ms.GetNode(context.Background(), "test", 0)
+	node, _ = ms.GetNode(context.Background(), "", "test", 0)
 	if node.Status.Phase != types.NodePhaseStarting {
 		t.Fatalf("After step 1: Phase = %q, want %q", node.Status.Phase, types.NodePhaseStarting)
 	}
@@ -283,7 +283,7 @@ func TestNodeController_Reconcile_FullLifecycle(t *testing.T) {
 	if err := nc.Reconcile(context.Background(), "test/0"); err != nil {
 		t.Fatalf("Reconcile 2: %v", err)
 	}
-	node, _ = ms.GetNode(context.Background(), "test", 0)
+	node, _ = ms.GetNode(context.Background(), "", "test", 0)
 	if node.Status.Phase != types.NodePhaseRunning {
 		t.Fatalf("After step 2: Phase = %q, want %q", node.Status.Phase, types.NodePhaseRunning)
 	}
@@ -298,7 +298,7 @@ func TestNodeController_Reconcile_FullLifecycle(t *testing.T) {
 	if err := nc.Reconcile(context.Background(), "test/0"); err != nil {
 		t.Fatalf("Reconcile 3: %v", err)
 	}
-	node, _ = ms.GetNode(context.Background(), "test", 0)
+	node, _ = ms.GetNode(context.Background(), "", "test", 0)
 	if node.Status.Phase != types.NodePhaseStopping {
 		t.Fatalf("After step 4: Phase = %q, want %q", node.Status.Phase, types.NodePhaseStopping)
 	}
@@ -307,7 +307,7 @@ func TestNodeController_Reconcile_FullLifecycle(t *testing.T) {
 	if err := nc.Reconcile(context.Background(), "test/0"); err != nil {
 		t.Fatalf("Reconcile 4: %v", err)
 	}
-	node, _ = ms.GetNode(context.Background(), "test", 0)
+	node, _ = ms.GetNode(context.Background(), "", "test", 0)
 	if node.Status.Phase != types.NodePhaseStopped {
 		t.Fatalf("After step 5: Phase = %q, want %q", node.Status.Phase, types.NodePhaseStopped)
 	}
@@ -315,27 +315,32 @@ func TestNodeController_Reconcile_FullLifecycle(t *testing.T) {
 
 func TestParseNodeKey(t *testing.T) {
 	tests := []struct {
-		key        string
-		wantDevnet string
-		wantIndex  int
-		wantErr    bool
+		key           string
+		wantNamespace string
+		wantDevnet    string
+		wantIndex     int
+		wantErr       bool
 	}{
-		{"mydevnet/0", "mydevnet", 0, false},
-		{"mydevnet/10", "mydevnet", 10, false},
-		{"my-devnet/5", "my-devnet", 5, false},
-		{"invalid", "", 0, true},
-		{"devnet/abc", "", 0, true},
-		{"", "", 0, true},
+		{"mydevnet/0", "default", "mydevnet", 0, false},
+		{"mydevnet/10", "default", "mydevnet", 10, false},
+		{"my-devnet/5", "default", "my-devnet", 5, false},
+		{"ns/mydevnet/0", "ns", "mydevnet", 0, false},
+		{"invalid", "", "", 0, true},
+		{"devnet/abc", "", "", 0, true},
+		{"", "", "", 0, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
-			devnet, index, err := ParseNodeKey(tt.key)
+			namespace, devnet, index, err := ParseNodeKey(tt.key)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseNodeKey(%q) error = %v, wantErr %v", tt.key, err, tt.wantErr)
 				return
 			}
 			if !tt.wantErr {
+				if namespace != tt.wantNamespace {
+					t.Errorf("namespace = %q, want %q", namespace, tt.wantNamespace)
+				}
 				if devnet != tt.wantDevnet {
 					t.Errorf("devnet = %q, want %q", devnet, tt.wantDevnet)
 				}

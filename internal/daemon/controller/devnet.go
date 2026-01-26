@@ -12,6 +12,16 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 )
 
+// parseDevnetKey parses a devnet key into namespace and name.
+// Key can be "namespace/name" or just "name" (uses default namespace).
+func parseDevnetKey(key string) (namespace, name string) {
+	parts := strings.SplitN(key, "/", 2)
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	return types.DefaultNamespace, key
+}
+
 // Provisioner is the interface for provisioning devnet infrastructure.
 // This will be implemented by the DevnetProvisioner in Phase 3.
 type Provisioner interface {
@@ -52,17 +62,20 @@ func (c *DevnetController) SetLogger(logger *slog.Logger) {
 	c.logger = logger
 }
 
-// Reconcile processes a single devnet by name.
+// Reconcile processes a single devnet by key (format: "namespace/name" or just "name").
 // It compares desired state (spec) with actual state (status) and takes action.
 func (c *DevnetController) Reconcile(ctx context.Context, key string) error {
-	c.logger.Debug("reconciling devnet", "name", key)
+	c.logger.Debug("reconciling devnet", "key", key)
+
+	// Parse key - may be "namespace/name" or just "name" (uses default namespace)
+	namespace, name := parseDevnetKey(key)
 
 	// Get the devnet from store
-	devnet, err := c.store.GetDevnet(ctx, key)
+	devnet, err := c.store.GetDevnet(ctx, namespace, name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			// Devnet was deleted, nothing to do
-			c.logger.Debug("devnet not found (deleted?)", "name", key)
+			c.logger.Debug("devnet not found (deleted?)", "key", key)
 			return nil
 		}
 		return err

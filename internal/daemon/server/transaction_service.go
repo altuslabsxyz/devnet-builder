@@ -119,7 +119,8 @@ func (s *TransactionService) ListTransactions(ctx context.Context, req *v1.ListT
 		Limit:  int(req.Limit),
 	}
 
-	txs, err := s.store.ListTransactions(ctx, req.Devnet, opts)
+	// Use empty namespace to search across all namespaces (transactions are keyed by devnet)
+	txs, err := s.store.ListTransactions(ctx, "", req.Devnet, opts)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list transactions: %v", err)
 	}

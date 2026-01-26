@@ -40,7 +40,7 @@ func TestUpgradeController_Reconcile_PendingToProposing(t *testing.T) {
 	}
 
 	// Verify transition to Proposing
-	got, _ := ms.GetUpgrade(context.Background(), "test-upgrade")
+	got, _ := ms.GetUpgrade(context.Background(), "", "test-upgrade")
 	if got.Status.Phase != types.UpgradePhaseProposing {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.UpgradePhaseProposing)
 	}
@@ -73,7 +73,7 @@ func TestUpgradeController_Reconcile_ProposingToVoting(t *testing.T) {
 	}
 
 	// Verify transition to Voting
-	got, _ := ms.GetUpgrade(context.Background(), "test-upgrade")
+	got, _ := ms.GetUpgrade(context.Background(), "", "test-upgrade")
 	if got.Status.Phase != types.UpgradePhaseVoting {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.UpgradePhaseVoting)
 	}
@@ -112,7 +112,7 @@ func TestUpgradeController_Reconcile_VotingToWaiting(t *testing.T) {
 	}
 
 	// Verify transition to Waiting
-	got, _ := ms.GetUpgrade(context.Background(), "test-upgrade")
+	got, _ := ms.GetUpgrade(context.Background(), "", "test-upgrade")
 	if got.Status.Phase != types.UpgradePhaseWaiting {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.UpgradePhaseWaiting)
 	}
@@ -146,7 +146,7 @@ func TestUpgradeController_Reconcile_WaitingToSwitching(t *testing.T) {
 	}
 
 	// Verify transition to Switching (without runtime, auto-advances)
-	got, _ := ms.GetUpgrade(context.Background(), "test-upgrade")
+	got, _ := ms.GetUpgrade(context.Background(), "", "test-upgrade")
 	if got.Status.Phase != types.UpgradePhaseSwitching {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.UpgradePhaseSwitching)
 	}
@@ -182,7 +182,7 @@ func TestUpgradeController_Reconcile_SwitchingToVerifying(t *testing.T) {
 	}
 
 	// Verify transition to Verifying
-	got, _ := ms.GetUpgrade(context.Background(), "test-upgrade")
+	got, _ := ms.GetUpgrade(context.Background(), "", "test-upgrade")
 	if got.Status.Phase != types.UpgradePhaseVerifying {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.UpgradePhaseVerifying)
 	}
@@ -218,7 +218,7 @@ func TestUpgradeController_Reconcile_VerifyingToCompleted(t *testing.T) {
 	}
 
 	// Verify transition to Completed
-	got, _ := ms.GetUpgrade(context.Background(), "test-upgrade")
+	got, _ := ms.GetUpgrade(context.Background(), "", "test-upgrade")
 	if got.Status.Phase != types.UpgradePhaseCompleted {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.UpgradePhaseCompleted)
 	}
@@ -265,7 +265,7 @@ func TestUpgradeController_Reconcile_CompletedIsTerminal(t *testing.T) {
 	}
 
 	// Verify still Completed
-	got, _ := ms.GetUpgrade(context.Background(), "test-upgrade")
+	got, _ := ms.GetUpgrade(context.Background(), "", "test-upgrade")
 	if got.Status.Phase != types.UpgradePhaseCompleted {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.UpgradePhaseCompleted)
 	}
@@ -298,7 +298,7 @@ func TestUpgradeController_Reconcile_FailedIsTerminal(t *testing.T) {
 	}
 
 	// Verify still Failed
-	got, _ := ms.GetUpgrade(context.Background(), "test-upgrade")
+	got, _ := ms.GetUpgrade(context.Background(), "", "test-upgrade")
 	if got.Status.Phase != types.UpgradePhaseFailed {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.UpgradePhaseFailed)
 	}
@@ -343,7 +343,7 @@ func TestUpgradeController_Reconcile_FullLifecycle(t *testing.T) {
 			t.Fatalf("Reconcile step %d: %v", i+1, err)
 		}
 
-		got, _ := ms.GetUpgrade(context.Background(), "test-upgrade")
+		got, _ := ms.GetUpgrade(context.Background(), "", "test-upgrade")
 		if got.Status.Phase != expectedPhase {
 			t.Fatalf("After step %d: Phase = %q, want %q", i+1, got.Status.Phase, expectedPhase)
 		}
@@ -354,7 +354,7 @@ func TestUpgradeController_Reconcile_FullLifecycle(t *testing.T) {
 		t.Fatalf("Final Reconcile: %v", err)
 	}
 
-	got, _ := ms.GetUpgrade(context.Background(), "test-upgrade")
+	got, _ := ms.GetUpgrade(context.Background(), "", "test-upgrade")
 	if got.Status.Phase != types.UpgradePhaseCompleted {
 		t.Errorf("Final Phase = %q, want %q", got.Status.Phase, types.UpgradePhaseCompleted)
 	}
@@ -387,7 +387,7 @@ func TestUpgradeController_Reconcile_EmptyPhaseToPending(t *testing.T) {
 	}
 
 	// Verify transition to Proposing (from Pending handling)
-	got, _ := ms.GetUpgrade(context.Background(), "test-upgrade")
+	got, _ := ms.GetUpgrade(context.Background(), "", "test-upgrade")
 	if got.Status.Phase != types.UpgradePhaseProposing {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.UpgradePhaseProposing)
 	}
@@ -420,7 +420,7 @@ func TestUpgradeController_Reconcile_WithExport(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	got, _ := ms.GetUpgrade(context.Background(), "export-upgrade")
+	got, _ := ms.GetUpgrade(context.Background(), "", "export-upgrade")
 	if got.Status.Phase != types.UpgradePhaseProposing {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.UpgradePhaseProposing)
 	}

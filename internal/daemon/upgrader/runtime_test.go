@@ -128,7 +128,7 @@ func TestRuntime_SwitchNodeBinary(t *testing.T) {
 	}
 
 	// Verify node was updated
-	updated, _ := s.GetNode(context.Background(), "test-devnet", 0)
+	updated, _ := s.GetNode(context.Background(), "", "test-devnet", 0)
 
 	if updated.Spec.BinaryPath != "/new/binary/v2.0.0" {
 		t.Errorf("Expected new binary path, got %s", updated.Spec.BinaryPath)

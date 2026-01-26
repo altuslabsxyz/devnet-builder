@@ -57,8 +57,11 @@ func (s *UpgradeService) CreateUpgrade(ctx context.Context, req *v1.CreateUpgrad
 		"devnet", req.Spec.DevnetRef,
 		"upgradeName", req.Spec.UpgradeName)
 
+	// Use namespace from request, empty string uses default namespace
+	namespace := req.GetNamespace()
+
 	// Verify devnet exists
-	_, err := s.store.GetDevnet(ctx, req.Spec.DevnetRef)
+	_, err := s.store.GetDevnet(ctx, namespace, req.Spec.DevnetRef)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "devnet %q not found", req.Spec.DevnetRef)
@@ -94,7 +97,10 @@ func (s *UpgradeService) GetUpgrade(ctx context.Context, req *v1.GetUpgradeReque
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	upgrade, err := s.store.GetUpgrade(ctx, req.Name)
+	// Use namespace from request, empty string uses default namespace
+	namespace := req.GetNamespace()
+
+	upgrade, err := s.store.GetUpgrade(ctx, namespace, req.Name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "upgrade %q not found", req.Name)
@@ -108,7 +114,10 @@ func (s *UpgradeService) GetUpgrade(ctx context.Context, req *v1.GetUpgradeReque
 
 // ListUpgrades lists upgrades, optionally filtered by devnet.
 func (s *UpgradeService) ListUpgrades(ctx context.Context, req *v1.ListUpgradesRequest) (*v1.ListUpgradesResponse, error) {
-	upgrades, err := s.store.ListUpgrades(ctx, req.DevnetName)
+	// Use namespace from request, empty string returns all namespaces
+	namespace := req.GetNamespace()
+
+	upgrades, err := s.store.ListUpgrades(ctx, namespace, req.DevnetName)
 	if err != nil {
 		s.logger.Error("failed to list upgrades", "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to list upgrades: %v", err)
@@ -133,8 +142,11 @@ func (s *UpgradeService) DeleteUpgrade(ctx context.Context, req *v1.DeleteUpgrad
 
 	s.logger.Info("deleting upgrade", "name", req.Name)
 
+	// Use namespace from request, empty string uses default namespace
+	namespace := req.GetNamespace()
+
 	// Check if upgrade exists and is in a terminal state
-	upgrade, err := s.store.GetUpgrade(ctx, req.Name)
+	upgrade, err := s.store.GetUpgrade(ctx, namespace, req.Name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "upgrade %q not found", req.Name)
@@ -152,7 +164,7 @@ func (s *UpgradeService) DeleteUpgrade(ctx context.Context, req *v1.DeleteUpgrad
 			"cannot delete upgrade in phase %q - cancel it first", upgrade.Status.Phase)
 	}
 
-	err = s.store.DeleteUpgrade(ctx, req.Name)
+	err = s.store.DeleteUpgrade(ctx, namespace, req.Name)
 	if err != nil {
 		s.logger.Error("failed to delete upgrade", "name", req.Name, "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to delete upgrade: %v", err)
@@ -167,9 +179,12 @@ func (s *UpgradeService) CancelUpgrade(ctx context.Context, req *v1.CancelUpgrad
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	s.logger.Info("cancelling upgrade", "name", req.Name)
+	// Use namespace from request, empty string uses default namespace
+	namespace := req.GetNamespace()
 
-	upgrade, err := s.store.GetUpgrade(ctx, req.Name)
+	s.logger.Info("cancelling upgrade", "namespace", namespace, "name", req.Name)
+
+	upgrade, err := s.store.GetUpgrade(ctx, namespace, req.Name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "upgrade %q not found", req.Name)
@@ -209,9 +224,12 @@ func (s *UpgradeService) RetryUpgrade(ctx context.Context, req *v1.RetryUpgradeR
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	s.logger.Info("retrying upgrade", "name", req.Name)
+	// Use namespace from request, empty string uses default namespace
+	namespace := req.GetNamespace()
 
-	upgrade, err := s.store.GetUpgrade(ctx, req.Name)
+	s.logger.Info("retrying upgrade", "namespace", namespace, "name", req.Name)
+
+	upgrade, err := s.store.GetUpgrade(ctx, namespace, req.Name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "upgrade %q not found", req.Name)
