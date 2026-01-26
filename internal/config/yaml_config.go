@@ -7,10 +7,8 @@ import (
 )
 
 const (
-	// SupportedAPIVersionV1 is the legacy API version
-	SupportedAPIVersionV1 = "devnet.lagos/v1"
-	// SupportedAPIVersion is the current API version with namespace support
-	SupportedAPIVersion = "devnet.lagos/v2"
+	// SupportedAPIVersion is the API version (v1 with namespace support)
+	SupportedAPIVersion = "devnet.lagos/v1"
 	// SupportedKind is the resource kind
 	SupportedKind = "Devnet"
 )
@@ -76,10 +74,10 @@ type YAMLLogsConfig struct {
 func (d *YAMLDevnet) Validate() error {
 	var errs []string
 
-	// API version check - accept v1 or v2
-	if d.APIVersion != SupportedAPIVersion && d.APIVersion != SupportedAPIVersionV1 {
-		errs = append(errs, fmt.Sprintf("unsupported apiVersion %q, expected %q or %q",
-			d.APIVersion, SupportedAPIVersion, SupportedAPIVersionV1))
+	// API version check
+	if d.APIVersion != SupportedAPIVersion {
+		errs = append(errs, fmt.Sprintf("unsupported apiVersion %q, expected %q",
+			d.APIVersion, SupportedAPIVersion))
 	}
 
 	// Kind check

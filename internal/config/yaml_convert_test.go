@@ -81,7 +81,7 @@ func TestYAMLDevnet_FromProto(t *testing.T) {
 
 func TestYAMLDevnet_ToProto_WithNamespace(t *testing.T) {
 	yaml := YAMLDevnet{
-		APIVersion: "devnet.lagos/v2",
+		APIVersion: "devnet.lagos/v1",
 		Kind:       "Devnet",
 		Metadata: YAMLMetadata{
 			Name:      "test-devnet",
@@ -144,7 +144,7 @@ func TestYAMLDevnet_FromProto_WithNamespace(t *testing.T) {
 
 func TestYAMLDevnet_ToCreateRequest_WithNamespace(t *testing.T) {
 	yaml := YAMLDevnet{
-		APIVersion: "devnet.lagos/v2",
+		APIVersion: "devnet.lagos/v1",
 		Kind:       "Devnet",
 		Metadata: YAMLMetadata{
 			Name:      "test-devnet",

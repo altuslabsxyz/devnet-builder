@@ -106,7 +106,7 @@ func TestYAMLDevnet_Validate_InvalidValidators(t *testing.T) {
 
 func TestYAMLDevnetNamespace(t *testing.T) {
 	yamlContent := `
-apiVersion: devnet.lagos/v2
+apiVersion: devnet.lagos/v1
 kind: Devnet
 metadata:
   name: test
@@ -127,7 +127,7 @@ spec:
 
 func TestYAMLDevnetNamespace_DefaultValue(t *testing.T) {
 	yamlContent := `
-apiVersion: devnet.lagos/v2
+apiVersion: devnet.lagos/v1
 kind: Devnet
 metadata:
   name: test
@@ -146,9 +146,9 @@ spec:
 	}
 }
 
-func TestYAMLDevnet_Validate_V2APIVersion(t *testing.T) {
+func TestYAMLDevnet_Validate_WithNamespace(t *testing.T) {
 	devnet := YAMLDevnet{
-		APIVersion: "devnet.lagos/v2",
+		APIVersion: "devnet.lagos/v1",
 		Kind:       "Devnet",
 		Metadata:   YAMLMetadata{Name: "test", Namespace: "production"},
 		Spec: YAMLDevnetSpec{
@@ -160,11 +160,11 @@ func TestYAMLDevnet_Validate_V2APIVersion(t *testing.T) {
 
 	err := devnet.Validate()
 	if err != nil {
-		t.Errorf("Validate() failed for valid v2 devnet: %v", err)
+		t.Errorf("Validate() failed for devnet with namespace: %v", err)
 	}
 }
 
-func TestYAMLDevnet_Validate_V1APIVersion(t *testing.T) {
+func TestYAMLDevnet_Validate_WithoutNamespace(t *testing.T) {
 	devnet := YAMLDevnet{
 		APIVersion: "devnet.lagos/v1",
 		Kind:       "Devnet",
@@ -178,6 +178,6 @@ func TestYAMLDevnet_Validate_V1APIVersion(t *testing.T) {
 
 	err := devnet.Validate()
 	if err != nil {
-		t.Errorf("Validate() failed for valid v1 devnet: %v", err)
+		t.Errorf("Validate() failed for devnet without namespace: %v", err)
 	}
 }
