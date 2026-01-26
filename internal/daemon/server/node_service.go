@@ -267,6 +267,7 @@ func NodeToProto(n *types.Node) *v1.Node {
 	return &v1.Node{
 		Metadata: &v1.NodeMetadata{
 			Id:         n.Metadata.Name,
+			Namespace:  n.Metadata.Namespace,
 			DevnetName: n.Spec.DevnetRef,
 			Index:      int32(n.Spec.Index),
 			Generation: n.Metadata.Generation,
@@ -302,6 +303,7 @@ func NodeFromProto(pb *v1.Node) *types.Node {
 
 	if pb.Metadata != nil {
 		n.Metadata.Name = pb.Metadata.Id
+		n.Metadata.Namespace = pb.Metadata.Namespace
 		n.Metadata.Generation = pb.Metadata.Generation
 		if pb.Metadata.CreatedAt != nil {
 			n.Metadata.CreatedAt = pb.Metadata.CreatedAt.AsTime()

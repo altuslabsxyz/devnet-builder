@@ -251,3 +251,152 @@ func TestDevnetToProtoWithConditions(t *testing.T) {
 		t.Errorf("expected Provisioning reason, got %s", proto.Status.Events[0].Reason)
 	}
 }
+
+// =============================================================================
+// Namespace conversion tests
+// =============================================================================
+
+func TestDevnetToProtoIncludesNamespace(t *testing.T) {
+	devnet := &types.Devnet{
+		Metadata: types.ResourceMeta{
+			Name:      "test",
+			Namespace: "production",
+		},
+	}
+	proto := DevnetToProto(devnet)
+	if proto.Metadata.Namespace != "production" {
+		t.Errorf("expected namespace 'production', got %q", proto.Metadata.Namespace)
+	}
+}
+
+func TestDevnetFromProtoIncludesNamespace(t *testing.T) {
+	pb := &v1.Devnet{
+		Metadata: &v1.DevnetMetadata{
+			Name:      "test",
+			Namespace: "staging",
+		},
+	}
+	devnet := DevnetFromProto(pb)
+	if devnet.Metadata.Namespace != "staging" {
+		t.Errorf("expected namespace 'staging', got %q", devnet.Metadata.Namespace)
+	}
+}
+
+func TestCreateRequestToDevnetWithNamespace(t *testing.T) {
+	req := &v1.CreateDevnetRequest{
+		Name:      "test-devnet",
+		Namespace: "production",
+		Spec: &v1.DevnetSpec{
+			Plugin: "stable",
+		},
+	}
+
+	devnet := CreateRequestToDevnet(req)
+
+	if devnet.Metadata.Namespace != "production" {
+		t.Errorf("expected namespace 'production', got %q", devnet.Metadata.Namespace)
+	}
+}
+
+func TestCreateRequestToDevnetDefaultNamespace(t *testing.T) {
+	req := &v1.CreateDevnetRequest{
+		Name: "test-devnet",
+		// Namespace not set
+		Spec: &v1.DevnetSpec{
+			Plugin: "stable",
+		},
+	}
+
+	devnet := CreateRequestToDevnet(req)
+
+	if devnet.Metadata.Namespace != types.DefaultNamespace {
+		t.Errorf("expected namespace %q, got %q", types.DefaultNamespace, devnet.Metadata.Namespace)
+	}
+}
+
+func TestUpgradeToProtoIncludesNamespace(t *testing.T) {
+	upgrade := &types.Upgrade{
+		Metadata: types.ResourceMeta{
+			Name:      "test-upgrade",
+			Namespace: "production",
+		},
+	}
+	proto := UpgradeToProto(upgrade)
+	if proto.Metadata.Namespace != "production" {
+		t.Errorf("expected namespace 'production', got %q", proto.Metadata.Namespace)
+	}
+}
+
+func TestUpgradeFromProtoIncludesNamespace(t *testing.T) {
+	pb := &v1.Upgrade{
+		Metadata: &v1.UpgradeMetadata{
+			Name:      "test-upgrade",
+			Namespace: "staging",
+		},
+	}
+	upgrade := UpgradeFromProto(pb)
+	if upgrade.Metadata.Namespace != "staging" {
+		t.Errorf("expected namespace 'staging', got %q", upgrade.Metadata.Namespace)
+	}
+}
+
+func TestCreateUpgradeRequestWithNamespace(t *testing.T) {
+	req := &v1.CreateUpgradeRequest{
+		Name:      "test-upgrade",
+		Namespace: "production",
+		Spec: &v1.UpgradeSpec{
+			DevnetRef: "my-devnet",
+		},
+	}
+
+	upgrade := CreateUpgradeRequestToUpgrade(req)
+
+	if upgrade.Metadata.Namespace != "production" {
+		t.Errorf("expected namespace 'production', got %q", upgrade.Metadata.Namespace)
+	}
+}
+
+func TestCreateUpgradeRequestDefaultNamespace(t *testing.T) {
+	req := &v1.CreateUpgradeRequest{
+		Name: "test-upgrade",
+		// Namespace not set
+		Spec: &v1.UpgradeSpec{
+			DevnetRef: "my-devnet",
+		},
+	}
+
+	upgrade := CreateUpgradeRequestToUpgrade(req)
+
+	if upgrade.Metadata.Namespace != types.DefaultNamespace {
+		t.Errorf("expected namespace %q, got %q", types.DefaultNamespace, upgrade.Metadata.Namespace)
+	}
+}
+
+func TestNodeToProtoIncludesNamespace(t *testing.T) {
+	node := &types.Node{
+		Metadata: types.ResourceMeta{
+			Name:      "test-node",
+			Namespace: "production",
+		},
+		Spec: types.NodeSpec{
+			DevnetRef: "my-devnet",
+		},
+	}
+	proto := NodeToProto(node)
+	if proto.Metadata.Namespace != "production" {
+		t.Errorf("expected namespace 'production', got %q", proto.Metadata.Namespace)
+	}
+}
+
+func TestNodeFromProtoIncludesNamespace(t *testing.T) {
+	pb := &v1.Node{
+		Metadata: &v1.NodeMetadata{
+			Id:        "test-node",
+			Namespace: "staging",
+		},
+	}
+	node := NodeFromProto(pb)
+	if node.Metadata.Namespace != "staging" {
+		t.Errorf("expected namespace 'staging', got %q", node.Metadata.Namespace)
+	}
+}
