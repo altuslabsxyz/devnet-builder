@@ -18,6 +18,10 @@ service DevnetService {
   rpc DeleteDevnet(DeleteDevnetRequest) returns (DeleteDevnetResponse);
   rpc StartDevnet(StartDevnetRequest) returns (StartDevnetResponse);
   rpc StopDevnet(StopDevnetRequest) returns (StopDevnetResponse);
+  // Apply creates or updates a devnet from YAML spec
+  rpc ApplyDevnet(ApplyDevnetRequest) returns (ApplyDevnetResponse);
+  // Update modifies an existing devnet
+  rpc UpdateDevnet(UpdateDevnetRequest) returns (UpdateDevnetResponse);
 }
 
 // Devnet represents a local development network.
@@ -105,6 +109,29 @@ message StopDevnetRequest {
 }
 
 message StopDevnetResponse {
+  Devnet devnet = 1;
+}
+
+message ApplyDevnetRequest {
+  string name = 1;
+  DevnetSpec spec = 2;
+  map<string, string> labels = 3;
+  map<string, string> annotations = 4;
+}
+
+message ApplyDevnetResponse {
+  Devnet devnet = 1;
+  string action = 2;  // "created", "configured", "unchanged"
+}
+
+message UpdateDevnetRequest {
+  string name = 1;
+  DevnetSpec spec = 2;
+  map<string, string> labels = 3;
+  map<string, string> annotations = 4;
+}
+
+message UpdateDevnetResponse {
   Devnet devnet = 1;
 }
 
