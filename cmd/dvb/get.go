@@ -10,7 +10,7 @@ import (
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"sigs.k8s.io/yaml"
+	k8syaml "sigs.k8s.io/yaml"
 )
 
 func newGetCmd() *cobra.Command {
@@ -114,7 +114,7 @@ func listDevnets(cmd *cobra.Command, output, labelSel string) error {
 			if i > 0 {
 				fmt.Println("---")
 			}
-			out, err := yaml.Marshal(protoDevnetToYAML(d))
+			out, err := k8syaml.Marshal(protoDevnetToYAML(d))
 			if err != nil {
 				return fmt.Errorf("failed to marshal yaml: %w", err)
 			}
@@ -172,7 +172,7 @@ func getDevnet(cmd *cobra.Command, name, output string, showNodes bool) error {
 	// Handle yaml/json output
 	switch output {
 	case "yaml":
-		out, err := yaml.Marshal(protoDevnetToYAML(devnet))
+		out, err := k8syaml.Marshal(protoDevnetToYAML(devnet))
 		if err != nil {
 			return fmt.Errorf("failed to marshal yaml: %w", err)
 		}
@@ -322,7 +322,7 @@ func protoDevnetToYAML(d *v1.Devnet) *YAMLDevnetOutput {
 			Annotations: d.Metadata.Annotations,
 		},
 		Spec: YAMLDevnetSpecOutput{
-			Network:        d.Spec.Plugin,     // proto uses Plugin, YAML uses network
+			Network:        d.Spec.Plugin, // proto uses Plugin, YAML uses network
 			NetworkType:    d.Spec.NetworkType,
 			NetworkVersion: d.Spec.SdkVersion, // proto uses SdkVersion, YAML uses networkVersion
 			Validators:     d.Spec.Validators,

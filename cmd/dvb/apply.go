@@ -128,7 +128,7 @@ func applyDevnet(cmd *cobra.Command, devnet *config.YAMLDevnet) (*v1.ApplyDevnet
 // yamlToProtoSpec converts YAML spec to proto DevnetSpec
 func yamlToProtoSpec(yamlSpec *config.YAMLDevnetSpec) *v1.DevnetSpec {
 	spec := &v1.DevnetSpec{
-		Plugin:      yamlSpec.Network,        // YAML uses "network", proto uses "plugin"
+		Plugin:      yamlSpec.Network, // YAML uses "network", proto uses "plugin"
 		NetworkType: yamlSpec.NetworkType,
 		Validators:  int32(yamlSpec.Validators),
 		FullNodes:   int32(yamlSpec.FullNodes),

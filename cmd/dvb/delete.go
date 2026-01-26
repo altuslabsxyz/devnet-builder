@@ -86,8 +86,8 @@ func runDeleteFromFile(cmd *cobra.Command, filePath string, force, dryRun bool) 
 	// Preview mode
 	if dryRun {
 		fmt.Printf("Would delete %d devnet(s):\n", len(devnets))
-		for _, d := range devnets {
-			fmt.Printf("  - devnet/%s\n", d.Metadata.Name)
+		for i := range devnets {
+			fmt.Printf("  - devnet/%s\n", devnets[i].Metadata.Name)
 		}
 		fmt.Println("\nRun without --dry-run to delete.")
 		return nil
@@ -96,8 +96,8 @@ func runDeleteFromFile(cmd *cobra.Command, filePath string, force, dryRun bool) 
 	// Confirm if not forced
 	if !force {
 		fmt.Printf("This will delete %d devnet(s):\n", len(devnets))
-		for _, d := range devnets {
-			fmt.Printf("  - devnet/%s\n", d.Metadata.Name)
+		for i := range devnets {
+			fmt.Printf("  - devnet/%s\n", devnets[i].Metadata.Name)
 		}
 		fmt.Print("\nAre you sure? [y/N] ")
 		var response string
@@ -114,8 +114,8 @@ func runDeleteFromFile(cmd *cobra.Command, filePath string, force, dryRun bool) 
 
 	// Delete each devnet
 	var hasErrors bool
-	for _, d := range devnets {
-		name := d.Metadata.Name
+	for i := range devnets {
+		name := devnets[i].Metadata.Name
 		err := daemonClient.DeleteDevnet(cmd.Context(), name)
 		if err != nil {
 			color.Red("devnet/%s deletion failed: %v", name, err)

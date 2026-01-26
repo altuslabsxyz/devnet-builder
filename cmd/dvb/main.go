@@ -63,7 +63,7 @@ func main() {
 		newGetCmd(),
 		newDeleteCmd(),
 		newDiffCmd(),
-		newDeployCmd(),  // deprecated
+		newDeployCmd(), // deprecated
 		newListCmd(),
 		newStatusCmd(),
 		newStartCmd(),
