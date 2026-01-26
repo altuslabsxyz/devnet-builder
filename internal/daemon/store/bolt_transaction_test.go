@@ -157,7 +157,7 @@ func TestBoltStore_ListTransactions(t *testing.T) {
 	}
 
 	// List for devnet1
-	txs, err := s.ListTransactions(context.Background(), "devnet1", ListTxOptions{})
+	txs, err := s.ListTransactions(context.Background(), "", "devnet1", ListTxOptions{})
 	if err != nil {
 		t.Fatalf("ListTransactions: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestBoltStore_ListTransactions(t *testing.T) {
 	}
 
 	// List with type filter
-	txs, err = s.ListTransactions(context.Background(), "devnet2", ListTxOptions{TxType: "bank/send"})
+	txs, err = s.ListTransactions(context.Background(), "", "devnet2", ListTxOptions{TxType: "bank/send"})
 	if err != nil {
 		t.Fatalf("ListTransactions with filter: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestBoltStore_ListTransactions(t *testing.T) {
 	}
 
 	// List with phase filter
-	txs, err = s.ListTransactions(context.Background(), "devnet1", ListTxOptions{Phase: types.TxPhasePending})
+	txs, err = s.ListTransactions(context.Background(), "", "devnet1", ListTxOptions{Phase: types.TxPhasePending})
 	if err != nil {
 		t.Fatalf("ListTransactions with phase filter: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestBoltStore_ListTransactions(t *testing.T) {
 	}
 
 	// List with limit
-	txs, err = s.ListTransactions(context.Background(), "devnet1", ListTxOptions{Limit: 2})
+	txs, err = s.ListTransactions(context.Background(), "", "devnet1", ListTxOptions{Limit: 2})
 	if err != nil {
 		t.Fatalf("ListTransactions with limit: %v", err)
 	}
@@ -254,13 +254,13 @@ func TestBoltStore_DeleteTransactionsByDevnet(t *testing.T) {
 	}
 
 	// Verify devnet1 transactions are gone
-	txs, _ := s.ListTransactions(context.Background(), "devnet1", ListTxOptions{})
+	txs, _ := s.ListTransactions(context.Background(), "", "devnet1", ListTxOptions{})
 	if len(txs) != 0 {
 		t.Errorf("devnet1 txs = %d, want 0", len(txs))
 	}
 
 	// Verify devnet2 transactions still exist
-	txs, _ = s.ListTransactions(context.Background(), "devnet2", ListTxOptions{})
+	txs, _ = s.ListTransactions(context.Background(), "", "devnet2", ListTxOptions{})
 	if len(txs) != 2 {
 		t.Errorf("devnet2 txs = %d, want 2", len(txs))
 	}

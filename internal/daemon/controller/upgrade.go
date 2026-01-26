@@ -61,13 +61,16 @@ func (c *UpgradeController) SetLogger(logger *slog.Logger) {
 	c.logger = logger
 }
 
-// Reconcile processes a single upgrade by name.
+// Reconcile processes a single upgrade by key (format: "namespace/name" or just "name").
 // It compares current phase with desired state and takes action to progress the upgrade.
 func (c *UpgradeController) Reconcile(ctx context.Context, key string) error {
 	c.logger.Debug("reconciling upgrade", "key", key)
 
+	// Parse key - may be "namespace/name" or just "name" (uses default namespace)
+	namespace, name := parseDevnetKey(key)
+
 	// Get upgrade from store
-	upgrade, err := c.store.GetUpgrade(ctx, key)
+	upgrade, err := c.store.GetUpgrade(ctx, namespace, name)
 	if err != nil {
 		if store.IsNotFound(err) {
 			// Upgrade was deleted, nothing to do

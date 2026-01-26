@@ -78,3 +78,107 @@ func TestYAMLDevnet_FromProto(t *testing.T) {
 		t.Errorf("expected 2 validators, got %d", yaml.Spec.Validators)
 	}
 }
+
+func TestYAMLDevnet_ToProto_WithNamespace(t *testing.T) {
+	yaml := YAMLDevnet{
+		APIVersion: "devnet.lagos/v1",
+		Kind:       "Devnet",
+		Metadata: YAMLMetadata{
+			Name:      "test-devnet",
+			Namespace: "production",
+		},
+		Spec: YAMLDevnetSpec{
+			Network:    "stable",
+			Validators: 4,
+			Mode:       "docker",
+		},
+	}
+
+	proto := yaml.ToProto()
+
+	if proto.Metadata.Namespace != "production" {
+		t.Errorf("expected namespace production, got %s", proto.Metadata.Namespace)
+	}
+}
+
+func TestYAMLDevnet_ToProto_DefaultNamespace(t *testing.T) {
+	yaml := YAMLDevnet{
+		APIVersion: "devnet.lagos/v1",
+		Kind:       "Devnet",
+		Metadata: YAMLMetadata{
+			Name: "test-devnet",
+			// Namespace not specified
+		},
+		Spec: YAMLDevnetSpec{
+			Network:    "stable",
+			Validators: 4,
+			Mode:       "docker",
+		},
+	}
+
+	proto := yaml.ToProto()
+
+	if proto.Metadata.Namespace != "default" {
+		t.Errorf("expected namespace default when not specified, got %s", proto.Metadata.Namespace)
+	}
+}
+
+func TestYAMLDevnet_FromProto_WithNamespace(t *testing.T) {
+	proto := &v1.Devnet{
+		Metadata: &v1.DevnetMetadata{
+			Name:      "proto-devnet",
+			Namespace: "staging",
+		},
+		Spec: &v1.DevnetSpec{
+			Plugin:     "stable",
+			Validators: 2,
+		},
+	}
+
+	yaml := YAMLDevnetFromProto(proto)
+
+	if yaml.Metadata.Namespace != "staging" {
+		t.Errorf("expected namespace staging, got %s", yaml.Metadata.Namespace)
+	}
+}
+
+func TestYAMLDevnet_ToCreateRequest_WithNamespace(t *testing.T) {
+	yaml := YAMLDevnet{
+		APIVersion: "devnet.lagos/v1",
+		Kind:       "Devnet",
+		Metadata: YAMLMetadata{
+			Name:      "test-devnet",
+			Namespace: "production",
+		},
+		Spec: YAMLDevnetSpec{
+			Network:    "stable",
+			Validators: 4,
+		},
+	}
+
+	req := yaml.ToCreateRequest()
+
+	if req.Namespace != "production" {
+		t.Errorf("expected namespace production, got %s", req.Namespace)
+	}
+}
+
+func TestYAMLDevnet_ToCreateRequest_DefaultNamespace(t *testing.T) {
+	yaml := YAMLDevnet{
+		APIVersion: "devnet.lagos/v1",
+		Kind:       "Devnet",
+		Metadata: YAMLMetadata{
+			Name: "test-devnet",
+		},
+		Spec: YAMLDevnetSpec{
+			Network:    "stable",
+			Validators: 4,
+		},
+	}
+
+	req := yaml.ToCreateRequest()
+
+	if req.Namespace != "default" {
+		t.Errorf("expected namespace default when not specified, got %s", req.Namespace)
+	}
+}

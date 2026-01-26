@@ -39,7 +39,7 @@ func TestBoltStore_DevnetCRUD(t *testing.T) {
 	assert.False(t, devnet.Metadata.CreatedAt.IsZero())
 
 	// Get
-	got, err := store.GetDevnet(ctx, "test-devnet")
+	got, err := store.GetDevnet(ctx, "", "test-devnet")
 	require.NoError(t, err)
 	assert.Equal(t, "test-devnet", got.Metadata.Name)
 	assert.Equal(t, "stable", got.Spec.Plugin)
@@ -51,21 +51,21 @@ func TestBoltStore_DevnetCRUD(t *testing.T) {
 	assert.Equal(t, int64(2), got.Metadata.Generation)
 
 	// Verify update
-	updated, err := store.GetDevnet(ctx, "test-devnet")
+	updated, err := store.GetDevnet(ctx, "", "test-devnet")
 	require.NoError(t, err)
 	assert.Equal(t, 8, updated.Spec.Validators)
 
 	// List
-	list, err := store.ListDevnets(ctx)
+	list, err := store.ListDevnets(ctx, "")
 	require.NoError(t, err)
 	assert.Len(t, list, 1)
 
 	// Delete
-	err = store.DeleteDevnet(ctx, "test-devnet")
+	err = store.DeleteDevnet(ctx, "", "test-devnet")
 	require.NoError(t, err)
 
 	// Verify delete
-	_, err = store.GetDevnet(ctx, "test-devnet")
+	_, err = store.GetDevnet(ctx, "", "test-devnet")
 	assert.True(t, IsNotFound(err))
 }
 
@@ -88,8 +88,8 @@ func TestBoltStore_ConflictDetection(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get two copies
-	copy1, _ := store.GetDevnet(ctx, "conflict-test")
-	copy2, _ := store.GetDevnet(ctx, "conflict-test")
+	copy1, _ := store.GetDevnet(ctx, "", "conflict-test")
+	copy2, _ := store.GetDevnet(ctx, "", "conflict-test")
 
 	// Update first copy
 	copy1.Spec.Validators = 8

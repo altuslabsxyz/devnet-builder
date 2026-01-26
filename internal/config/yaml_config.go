@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	// SupportedAPIVersion is the current API version
+	// SupportedAPIVersion is the API version (v1 with namespace support)
 	SupportedAPIVersion = "devnet.lagos/v1"
 	// SupportedKind is the resource kind
 	SupportedKind = "Devnet"
@@ -24,6 +24,7 @@ type YAMLDevnet struct {
 // YAMLMetadata contains resource identification
 type YAMLMetadata struct {
 	Name        string            `yaml:"name"`
+	Namespace   string            `yaml:"namespace,omitempty"` // Defaults to "default" if not specified
 	Labels      map[string]string `yaml:"labels,omitempty"`
 	Annotations map[string]string `yaml:"annotations,omitempty"`
 }
@@ -75,7 +76,8 @@ func (d *YAMLDevnet) Validate() error {
 
 	// API version check
 	if d.APIVersion != SupportedAPIVersion {
-		errs = append(errs, fmt.Sprintf("unsupported apiVersion %q, expected %q", d.APIVersion, SupportedAPIVersion))
+		errs = append(errs, fmt.Sprintf("unsupported apiVersion %q, expected %q",
+			d.APIVersion, SupportedAPIVersion))
 	}
 
 	// Kind check

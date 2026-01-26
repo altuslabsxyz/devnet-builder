@@ -12,9 +12,10 @@ import (
 
 func newDeleteCmd() *cobra.Command {
 	var (
-		filePath string
-		force    bool
-		dryRun   bool
+		filePath  string
+		namespace string
+		force     bool
+		dryRun    bool
 	)
 
 	cmd := &cobra.Command{
@@ -25,6 +26,9 @@ func newDeleteCmd() *cobra.Command {
 Examples:
   # Delete a devnet by name
   dvb delete devnet my-devnet
+
+  # Delete a devnet in a specific namespace
+  dvb delete devnet my-devnet -n production
 
   # Delete devnets defined in a YAML file
   dvb delete -f devnet.yaml
@@ -51,7 +55,7 @@ Examples:
 
 			switch resourceType {
 			case "devnet", "devnets", "dn":
-				return runDeleteDevnet(cmd, name, force, dryRun)
+				return runDeleteDevnet(cmd, namespace, name, force, dryRun)
 			default:
 				return fmt.Errorf("unknown resource type: %s", resourceType)
 			}
@@ -59,6 +63,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVarP(&filePath, "file", "f", "", "Path to YAML file containing resources to delete")
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview what would be deleted without actually deleting")
 
@@ -116,13 +121,14 @@ func runDeleteFromFile(cmd *cobra.Command, filePath string, force, dryRun bool) 
 	var hasErrors bool
 	for i := range devnets {
 		name := devnets[i].Metadata.Name
-		err := daemonClient.DeleteDevnet(cmd.Context(), name)
+		namespace := devnets[i].Metadata.Namespace
+		err := daemonClient.DeleteDevnet(cmd.Context(), namespace, name)
 		if err != nil {
-			color.Red("devnet/%s deletion failed: %v", name, err)
+			color.Red("devnet/%s (namespace: %s) deletion failed: %v", name, namespace, err)
 			hasErrors = true
 			continue
 		}
-		color.Green("devnet/%s deleted", name)
+		color.Green("devnet/%s deleted (namespace: %s)", name, namespace)
 	}
 
 	if hasErrors {
@@ -133,17 +139,17 @@ func runDeleteFromFile(cmd *cobra.Command, filePath string, force, dryRun bool) 
 }
 
 // runDeleteDevnet deletes a single devnet by name
-func runDeleteDevnet(cmd *cobra.Command, name string, force, dryRun bool) error {
+func runDeleteDevnet(cmd *cobra.Command, namespace, name string, force, dryRun bool) error {
 	// Preview mode
 	if dryRun {
-		fmt.Printf("Would delete devnet/%s\n", name)
+		fmt.Printf("Would delete devnet/%s (namespace: %s)\n", name, namespace)
 		fmt.Println("\nRun without --dry-run to delete.")
 		return nil
 	}
 
 	// Confirm if not forced
 	if !force {
-		fmt.Printf("Are you sure you want to delete devnet %q? [y/N] ", name)
+		fmt.Printf("Are you sure you want to delete devnet %q (namespace: %s)? [y/N] ", name, namespace)
 		var response string
 		if _, err := fmt.Scanln(&response); err != nil || (response != "y" && response != "Y") {
 			fmt.Println("Cancelled")
@@ -156,11 +162,11 @@ func runDeleteDevnet(cmd *cobra.Command, name string, force, dryRun bool) error 
 		return fmt.Errorf("daemon not running - start with: devnetd")
 	}
 
-	err := daemonClient.DeleteDevnet(cmd.Context(), name)
+	err := daemonClient.DeleteDevnet(cmd.Context(), namespace, name)
 	if err != nil {
 		return err
 	}
 
-	color.Green("devnet/%s deleted", name)
+	color.Green("devnet/%s deleted (namespace: %s)", name, namespace)
 	return nil
 }

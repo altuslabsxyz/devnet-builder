@@ -61,6 +61,7 @@ func (s *TransactionService) SubmitTransaction(ctx context.Context, req *v1.Subm
 	tx := &types.Transaction{
 		Metadata: types.ResourceMeta{
 			Name:      fmt.Sprintf("tx-%s-%d", req.Devnet, now.UnixNano()),
+			Namespace: types.DefaultNamespace, // Transactions use default namespace
 			CreatedAt: now,
 			UpdatedAt: now,
 		},
@@ -82,9 +83,9 @@ func (s *TransactionService) SubmitTransaction(ctx context.Context, req *v1.Subm
 		return nil, status.Errorf(codes.Internal, "failed to create transaction: %v", err)
 	}
 
-	// Enqueue for reconciliation
+	// Enqueue for reconciliation with namespace/name key
 	if s.manager != nil {
-		s.manager.Enqueue("transactions", tx.Metadata.Name)
+		s.manager.Enqueue("transactions", types.DefaultNamespace+"/"+tx.Metadata.Name)
 	}
 
 	return &v1.SubmitTransactionResponse{Transaction: transactionToProto(tx)}, nil
@@ -119,7 +120,8 @@ func (s *TransactionService) ListTransactions(ctx context.Context, req *v1.ListT
 		Limit:  int(req.Limit),
 	}
 
-	txs, err := s.store.ListTransactions(ctx, req.Devnet, opts)
+	// Use empty namespace to search across all namespaces (transactions are keyed by devnet)
+	txs, err := s.store.ListTransactions(ctx, "", req.Devnet, opts)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list transactions: %v", err)
 	}

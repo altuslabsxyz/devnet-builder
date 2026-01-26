@@ -2,12 +2,14 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -87,7 +89,7 @@ func (s *BoltStore) Watch(ctx context.Context, resourceType string, handler Watc
 
 	// Send initial list as ADDED events
 	if resourceType == "devnets" {
-		devnets, err := s.ListDevnets(ctx)
+		devnets, err := s.ListDevnets(ctx, "") // empty namespace = all
 		if err != nil {
 			return err
 		}
@@ -109,4 +111,21 @@ func encode(v interface{}) ([]byte, error) {
 // decode unmarshals JSON to a value.
 func decode(data []byte, v interface{}) error {
 	return json.Unmarshal(data, v)
+}
+
+// devnetKey creates a key for devnet storage: namespace/name
+func devnetKey(namespace, name string) []byte {
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+	return []byte(namespace + "/" + name)
+}
+
+// parseDevnetKey extracts namespace and name from key
+func parseDevnetKey(key []byte) (namespace, name string) {
+	parts := bytes.SplitN(key, []byte("/"), 2)
+	if len(parts) == 2 {
+		return string(parts[0]), string(parts[1])
+	}
+	return types.DefaultNamespace, string(key)
 }

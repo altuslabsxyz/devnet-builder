@@ -18,6 +18,9 @@ func (s *BoltStore) CreateTransaction(ctx context.Context, tx *types.Transaction
 			return fmt.Errorf("transactions bucket not found")
 		}
 
+		// Ensure namespace is set
+		tx.Metadata.EnsureNamespace()
+
 		key := []byte(tx.Metadata.Name)
 		if b.Get(key) != nil {
 			return ErrAlreadyExists
@@ -67,6 +70,9 @@ func (s *BoltStore) UpdateTransaction(ctx context.Context, tx *types.Transaction
 			return ErrNotFound
 		}
 
+		// Ensure namespace is set
+		tx.Metadata.EnsureNamespace()
+
 		key := []byte(tx.Metadata.Name)
 		if b.Get(key) == nil {
 			return ErrNotFound
@@ -87,7 +93,8 @@ func (s *BoltStore) UpdateTransaction(ctx context.Context, tx *types.Transaction
 }
 
 // ListTransactions lists transactions for a devnet with optional filtering.
-func (s *BoltStore) ListTransactions(ctx context.Context, devnetName string, opts ListTxOptions) ([]*types.Transaction, error) {
+// If namespace is empty and devnetName is empty, returns all transactions.
+func (s *BoltStore) ListTransactions(ctx context.Context, namespace, devnetName string, opts ListTxOptions) ([]*types.Transaction, error) {
 	var txs []*types.Transaction
 
 	err := s.db.View(func(btx *bolt.Tx) error {
@@ -107,8 +114,19 @@ func (s *BoltStore) ListTransactions(ctx context.Context, devnetName string, opt
 				return err
 			}
 
-			// Filter by devnet
-			if tx.Spec.DevnetRef != devnetName {
+			// Filter by namespace if specified
+			if namespace != "" {
+				ns := tx.Metadata.Namespace
+				if ns == "" {
+					ns = types.DefaultNamespace
+				}
+				if ns != namespace {
+					return nil
+				}
+			}
+
+			// Filter by devnet if specified
+			if devnetName != "" && tx.Spec.DevnetRef != devnetName {
 				return nil
 			}
 

@@ -41,7 +41,10 @@ func (s *NodeService) GetNode(ctx context.Context, req *v1.GetNodeRequest) (*v1.
 		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
 	}
 
-	node, err := s.store.GetNode(ctx, req.DevnetName, int(req.Index))
+	// Use namespace from request, empty string uses default namespace
+	namespace := req.GetNamespace()
+
+	node, err := s.store.GetNode(ctx, namespace, req.DevnetName, int(req.Index))
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "node %s/%d not found", req.DevnetName, req.Index)
@@ -59,8 +62,11 @@ func (s *NodeService) ListNodes(ctx context.Context, req *v1.ListNodesRequest) (
 		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
 	}
 
+	// Use namespace from request, empty string uses default namespace
+	namespace := req.GetNamespace()
+
 	// Verify the devnet exists first
-	_, err := s.store.GetDevnet(ctx, req.DevnetName)
+	_, err := s.store.GetDevnet(ctx, namespace, req.DevnetName)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "devnet %q not found", req.DevnetName)
@@ -69,7 +75,7 @@ func (s *NodeService) ListNodes(ctx context.Context, req *v1.ListNodesRequest) (
 		return nil, status.Errorf(codes.Internal, "failed to get devnet: %v", err)
 	}
 
-	nodes, err := s.store.ListNodes(ctx, req.DevnetName)
+	nodes, err := s.store.ListNodes(ctx, namespace, req.DevnetName)
 	if err != nil {
 		s.logger.Error("failed to list nodes", "devnet", req.DevnetName, "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to list nodes: %v", err)
@@ -91,9 +97,15 @@ func (s *NodeService) StartNode(ctx context.Context, req *v1.StartNodeRequest) (
 		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
 	}
 
-	s.logger.Info("starting node", "devnet", req.DevnetName, "index", req.Index)
+	// Use namespace from request, default if empty
+	namespace := req.GetNamespace()
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
 
-	node, err := s.store.GetNode(ctx, req.DevnetName, int(req.Index))
+	s.logger.Info("starting node", "namespace", namespace, "devnet", req.DevnetName, "index", req.Index)
+
+	node, err := s.store.GetNode(ctx, namespace, req.DevnetName, int(req.Index))
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "node %s/%d not found", req.DevnetName, req.Index)
@@ -116,9 +128,9 @@ func (s *NodeService) StartNode(ctx context.Context, req *v1.StartNodeRequest) (
 		return nil, status.Errorf(codes.Internal, "failed to update node: %v", err)
 	}
 
-	// Enqueue for reconciliation
+	// Enqueue for reconciliation with namespace-aware key
 	if s.manager != nil {
-		s.manager.Enqueue("nodes", controller.NodeKey(req.DevnetName, int(req.Index)))
+		s.manager.Enqueue("nodes", controller.NodeKeyWithNamespace(namespace, req.DevnetName, int(req.Index)))
 	}
 
 	return &v1.StartNodeResponse{Node: NodeToProto(node)}, nil
@@ -130,9 +142,15 @@ func (s *NodeService) StopNode(ctx context.Context, req *v1.StopNodeRequest) (*v
 		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
 	}
 
-	s.logger.Info("stopping node", "devnet", req.DevnetName, "index", req.Index)
+	// Use namespace from request, default if empty
+	namespace := req.GetNamespace()
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
 
-	node, err := s.store.GetNode(ctx, req.DevnetName, int(req.Index))
+	s.logger.Info("stopping node", "namespace", namespace, "devnet", req.DevnetName, "index", req.Index)
+
+	node, err := s.store.GetNode(ctx, namespace, req.DevnetName, int(req.Index))
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "node %s/%d not found", req.DevnetName, req.Index)
@@ -155,9 +173,9 @@ func (s *NodeService) StopNode(ctx context.Context, req *v1.StopNodeRequest) (*v
 		return nil, status.Errorf(codes.Internal, "failed to update node: %v", err)
 	}
 
-	// Enqueue for reconciliation
+	// Enqueue for reconciliation with namespace-aware key
 	if s.manager != nil {
-		s.manager.Enqueue("nodes", controller.NodeKey(req.DevnetName, int(req.Index)))
+		s.manager.Enqueue("nodes", controller.NodeKeyWithNamespace(namespace, req.DevnetName, int(req.Index)))
 	}
 
 	return &v1.StopNodeResponse{Node: NodeToProto(node)}, nil
@@ -169,9 +187,15 @@ func (s *NodeService) RestartNode(ctx context.Context, req *v1.RestartNodeReques
 		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
 	}
 
-	s.logger.Info("restarting node", "devnet", req.DevnetName, "index", req.Index)
+	// Use namespace from request, default if empty
+	namespace := req.GetNamespace()
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
 
-	node, err := s.store.GetNode(ctx, req.DevnetName, int(req.Index))
+	s.logger.Info("restarting node", "namespace", namespace, "devnet", req.DevnetName, "index", req.Index)
+
+	node, err := s.store.GetNode(ctx, namespace, req.DevnetName, int(req.Index))
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "node %s/%d not found", req.DevnetName, req.Index)
@@ -190,9 +214,9 @@ func (s *NodeService) RestartNode(ctx context.Context, req *v1.RestartNodeReques
 		return nil, status.Errorf(codes.Internal, "failed to update node: %v", err)
 	}
 
-	// Enqueue for reconciliation
+	// Enqueue for reconciliation with namespace-aware key
 	if s.manager != nil {
-		s.manager.Enqueue("nodes", controller.NodeKey(req.DevnetName, int(req.Index)))
+		s.manager.Enqueue("nodes", controller.NodeKeyWithNamespace(namespace, req.DevnetName, int(req.Index)))
 	}
 
 	return &v1.RestartNodeResponse{Node: NodeToProto(node)}, nil
@@ -204,7 +228,10 @@ func (s *NodeService) GetNodeHealth(ctx context.Context, req *v1.GetNodeHealthRe
 		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
 	}
 
-	node, err := s.store.GetNode(ctx, req.DevnetName, int(req.Index))
+	// Use namespace from request, empty string uses default namespace
+	namespace := req.GetNamespace()
+
+	node, err := s.store.GetNode(ctx, namespace, req.DevnetName, int(req.Index))
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "node %s/%d not found", req.DevnetName, req.Index)
@@ -249,6 +276,7 @@ func NodeToProto(n *types.Node) *v1.Node {
 	return &v1.Node{
 		Metadata: &v1.NodeMetadata{
 			Id:         n.Metadata.Name,
+			Namespace:  n.Metadata.Namespace,
 			DevnetName: n.Spec.DevnetRef,
 			Index:      int32(n.Spec.Index),
 			Generation: n.Metadata.Generation,
@@ -284,6 +312,7 @@ func NodeFromProto(pb *v1.Node) *types.Node {
 
 	if pb.Metadata != nil {
 		n.Metadata.Name = pb.Metadata.Id
+		n.Metadata.Namespace = pb.Metadata.Namespace
 		n.Metadata.Generation = pb.Metadata.Generation
 		if pb.Metadata.CreatedAt != nil {
 			n.Metadata.CreatedAt = pb.Metadata.CreatedAt.AsTime()

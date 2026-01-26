@@ -35,7 +35,7 @@ func TestBoltStore_CreateUpgrade(t *testing.T) {
 	}
 
 	// Verify
-	got, err := s.GetUpgrade(context.Background(), "test-upgrade")
+	got, err := s.GetUpgrade(context.Background(), "", "test-upgrade")
 	if err != nil {
 		t.Fatalf("GetUpgrade: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestBoltStore_GetUpgrade_NotFound(t *testing.T) {
 	}
 	defer s.Close()
 
-	_, err = s.GetUpgrade(context.Background(), "nonexistent")
+	_, err = s.GetUpgrade(context.Background(), "", "nonexistent")
 	if !IsNotFound(err) {
 		t.Errorf("expected NotFound error, got: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestBoltStore_UpdateUpgrade(t *testing.T) {
 	}
 
 	// Get and update
-	got, err := s.GetUpgrade(context.Background(), "update-upgrade")
+	got, err := s.GetUpgrade(context.Background(), "", "update-upgrade")
 	if err != nil {
 		t.Fatalf("GetUpgrade: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestBoltStore_UpdateUpgrade(t *testing.T) {
 	}
 
 	// Verify
-	updated, err := s.GetUpgrade(context.Background(), "update-upgrade")
+	updated, err := s.GetUpgrade(context.Background(), "", "update-upgrade")
 	if err != nil {
 		t.Fatalf("GetUpgrade after update: %v", err)
 	}
@@ -160,8 +160,8 @@ func TestBoltStore_UpdateUpgrade_ConflictDetection(t *testing.T) {
 	}
 
 	// Get two copies
-	copy1, _ := s.GetUpgrade(context.Background(), "conflict-upgrade")
-	copy2, _ := s.GetUpgrade(context.Background(), "conflict-upgrade")
+	copy1, _ := s.GetUpgrade(context.Background(), "", "conflict-upgrade")
+	copy2, _ := s.GetUpgrade(context.Background(), "", "conflict-upgrade")
 
 	// Update first copy
 	copy1.Status.Phase = types.UpgradePhaseVoting
@@ -208,7 +208,7 @@ func TestBoltStore_ListUpgrades(t *testing.T) {
 	}
 
 	// List all upgrades (empty devnetName)
-	all, err := s.ListUpgrades(context.Background(), "")
+	all, err := s.ListUpgrades(context.Background(), "", "")
 	if err != nil {
 		t.Fatalf("ListUpgrades (all): %v", err)
 	}
@@ -217,7 +217,7 @@ func TestBoltStore_ListUpgrades(t *testing.T) {
 	}
 
 	// List upgrades for devnet-a
-	devnetA, err := s.ListUpgrades(context.Background(), "devnet-a")
+	devnetA, err := s.ListUpgrades(context.Background(), "", "devnet-a")
 	if err != nil {
 		t.Fatalf("ListUpgrades (devnet-a): %v", err)
 	}
@@ -226,7 +226,7 @@ func TestBoltStore_ListUpgrades(t *testing.T) {
 	}
 
 	// List upgrades for devnet-b
-	devnetB, err := s.ListUpgrades(context.Background(), "devnet-b")
+	devnetB, err := s.ListUpgrades(context.Background(), "", "devnet-b")
 	if err != nil {
 		t.Fatalf("ListUpgrades (devnet-b): %v", err)
 	}
@@ -256,12 +256,12 @@ func TestBoltStore_DeleteUpgrade(t *testing.T) {
 	}
 
 	// Delete
-	if err := s.DeleteUpgrade(context.Background(), "delete-upgrade"); err != nil {
+	if err := s.DeleteUpgrade(context.Background(), "", "delete-upgrade"); err != nil {
 		t.Fatalf("DeleteUpgrade: %v", err)
 	}
 
 	// Verify deleted
-	_, err = s.GetUpgrade(context.Background(), "delete-upgrade")
+	_, err = s.GetUpgrade(context.Background(), "", "delete-upgrade")
 	if !IsNotFound(err) {
 		t.Errorf("expected NotFound after delete, got: %v", err)
 	}
@@ -275,7 +275,7 @@ func TestBoltStore_DeleteUpgrade_NotFound(t *testing.T) {
 	}
 	defer s.Close()
 
-	err = s.DeleteUpgrade(context.Background(), "nonexistent")
+	err = s.DeleteUpgrade(context.Background(), "", "nonexistent")
 	if !IsNotFound(err) {
 		t.Errorf("expected NotFound error, got: %v", err)
 	}
@@ -312,12 +312,12 @@ func TestBoltStore_DeleteUpgradesByDevnet(t *testing.T) {
 	}
 
 	// Delete all upgrades for cascade-devnet
-	if err := s.DeleteUpgradesByDevnet(context.Background(), "cascade-devnet"); err != nil {
+	if err := s.DeleteUpgradesByDevnet(context.Background(), "", "cascade-devnet"); err != nil {
 		t.Fatalf("DeleteUpgradesByDevnet: %v", err)
 	}
 
 	// Verify cascade-devnet upgrades are deleted
-	list, err := s.ListUpgrades(context.Background(), "cascade-devnet")
+	list, err := s.ListUpgrades(context.Background(), "", "cascade-devnet")
 	if err != nil {
 		t.Fatalf("ListUpgrades: %v", err)
 	}
@@ -326,7 +326,7 @@ func TestBoltStore_DeleteUpgradesByDevnet(t *testing.T) {
 	}
 
 	// Verify other-devnet upgrade is still there
-	other, err := s.GetUpgrade(context.Background(), "keep-me")
+	other, err := s.GetUpgrade(context.Background(), "", "keep-me")
 	if err != nil {
 		t.Fatalf("GetUpgrade (keep-me): %v", err)
 	}

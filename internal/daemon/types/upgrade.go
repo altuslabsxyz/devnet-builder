@@ -25,6 +25,10 @@ type UpgradeSpec struct {
 	// DevnetRef is the name of the target Devnet.
 	DevnetRef string `json:"devnetRef"`
 
+	// NamespaceRef is the namespace of the target Devnet.
+	// This allows looking up the target devnet across namespaces.
+	NamespaceRef string `json:"namespaceRef"`
+
 	// UpgradeName is the on-chain upgrade name.
 	UpgradeName string `json:"upgradeName"`
 

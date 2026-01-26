@@ -7,18 +7,25 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	bolt "go.etcd.io/bbolt"
 )
 
-// nodeKey returns the BoltDB key for a node.
-// Format: "devnetName/index" (e.g., "mydevnet/0", "mydevnet/1")
-func boltNodeKey(devnetName string, index int) []byte {
-	return []byte(fmt.Sprintf("%s/%d", devnetName, index))
+// boltNodeKey returns the BoltDB key for a node.
+// Format: "namespace/devnetName/index" (e.g., "default/mydevnet/0")
+func boltNodeKey(namespace, devnetName string, index int) []byte {
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+	return []byte(fmt.Sprintf("%s/%s/%d", namespace, devnetName, index))
 }
 
-// nodeKeyPrefix returns the prefix for all nodes in a devnet.
-func nodeKeyPrefix(devnetName string) []byte {
-	return []byte(devnetName + "/")
+// nodeKeyPrefix returns the prefix for all nodes in a devnet within a namespace.
+func nodeKeyPrefix(namespace, devnetName string) []byte {
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+	return []byte(namespace + "/" + devnetName + "/")
 }
 
 // CreateNode creates a new node in the store.
@@ -26,13 +33,16 @@ func (s *BoltStore) CreateNode(ctx context.Context, node *Node) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketNodes)
 
-		key := boltNodeKey(node.Spec.DevnetRef, node.Spec.Index)
+		// Ensure namespace is set
+		node.Metadata.EnsureNamespace()
+
+		key := boltNodeKey(node.Metadata.Namespace, node.Spec.DevnetRef, node.Spec.Index)
 
 		// Check if already exists
 		if b.Get(key) != nil {
 			return &AlreadyExistsError{
 				Resource: "node",
-				Name:     fmt.Sprintf("%s/%d", node.Spec.DevnetRef, node.Spec.Index),
+				Name:     fmt.Sprintf("%s/%s/%d", node.Metadata.Namespace, node.Spec.DevnetRef, node.Spec.Index),
 			}
 		}
 
@@ -56,18 +66,22 @@ func (s *BoltStore) CreateNode(ctx context.Context, node *Node) error {
 	})
 }
 
-// GetNode retrieves a node by devnet name and index.
-func (s *BoltStore) GetNode(ctx context.Context, devnetName string, index int) (*Node, error) {
+// GetNode retrieves a node by namespace, devnet name, and index.
+func (s *BoltStore) GetNode(ctx context.Context, namespace, devnetName string, index int) (*Node, error) {
 	var node Node
+
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
 
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketNodes)
-		key := boltNodeKey(devnetName, index)
+		key := boltNodeKey(namespace, devnetName, index)
 		data := b.Get(key)
 		if data == nil {
 			return &NotFoundError{
 				Resource: "node",
-				Name:     fmt.Sprintf("%s/%d", devnetName, index),
+				Name:     fmt.Sprintf("%s/%s/%d", namespace, devnetName, index),
 			}
 		}
 		return decode(data, &node)
@@ -83,14 +97,18 @@ func (s *BoltStore) GetNode(ctx context.Context, devnetName string, index int) (
 func (s *BoltStore) UpdateNode(ctx context.Context, node *Node) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketNodes)
-		key := boltNodeKey(node.Spec.DevnetRef, node.Spec.Index)
+
+		// Ensure namespace is set
+		node.Metadata.EnsureNamespace()
+
+		key := boltNodeKey(node.Metadata.Namespace, node.Spec.DevnetRef, node.Spec.Index)
 
 		// Get existing for conflict detection
 		existing := b.Get(key)
 		if existing == nil {
 			return &NotFoundError{
 				Resource: "node",
-				Name:     fmt.Sprintf("%s/%d", node.Spec.DevnetRef, node.Spec.Index),
+				Name:     fmt.Sprintf("%s/%s/%d", node.Metadata.Namespace, node.Spec.DevnetRef, node.Spec.Index),
 			}
 		}
 
@@ -103,7 +121,7 @@ func (s *BoltStore) UpdateNode(ctx context.Context, node *Node) error {
 		if old.Metadata.Generation != node.Metadata.Generation {
 			return &ConflictError{
 				Resource: "node",
-				Name:     fmt.Sprintf("%s/%d", node.Spec.DevnetRef, node.Spec.Index),
+				Name:     fmt.Sprintf("%s/%s/%d", node.Metadata.Namespace, node.Spec.DevnetRef, node.Spec.Index),
 				Message:  fmt.Sprintf("generation mismatch: expected %d, got %d", old.Metadata.Generation, node.Metadata.Generation),
 			}
 		}
@@ -126,19 +144,23 @@ func (s *BoltStore) UpdateNode(ctx context.Context, node *Node) error {
 	})
 }
 
-// DeleteNode deletes a node by devnet name and index.
-func (s *BoltStore) DeleteNode(ctx context.Context, devnetName string, index int) error {
+// DeleteNode deletes a node by namespace, devnet name, and index.
+func (s *BoltStore) DeleteNode(ctx context.Context, namespace, devnetName string, index int) error {
 	var node *Node
+
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
 
 	err := s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketNodes)
-		key := boltNodeKey(devnetName, index)
+		key := boltNodeKey(namespace, devnetName, index)
 
 		data := b.Get(key)
 		if data == nil {
 			return &NotFoundError{
 				Resource: "node",
-				Name:     fmt.Sprintf("%s/%d", devnetName, index),
+				Name:     fmt.Sprintf("%s/%s/%d", namespace, devnetName, index),
 			}
 		}
 
@@ -157,10 +179,15 @@ func (s *BoltStore) DeleteNode(ctx context.Context, devnetName string, index int
 	return nil
 }
 
-// ListNodes returns all nodes for a given devnet.
-func (s *BoltStore) ListNodes(ctx context.Context, devnetName string) ([]*Node, error) {
+// ListNodes returns all nodes for a given namespace and devnet.
+func (s *BoltStore) ListNodes(ctx context.Context, namespace, devnetName string) ([]*Node, error) {
 	var nodes []*Node
-	prefix := nodeKeyPrefix(devnetName)
+
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+
+	prefix := nodeKeyPrefix(namespace, devnetName)
 
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketNodes)
@@ -184,8 +211,12 @@ func (s *BoltStore) ListNodes(ctx context.Context, devnetName string) ([]*Node, 
 }
 
 // DeleteNodesByDevnet deletes all nodes belonging to a devnet (cascade delete).
-func (s *BoltStore) DeleteNodesByDevnet(ctx context.Context, devnetName string) error {
-	prefix := nodeKeyPrefix(devnetName)
+func (s *BoltStore) DeleteNodesByDevnet(ctx context.Context, namespace, devnetName string) error {
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+
+	prefix := nodeKeyPrefix(namespace, devnetName)
 	var deleted []*Node
 
 	err := s.db.Update(func(tx *bolt.Tx) error {

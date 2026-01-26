@@ -50,11 +50,12 @@ func (c *GRPCClient) Close() error {
 }
 
 // CreateDevnet creates a new devnet.
-func (c *GRPCClient) CreateDevnet(ctx context.Context, name string, spec *v1.DevnetSpec, labels map[string]string) (*v1.Devnet, error) {
+func (c *GRPCClient) CreateDevnet(ctx context.Context, namespace, name string, spec *v1.DevnetSpec, labels map[string]string) (*v1.Devnet, error) {
 	req := &v1.CreateDevnetRequest{
-		Name:   name,
-		Spec:   spec,
-		Labels: labels,
+		Namespace: namespace,
+		Name:      name,
+		Spec:      spec,
+		Labels:    labels,
 	}
 
 	resp, err := c.devnet.CreateDevnet(ctx, req)
@@ -66,17 +67,22 @@ func (c *GRPCClient) CreateDevnet(ctx context.Context, name string, spec *v1.Dev
 }
 
 // GetDevnet retrieves a devnet by name.
-func (c *GRPCClient) GetDevnet(ctx context.Context, name string) (*v1.Devnet, error) {
-	resp, err := c.devnet.GetDevnet(ctx, &v1.GetDevnetRequest{Name: name})
+func (c *GRPCClient) GetDevnet(ctx context.Context, namespace, name string) (*v1.Devnet, error) {
+	resp, err := c.devnet.GetDevnet(ctx, &v1.GetDevnetRequest{
+		Namespace: namespace,
+		Name:      name,
+	})
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}
 	return resp.Devnet, nil
 }
 
-// ListDevnets lists all devnets.
-func (c *GRPCClient) ListDevnets(ctx context.Context) ([]*v1.Devnet, error) {
-	resp, err := c.devnet.ListDevnets(ctx, &v1.ListDevnetsRequest{})
+// ListDevnets lists all devnets. Empty namespace returns all namespaces.
+func (c *GRPCClient) ListDevnets(ctx context.Context, namespace string) ([]*v1.Devnet, error) {
+	resp, err := c.devnet.ListDevnets(ctx, &v1.ListDevnetsRequest{
+		Namespace: namespace,
+	})
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}
@@ -84,8 +90,11 @@ func (c *GRPCClient) ListDevnets(ctx context.Context) ([]*v1.Devnet, error) {
 }
 
 // DeleteDevnet deletes a devnet.
-func (c *GRPCClient) DeleteDevnet(ctx context.Context, name string) error {
-	_, err := c.devnet.DeleteDevnet(ctx, &v1.DeleteDevnetRequest{Name: name})
+func (c *GRPCClient) DeleteDevnet(ctx context.Context, namespace, name string) error {
+	_, err := c.devnet.DeleteDevnet(ctx, &v1.DeleteDevnetRequest{
+		Namespace: namespace,
+		Name:      name,
+	})
 	if err != nil {
 		return wrapGRPCError(err)
 	}
@@ -93,8 +102,11 @@ func (c *GRPCClient) DeleteDevnet(ctx context.Context, name string) error {
 }
 
 // StartDevnet starts a stopped devnet.
-func (c *GRPCClient) StartDevnet(ctx context.Context, name string) (*v1.Devnet, error) {
-	resp, err := c.devnet.StartDevnet(ctx, &v1.StartDevnetRequest{Name: name})
+func (c *GRPCClient) StartDevnet(ctx context.Context, namespace, name string) (*v1.Devnet, error) {
+	resp, err := c.devnet.StartDevnet(ctx, &v1.StartDevnetRequest{
+		Namespace: namespace,
+		Name:      name,
+	})
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}
@@ -102,8 +114,11 @@ func (c *GRPCClient) StartDevnet(ctx context.Context, name string) (*v1.Devnet, 
 }
 
 // StopDevnet stops a running devnet.
-func (c *GRPCClient) StopDevnet(ctx context.Context, name string) (*v1.Devnet, error) {
-	resp, err := c.devnet.StopDevnet(ctx, &v1.StopDevnetRequest{Name: name})
+func (c *GRPCClient) StopDevnet(ctx context.Context, namespace, name string) (*v1.Devnet, error) {
+	resp, err := c.devnet.StopDevnet(ctx, &v1.StopDevnetRequest{
+		Namespace: namespace,
+		Name:      name,
+	})
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}
@@ -111,8 +126,9 @@ func (c *GRPCClient) StopDevnet(ctx context.Context, name string) (*v1.Devnet, e
 }
 
 // ApplyDevnet creates or updates a devnet.
-func (c *GRPCClient) ApplyDevnet(ctx context.Context, name string, spec *v1.DevnetSpec, labels, annotations map[string]string) (*v1.ApplyDevnetResponse, error) {
+func (c *GRPCClient) ApplyDevnet(ctx context.Context, namespace, name string, spec *v1.DevnetSpec, labels, annotations map[string]string) (*v1.ApplyDevnetResponse, error) {
 	resp, err := c.devnet.ApplyDevnet(ctx, &v1.ApplyDevnetRequest{
+		Namespace:   namespace,
 		Name:        name,
 		Spec:        spec,
 		Labels:      labels,
@@ -125,8 +141,9 @@ func (c *GRPCClient) ApplyDevnet(ctx context.Context, name string, spec *v1.Devn
 }
 
 // UpdateDevnet updates an existing devnet.
-func (c *GRPCClient) UpdateDevnet(ctx context.Context, name string, spec *v1.DevnetSpec, labels, annotations map[string]string) (*v1.Devnet, error) {
+func (c *GRPCClient) UpdateDevnet(ctx context.Context, namespace, name string, spec *v1.DevnetSpec, labels, annotations map[string]string) (*v1.Devnet, error) {
 	resp, err := c.devnet.UpdateDevnet(ctx, &v1.UpdateDevnetRequest{
+		Namespace:   namespace,
 		Name:        name,
 		Spec:        spec,
 		Labels:      labels,
@@ -139,8 +156,9 @@ func (c *GRPCClient) UpdateDevnet(ctx context.Context, name string, spec *v1.Dev
 }
 
 // GetNode retrieves a node by devnet name and index.
-func (c *GRPCClient) GetNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
+func (c *GRPCClient) GetNode(ctx context.Context, namespace, devnetName string, index int) (*v1.Node, error) {
 	resp, err := c.node.GetNode(ctx, &v1.GetNodeRequest{
+		Namespace:  namespace,
 		DevnetName: devnetName,
 		Index:      int32(index),
 	})
@@ -151,8 +169,9 @@ func (c *GRPCClient) GetNode(ctx context.Context, devnetName string, index int) 
 }
 
 // ListNodes lists all nodes in a devnet.
-func (c *GRPCClient) ListNodes(ctx context.Context, devnetName string) ([]*v1.Node, error) {
+func (c *GRPCClient) ListNodes(ctx context.Context, namespace, devnetName string) ([]*v1.Node, error) {
 	resp, err := c.node.ListNodes(ctx, &v1.ListNodesRequest{
+		Namespace:  namespace,
 		DevnetName: devnetName,
 	})
 	if err != nil {
@@ -162,8 +181,9 @@ func (c *GRPCClient) ListNodes(ctx context.Context, devnetName string) ([]*v1.No
 }
 
 // StartNode starts a stopped node.
-func (c *GRPCClient) StartNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
+func (c *GRPCClient) StartNode(ctx context.Context, namespace, devnetName string, index int) (*v1.Node, error) {
 	resp, err := c.node.StartNode(ctx, &v1.StartNodeRequest{
+		Namespace:  namespace,
 		DevnetName: devnetName,
 		Index:      int32(index),
 	})
@@ -174,8 +194,9 @@ func (c *GRPCClient) StartNode(ctx context.Context, devnetName string, index int
 }
 
 // StopNode stops a running node.
-func (c *GRPCClient) StopNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
+func (c *GRPCClient) StopNode(ctx context.Context, namespace, devnetName string, index int) (*v1.Node, error) {
 	resp, err := c.node.StopNode(ctx, &v1.StopNodeRequest{
+		Namespace:  namespace,
 		DevnetName: devnetName,
 		Index:      int32(index),
 	})
@@ -186,8 +207,9 @@ func (c *GRPCClient) StopNode(ctx context.Context, devnetName string, index int)
 }
 
 // RestartNode restarts a node.
-func (c *GRPCClient) RestartNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
+func (c *GRPCClient) RestartNode(ctx context.Context, namespace, devnetName string, index int) (*v1.Node, error) {
 	resp, err := c.node.RestartNode(ctx, &v1.RestartNodeRequest{
+		Namespace:  namespace,
 		DevnetName: devnetName,
 		Index:      int32(index),
 	})
@@ -198,10 +220,11 @@ func (c *GRPCClient) RestartNode(ctx context.Context, devnetName string, index i
 }
 
 // CreateUpgrade creates a new upgrade.
-func (c *GRPCClient) CreateUpgrade(ctx context.Context, name string, spec *v1.UpgradeSpec) (*v1.Upgrade, error) {
+func (c *GRPCClient) CreateUpgrade(ctx context.Context, namespace, name string, spec *v1.UpgradeSpec) (*v1.Upgrade, error) {
 	req := &v1.CreateUpgradeRequest{
-		Name: name,
-		Spec: spec,
+		Namespace: namespace,
+		Name:      name,
+		Spec:      spec,
 	}
 
 	resp, err := c.upgrade.CreateUpgrade(ctx, req)
@@ -213,17 +236,22 @@ func (c *GRPCClient) CreateUpgrade(ctx context.Context, name string, spec *v1.Up
 }
 
 // GetUpgrade retrieves an upgrade by name.
-func (c *GRPCClient) GetUpgrade(ctx context.Context, name string) (*v1.Upgrade, error) {
-	resp, err := c.upgrade.GetUpgrade(ctx, &v1.GetUpgradeRequest{Name: name})
+func (c *GRPCClient) GetUpgrade(ctx context.Context, namespace, name string) (*v1.Upgrade, error) {
+	resp, err := c.upgrade.GetUpgrade(ctx, &v1.GetUpgradeRequest{
+		Namespace: namespace,
+		Name:      name,
+	})
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}
 	return resp.Upgrade, nil
 }
 
-// ListUpgrades lists all upgrades for a devnet.
-func (c *GRPCClient) ListUpgrades(ctx context.Context, devnetName string) ([]*v1.Upgrade, error) {
-	resp, err := c.upgrade.ListUpgrades(ctx, &v1.ListUpgradesRequest{DevnetName: devnetName})
+// ListUpgrades lists all upgrades. Empty namespace returns all namespaces.
+func (c *GRPCClient) ListUpgrades(ctx context.Context, namespace string) ([]*v1.Upgrade, error) {
+	resp, err := c.upgrade.ListUpgrades(ctx, &v1.ListUpgradesRequest{
+		Namespace: namespace,
+	})
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}
@@ -231,8 +259,11 @@ func (c *GRPCClient) ListUpgrades(ctx context.Context, devnetName string) ([]*v1
 }
 
 // DeleteUpgrade deletes an upgrade.
-func (c *GRPCClient) DeleteUpgrade(ctx context.Context, name string) error {
-	_, err := c.upgrade.DeleteUpgrade(ctx, &v1.DeleteUpgradeRequest{Name: name})
+func (c *GRPCClient) DeleteUpgrade(ctx context.Context, namespace, name string) error {
+	_, err := c.upgrade.DeleteUpgrade(ctx, &v1.DeleteUpgradeRequest{
+		Namespace: namespace,
+		Name:      name,
+	})
 	if err != nil {
 		return wrapGRPCError(err)
 	}
@@ -240,8 +271,11 @@ func (c *GRPCClient) DeleteUpgrade(ctx context.Context, name string) error {
 }
 
 // CancelUpgrade cancels a running upgrade.
-func (c *GRPCClient) CancelUpgrade(ctx context.Context, name string) (*v1.Upgrade, error) {
-	resp, err := c.upgrade.CancelUpgrade(ctx, &v1.CancelUpgradeRequest{Name: name})
+func (c *GRPCClient) CancelUpgrade(ctx context.Context, namespace, name string) (*v1.Upgrade, error) {
+	resp, err := c.upgrade.CancelUpgrade(ctx, &v1.CancelUpgradeRequest{
+		Namespace: namespace,
+		Name:      name,
+	})
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}
@@ -249,8 +283,11 @@ func (c *GRPCClient) CancelUpgrade(ctx context.Context, name string) (*v1.Upgrad
 }
 
 // RetryUpgrade retries a failed upgrade.
-func (c *GRPCClient) RetryUpgrade(ctx context.Context, name string) (*v1.Upgrade, error) {
-	resp, err := c.upgrade.RetryUpgrade(ctx, &v1.RetryUpgradeRequest{Name: name})
+func (c *GRPCClient) RetryUpgrade(ctx context.Context, namespace, name string) (*v1.Upgrade, error) {
+	resp, err := c.upgrade.RetryUpgrade(ctx, &v1.RetryUpgradeRequest{
+		Namespace: namespace,
+		Name:      name,
+	})
 	if err != nil {
 		return nil, wrapGRPCError(err)
 	}

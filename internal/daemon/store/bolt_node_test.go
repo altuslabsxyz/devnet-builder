@@ -36,7 +36,7 @@ func TestBoltStore_CreateNode(t *testing.T) {
 	}
 
 	// Verify we can get it back
-	got, err := s.GetNode(context.Background(), "mydevnet", 0)
+	got, err := s.GetNode(context.Background(), "", "mydevnet", 0)
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestBoltStore_GetNode_NotFound(t *testing.T) {
 	}
 	defer s.Close()
 
-	_, err = s.GetNode(context.Background(), "nonexistent", 0)
+	_, err = s.GetNode(context.Background(), "", "nonexistent", 0)
 	if err == nil {
 		t.Fatal("Expected error for nonexistent node")
 	}
@@ -119,7 +119,7 @@ func TestBoltStore_UpdateNode(t *testing.T) {
 	}
 
 	// Get fresh copy
-	node, err = s.GetNode(context.Background(), "mydevnet", 0)
+	node, err = s.GetNode(context.Background(), "", "mydevnet", 0)
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestBoltStore_UpdateNode(t *testing.T) {
 	}
 
 	// Verify update
-	got, err := s.GetNode(context.Background(), "mydevnet", 0)
+	got, err := s.GetNode(context.Background(), "", "mydevnet", 0)
 	if err != nil {
 		t.Fatalf("GetNode after update: %v", err)
 	}
@@ -192,12 +192,12 @@ func TestBoltStore_DeleteNode(t *testing.T) {
 	}
 
 	// Delete it
-	if err := s.DeleteNode(context.Background(), "mydevnet", 0); err != nil {
+	if err := s.DeleteNode(context.Background(), "", "mydevnet", 0); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
 	// Verify it's gone
-	_, err = s.GetNode(context.Background(), "mydevnet", 0)
+	_, err = s.GetNode(context.Background(), "", "mydevnet", 0)
 	if !IsNotFound(err) {
 		t.Errorf("Expected NotFoundError after delete, got %v", err)
 	}
@@ -211,7 +211,7 @@ func TestBoltStore_DeleteNode_NotFound(t *testing.T) {
 	}
 	defer s.Close()
 
-	err = s.DeleteNode(context.Background(), "nonexistent", 0)
+	err = s.DeleteNode(context.Background(), "", "nonexistent", 0)
 	if err == nil {
 		t.Fatal("Expected error for nonexistent node")
 	}
@@ -242,7 +242,7 @@ func TestBoltStore_ListNodes(t *testing.T) {
 	}
 
 	// List nodes for devnet-a
-	gotA, err := s.ListNodes(context.Background(), "devnet-a")
+	gotA, err := s.ListNodes(context.Background(), "", "devnet-a")
 	if err != nil {
 		t.Fatalf("ListNodes devnet-a: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestBoltStore_ListNodes(t *testing.T) {
 	}
 
 	// List nodes for devnet-b
-	gotB, err := s.ListNodes(context.Background(), "devnet-b")
+	gotB, err := s.ListNodes(context.Background(), "", "devnet-b")
 	if err != nil {
 		t.Fatalf("ListNodes devnet-b: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestBoltStore_ListNodes(t *testing.T) {
 	}
 
 	// List nodes for nonexistent devnet
-	gotC, err := s.ListNodes(context.Background(), "devnet-c")
+	gotC, err := s.ListNodes(context.Background(), "", "devnet-c")
 	if err != nil {
 		t.Fatalf("ListNodes devnet-c: %v", err)
 	}
@@ -290,12 +290,12 @@ func TestBoltStore_DeleteNodesByDevnet(t *testing.T) {
 	}
 
 	// Delete all nodes for devnet-a
-	if err := s.DeleteNodesByDevnet(context.Background(), "devnet-a"); err != nil {
+	if err := s.DeleteNodesByDevnet(context.Background(), "", "devnet-a"); err != nil {
 		t.Fatalf("DeleteNodesByDevnet: %v", err)
 	}
 
 	// Verify devnet-a nodes are gone
-	gotA, err := s.ListNodes(context.Background(), "devnet-a")
+	gotA, err := s.ListNodes(context.Background(), "", "devnet-a")
 	if err != nil {
 		t.Fatalf("ListNodes devnet-a: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestBoltStore_DeleteNodesByDevnet(t *testing.T) {
 	}
 
 	// Verify devnet-b nodes are still there
-	gotB, err := s.ListNodes(context.Background(), "devnet-b")
+	gotB, err := s.ListNodes(context.Background(), "", "devnet-b")
 	if err != nil {
 		t.Fatalf("ListNodes devnet-b: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestBoltStore_NodeWithLargeIndex(t *testing.T) {
 
 	// Verify we can retrieve each one
 	for _, idx := range indices {
-		got, err := s.GetNode(context.Background(), "mydevnet", idx)
+		got, err := s.GetNode(context.Background(), "", "mydevnet", idx)
 		if err != nil {
 			t.Errorf("GetNode index %d: %v", idx, err)
 			continue
@@ -346,7 +346,7 @@ func TestBoltStore_NodeWithLargeIndex(t *testing.T) {
 	}
 
 	// Verify list returns all
-	nodes, err := s.ListNodes(context.Background(), "mydevnet")
+	nodes, err := s.ListNodes(context.Background(), "", "mydevnet")
 	if err != nil {
 		t.Fatalf("ListNodes: %v", err)
 	}

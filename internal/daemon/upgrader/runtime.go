@@ -119,8 +119,16 @@ func (r *Runtime) VoteOnProposal(ctx context.Context, devnetName string, proposa
 
 // GetCurrentHeight returns the chain's current block height.
 func (r *Runtime) GetCurrentHeight(ctx context.Context, devnetName string) (int64, error) {
+	// Get devnet to determine namespace
+	devnet, err := r.store.GetDevnet(ctx, "", devnetName)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get devnet: %w", err)
+	}
+
+	namespace := devnet.Metadata.Namespace
+
 	// Get any running node for this devnet
-	nodes, err := r.store.ListNodes(ctx, devnetName)
+	nodes, err := r.store.ListNodes(ctx, namespace, devnetName)
 	if err != nil {
 		return 0, fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -183,8 +191,16 @@ func (r *Runtime) SwitchNodeBinary(ctx context.Context, devnetName string, nodeI
 		"nodeIndex", nodeIndex,
 		"newBinary", newBinary)
 
+	// Get devnet to determine namespace
+	devnet, err := r.store.GetDevnet(ctx, "", devnetName)
+	if err != nil {
+		return fmt.Errorf("failed to get devnet: %w", err)
+	}
+
+	namespace := devnet.Metadata.Namespace
+
 	// Get the node
-	node, err := r.store.GetNode(ctx, devnetName, nodeIndex)
+	node, err := r.store.GetNode(ctx, namespace, devnetName, nodeIndex)
 	if err != nil {
 		return fmt.Errorf("failed to get node: %w", err)
 	}
@@ -231,8 +247,16 @@ func (r *Runtime) VerifyNodeVersion(ctx context.Context, devnetName string, node
 		"nodeIndex", nodeIndex,
 		"expectedVersion", expectedVersion)
 
+	// Get devnet to determine namespace
+	devnet, err := r.store.GetDevnet(ctx, "", devnetName)
+	if err != nil {
+		return false, fmt.Errorf("failed to get devnet: %w", err)
+	}
+
+	namespace := devnet.Metadata.Namespace
+
 	// Check if node is running
-	node, err := r.store.GetNode(ctx, devnetName, nodeIndex)
+	node, err := r.store.GetNode(ctx, namespace, devnetName, nodeIndex)
 	if err != nil {
 		return false, fmt.Errorf("failed to get node: %w", err)
 	}
@@ -306,8 +330,8 @@ func (r *Runtime) ExportState(ctx context.Context, devnetName string, outputPath
 
 // GetValidatorCount returns the number of validators in the devnet.
 func (r *Runtime) GetValidatorCount(ctx context.Context, devnetName string) (int, error) {
-	// Get devnet spec
-	devnet, err := r.store.GetDevnet(ctx, devnetName)
+	// Get devnet spec (use empty namespace to search across all namespaces)
+	devnet, err := r.store.GetDevnet(ctx, "", devnetName)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get devnet: %w", err)
 	}

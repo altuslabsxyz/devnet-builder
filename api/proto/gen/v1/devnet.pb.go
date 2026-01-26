@@ -146,6 +146,7 @@ type DevnetMetadata struct {
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	Labels        map[string]string      `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Annotations   map[string]string      `protobuf:"bytes,6,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Namespace     string                 `protobuf:"bytes,7,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace for resource isolation (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -220,6 +221,13 @@ func (x *DevnetMetadata) GetAnnotations() map[string]string {
 		return x.Annotations
 	}
 	return nil
+}
+
+func (x *DevnetMetadata) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
 }
 
 type DevnetSpec struct {
@@ -590,6 +598,7 @@ type CreateDevnetRequest struct {
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Spec          *DevnetSpec            `protobuf:"bytes,2,opt,name=spec,proto3" json:"spec,omitempty"`
 	Labels        map[string]string      `protobuf:"bytes,3,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Namespace     string                 `protobuf:"bytes,4,opt,name=namespace,proto3" json:"namespace,omitempty"` // Target namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -645,6 +654,13 @@ func (x *CreateDevnetRequest) GetLabels() map[string]string {
 	return nil
 }
 
+func (x *CreateDevnetRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
 type CreateDevnetResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Devnet        *Devnet                `protobuf:"bytes,1,opt,name=devnet,proto3" json:"devnet,omitempty"`
@@ -692,6 +708,7 @@ func (x *CreateDevnetResponse) GetDevnet() *Devnet {
 type GetDevnetRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace to look in (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -729,6 +746,13 @@ func (*GetDevnetRequest) Descriptor() ([]byte, []int) {
 func (x *GetDevnetRequest) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *GetDevnetRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
 	}
 	return ""
 }
@@ -780,6 +804,7 @@ func (x *GetDevnetResponse) GetDevnet() *Devnet {
 type ListDevnetsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	LabelSelector string                 `protobuf:"bytes,1,opt,name=label_selector,json=labelSelector,proto3" json:"label_selector,omitempty"`
+	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"` // Filter by namespace, empty = all namespaces
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -817,6 +842,13 @@ func (*ListDevnetsRequest) Descriptor() ([]byte, []int) {
 func (x *ListDevnetsRequest) GetLabelSelector() string {
 	if x != nil {
 		return x.LabelSelector
+	}
+	return ""
+}
+
+func (x *ListDevnetsRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
 	}
 	return ""
 }
@@ -868,6 +900,7 @@ func (x *ListDevnetsResponse) GetDevnets() []*Devnet {
 type DeleteDevnetRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -905,6 +938,13 @@ func (*DeleteDevnetRequest) Descriptor() ([]byte, []int) {
 func (x *DeleteDevnetRequest) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *DeleteDevnetRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
 	}
 	return ""
 }
@@ -956,6 +996,7 @@ func (x *DeleteDevnetResponse) GetDeleted() bool {
 type StartDevnetRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -993,6 +1034,13 @@ func (*StartDevnetRequest) Descriptor() ([]byte, []int) {
 func (x *StartDevnetRequest) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *StartDevnetRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
 	}
 	return ""
 }
@@ -1044,6 +1092,7 @@ func (x *StartDevnetResponse) GetDevnet() *Devnet {
 type StopDevnetRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1081,6 +1130,13 @@ func (*StopDevnetRequest) Descriptor() ([]byte, []int) {
 func (x *StopDevnetRequest) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *StopDevnetRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
 	}
 	return ""
 }
@@ -1135,6 +1191,7 @@ type ApplyDevnetRequest struct {
 	Spec          *DevnetSpec            `protobuf:"bytes,2,opt,name=spec,proto3" json:"spec,omitempty"`
 	Labels        map[string]string      `protobuf:"bytes,3,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Annotations   map[string]string      `protobuf:"bytes,4,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Namespace     string                 `protobuf:"bytes,5,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1197,6 +1254,13 @@ func (x *ApplyDevnetRequest) GetAnnotations() map[string]string {
 	return nil
 }
 
+func (x *ApplyDevnetRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
 type ApplyDevnetResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Devnet        *Devnet                `protobuf:"bytes,1,opt,name=devnet,proto3" json:"devnet,omitempty"`
@@ -1255,6 +1319,7 @@ type UpdateDevnetRequest struct {
 	Spec          *DevnetSpec            `protobuf:"bytes,2,opt,name=spec,proto3" json:"spec,omitempty"`
 	Labels        map[string]string      `protobuf:"bytes,3,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Annotations   map[string]string      `protobuf:"bytes,4,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Namespace     string                 `protobuf:"bytes,5,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1315,6 +1380,13 @@ func (x *UpdateDevnetRequest) GetAnnotations() map[string]string {
 		return x.Annotations
 	}
 	return nil
+}
+
+func (x *UpdateDevnetRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
 }
 
 type UpdateDevnetResponse struct {
@@ -1430,6 +1502,7 @@ type NodeMetadata struct {
 	Generation    int64                  `protobuf:"varint,4,opt,name=generation,proto3" json:"generation,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Namespace     string                 `protobuf:"bytes,7,opt,name=namespace,proto3" json:"namespace,omitempty"` // Parent devnet's namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1504,6 +1577,13 @@ func (x *NodeMetadata) GetUpdatedAt() *timestamppb.Timestamp {
 		return x.UpdatedAt
 	}
 	return nil
+}
+
+func (x *NodeMetadata) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
 }
 
 type NodeSpec struct {
@@ -1771,6 +1851,7 @@ type StartNodeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DevnetName    string                 `protobuf:"bytes,1,opt,name=devnet_name,json=devnetName,proto3" json:"devnet_name,omitempty"`
 	Index         int32                  `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
+	Namespace     string                 `protobuf:"bytes,3,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1817,6 +1898,13 @@ func (x *StartNodeRequest) GetIndex() int32 {
 		return x.Index
 	}
 	return 0
+}
+
+func (x *StartNodeRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
 }
 
 type StartNodeResponse struct {
@@ -1868,6 +1956,7 @@ type StopNodeRequest struct {
 	DevnetName     string                 `protobuf:"bytes,1,opt,name=devnet_name,json=devnetName,proto3" json:"devnet_name,omitempty"`
 	Index          int32                  `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
 	TimeoutSeconds int32                  `protobuf:"varint,3,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"` // Grace period, default 30
+	Namespace      string                 `protobuf:"bytes,4,opt,name=namespace,proto3" json:"namespace,omitempty"`                                  // Namespace (defaults to "default")
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1923,6 +2012,13 @@ func (x *StopNodeRequest) GetTimeoutSeconds() int32 {
 	return 0
 }
 
+func (x *StopNodeRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
 type StopNodeResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Node          *Node                  `protobuf:"bytes,1,opt,name=node,proto3" json:"node,omitempty"`
@@ -1971,6 +2067,7 @@ type RestartNodeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DevnetName    string                 `protobuf:"bytes,1,opt,name=devnet_name,json=devnetName,proto3" json:"devnet_name,omitempty"`
 	Index         int32                  `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
+	Namespace     string                 `protobuf:"bytes,3,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2017,6 +2114,13 @@ func (x *RestartNodeRequest) GetIndex() int32 {
 		return x.Index
 	}
 	return 0
+}
+
+func (x *RestartNodeRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
 }
 
 type RestartNodeResponse struct {
@@ -2067,6 +2171,7 @@ type GetNodeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DevnetName    string                 `protobuf:"bytes,1,opt,name=devnet_name,json=devnetName,proto3" json:"devnet_name,omitempty"`
 	Index         int32                  `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
+	Namespace     string                 `protobuf:"bytes,3,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2113,6 +2218,13 @@ func (x *GetNodeRequest) GetIndex() int32 {
 		return x.Index
 	}
 	return 0
+}
+
+func (x *GetNodeRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
 }
 
 type GetNodeResponse struct {
@@ -2162,6 +2274,7 @@ func (x *GetNodeResponse) GetNode() *Node {
 type ListNodesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DevnetName    string                 `protobuf:"bytes,1,opt,name=devnet_name,json=devnetName,proto3" json:"devnet_name,omitempty"` // Required: filter by devnet
+	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`                     // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2199,6 +2312,13 @@ func (*ListNodesRequest) Descriptor() ([]byte, []int) {
 func (x *ListNodesRequest) GetDevnetName() string {
 	if x != nil {
 		return x.DevnetName
+	}
+	return ""
+}
+
+func (x *ListNodesRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
 	}
 	return ""
 }
@@ -2251,6 +2371,7 @@ type GetNodeHealthRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DevnetName    string                 `protobuf:"bytes,1,opt,name=devnet_name,json=devnetName,proto3" json:"devnet_name,omitempty"`
 	Index         int32                  `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
+	Namespace     string                 `protobuf:"bytes,3,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2297,6 +2418,13 @@ func (x *GetNodeHealthRequest) GetIndex() int32 {
 		return x.Index
 	}
 	return 0
+}
+
+func (x *GetNodeHealthRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
 }
 
 type GetNodeHealthResponse struct {
@@ -2348,8 +2476,9 @@ type StreamNodeLogsRequest struct {
 	DevnetName    string                 `protobuf:"bytes,1,opt,name=devnet_name,json=devnetName,proto3" json:"devnet_name,omitempty"`
 	Index         int32                  `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
 	Follow        bool                   `protobuf:"varint,3,opt,name=follow,proto3" json:"follow,omitempty"`
-	Since         string                 `protobuf:"bytes,4,opt,name=since,proto3" json:"since,omitempty"` // RFC3339 timestamp
-	Tail          int32                  `protobuf:"varint,5,opt,name=tail,proto3" json:"tail,omitempty"`  // Number of lines from end
+	Since         string                 `protobuf:"bytes,4,opt,name=since,proto3" json:"since,omitempty"`         // RFC3339 timestamp
+	Tail          int32                  `protobuf:"varint,5,opt,name=tail,proto3" json:"tail,omitempty"`          // Number of lines from end
+	Namespace     string                 `protobuf:"bytes,6,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2419,6 +2548,13 @@ func (x *StreamNodeLogsRequest) GetTail() int32 {
 	return 0
 }
 
+func (x *StreamNodeLogsRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
 type StreamNodeLogsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
@@ -2485,6 +2621,7 @@ type ExecInNodeRequest struct {
 	Index          int32                  `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
 	Command        []string               `protobuf:"bytes,3,rep,name=command,proto3" json:"command,omitempty"`
 	TimeoutSeconds int32                  `protobuf:"varint,4,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
+	Namespace      string                 `protobuf:"bytes,5,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -2545,6 +2682,13 @@ func (x *ExecInNodeRequest) GetTimeoutSeconds() int32 {
 		return x.TimeoutSeconds
 	}
 	return 0
+}
+
+func (x *ExecInNodeRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
 }
 
 type ExecInNodeResponse struct {
@@ -2674,6 +2818,7 @@ type UpgradeMetadata struct {
 	Generation    int64                  `protobuf:"varint,2,opt,name=generation,proto3" json:"generation,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Namespace     string                 `protobuf:"bytes,5,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace for isolation (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2736,14 +2881,23 @@ func (x *UpgradeMetadata) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *UpgradeMetadata) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
 type UpgradeSpec struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DevnetRef     string                 `protobuf:"bytes,1,opt,name=devnet_ref,json=devnetRef,proto3" json:"devnet_ref,omitempty"`           // Target devnet name
-	UpgradeName   string                 `protobuf:"bytes,2,opt,name=upgrade_name,json=upgradeName,proto3" json:"upgrade_name,omitempty"`     // On-chain upgrade name
-	TargetHeight  int64                  `protobuf:"varint,3,opt,name=target_height,json=targetHeight,proto3" json:"target_height,omitempty"` // Block height for upgrade (0 = auto-calculate)
-	NewBinary     *BinarySource          `protobuf:"bytes,4,opt,name=new_binary,json=newBinary,proto3" json:"new_binary,omitempty"`           // Upgraded binary source
-	WithExport    bool                   `protobuf:"varint,5,opt,name=with_export,json=withExport,proto3" json:"with_export,omitempty"`       // Enable state export before/after
-	AutoVote      bool                   `protobuf:"varint,6,opt,name=auto_vote,json=autoVote,proto3" json:"auto_vote,omitempty"`             // Auto-vote yes with all validators
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	DevnetRef    string                 `protobuf:"bytes,1,opt,name=devnet_ref,json=devnetRef,proto3" json:"devnet_ref,omitempty"`           // Target devnet name
+	UpgradeName  string                 `protobuf:"bytes,2,opt,name=upgrade_name,json=upgradeName,proto3" json:"upgrade_name,omitempty"`     // On-chain upgrade name
+	TargetHeight int64                  `protobuf:"varint,3,opt,name=target_height,json=targetHeight,proto3" json:"target_height,omitempty"` // Block height for upgrade (0 = auto-calculate)
+	NewBinary    *BinarySource          `protobuf:"bytes,4,opt,name=new_binary,json=newBinary,proto3" json:"new_binary,omitempty"`           // Upgraded binary source
+	WithExport   bool                   `protobuf:"varint,5,opt,name=with_export,json=withExport,proto3" json:"with_export,omitempty"`       // Enable state export before/after
+	AutoVote     bool                   `protobuf:"varint,6,opt,name=auto_vote,json=autoVote,proto3" json:"auto_vote,omitempty"`             // Auto-vote yes with all validators
+	// Field 7 reserved for future use
+	Namespace     string `protobuf:"bytes,8,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace for the devnet reference (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2818,6 +2972,13 @@ func (x *UpgradeSpec) GetAutoVote() bool {
 		return x.AutoVote
 	}
 	return false
+}
+
+func (x *UpgradeSpec) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
 }
 
 type BinarySource struct {
@@ -3001,6 +3162,7 @@ type CreateUpgradeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"` // Unique upgrade name
 	Spec          *UpgradeSpec           `protobuf:"bytes,2,opt,name=spec,proto3" json:"spec,omitempty"`
+	Namespace     string                 `protobuf:"bytes,3,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3047,6 +3209,13 @@ func (x *CreateUpgradeRequest) GetSpec() *UpgradeSpec {
 		return x.Spec
 	}
 	return nil
+}
+
+func (x *CreateUpgradeRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
 }
 
 type CreateUpgradeResponse struct {
@@ -3096,6 +3265,7 @@ func (x *CreateUpgradeResponse) GetUpgrade() *Upgrade {
 type GetUpgradeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3133,6 +3303,13 @@ func (*GetUpgradeRequest) Descriptor() ([]byte, []int) {
 func (x *GetUpgradeRequest) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *GetUpgradeRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
 	}
 	return ""
 }
@@ -3184,6 +3361,7 @@ func (x *GetUpgradeResponse) GetUpgrade() *Upgrade {
 type ListUpgradesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DevnetName    string                 `protobuf:"bytes,1,opt,name=devnet_name,json=devnetName,proto3" json:"devnet_name,omitempty"` // Optional: filter by devnet
+	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`                     // Namespace (defaults to "default", empty = all namespaces)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3221,6 +3399,13 @@ func (*ListUpgradesRequest) Descriptor() ([]byte, []int) {
 func (x *ListUpgradesRequest) GetDevnetName() string {
 	if x != nil {
 		return x.DevnetName
+	}
+	return ""
+}
+
+func (x *ListUpgradesRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
 	}
 	return ""
 }
@@ -3272,6 +3457,7 @@ func (x *ListUpgradesResponse) GetUpgrades() []*Upgrade {
 type DeleteUpgradeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3309,6 +3495,13 @@ func (*DeleteUpgradeRequest) Descriptor() ([]byte, []int) {
 func (x *DeleteUpgradeRequest) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *DeleteUpgradeRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
 	}
 	return ""
 }
@@ -3360,6 +3553,7 @@ func (x *DeleteUpgradeResponse) GetDeleted() bool {
 type CancelUpgradeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3397,6 +3591,13 @@ func (*CancelUpgradeRequest) Descriptor() ([]byte, []int) {
 func (x *CancelUpgradeRequest) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *CancelUpgradeRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
 	}
 	return ""
 }
@@ -3448,6 +3649,7 @@ func (x *CancelUpgradeResponse) GetUpgrade() *Upgrade {
 type RetryUpgradeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"` // Namespace (defaults to "default")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3485,6 +3687,13 @@ func (*RetryUpgradeRequest) Descriptor() ([]byte, []int) {
 func (x *RetryUpgradeRequest) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *RetryUpgradeRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
 	}
 	return ""
 }
@@ -3541,7 +3750,7 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\x06Devnet\x12<\n" +
 	"\bmetadata\x18\x01 \x01(\v2 .devnetbuilder.v1.DevnetMetadataR\bmetadata\x120\n" +
 	"\x04spec\x18\x02 \x01(\v2\x1c.devnetbuilder.v1.DevnetSpecR\x04spec\x126\n" +
-	"\x06status\x18\x03 \x01(\v2\x1e.devnetbuilder.v1.DevnetStatusR\x06status\"\xd0\x03\n" +
+	"\x06status\x18\x03 \x01(\v2\x1e.devnetbuilder.v1.DevnetStatusR\x06status\"\xee\x03\n" +
 	"\x0eDevnetMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
 	"\n" +
@@ -3552,7 +3761,8 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12D\n" +
 	"\x06labels\x18\x05 \x03(\v2,.devnetbuilder.v1.DevnetMetadata.LabelsEntryR\x06labels\x12S\n" +
-	"\vannotations\x18\x06 \x03(\v21.devnetbuilder.v1.DevnetMetadata.AnnotationsEntryR\vannotations\x1a9\n" +
+	"\vannotations\x18\x06 \x03(\v21.devnetbuilder.v1.DevnetMetadata.AnnotationsEntryR\vannotations\x12\x1c\n" +
+	"\tnamespace\x18\a \x01(\tR\tnamespace\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a>\n" +
@@ -3598,41 +3808,48 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\x12\x18\n" +
 	"\amessage\x18\x04 \x01(\tR\amessage\x12\x1c\n" +
-	"\tcomponent\x18\x05 \x01(\tR\tcomponent\"\xe1\x01\n" +
+	"\tcomponent\x18\x05 \x01(\tR\tcomponent\"\xff\x01\n" +
 	"\x13CreateDevnetRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x120\n" +
 	"\x04spec\x18\x02 \x01(\v2\x1c.devnetbuilder.v1.DevnetSpecR\x04spec\x12I\n" +
-	"\x06labels\x18\x03 \x03(\v21.devnetbuilder.v1.CreateDevnetRequest.LabelsEntryR\x06labels\x1a9\n" +
+	"\x06labels\x18\x03 \x03(\v21.devnetbuilder.v1.CreateDevnetRequest.LabelsEntryR\x06labels\x12\x1c\n" +
+	"\tnamespace\x18\x04 \x01(\tR\tnamespace\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"H\n" +
 	"\x14CreateDevnetResponse\x120\n" +
-	"\x06devnet\x18\x01 \x01(\v2\x18.devnetbuilder.v1.DevnetR\x06devnet\"&\n" +
+	"\x06devnet\x18\x01 \x01(\v2\x18.devnetbuilder.v1.DevnetR\x06devnet\"D\n" +
 	"\x10GetDevnetRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"E\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\"E\n" +
 	"\x11GetDevnetResponse\x120\n" +
-	"\x06devnet\x18\x01 \x01(\v2\x18.devnetbuilder.v1.DevnetR\x06devnet\";\n" +
+	"\x06devnet\x18\x01 \x01(\v2\x18.devnetbuilder.v1.DevnetR\x06devnet\"Y\n" +
 	"\x12ListDevnetsRequest\x12%\n" +
-	"\x0elabel_selector\x18\x01 \x01(\tR\rlabelSelector\"I\n" +
+	"\x0elabel_selector\x18\x01 \x01(\tR\rlabelSelector\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\"I\n" +
 	"\x13ListDevnetsResponse\x122\n" +
-	"\adevnets\x18\x01 \x03(\v2\x18.devnetbuilder.v1.DevnetR\adevnets\")\n" +
+	"\adevnets\x18\x01 \x03(\v2\x18.devnetbuilder.v1.DevnetR\adevnets\"G\n" +
 	"\x13DeleteDevnetRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"0\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\"0\n" +
 	"\x14DeleteDevnetResponse\x12\x18\n" +
-	"\adeleted\x18\x01 \x01(\bR\adeleted\"(\n" +
+	"\adeleted\x18\x01 \x01(\bR\adeleted\"F\n" +
 	"\x12StartDevnetRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"G\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\"G\n" +
 	"\x13StartDevnetResponse\x120\n" +
-	"\x06devnet\x18\x01 \x01(\v2\x18.devnetbuilder.v1.DevnetR\x06devnet\"'\n" +
+	"\x06devnet\x18\x01 \x01(\v2\x18.devnetbuilder.v1.DevnetR\x06devnet\"E\n" +
 	"\x11StopDevnetRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"F\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\"F\n" +
 	"\x12StopDevnetResponse\x120\n" +
-	"\x06devnet\x18\x01 \x01(\v2\x18.devnetbuilder.v1.DevnetR\x06devnet\"\xf8\x02\n" +
+	"\x06devnet\x18\x01 \x01(\v2\x18.devnetbuilder.v1.DevnetR\x06devnet\"\x96\x03\n" +
 	"\x12ApplyDevnetRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x120\n" +
 	"\x04spec\x18\x02 \x01(\v2\x1c.devnetbuilder.v1.DevnetSpecR\x04spec\x12H\n" +
 	"\x06labels\x18\x03 \x03(\v20.devnetbuilder.v1.ApplyDevnetRequest.LabelsEntryR\x06labels\x12W\n" +
-	"\vannotations\x18\x04 \x03(\v25.devnetbuilder.v1.ApplyDevnetRequest.AnnotationsEntryR\vannotations\x1a9\n" +
+	"\vannotations\x18\x04 \x03(\v25.devnetbuilder.v1.ApplyDevnetRequest.AnnotationsEntryR\vannotations\x12\x1c\n" +
+	"\tnamespace\x18\x05 \x01(\tR\tnamespace\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a>\n" +
@@ -3641,12 +3858,13 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"_\n" +
 	"\x13ApplyDevnetResponse\x120\n" +
 	"\x06devnet\x18\x01 \x01(\v2\x18.devnetbuilder.v1.DevnetR\x06devnet\x12\x16\n" +
-	"\x06action\x18\x02 \x01(\tR\x06action\"\xfb\x02\n" +
+	"\x06action\x18\x02 \x01(\tR\x06action\"\x99\x03\n" +
 	"\x13UpdateDevnetRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x120\n" +
 	"\x04spec\x18\x02 \x01(\v2\x1c.devnetbuilder.v1.DevnetSpecR\x04spec\x12I\n" +
 	"\x06labels\x18\x03 \x03(\v21.devnetbuilder.v1.UpdateDevnetRequest.LabelsEntryR\x06labels\x12X\n" +
-	"\vannotations\x18\x04 \x03(\v26.devnetbuilder.v1.UpdateDevnetRequest.AnnotationsEntryR\vannotations\x1a9\n" +
+	"\vannotations\x18\x04 \x03(\v26.devnetbuilder.v1.UpdateDevnetRequest.AnnotationsEntryR\vannotations\x12\x1c\n" +
+	"\tnamespace\x18\x05 \x01(\tR\tnamespace\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a>\n" +
@@ -3658,7 +3876,7 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\x04Node\x12:\n" +
 	"\bmetadata\x18\x01 \x01(\v2\x1e.devnetbuilder.v1.NodeMetadataR\bmetadata\x12.\n" +
 	"\x04spec\x18\x02 \x01(\v2\x1a.devnetbuilder.v1.NodeSpecR\x04spec\x124\n" +
-	"\x06status\x18\x03 \x01(\v2\x1c.devnetbuilder.v1.NodeStatusR\x06status\"\xeb\x01\n" +
+	"\x06status\x18\x03 \x01(\v2\x1c.devnetbuilder.v1.NodeStatusR\x06status\"\x89\x02\n" +
 	"\fNodeMetadata\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vdevnet_name\x18\x02 \x01(\tR\n" +
@@ -3670,7 +3888,8 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xcb\x01\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1c\n" +
+	"\tnamespace\x18\a \x01(\tR\tnamespace\"\xcb\x01\n" +
 	"\bNodeSpec\x12\x12\n" +
 	"\x04role\x18\x01 \x01(\tR\x04role\x12\x1f\n" +
 	"\vbinary_path\x18\x02 \x01(\tR\n" +
@@ -3699,60 +3918,68 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x129\n" +
 	"\n" +
 	"last_check\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tlastCheck\x121\n" +
-	"\x14consecutive_failures\x18\x04 \x01(\x05R\x13consecutiveFailures\"I\n" +
+	"\x14consecutive_failures\x18\x04 \x01(\x05R\x13consecutiveFailures\"g\n" +
 	"\x10StartNodeRequest\x12\x1f\n" +
 	"\vdevnet_name\x18\x01 \x01(\tR\n" +
 	"devnetName\x12\x14\n" +
-	"\x05index\x18\x02 \x01(\x05R\x05index\"?\n" +
+	"\x05index\x18\x02 \x01(\x05R\x05index\x12\x1c\n" +
+	"\tnamespace\x18\x03 \x01(\tR\tnamespace\"?\n" +
 	"\x11StartNodeResponse\x12*\n" +
-	"\x04node\x18\x01 \x01(\v2\x16.devnetbuilder.v1.NodeR\x04node\"q\n" +
+	"\x04node\x18\x01 \x01(\v2\x16.devnetbuilder.v1.NodeR\x04node\"\x8f\x01\n" +
 	"\x0fStopNodeRequest\x12\x1f\n" +
 	"\vdevnet_name\x18\x01 \x01(\tR\n" +
 	"devnetName\x12\x14\n" +
 	"\x05index\x18\x02 \x01(\x05R\x05index\x12'\n" +
-	"\x0ftimeout_seconds\x18\x03 \x01(\x05R\x0etimeoutSeconds\">\n" +
+	"\x0ftimeout_seconds\x18\x03 \x01(\x05R\x0etimeoutSeconds\x12\x1c\n" +
+	"\tnamespace\x18\x04 \x01(\tR\tnamespace\">\n" +
 	"\x10StopNodeResponse\x12*\n" +
-	"\x04node\x18\x01 \x01(\v2\x16.devnetbuilder.v1.NodeR\x04node\"K\n" +
+	"\x04node\x18\x01 \x01(\v2\x16.devnetbuilder.v1.NodeR\x04node\"i\n" +
 	"\x12RestartNodeRequest\x12\x1f\n" +
 	"\vdevnet_name\x18\x01 \x01(\tR\n" +
 	"devnetName\x12\x14\n" +
-	"\x05index\x18\x02 \x01(\x05R\x05index\"A\n" +
+	"\x05index\x18\x02 \x01(\x05R\x05index\x12\x1c\n" +
+	"\tnamespace\x18\x03 \x01(\tR\tnamespace\"A\n" +
 	"\x13RestartNodeResponse\x12*\n" +
-	"\x04node\x18\x01 \x01(\v2\x16.devnetbuilder.v1.NodeR\x04node\"G\n" +
+	"\x04node\x18\x01 \x01(\v2\x16.devnetbuilder.v1.NodeR\x04node\"e\n" +
 	"\x0eGetNodeRequest\x12\x1f\n" +
 	"\vdevnet_name\x18\x01 \x01(\tR\n" +
 	"devnetName\x12\x14\n" +
-	"\x05index\x18\x02 \x01(\x05R\x05index\"=\n" +
+	"\x05index\x18\x02 \x01(\x05R\x05index\x12\x1c\n" +
+	"\tnamespace\x18\x03 \x01(\tR\tnamespace\"=\n" +
 	"\x0fGetNodeResponse\x12*\n" +
-	"\x04node\x18\x01 \x01(\v2\x16.devnetbuilder.v1.NodeR\x04node\"3\n" +
+	"\x04node\x18\x01 \x01(\v2\x16.devnetbuilder.v1.NodeR\x04node\"Q\n" +
 	"\x10ListNodesRequest\x12\x1f\n" +
 	"\vdevnet_name\x18\x01 \x01(\tR\n" +
-	"devnetName\"A\n" +
+	"devnetName\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\"A\n" +
 	"\x11ListNodesResponse\x12,\n" +
-	"\x05nodes\x18\x01 \x03(\v2\x16.devnetbuilder.v1.NodeR\x05nodes\"M\n" +
+	"\x05nodes\x18\x01 \x03(\v2\x16.devnetbuilder.v1.NodeR\x05nodes\"k\n" +
 	"\x14GetNodeHealthRequest\x12\x1f\n" +
 	"\vdevnet_name\x18\x01 \x01(\tR\n" +
 	"devnetName\x12\x14\n" +
-	"\x05index\x18\x02 \x01(\x05R\x05index\"M\n" +
+	"\x05index\x18\x02 \x01(\x05R\x05index\x12\x1c\n" +
+	"\tnamespace\x18\x03 \x01(\tR\tnamespace\"M\n" +
 	"\x15GetNodeHealthResponse\x124\n" +
-	"\x06health\x18\x01 \x01(\v2\x1c.devnetbuilder.v1.NodeHealthR\x06health\"\x90\x01\n" +
+	"\x06health\x18\x01 \x01(\v2\x1c.devnetbuilder.v1.NodeHealthR\x06health\"\xae\x01\n" +
 	"\x15StreamNodeLogsRequest\x12\x1f\n" +
 	"\vdevnet_name\x18\x01 \x01(\tR\n" +
 	"devnetName\x12\x14\n" +
 	"\x05index\x18\x02 \x01(\x05R\x05index\x12\x16\n" +
 	"\x06follow\x18\x03 \x01(\bR\x06follow\x12\x14\n" +
 	"\x05since\x18\x04 \x01(\tR\x05since\x12\x12\n" +
-	"\x04tail\x18\x05 \x01(\x05R\x04tail\"\x84\x01\n" +
+	"\x04tail\x18\x05 \x01(\x05R\x04tail\x12\x1c\n" +
+	"\tnamespace\x18\x06 \x01(\tR\tnamespace\"\x84\x01\n" +
 	"\x16StreamNodeLogsResponse\x128\n" +
 	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x16\n" +
 	"\x06stream\x18\x02 \x01(\tR\x06stream\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\tR\amessage\"\x8d\x01\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\"\xab\x01\n" +
 	"\x11ExecInNodeRequest\x12\x1f\n" +
 	"\vdevnet_name\x18\x01 \x01(\tR\n" +
 	"devnetName\x12\x14\n" +
 	"\x05index\x18\x02 \x01(\x05R\x05index\x12\x18\n" +
 	"\acommand\x18\x03 \x03(\tR\acommand\x12'\n" +
-	"\x0ftimeout_seconds\x18\x04 \x01(\x05R\x0etimeoutSeconds\"a\n" +
+	"\x0ftimeout_seconds\x18\x04 \x01(\x05R\x0etimeoutSeconds\x12\x1c\n" +
+	"\tnamespace\x18\x05 \x01(\tR\tnamespace\"a\n" +
 	"\x12ExecInNodeResponse\x12\x1b\n" +
 	"\texit_code\x18\x01 \x01(\x05R\bexitCode\x12\x16\n" +
 	"\x06stdout\x18\x02 \x01(\tR\x06stdout\x12\x16\n" +
@@ -3760,7 +3987,7 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\aUpgrade\x12=\n" +
 	"\bmetadata\x18\x01 \x01(\v2!.devnetbuilder.v1.UpgradeMetadataR\bmetadata\x121\n" +
 	"\x04spec\x18\x02 \x01(\v2\x1d.devnetbuilder.v1.UpgradeSpecR\x04spec\x127\n" +
-	"\x06status\x18\x03 \x01(\v2\x1f.devnetbuilder.v1.UpgradeStatusR\x06status\"\xbb\x01\n" +
+	"\x06status\x18\x03 \x01(\v2\x1f.devnetbuilder.v1.UpgradeStatusR\x06status\"\xd9\x01\n" +
 	"\x0fUpgradeMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
 	"\n" +
@@ -3769,7 +3996,8 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xf1\x01\n" +
+	"updated_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1c\n" +
+	"\tnamespace\x18\x05 \x01(\tR\tnamespace\"\x8f\x02\n" +
 	"\vUpgradeSpec\x12\x1d\n" +
 	"\n" +
 	"devnet_ref\x18\x01 \x01(\tR\tdevnetRef\x12!\n" +
@@ -3779,7 +4007,8 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"new_binary\x18\x04 \x01(\v2\x1e.devnetbuilder.v1.BinarySourceR\tnewBinary\x12\x1f\n" +
 	"\vwith_export\x18\x05 \x01(\bR\n" +
 	"withExport\x12\x1b\n" +
-	"\tauto_vote\x18\x06 \x01(\bR\bautoVote\"b\n" +
+	"\tauto_vote\x18\x06 \x01(\bR\bautoVote\x12\x1c\n" +
+	"\tnamespace\x18\b \x01(\tR\tnamespace\"b\n" +
 	"\fBinarySource\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\x10\n" +
@@ -3795,31 +4024,37 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\x0fpre_export_path\x18\x06 \x01(\tR\rpreExportPath\x12(\n" +
 	"\x10post_export_path\x18\a \x01(\tR\x0epostExportPath\x12\x18\n" +
 	"\amessage\x18\b \x01(\tR\amessage\x12\x14\n" +
-	"\x05error\x18\t \x01(\tR\x05error\"]\n" +
+	"\x05error\x18\t \x01(\tR\x05error\"{\n" +
 	"\x14CreateUpgradeRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x121\n" +
-	"\x04spec\x18\x02 \x01(\v2\x1d.devnetbuilder.v1.UpgradeSpecR\x04spec\"L\n" +
+	"\x04spec\x18\x02 \x01(\v2\x1d.devnetbuilder.v1.UpgradeSpecR\x04spec\x12\x1c\n" +
+	"\tnamespace\x18\x03 \x01(\tR\tnamespace\"L\n" +
 	"\x15CreateUpgradeResponse\x123\n" +
-	"\aupgrade\x18\x01 \x01(\v2\x19.devnetbuilder.v1.UpgradeR\aupgrade\"'\n" +
+	"\aupgrade\x18\x01 \x01(\v2\x19.devnetbuilder.v1.UpgradeR\aupgrade\"E\n" +
 	"\x11GetUpgradeRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"I\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\"I\n" +
 	"\x12GetUpgradeResponse\x123\n" +
-	"\aupgrade\x18\x01 \x01(\v2\x19.devnetbuilder.v1.UpgradeR\aupgrade\"6\n" +
+	"\aupgrade\x18\x01 \x01(\v2\x19.devnetbuilder.v1.UpgradeR\aupgrade\"T\n" +
 	"\x13ListUpgradesRequest\x12\x1f\n" +
 	"\vdevnet_name\x18\x01 \x01(\tR\n" +
-	"devnetName\"M\n" +
+	"devnetName\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\"M\n" +
 	"\x14ListUpgradesResponse\x125\n" +
-	"\bupgrades\x18\x01 \x03(\v2\x19.devnetbuilder.v1.UpgradeR\bupgrades\"*\n" +
+	"\bupgrades\x18\x01 \x03(\v2\x19.devnetbuilder.v1.UpgradeR\bupgrades\"H\n" +
 	"\x14DeleteUpgradeRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"1\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\"1\n" +
 	"\x15DeleteUpgradeResponse\x12\x18\n" +
-	"\adeleted\x18\x01 \x01(\bR\adeleted\"*\n" +
+	"\adeleted\x18\x01 \x01(\bR\adeleted\"H\n" +
 	"\x14CancelUpgradeRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"L\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\"L\n" +
 	"\x15CancelUpgradeResponse\x123\n" +
-	"\aupgrade\x18\x01 \x01(\v2\x19.devnetbuilder.v1.UpgradeR\aupgrade\")\n" +
+	"\aupgrade\x18\x01 \x01(\v2\x19.devnetbuilder.v1.UpgradeR\aupgrade\"G\n" +
 	"\x13RetryUpgradeRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"K\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\"K\n" +
 	"\x14RetryUpgradeResponse\x123\n" +
 	"\aupgrade\x18\x01 \x01(\v2\x19.devnetbuilder.v1.UpgradeR\aupgrade*\x9b\x01\n" +
 	"\x11NodeRestartPolicy\x12#\n" +

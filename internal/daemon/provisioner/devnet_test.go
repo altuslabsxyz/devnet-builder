@@ -29,7 +29,7 @@ func TestDevnetProvisioner_Provision(t *testing.T) {
 	}
 
 	// Verify nodes were created
-	nodes, err := s.ListNodes(context.Background(), "test-devnet")
+	nodes, err := s.ListNodes(context.Background(), "", "test-devnet")
 	if err != nil {
 		t.Fatalf("ListNodes failed: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestDevnetProvisioner_ProvisionIdempotent(t *testing.T) {
 	}
 
 	// Should still have only 2 nodes
-	nodes, _ := s.ListNodes(context.Background(), "test-devnet")
+	nodes, _ := s.ListNodes(context.Background(), "", "test-devnet")
 	if len(nodes) != 2 {
 		t.Errorf("Expected 2 nodes after idempotent provision, got %d", len(nodes))
 	}
@@ -111,7 +111,7 @@ func TestDevnetProvisioner_Deprovision(t *testing.T) {
 	}
 
 	// Verify nodes were deleted
-	nodes, _ := s.ListNodes(context.Background(), "test-devnet")
+	nodes, _ := s.ListNodes(context.Background(), "", "test-devnet")
 	if len(nodes) != 0 {
 		t.Errorf("Expected 0 nodes after deprovision, got %d", len(nodes))
 	}
@@ -142,7 +142,7 @@ func TestDevnetProvisioner_StartStop(t *testing.T) {
 	}
 
 	// Verify all nodes have desired=Stopped
-	nodes, _ := s.ListNodes(context.Background(), "test-devnet")
+	nodes, _ := s.ListNodes(context.Background(), "", "test-devnet")
 	for _, node := range nodes {
 		if node.Spec.Desired != types.NodePhaseStopped {
 			t.Errorf("Node %d: expected Desired=Stopped, got %s", node.Spec.Index, node.Spec.Desired)
@@ -155,7 +155,7 @@ func TestDevnetProvisioner_StartStop(t *testing.T) {
 	}
 
 	// Verify all nodes have desired=Running
-	nodes, _ = s.ListNodes(context.Background(), "test-devnet")
+	nodes, _ = s.ListNodes(context.Background(), "", "test-devnet")
 	for _, node := range nodes {
 		if node.Spec.Desired != types.NodePhaseRunning {
 			t.Errorf("Node %d: expected Desired=Running, got %s", node.Spec.Index, node.Spec.Desired)
@@ -196,7 +196,7 @@ func TestDevnetProvisioner_GetStatus(t *testing.T) {
 	}
 
 	// Simulate one node becoming Running
-	nodes, _ := s.ListNodes(context.Background(), "test-devnet")
+	nodes, _ := s.ListNodes(context.Background(), "", "test-devnet")
 	nodes[0].Status.Phase = types.NodePhaseRunning
 	nodes[0].Status.BlockHeight = 100
 	s.UpdateNode(context.Background(), nodes[0])

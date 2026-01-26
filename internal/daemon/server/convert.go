@@ -38,9 +38,15 @@ func DevnetFromProto(pb *v1.Devnet) *types.Devnet {
 func CreateRequestToDevnet(req *v1.CreateDevnetRequest) *types.Devnet {
 	now := time.Now()
 
+	namespace := req.Namespace
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+
 	devnet := &types.Devnet{
 		Metadata: types.ResourceMeta{
 			Name:       req.Name,
+			Namespace:  namespace,
 			Generation: 1,
 			CreatedAt:  now,
 			UpdatedAt:  now,
@@ -114,6 +120,7 @@ func labelsEqual(a, b map[string]string) bool {
 func metadataToProto(m *types.ResourceMeta) *v1.DevnetMetadata {
 	return &v1.DevnetMetadata{
 		Name:        m.Name,
+		Namespace:   m.Namespace,
 		Generation:  m.Generation,
 		CreatedAt:   timestamppb.New(m.CreatedAt),
 		UpdatedAt:   timestamppb.New(m.UpdatedAt),
@@ -129,6 +136,7 @@ func metadataFromProto(pb *v1.DevnetMetadata) types.ResourceMeta {
 
 	m := types.ResourceMeta{
 		Name:        pb.Name,
+		Namespace:   pb.Namespace,
 		Generation:  pb.Generation,
 		Labels:      pb.Labels,
 		Annotations: pb.Annotations,
@@ -301,9 +309,15 @@ func UpgradeFromProto(pb *v1.Upgrade) *types.Upgrade {
 func CreateUpgradeRequestToUpgrade(req *v1.CreateUpgradeRequest) *types.Upgrade {
 	now := time.Now()
 
+	namespace := req.Namespace
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+
 	upgrade := &types.Upgrade{
 		Metadata: types.ResourceMeta{
 			Name:       req.Name,
+			Namespace:  namespace,
 			Generation: 1,
 			CreatedAt:  now,
 			UpdatedAt:  now,
@@ -323,6 +337,7 @@ func CreateUpgradeRequestToUpgrade(req *v1.CreateUpgradeRequest) *types.Upgrade 
 func upgradeMetadataToProto(m *types.ResourceMeta) *v1.UpgradeMetadata {
 	return &v1.UpgradeMetadata{
 		Name:       m.Name,
+		Namespace:  m.Namespace,
 		Generation: m.Generation,
 		CreatedAt:  timestamppb.New(m.CreatedAt),
 		UpdatedAt:  timestamppb.New(m.UpdatedAt),
@@ -336,6 +351,7 @@ func upgradeMetadataFromProto(pb *v1.UpgradeMetadata) types.ResourceMeta {
 
 	m := types.ResourceMeta{
 		Name:       pb.Name,
+		Namespace:  pb.Namespace,
 		Generation: pb.Generation,
 	}
 

@@ -16,8 +16,13 @@ func (d *YAMLDevnet) ToProto() *v1.Devnet {
 }
 
 func (d *YAMLDevnet) metadataToProto() *v1.DevnetMetadata {
+	namespace := d.Metadata.Namespace
+	if namespace == "" {
+		namespace = "default"
+	}
 	return &v1.DevnetMetadata{
 		Name:        d.Metadata.Name,
+		Namespace:   namespace,
 		Labels:      d.Metadata.Labels,
 		Annotations: d.Metadata.Annotations,
 	}
@@ -57,6 +62,7 @@ func YAMLDevnetFromProto(pb *v1.Devnet) YAMLDevnet {
 	if pb.Metadata != nil {
 		yaml.Metadata = YAMLMetadata{
 			Name:        pb.Metadata.Name,
+			Namespace:   pb.Metadata.Namespace,
 			Labels:      pb.Metadata.Labels,
 			Annotations: pb.Metadata.Annotations,
 		}
@@ -78,9 +84,14 @@ func YAMLDevnetFromProto(pb *v1.Devnet) YAMLDevnet {
 
 // ToCreateRequest converts to a CreateDevnetRequest
 func (d *YAMLDevnet) ToCreateRequest() *v1.CreateDevnetRequest {
+	namespace := d.Metadata.Namespace
+	if namespace == "" {
+		namespace = "default"
+	}
 	return &v1.CreateDevnetRequest{
-		Name:   d.Metadata.Name,
-		Spec:   d.specToProto(),
-		Labels: d.Metadata.Labels,
+		Name:      d.Metadata.Name,
+		Namespace: namespace,
+		Spec:      d.specToProto(),
+		Labels:    d.Metadata.Labels,
 	}
 }

@@ -52,13 +52,20 @@ func (s *UpgradeService) CreateUpgrade(ctx context.Context, req *v1.CreateUpgrad
 		return nil, status.Error(codes.InvalidArgument, "spec.upgrade_name is required")
 	}
 
+	// Use namespace from request, default if empty
+	namespace := req.GetNamespace()
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+
 	s.logger.Info("creating upgrade",
+		"namespace", namespace,
 		"name", req.Name,
 		"devnet", req.Spec.DevnetRef,
 		"upgradeName", req.Spec.UpgradeName)
 
 	// Verify devnet exists
-	_, err := s.store.GetDevnet(ctx, req.Spec.DevnetRef)
+	_, err := s.store.GetDevnet(ctx, namespace, req.Spec.DevnetRef)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "devnet %q not found", req.Spec.DevnetRef)
@@ -80,9 +87,9 @@ func (s *UpgradeService) CreateUpgrade(ctx context.Context, req *v1.CreateUpgrad
 		return nil, status.Errorf(codes.Internal, "failed to create upgrade: %v", err)
 	}
 
-	// Enqueue for reconciliation
+	// Enqueue for reconciliation with namespace/name key
 	if s.manager != nil {
-		s.manager.Enqueue("upgrades", req.Name)
+		s.manager.Enqueue("upgrades", namespace+"/"+req.Name)
 	}
 
 	return &v1.CreateUpgradeResponse{Upgrade: UpgradeToProto(upgrade)}, nil
@@ -94,7 +101,10 @@ func (s *UpgradeService) GetUpgrade(ctx context.Context, req *v1.GetUpgradeReque
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	upgrade, err := s.store.GetUpgrade(ctx, req.Name)
+	// Use namespace from request, empty string uses default namespace
+	namespace := req.GetNamespace()
+
+	upgrade, err := s.store.GetUpgrade(ctx, namespace, req.Name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "upgrade %q not found", req.Name)
@@ -108,7 +118,10 @@ func (s *UpgradeService) GetUpgrade(ctx context.Context, req *v1.GetUpgradeReque
 
 // ListUpgrades lists upgrades, optionally filtered by devnet.
 func (s *UpgradeService) ListUpgrades(ctx context.Context, req *v1.ListUpgradesRequest) (*v1.ListUpgradesResponse, error) {
-	upgrades, err := s.store.ListUpgrades(ctx, req.DevnetName)
+	// Use namespace from request, empty string returns all namespaces
+	namespace := req.GetNamespace()
+
+	upgrades, err := s.store.ListUpgrades(ctx, namespace, req.DevnetName)
 	if err != nil {
 		s.logger.Error("failed to list upgrades", "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to list upgrades: %v", err)
@@ -133,8 +146,11 @@ func (s *UpgradeService) DeleteUpgrade(ctx context.Context, req *v1.DeleteUpgrad
 
 	s.logger.Info("deleting upgrade", "name", req.Name)
 
+	// Use namespace from request, empty string uses default namespace
+	namespace := req.GetNamespace()
+
 	// Check if upgrade exists and is in a terminal state
-	upgrade, err := s.store.GetUpgrade(ctx, req.Name)
+	upgrade, err := s.store.GetUpgrade(ctx, namespace, req.Name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "upgrade %q not found", req.Name)
@@ -152,7 +168,7 @@ func (s *UpgradeService) DeleteUpgrade(ctx context.Context, req *v1.DeleteUpgrad
 			"cannot delete upgrade in phase %q - cancel it first", upgrade.Status.Phase)
 	}
 
-	err = s.store.DeleteUpgrade(ctx, req.Name)
+	err = s.store.DeleteUpgrade(ctx, namespace, req.Name)
 	if err != nil {
 		s.logger.Error("failed to delete upgrade", "name", req.Name, "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to delete upgrade: %v", err)
@@ -167,9 +183,12 @@ func (s *UpgradeService) CancelUpgrade(ctx context.Context, req *v1.CancelUpgrad
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	s.logger.Info("cancelling upgrade", "name", req.Name)
+	// Use namespace from request, empty string uses default namespace
+	namespace := req.GetNamespace()
 
-	upgrade, err := s.store.GetUpgrade(ctx, req.Name)
+	s.logger.Info("cancelling upgrade", "namespace", namespace, "name", req.Name)
+
+	upgrade, err := s.store.GetUpgrade(ctx, namespace, req.Name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "upgrade %q not found", req.Name)
@@ -209,9 +228,15 @@ func (s *UpgradeService) RetryUpgrade(ctx context.Context, req *v1.RetryUpgradeR
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	s.logger.Info("retrying upgrade", "name", req.Name)
+	// Use namespace from request, default if empty
+	namespace := req.GetNamespace()
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
 
-	upgrade, err := s.store.GetUpgrade(ctx, req.Name)
+	s.logger.Info("retrying upgrade", "namespace", namespace, "name", req.Name)
+
+	upgrade, err := s.store.GetUpgrade(ctx, namespace, req.Name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "upgrade %q not found", req.Name)
@@ -237,9 +262,9 @@ func (s *UpgradeService) RetryUpgrade(ctx context.Context, req *v1.RetryUpgradeR
 		return nil, status.Errorf(codes.Internal, "failed to retry upgrade: %v", err)
 	}
 
-	// Enqueue for reconciliation
+	// Enqueue for reconciliation with namespace/name key
 	if s.manager != nil {
-		s.manager.Enqueue("upgrades", req.Name)
+		s.manager.Enqueue("upgrades", namespace+"/"+req.Name)
 	}
 
 	return &v1.RetryUpgradeResponse{Upgrade: UpgradeToProto(upgrade)}, nil

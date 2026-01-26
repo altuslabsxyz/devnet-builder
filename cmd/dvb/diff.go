@@ -157,9 +157,10 @@ func parseDiffYAMLFile(path string) ([]*config.YAMLDevnet, error) {
 func showDiff(cmd *cobra.Command, yamlDevnet *config.YAMLDevnet, output string) (bool, error) {
 	ctx := cmd.Context()
 	name := yamlDevnet.Metadata.Name
+	namespace := yamlDevnet.Metadata.Namespace
 
 	// Check if devnet exists
-	existing, err := daemonClient.GetDevnet(ctx, name)
+	existing, err := daemonClient.GetDevnet(ctx, namespace, name)
 	exists := err == nil && existing != nil
 
 	if !exists {

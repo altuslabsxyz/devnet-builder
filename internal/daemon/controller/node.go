@@ -51,38 +51,60 @@ func (c *NodeController) SetLogger(logger *slog.Logger) {
 	c.logger = logger
 }
 
-// ParseNodeKey parses a node key (format: "devnetName/index") into its components.
-func ParseNodeKey(key string) (devnetName string, index int, err error) {
-	parts := strings.SplitN(key, "/", 2)
-	if len(parts) != 2 {
-		return "", 0, fmt.Errorf("invalid node key format: %s", key)
+// ParseNodeKey parses a node key (format: "namespace/devnetName/index" or "devnetName/index") into its components.
+// If no namespace is provided, returns default namespace.
+func ParseNodeKey(key string) (namespace, devnetName string, index int, err error) {
+	parts := strings.Split(key, "/")
+	switch len(parts) {
+	case 2:
+		// "devnetName/index" - use default namespace
+		devnetName = parts[0]
+		index, err = strconv.Atoi(parts[1])
+		if err != nil {
+			return "", "", 0, fmt.Errorf("invalid node index in key %s: %w", key, err)
+		}
+		return types.DefaultNamespace, devnetName, index, nil
+	case 3:
+		// "namespace/devnetName/index"
+		namespace = parts[0]
+		devnetName = parts[1]
+		index, err = strconv.Atoi(parts[2])
+		if err != nil {
+			return "", "", 0, fmt.Errorf("invalid node index in key %s: %w", key, err)
+		}
+		return namespace, devnetName, index, nil
+	default:
+		return "", "", 0, fmt.Errorf("invalid node key format: %s", key)
 	}
-	devnetName = parts[0]
-	index, err = strconv.Atoi(parts[1])
-	if err != nil {
-		return "", 0, fmt.Errorf("invalid node index in key %s: %w", key, err)
-	}
-	return devnetName, index, nil
 }
 
-// NodeKey creates a node key from devnet name and index.
+// NodeKey creates a node key from namespace, devnet name and index.
+// If namespace is empty, only "devnetName/index" is returned.
 func NodeKey(devnetName string, index int) string {
 	return fmt.Sprintf("%s/%d", devnetName, index)
 }
 
-// Reconcile processes a single node by key (format: "devnetName/index").
+// NodeKeyWithNamespace creates a full node key with namespace.
+func NodeKeyWithNamespace(namespace, devnetName string, index int) string {
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+	return fmt.Sprintf("%s/%s/%d", namespace, devnetName, index)
+}
+
+// Reconcile processes a single node by key (format: "namespace/devnetName/index" or "devnetName/index").
 // It compares desired state (spec.Desired) with actual state (status.Phase) and takes action.
 func (c *NodeController) Reconcile(ctx context.Context, key string) error {
 	c.logger.Debug("reconciling node", "key", key)
 
 	// Parse key
-	devnetName, index, err := ParseNodeKey(key)
+	namespace, devnetName, index, err := ParseNodeKey(key)
 	if err != nil {
 		return err
 	}
 
 	// Get node from store
-	node, err := c.store.GetNode(ctx, devnetName, index)
+	node, err := c.store.GetNode(ctx, namespace, devnetName, index)
 	if err != nil {
 		if store.IsNotFound(err) {
 			// Node was deleted, nothing to do

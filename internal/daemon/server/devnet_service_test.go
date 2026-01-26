@@ -41,7 +41,7 @@ func TestDevnetService_Create(t *testing.T) {
 	}
 
 	// Verify it's in the store
-	devnet, err := s.GetDevnet(context.Background(), "test-devnet")
+	devnet, err := s.GetDevnet(context.Background(), "", "test-devnet")
 	if err != nil {
 		t.Fatalf("GetDevnet from store failed: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestDevnetService_StartDevnet(t *testing.T) {
 	}
 
 	// Manually set to stopped
-	devnet, _ := s.GetDevnet(context.Background(), "stopped-devnet")
+	devnet, _ := s.GetDevnet(context.Background(), "", "stopped-devnet")
 	devnet.Status.Phase = "Stopped"
 	s.UpdateDevnet(context.Background(), devnet)
 
@@ -292,7 +292,7 @@ func TestDevnetService_StopDevnet(t *testing.T) {
 	}
 
 	// Manually set to running
-	devnet, _ := s.GetDevnet(context.Background(), "running-devnet")
+	devnet, _ := s.GetDevnet(context.Background(), "", "running-devnet")
 	devnet.Status.Phase = "Running"
 	s.UpdateDevnet(context.Background(), devnet)
 
@@ -361,11 +361,11 @@ func TestDevnetService_DeleteCascade(t *testing.T) {
 	}
 
 	// Verify nodes and upgrades exist
-	nodes, _ := s.ListNodes(ctx, "cascade-test")
+	nodes, _ := s.ListNodes(ctx, "", "cascade-test")
 	if len(nodes) != 2 {
 		t.Fatalf("expected 2 nodes, got %d", len(nodes))
 	}
-	upgrades, _ := s.ListUpgrades(ctx, "cascade-test")
+	upgrades, _ := s.ListUpgrades(ctx, "", "cascade-test")
 	if len(upgrades) != 1 {
 		t.Fatalf("expected 1 upgrade, got %d", len(upgrades))
 	}
@@ -381,14 +381,107 @@ func TestDevnetService_DeleteCascade(t *testing.T) {
 	}
 
 	// Verify nodes are cascade deleted
-	nodes, _ = s.ListNodes(ctx, "cascade-test")
+	nodes, _ = s.ListNodes(ctx, "", "cascade-test")
 	if len(nodes) != 0 {
 		t.Errorf("expected 0 nodes after cascade delete, got %d", len(nodes))
 	}
 
 	// Verify upgrades are cascade deleted
-	upgrades, _ = s.ListUpgrades(ctx, "cascade-test")
+	upgrades, _ = s.ListUpgrades(ctx, "", "cascade-test")
 	if len(upgrades) != 0 {
 		t.Errorf("expected 0 upgrades after cascade delete, got %d", len(upgrades))
+	}
+}
+
+func TestDevnetServiceNamespaceIsolation(t *testing.T) {
+	s := store.NewMemoryStore()
+	svc := NewDevnetService(s, nil)
+	ctx := context.Background()
+
+	// Create devnet in "prod" namespace
+	_, err := svc.CreateDevnet(ctx, &v1.CreateDevnetRequest{
+		Name:      "mydevnet",
+		Namespace: "prod",
+		Spec:      &v1.DevnetSpec{Plugin: "stable", Validators: 4},
+	})
+	if err != nil {
+		t.Fatalf("CreateDevnet in prod namespace failed: %v", err)
+	}
+
+	// Get from "dev" namespace - should not find
+	_, err = svc.GetDevnet(ctx, &v1.GetDevnetRequest{
+		Name:      "mydevnet",
+		Namespace: "dev",
+	})
+	if err == nil {
+		t.Fatal("expected error when getting devnet from wrong namespace")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+	if st.Code() != codes.NotFound {
+		t.Errorf("expected NotFound, got %v", st.Code())
+	}
+
+	// Get from "prod" namespace - should find
+	resp, err := svc.GetDevnet(ctx, &v1.GetDevnetRequest{
+		Name:      "mydevnet",
+		Namespace: "prod",
+	})
+	if err != nil {
+		t.Fatalf("GetDevnet from prod namespace failed: %v", err)
+	}
+	if resp.Devnet.Metadata.Namespace != "prod" {
+		t.Errorf("expected namespace prod, got %s", resp.Devnet.Metadata.Namespace)
+	}
+
+	// Create same name in "dev" namespace - should succeed (different namespace)
+	_, err = svc.CreateDevnet(ctx, &v1.CreateDevnetRequest{
+		Name:      "mydevnet",
+		Namespace: "dev",
+		Spec:      &v1.DevnetSpec{Plugin: "stable", Validators: 2},
+	})
+	if err != nil {
+		t.Fatalf("CreateDevnet in dev namespace failed: %v", err)
+	}
+
+	// List all namespaces - should have 2 devnets
+	listResp, err := svc.ListDevnets(ctx, &v1.ListDevnetsRequest{})
+	if err != nil {
+		t.Fatalf("ListDevnets failed: %v", err)
+	}
+	if len(listResp.Devnets) != 2 {
+		t.Errorf("expected 2 devnets across all namespaces, got %d", len(listResp.Devnets))
+	}
+
+	// List only "prod" namespace - should have 1 devnet
+	listResp, err = svc.ListDevnets(ctx, &v1.ListDevnetsRequest{Namespace: "prod"})
+	if err != nil {
+		t.Fatalf("ListDevnets for prod namespace failed: %v", err)
+	}
+	if len(listResp.Devnets) != 1 {
+		t.Errorf("expected 1 devnet in prod namespace, got %d", len(listResp.Devnets))
+	}
+
+	// Delete from "dev" namespace
+	_, err = svc.DeleteDevnet(ctx, &v1.DeleteDevnetRequest{
+		Name:      "mydevnet",
+		Namespace: "dev",
+	})
+	if err != nil {
+		t.Fatalf("DeleteDevnet from dev namespace failed: %v", err)
+	}
+
+	// "prod" devnet should still exist
+	resp, err = svc.GetDevnet(ctx, &v1.GetDevnetRequest{
+		Name:      "mydevnet",
+		Namespace: "prod",
+	})
+	if err != nil {
+		t.Fatalf("GetDevnet from prod namespace after dev delete failed: %v", err)
+	}
+	if resp.Devnet.Metadata.Namespace != "prod" {
+		t.Errorf("expected namespace prod, got %s", resp.Devnet.Metadata.Namespace)
 	}
 }

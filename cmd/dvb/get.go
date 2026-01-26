@@ -15,6 +15,7 @@ import (
 
 func newGetCmd() *cobra.Command {
 	var (
+		namespace string
 		output    string
 		labelSel  string
 		showNodes bool
@@ -32,6 +33,9 @@ Resource types:
 Examples:
   # List all devnets
   dvb get devnets
+
+  # List devnets in a specific namespace
+  dvb get devnets -n production
 
   # Get a specific devnet
   dvb get devnet my-devnet
@@ -60,10 +64,11 @@ Examples:
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runGet(cmd, args, output, labelSel, showNodes)
+			return runGet(cmd, args, namespace, output, labelSel, showNodes)
 		},
 	}
 
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default, empty = all namespaces for list)")
 	cmd.Flags().StringVarP(&output, "output", "o", "", "Output format: wide, yaml, json")
 	cmd.Flags().StringVarP(&labelSel, "selector", "l", "", "Label selector (e.g., 'env=prod')")
 	cmd.Flags().BoolVar(&showNodes, "show-nodes", false, "Show nodes when getting a devnet")
@@ -72,7 +77,7 @@ Examples:
 	return cmd
 }
 
-func runGet(cmd *cobra.Command, args []string, output, labelSel string, showNodes bool) error {
+func runGet(cmd *cobra.Command, args []string, namespace, output, labelSel string, showNodes bool) error {
 	if daemonClient == nil {
 		return fmt.Errorf("daemon not running - start with: devnetd")
 	}
@@ -86,9 +91,9 @@ func runGet(cmd *cobra.Command, args []string, output, labelSel string, showNode
 	switch resource {
 	case "devnets", "devnet", "dn":
 		if name != "" {
-			return getDevnet(cmd, name, output, showNodes)
+			return getDevnet(cmd, namespace, name, output, showNodes)
 		}
-		return listDevnets(cmd, output, labelSel)
+		return listDevnets(cmd, namespace, output, labelSel)
 	case "nodes", "node":
 		return fmt.Errorf("use 'dvb node list <devnet>' to list nodes")
 	default:
@@ -96,8 +101,8 @@ func runGet(cmd *cobra.Command, args []string, output, labelSel string, showNode
 	}
 }
 
-func listDevnets(cmd *cobra.Command, output, labelSel string) error {
-	devnets, err := daemonClient.ListDevnets(cmd.Context())
+func listDevnets(cmd *cobra.Command, namespace, output, labelSel string) error {
+	devnets, err := daemonClient.ListDevnets(cmd.Context(), namespace)
 	if err != nil {
 		return err
 	}
@@ -135,9 +140,10 @@ func listDevnets(cmd *cobra.Command, output, labelSel string) error {
 
 	switch output {
 	case "wide":
-		fmt.Fprintln(w, "NAME\tPHASE\tNODES\tREADY\tHEIGHT\tMODE\tPLUGIN\tVERSION")
+		fmt.Fprintln(w, "NAMESPACE\tNAME\tPHASE\tNODES\tREADY\tHEIGHT\tMODE\tPLUGIN\tVERSION")
 		for _, d := range devnets {
-			fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\n",
+			fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\n",
+				d.Metadata.Namespace,
 				d.Metadata.Name,
 				colorPhase(d.Status.Phase),
 				d.Status.Nodes,
@@ -148,9 +154,10 @@ func listDevnets(cmd *cobra.Command, output, labelSel string) error {
 				d.Status.SdkVersion)
 		}
 	default:
-		fmt.Fprintln(w, "NAME\tPHASE\tNODES\tREADY\tHEIGHT")
+		fmt.Fprintln(w, "NAMESPACE\tNAME\tPHASE\tNODES\tREADY\tHEIGHT")
 		for _, d := range devnets {
-			fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%d\n",
+			fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%d\t%d\n",
+				d.Metadata.Namespace,
 				d.Metadata.Name,
 				colorPhase(d.Status.Phase),
 				d.Status.Nodes,
@@ -163,8 +170,8 @@ func listDevnets(cmd *cobra.Command, output, labelSel string) error {
 	return nil
 }
 
-func getDevnet(cmd *cobra.Command, name, output string, showNodes bool) error {
-	devnet, err := daemonClient.GetDevnet(cmd.Context(), name)
+func getDevnet(cmd *cobra.Command, namespace, name, output string, showNodes bool) error {
+	devnet, err := daemonClient.GetDevnet(cmd.Context(), namespace, name)
 	if err != nil {
 		return err
 	}
@@ -193,7 +200,7 @@ func getDevnet(cmd *cobra.Command, name, output string, showNodes bool) error {
 	// Optionally show nodes
 	if showNodes {
 		fmt.Println()
-		nodes, err := daemonClient.ListNodes(cmd.Context(), name)
+		nodes, err := daemonClient.ListNodes(cmd.Context(), namespace, name)
 		if err != nil {
 			return fmt.Errorf("failed to list nodes: %w", err)
 		}
@@ -205,6 +212,7 @@ func getDevnet(cmd *cobra.Command, name, output string, showNodes bool) error {
 
 func printDevnetDetail(d *v1.Devnet) {
 	fmt.Printf("Name:         %s\n", d.Metadata.Name)
+	fmt.Printf("Namespace:    %s\n", d.Metadata.Namespace)
 	fmt.Printf("Phase:        %s\n", colorPhase(d.Status.Phase))
 	fmt.Printf("Plugin:       %s\n", d.Spec.Plugin)
 	fmt.Printf("Mode:         %s\n", d.Spec.Mode)
@@ -287,6 +295,7 @@ type YAMLDevnetOutput struct {
 // YAMLDevnetMetadataOutput is the metadata section
 type YAMLDevnetMetadataOutput struct {
 	Name        string            `json:"name" yaml:"name"`
+	Namespace   string            `json:"namespace,omitempty" yaml:"namespace,omitempty"`
 	Labels      map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
 }
@@ -318,6 +327,7 @@ func protoDevnetToYAML(d *v1.Devnet) *YAMLDevnetOutput {
 		Kind:       "Devnet",
 		Metadata: YAMLDevnetMetadataOutput{
 			Name:        d.Metadata.Name,
+			Namespace:   d.Metadata.Namespace,
 			Labels:      d.Metadata.Labels,
 			Annotations: d.Metadata.Annotations,
 		},

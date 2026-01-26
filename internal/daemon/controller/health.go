@@ -74,12 +74,15 @@ func (c *HealthController) SetLogger(logger *slog.Logger) {
 }
 
 // Reconcile implements the Controller interface.
-// For HealthController, the key is a devnet name.
+// For HealthController, the key is "namespace/name" or just "name" (uses default namespace).
 // It checks health of all nodes in that devnet.
 func (c *HealthController) Reconcile(ctx context.Context, key string) error {
 	c.logger.Debug("reconciling health", "devnet", key)
 
-	devnet, err := c.store.GetDevnet(ctx, key)
+	// Parse key - may be "namespace/name" or just "name" (uses default namespace)
+	namespace, name := parseDevnetKey(key)
+
+	devnet, err := c.store.GetDevnet(ctx, namespace, name)
 	if err != nil {
 		if store.IsNotFound(err) {
 			// Devnet was deleted
@@ -89,7 +92,7 @@ func (c *HealthController) Reconcile(ctx context.Context, key string) error {
 	}
 
 	// Get all nodes for this devnet
-	nodes, err := c.store.ListNodes(ctx, key)
+	nodes, err := c.store.ListNodes(ctx, namespace, name)
 	if err != nil {
 		return fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -436,7 +439,7 @@ func (c *HealthController) healthCheckLoop(ctx context.Context) {
 func (c *HealthController) runHealthSweep(ctx context.Context) {
 	c.logger.Debug("running health sweep")
 
-	devnets, err := c.store.ListDevnets(ctx)
+	devnets, err := c.store.ListDevnets(ctx, "")
 	if err != nil {
 		c.logger.Error("failed to list devnets for health sweep", "error", err)
 		return
@@ -448,9 +451,9 @@ func (c *HealthController) runHealthSweep(ctx context.Context) {
 			continue
 		}
 
-		// Enqueue for reconciliation
+		// Enqueue for reconciliation using full key format
 		if c.manager != nil {
-			c.manager.Enqueue("health", devnet.Metadata.Name)
+			c.manager.Enqueue("health", devnet.Metadata.FullName())
 		} else {
 			// Direct reconciliation if no manager
 			if err := c.Reconcile(ctx, devnet.Metadata.Name); err != nil {
