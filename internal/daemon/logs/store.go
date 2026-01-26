@@ -265,11 +265,15 @@ func (s *LogStore) Prune(ctx context.Context, cutoff time.Time) (int, error) {
 				if json.Unmarshal(data, &entry) == nil {
 					// Delete from node index
 					nodeKey := makeNodeIndexKey(entry.NodeIndex, key)
-					nodeIndexBucket.Delete(nodeKey)
+					if err := nodeIndexBucket.Delete(nodeKey); err != nil {
+						return err
+					}
 
 					// Delete from level index
 					levelKey := makeLevelIndexKey(entry.Level, key)
-					levelIndexBucket.Delete(levelKey)
+					if err := levelIndexBucket.Delete(levelKey); err != nil {
+						return err
+					}
 				}
 			}
 
