@@ -97,8 +97,11 @@ func (s *NodeService) StartNode(ctx context.Context, req *v1.StartNodeRequest) (
 		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
 	}
 
-	// Use namespace from request, empty string uses default namespace
+	// Use namespace from request, default if empty
 	namespace := req.GetNamespace()
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
 
 	s.logger.Info("starting node", "namespace", namespace, "devnet", req.DevnetName, "index", req.Index)
 
@@ -125,9 +128,9 @@ func (s *NodeService) StartNode(ctx context.Context, req *v1.StartNodeRequest) (
 		return nil, status.Errorf(codes.Internal, "failed to update node: %v", err)
 	}
 
-	// Enqueue for reconciliation
+	// Enqueue for reconciliation with namespace-aware key
 	if s.manager != nil {
-		s.manager.Enqueue("nodes", controller.NodeKey(req.DevnetName, int(req.Index)))
+		s.manager.Enqueue("nodes", controller.NodeKeyWithNamespace(namespace, req.DevnetName, int(req.Index)))
 	}
 
 	return &v1.StartNodeResponse{Node: NodeToProto(node)}, nil
@@ -139,8 +142,11 @@ func (s *NodeService) StopNode(ctx context.Context, req *v1.StopNodeRequest) (*v
 		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
 	}
 
-	// Use namespace from request, empty string uses default namespace
+	// Use namespace from request, default if empty
 	namespace := req.GetNamespace()
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
 
 	s.logger.Info("stopping node", "namespace", namespace, "devnet", req.DevnetName, "index", req.Index)
 
@@ -167,9 +173,9 @@ func (s *NodeService) StopNode(ctx context.Context, req *v1.StopNodeRequest) (*v
 		return nil, status.Errorf(codes.Internal, "failed to update node: %v", err)
 	}
 
-	// Enqueue for reconciliation
+	// Enqueue for reconciliation with namespace-aware key
 	if s.manager != nil {
-		s.manager.Enqueue("nodes", controller.NodeKey(req.DevnetName, int(req.Index)))
+		s.manager.Enqueue("nodes", controller.NodeKeyWithNamespace(namespace, req.DevnetName, int(req.Index)))
 	}
 
 	return &v1.StopNodeResponse{Node: NodeToProto(node)}, nil
@@ -181,8 +187,11 @@ func (s *NodeService) RestartNode(ctx context.Context, req *v1.RestartNodeReques
 		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
 	}
 
-	// Use namespace from request, empty string uses default namespace
+	// Use namespace from request, default if empty
 	namespace := req.GetNamespace()
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
 
 	s.logger.Info("restarting node", "namespace", namespace, "devnet", req.DevnetName, "index", req.Index)
 
@@ -205,9 +214,9 @@ func (s *NodeService) RestartNode(ctx context.Context, req *v1.RestartNodeReques
 		return nil, status.Errorf(codes.Internal, "failed to update node: %v", err)
 	}
 
-	// Enqueue for reconciliation
+	// Enqueue for reconciliation with namespace-aware key
 	if s.manager != nil {
-		s.manager.Enqueue("nodes", controller.NodeKey(req.DevnetName, int(req.Index)))
+		s.manager.Enqueue("nodes", controller.NodeKeyWithNamespace(namespace, req.DevnetName, int(req.Index)))
 	}
 
 	return &v1.RestartNodeResponse{Node: NodeToProto(node)}, nil

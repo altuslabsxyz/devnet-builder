@@ -52,13 +52,17 @@ func (s *UpgradeService) CreateUpgrade(ctx context.Context, req *v1.CreateUpgrad
 		return nil, status.Error(codes.InvalidArgument, "spec.upgrade_name is required")
 	}
 
+	// Use namespace from request, default if empty
+	namespace := req.GetNamespace()
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+
 	s.logger.Info("creating upgrade",
+		"namespace", namespace,
 		"name", req.Name,
 		"devnet", req.Spec.DevnetRef,
 		"upgradeName", req.Spec.UpgradeName)
-
-	// Use namespace from request, empty string uses default namespace
-	namespace := req.GetNamespace()
 
 	// Verify devnet exists
 	_, err := s.store.GetDevnet(ctx, namespace, req.Spec.DevnetRef)
@@ -83,9 +87,9 @@ func (s *UpgradeService) CreateUpgrade(ctx context.Context, req *v1.CreateUpgrad
 		return nil, status.Errorf(codes.Internal, "failed to create upgrade: %v", err)
 	}
 
-	// Enqueue for reconciliation
+	// Enqueue for reconciliation with namespace/name key
 	if s.manager != nil {
-		s.manager.Enqueue("upgrades", req.Name)
+		s.manager.Enqueue("upgrades", namespace+"/"+req.Name)
 	}
 
 	return &v1.CreateUpgradeResponse{Upgrade: UpgradeToProto(upgrade)}, nil
@@ -224,8 +228,11 @@ func (s *UpgradeService) RetryUpgrade(ctx context.Context, req *v1.RetryUpgradeR
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	// Use namespace from request, empty string uses default namespace
+	// Use namespace from request, default if empty
 	namespace := req.GetNamespace()
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
 
 	s.logger.Info("retrying upgrade", "namespace", namespace, "name", req.Name)
 
@@ -255,9 +262,9 @@ func (s *UpgradeService) RetryUpgrade(ctx context.Context, req *v1.RetryUpgradeR
 		return nil, status.Errorf(codes.Internal, "failed to retry upgrade: %v", err)
 	}
 
-	// Enqueue for reconciliation
+	// Enqueue for reconciliation with namespace/name key
 	if s.manager != nil {
-		s.manager.Enqueue("upgrades", req.Name)
+		s.manager.Enqueue("upgrades", namespace+"/"+req.Name)
 	}
 
 	return &v1.RetryUpgradeResponse{Upgrade: UpgradeToProto(upgrade)}, nil

@@ -43,7 +43,13 @@ func (s *DevnetService) CreateDevnet(ctx context.Context, req *v1.CreateDevnetRe
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	s.logger.Info("creating devnet", "name", req.Name)
+	// Use namespace from request, default if empty
+	namespace := req.GetNamespace()
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+
+	s.logger.Info("creating devnet", "namespace", namespace, "name", req.Name)
 
 	// Convert to domain type
 	devnet := CreateRequestToDevnet(req)
@@ -58,9 +64,9 @@ func (s *DevnetService) CreateDevnet(ctx context.Context, req *v1.CreateDevnetRe
 		return nil, status.Errorf(codes.Internal, "failed to create devnet: %v", err)
 	}
 
-	// Enqueue for reconciliation
+	// Enqueue for reconciliation with namespace/name key
 	if s.manager != nil {
-		s.manager.Enqueue("devnets", req.Name)
+		s.manager.Enqueue("devnets", namespace+"/"+req.Name)
 	}
 
 	return &v1.CreateDevnetResponse{Devnet: DevnetToProto(devnet)}, nil
@@ -121,8 +127,11 @@ func (s *DevnetService) DeleteDevnet(ctx context.Context, req *v1.DeleteDevnetRe
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	// Use namespace from request, empty string uses default namespace
+	// Use namespace from request, default if empty
 	namespace := req.GetNamespace()
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
 
 	s.logger.Info("deleting devnet", "namespace", namespace, "name", req.Name)
 
@@ -149,7 +158,7 @@ func (s *DevnetService) DeleteDevnet(ctx context.Context, req *v1.DeleteDevnetRe
 
 	// Enqueue for deprovisioning (controller will handle cleanup)
 	if s.manager != nil {
-		s.manager.Enqueue("devnets", req.Name)
+		s.manager.Enqueue("devnets", namespace+"/"+req.Name)
 	}
 
 	return &v1.DeleteDevnetResponse{Deleted: true}, nil
@@ -161,8 +170,11 @@ func (s *DevnetService) StartDevnet(ctx context.Context, req *v1.StartDevnetRequ
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	// Use namespace from request, empty string searches all namespaces
+	// Use namespace from request, default if empty
 	namespace := req.GetNamespace()
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
 
 	s.logger.Info("starting devnet", "namespace", namespace, "name", req.Name)
 
@@ -185,9 +197,9 @@ func (s *DevnetService) StartDevnet(ctx context.Context, req *v1.StartDevnetRequ
 		return nil, status.Errorf(codes.Internal, "failed to update devnet: %v", err)
 	}
 
-	// Enqueue for reconciliation
+	// Enqueue for reconciliation with namespace/name key
 	if s.manager != nil {
-		s.manager.Enqueue("devnets", req.Name)
+		s.manager.Enqueue("devnets", namespace+"/"+req.Name)
 	}
 
 	return &v1.StartDevnetResponse{Devnet: DevnetToProto(devnet)}, nil
@@ -199,8 +211,11 @@ func (s *DevnetService) StopDevnet(ctx context.Context, req *v1.StopDevnetReques
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
-	// Use namespace from request, empty string searches all namespaces
+	// Use namespace from request, default if empty
 	namespace := req.GetNamespace()
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
 
 	s.logger.Info("stopping devnet", "namespace", namespace, "name", req.Name)
 
@@ -226,7 +241,7 @@ func (s *DevnetService) StopDevnet(ctx context.Context, req *v1.StopDevnetReques
 
 	// Enqueue for container stopping (controller will handle the actual stop)
 	if s.manager != nil {
-		s.manager.Enqueue("devnets", req.Name)
+		s.manager.Enqueue("devnets", namespace+"/"+req.Name)
 	}
 
 	return &v1.StopDevnetResponse{Devnet: DevnetToProto(devnet)}, nil
