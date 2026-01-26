@@ -38,6 +38,7 @@ message DevnetMetadata {
   google.protobuf.Timestamp updated_at = 4;
   map<string, string> labels = 5;
   map<string, string> annotations = 6;
+  string namespace = 7;  // Namespace for resource isolation (defaults to "default")
 }
 
 message DevnetSpec {
@@ -86,6 +87,7 @@ message CreateDevnetRequest {
   string name = 1;
   DevnetSpec spec = 2;
   map<string, string> labels = 3;
+  string namespace = 4;  // Target namespace (defaults to "default")
 }
 
 message CreateDevnetResponse {
@@ -94,6 +96,7 @@ message CreateDevnetResponse {
 
 message GetDevnetRequest {
   string name = 1;
+  string namespace = 2;  // Namespace to look in (defaults to "default")
 }
 
 message GetDevnetResponse {
@@ -102,6 +105,7 @@ message GetDevnetResponse {
 
 message ListDevnetsRequest {
   string label_selector = 1;
+  string namespace = 2;  // Filter by namespace, empty = all namespaces
 }
 
 message ListDevnetsResponse {
@@ -110,6 +114,7 @@ message ListDevnetsResponse {
 
 message DeleteDevnetRequest {
   string name = 1;
+  string namespace = 2;  // Namespace (defaults to "default")
 }
 
 message DeleteDevnetResponse {
@@ -118,6 +123,7 @@ message DeleteDevnetResponse {
 
 message StartDevnetRequest {
   string name = 1;
+  string namespace = 2;  // Namespace (defaults to "default")
 }
 
 message StartDevnetResponse {
@@ -126,6 +132,7 @@ message StartDevnetResponse {
 
 message StopDevnetRequest {
   string name = 1;
+  string namespace = 2;  // Namespace (defaults to "default")
 }
 
 message StopDevnetResponse {
@@ -173,6 +180,7 @@ message NodeMetadata {
   int64 generation = 4;
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp updated_at = 6;
+  string namespace = 7;  // Parent devnet's namespace (defaults to "default")
 }
 
 message NodeSpec {
@@ -231,6 +239,7 @@ service NodeService {
 message StartNodeRequest {
   string devnet_name = 1;
   int32 index = 2;
+  string namespace = 3;  // Namespace (defaults to "default")
 }
 
 message StartNodeResponse {
@@ -241,6 +250,7 @@ message StopNodeRequest {
   string devnet_name = 1;
   int32 index = 2;
   int32 timeout_seconds = 3;  // Grace period, default 30
+  string namespace = 4;  // Namespace (defaults to "default")
 }
 
 message StopNodeResponse {
@@ -250,6 +260,7 @@ message StopNodeResponse {
 message RestartNodeRequest {
   string devnet_name = 1;
   int32 index = 2;
+  string namespace = 3;  // Namespace (defaults to "default")
 }
 
 message RestartNodeResponse {
@@ -259,6 +270,7 @@ message RestartNodeResponse {
 message GetNodeRequest {
   string devnet_name = 1;
   int32 index = 2;
+  string namespace = 3;  // Namespace (defaults to "default")
 }
 
 message GetNodeResponse {
@@ -267,6 +279,7 @@ message GetNodeResponse {
 
 message ListNodesRequest {
   string devnet_name = 1;  // Required: filter by devnet
+  string namespace = 2;  // Namespace (defaults to "default")
 }
 
 message ListNodesResponse {
@@ -276,6 +289,7 @@ message ListNodesResponse {
 message GetNodeHealthRequest {
   string devnet_name = 1;
   int32 index = 2;
+  string namespace = 3;  // Namespace (defaults to "default")
 }
 
 message GetNodeHealthResponse {
@@ -288,6 +302,7 @@ message StreamNodeLogsRequest {
   bool follow = 3;
   string since = 4;  // RFC3339 timestamp
   int32 tail = 5;    // Number of lines from end
+  string namespace = 6;  // Namespace (defaults to "default")
 }
 
 message StreamNodeLogsResponse {
@@ -301,6 +316,7 @@ message ExecInNodeRequest {
   int32 index = 2;
   repeated string command = 3;
   int32 timeout_seconds = 4;
+  string namespace = 5;  // Namespace (defaults to "default")
 }
 
 message ExecInNodeResponse {
@@ -325,6 +341,7 @@ message UpgradeMetadata {
   int64 generation = 2;
   google.protobuf.Timestamp created_at = 3;
   google.protobuf.Timestamp updated_at = 4;
+  string namespace = 5;  // Namespace for isolation (defaults to "default")
 }
 
 message UpgradeSpec {
@@ -334,6 +351,8 @@ message UpgradeSpec {
   BinarySource new_binary = 4;  // Upgraded binary source
   bool with_export = 5;  // Enable state export before/after
   bool auto_vote = 6;  // Auto-vote yes with all validators
+  // Field 7 reserved for future use
+  string namespace = 8;  // Namespace for the devnet reference (defaults to "default")
 }
 
 message BinarySource {
@@ -372,6 +391,7 @@ service UpgradeService {
 message CreateUpgradeRequest {
   string name = 1;  // Unique upgrade name
   UpgradeSpec spec = 2;
+  string namespace = 3;  // Namespace (defaults to "default")
 }
 
 message CreateUpgradeResponse {
@@ -380,6 +400,7 @@ message CreateUpgradeResponse {
 
 message GetUpgradeRequest {
   string name = 1;
+  string namespace = 2;  // Namespace (defaults to "default")
 }
 
 message GetUpgradeResponse {
@@ -388,6 +409,7 @@ message GetUpgradeResponse {
 
 message ListUpgradesRequest {
   string devnet_name = 1;  // Optional: filter by devnet
+  string namespace = 2;  // Namespace (defaults to "default", empty = all namespaces)
 }
 
 message ListUpgradesResponse {
@@ -396,6 +418,7 @@ message ListUpgradesResponse {
 
 message DeleteUpgradeRequest {
   string name = 1;
+  string namespace = 2;  // Namespace (defaults to "default")
 }
 
 message DeleteUpgradeResponse {
@@ -404,6 +427,7 @@ message DeleteUpgradeResponse {
 
 message CancelUpgradeRequest {
   string name = 1;
+  string namespace = 2;  // Namespace (defaults to "default")
 }
 
 message CancelUpgradeResponse {
@@ -412,6 +436,7 @@ message CancelUpgradeResponse {
 
 message RetryUpgradeRequest {
   string name = 1;
+  string namespace = 2;  // Namespace (defaults to "default")
 }
 
 message RetryUpgradeResponse {
