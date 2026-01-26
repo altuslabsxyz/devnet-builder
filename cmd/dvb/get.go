@@ -2,6 +2,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -9,6 +10,7 @@ import (
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+	"sigs.k8s.io/yaml"
 )
 
 func newGetCmd() *cobra.Command {
@@ -43,6 +45,20 @@ Examples:
   # Output in wide format
   dvb get devnets -o wide`,
 		Args: cobra.MinimumNArgs(1),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) == 0 {
+				// First argument: resource type
+				return []string{
+					"devnets\tList all devnets",
+					"devnet\tGet a specific devnet",
+					"dn\tShorthand for devnet",
+					"nodes\tList nodes (use with --devnet)",
+					"node\tShorthand for nodes",
+				}, cobra.ShellCompDirectiveNoFileComp
+			}
+			// Second argument: resource name - requires daemon connection
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runGet(cmd, args, output, labelSel, showNodes)
 		},
@@ -91,6 +107,30 @@ func listDevnets(cmd *cobra.Command, output, labelSel string) error {
 		return nil
 	}
 
+	// Handle yaml/json output
+	switch output {
+	case "yaml":
+		for i, d := range devnets {
+			if i > 0 {
+				fmt.Println("---")
+			}
+			out, err := yaml.Marshal(protoDevnetToYAML(d))
+			if err != nil {
+				return fmt.Errorf("failed to marshal yaml: %w", err)
+			}
+			fmt.Print(string(out))
+		}
+		return nil
+	case "json":
+		out, err := json.MarshalIndent(devnets, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal json: %w", err)
+		}
+		fmt.Println(string(out))
+		return nil
+	}
+
+	// Table output
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
 	switch output {
@@ -129,7 +169,25 @@ func getDevnet(cmd *cobra.Command, name, output string, showNodes bool) error {
 		return err
 	}
 
-	// Print devnet info
+	// Handle yaml/json output
+	switch output {
+	case "yaml":
+		out, err := yaml.Marshal(protoDevnetToYAML(devnet))
+		if err != nil {
+			return fmt.Errorf("failed to marshal yaml: %w", err)
+		}
+		fmt.Print(string(out))
+		return nil
+	case "json":
+		out, err := json.MarshalIndent(devnet, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal json: %w", err)
+		}
+		fmt.Println(string(out))
+		return nil
+	}
+
+	// Print devnet info (default table format)
 	printDevnetDetail(devnet)
 
 	// Optionally show nodes
@@ -214,5 +272,70 @@ func colorPhase(phase string) string {
 		return color.RedString(phase)
 	default:
 		return phase
+	}
+}
+
+// YAMLDevnetOutput represents a devnet in kubectl-style YAML format
+type YAMLDevnetOutput struct {
+	APIVersion string                   `json:"apiVersion" yaml:"apiVersion"`
+	Kind       string                   `json:"kind" yaml:"kind"`
+	Metadata   YAMLDevnetMetadataOutput `json:"metadata" yaml:"metadata"`
+	Spec       YAMLDevnetSpecOutput     `json:"spec" yaml:"spec"`
+	Status     YAMLDevnetStatusOutput   `json:"status" yaml:"status"`
+}
+
+// YAMLDevnetMetadataOutput is the metadata section
+type YAMLDevnetMetadataOutput struct {
+	Name        string            `json:"name" yaml:"name"`
+	Labels      map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
+}
+
+// YAMLDevnetSpecOutput is the spec section
+type YAMLDevnetSpecOutput struct {
+	Network        string `json:"network" yaml:"network"`
+	NetworkType    string `json:"networkType,omitempty" yaml:"networkType,omitempty"`
+	NetworkVersion string `json:"networkVersion,omitempty" yaml:"networkVersion,omitempty"`
+	Validators     int32  `json:"validators" yaml:"validators"`
+	FullNodes      int32  `json:"fullNodes,omitempty" yaml:"fullNodes,omitempty"`
+	Mode           string `json:"mode" yaml:"mode"`
+}
+
+// YAMLDevnetStatusOutput is the status section
+type YAMLDevnetStatusOutput struct {
+	Phase         string `json:"phase" yaml:"phase"`
+	Nodes         int32  `json:"nodes" yaml:"nodes"`
+	ReadyNodes    int32  `json:"readyNodes" yaml:"readyNodes"`
+	CurrentHeight int64  `json:"currentHeight,omitempty" yaml:"currentHeight,omitempty"`
+	SdkVersion    string `json:"sdkVersion,omitempty" yaml:"sdkVersion,omitempty"`
+	Message       string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+// protoDevnetToYAML converts a proto Devnet to YAML output format
+func protoDevnetToYAML(d *v1.Devnet) *YAMLDevnetOutput {
+	return &YAMLDevnetOutput{
+		APIVersion: "devnet.lagos/v1",
+		Kind:       "Devnet",
+		Metadata: YAMLDevnetMetadataOutput{
+			Name:        d.Metadata.Name,
+			Labels:      d.Metadata.Labels,
+			Annotations: d.Metadata.Annotations,
+		},
+		Spec: YAMLDevnetSpecOutput{
+			Network:        d.Spec.Plugin,     // proto uses Plugin, YAML uses network
+			NetworkType:    d.Spec.NetworkType,
+			NetworkVersion: d.Spec.SdkVersion, // proto uses SdkVersion, YAML uses networkVersion
+			Validators:     d.Spec.Validators,
+			FullNodes:      d.Spec.FullNodes,
+			Mode:           d.Spec.Mode,
+		},
+		Status: YAMLDevnetStatusOutput{
+			Phase:         d.Status.Phase,
+			Nodes:         d.Status.Nodes,
+			ReadyNodes:    d.Status.ReadyNodes,
+			CurrentHeight: d.Status.CurrentHeight,
+			SdkVersion:    d.Status.SdkVersion,
+			Message:       d.Status.Message,
+		},
 	}
 }
