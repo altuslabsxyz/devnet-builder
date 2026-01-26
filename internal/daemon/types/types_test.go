@@ -62,7 +62,6 @@ func TestDevnetStatus_SDKVersionHistory(t *testing.T) {
 
 func TestResourceMetaNamespace(t *testing.T) {
 	meta := ResourceMeta{
-		Name:      "test-devnet",
 		Namespace: "production",
 	}
 	if meta.Namespace != "production" {

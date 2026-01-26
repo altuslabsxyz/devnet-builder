@@ -22,8 +22,8 @@ func (m *mockStore) CreateDevnet(ctx context.Context, devnet *Devnet) error { re
 func (m *mockStore) GetDevnet(ctx context.Context, namespace, name string) (*Devnet, error) {
 	return nil, nil
 }
-func (m *mockStore) UpdateDevnet(ctx context.Context, devnet *Devnet) error            { return nil }
-func (m *mockStore) DeleteDevnet(ctx context.Context, namespace, name string) error    { return nil }
+func (m *mockStore) UpdateDevnet(ctx context.Context, devnet *Devnet) error         { return nil }
+func (m *mockStore) DeleteDevnet(ctx context.Context, namespace, name string) error { return nil }
 func (m *mockStore) ListDevnets(ctx context.Context, namespace string) ([]*Devnet, error) {
 	return nil, nil
 }
@@ -47,8 +47,8 @@ func (m *mockStore) CreateUpgrade(ctx context.Context, upgrade *Upgrade) error {
 func (m *mockStore) GetUpgrade(ctx context.Context, namespace, name string) (*Upgrade, error) {
 	return nil, nil
 }
-func (m *mockStore) UpdateUpgrade(ctx context.Context, upgrade *Upgrade) error         { return nil }
-func (m *mockStore) DeleteUpgrade(ctx context.Context, namespace, name string) error   { return nil }
+func (m *mockStore) UpdateUpgrade(ctx context.Context, upgrade *Upgrade) error       { return nil }
+func (m *mockStore) DeleteUpgrade(ctx context.Context, namespace, name string) error { return nil }
 func (m *mockStore) ListUpgrades(ctx context.Context, namespace, devnetName string) ([]*Upgrade, error) {
 	return nil, nil
 }
