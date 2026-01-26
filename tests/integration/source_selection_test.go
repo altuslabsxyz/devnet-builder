@@ -127,7 +127,7 @@ func TestSourceSelectionCLIIntegration(t *testing.T) {
 		defer cancel()
 
 		cmd := exec.CommandContext(ctx, binaryPath, "deploy", "--help")
-		cmd.Stdin = nil                                          // No stdin = non-interactive
+		cmd.Stdin = nil                                         // No stdin = non-interactive
 		cmd.Env = append(os.Environ(), "DEVNET_HOME="+tempHome) // Use isolated home
 
 		output, err := cmd.CombinedOutput()
@@ -150,7 +150,7 @@ func TestSourceSelectionCLIIntegration(t *testing.T) {
 		defer cancel()
 
 		cmd := exec.CommandContext(ctx, binaryPath, "upgrade", "--help")
-		cmd.Stdin = nil                                          // No stdin = non-interactive
+		cmd.Stdin = nil                                         // No stdin = non-interactive
 		cmd.Env = append(os.Environ(), "DEVNET_HOME="+tempHome) // Use isolated home
 
 		output, err := cmd.CombinedOutput()
