@@ -59,6 +59,7 @@ func main() {
 		newVersionCmd(),
 		newDaemonCmd(),
 		newApplyCmd(),
+		newDiffCmd(),
 		newDeployCmd(),
 		newListCmd(),
 		newStatusCmd(),
