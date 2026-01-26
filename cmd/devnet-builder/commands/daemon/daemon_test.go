@@ -86,20 +86,21 @@ func TestWaitForSocket(t *testing.T) {
 		socketPath := filepath.Join(dir, "d.sock")
 
 		// Create socket after a short delay
-		var listener net.Listener
+		listenerCh := make(chan net.Listener, 1)
 		go func() {
 			time.Sleep(200 * time.Millisecond)
-			var err error
-			listener, err = net.Listen("unix", socketPath)
+			l, err := net.Listen("unix", socketPath)
 			if err != nil {
 				fmt.Printf("failed to create delayed socket: %v\n", err)
+				listenerCh <- nil
 				return
 			}
+			listenerCh <- l
 		}()
 
 		err := waitForSocket(socketPath, 2*time.Second)
-		if listener != nil {
-			listener.Close()
+		if l := <-listenerCh; l != nil {
+			l.Close()
 		}
 		if err != nil {
 			t.Errorf("expected no error, got: %v", err)

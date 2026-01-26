@@ -4,10 +4,22 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+// createTempHomeDir creates a temporary home directory for isolated tests.
+// Returns the directory path and a cleanup function.
+func createTempHomeDir(t *testing.T) (string, func()) {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "devnet-builder-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	return dir, func() { os.RemoveAll(dir) }
+}
 
 // TestBinaryFlagDeprecation_Deploy tests that the --binary flag in deploy command
 // returns a helpful error message instead of accepting the flag.
@@ -26,8 +38,13 @@ import (
 //   - Error message contains "interactive binary selection"
 //   - Error message contains migration guide
 func TestBinaryFlagDeprecation_Deploy(t *testing.T) {
+	// Create isolated temp home directory
+	tempHome, cleanup := createTempHomeDir(t)
+	defer cleanup()
+
 	// Build the binary for testing
-	buildCmd := exec.Command("go", "build", "-o", "/tmp/devnet-builder-test", "./cmd/devnet-builder")
+	binaryPath := filepath.Join(tempHome, "devnet-builder-test")
+	buildCmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/devnet-builder")
 	buildCmd.Dir = "../../" // Go up from tests/integration to project root
 
 	output, err := buildCmd.CombinedOutput()
@@ -35,14 +52,14 @@ func TestBinaryFlagDeprecation_Deploy(t *testing.T) {
 		t.Logf("Build output: %s", output)
 		t.Fatalf("Failed to build devnet-builder: %v", err)
 	}
-	defer os.Remove("/tmp/devnet-builder-test")
 
 	t.Run("Deploy with --binary flag shows deprecation error", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		// Run deploy command with --binary flag
-		cmd := exec.CommandContext(ctx, "/tmp/devnet-builder-test", "deploy", "--binary", "/path/to/binary")
+		cmd := exec.CommandContext(ctx, binaryPath, "deploy", "--binary", "/path/to/binary")
+		cmd.Env = append(os.Environ(), "DEVNET_HOME="+tempHome) // Use isolated home
 		output, err := cmd.CombinedOutput()
 
 		// Command should fail
@@ -85,7 +102,8 @@ func TestBinaryFlagDeprecation_Deploy(t *testing.T) {
 		defer cancel()
 
 		// Run deploy command with -b flag (short form)
-		cmd := exec.CommandContext(ctx, "/tmp/devnet-builder-test", "deploy", "-b", "/path/to/binary")
+		cmd := exec.CommandContext(ctx, binaryPath, "deploy", "-b", "/path/to/binary")
+		cmd.Env = append(os.Environ(), "DEVNET_HOME="+tempHome) // Use isolated home
 		output, err := cmd.CombinedOutput()
 
 		// Command should fail
@@ -121,8 +139,13 @@ func TestBinaryFlagDeprecation_Deploy(t *testing.T) {
 //   - Error message contains "interactive binary selection"
 //   - Error message contains migration guide
 func TestBinaryFlagDeprecation_Upgrade(t *testing.T) {
+	// Create isolated temp home directory
+	tempHome, cleanup := createTempHomeDir(t)
+	defer cleanup()
+
 	// Build the binary for testing
-	buildCmd := exec.Command("go", "build", "-o", "/tmp/devnet-builder-test", "./cmd/devnet-builder")
+	binaryPath := filepath.Join(tempHome, "devnet-builder-test")
+	buildCmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/devnet-builder")
 	buildCmd.Dir = "../../" // Go up from tests/integration to project root
 
 	output, err := buildCmd.CombinedOutput()
@@ -130,7 +153,6 @@ func TestBinaryFlagDeprecation_Upgrade(t *testing.T) {
 		t.Logf("Build output: %s", output)
 		t.Fatalf("Failed to build devnet-builder: %v", err)
 	}
-	defer os.Remove("/tmp/devnet-builder-test")
 
 	t.Run("Upgrade with --binary flag shows deprecation error", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -138,10 +160,11 @@ func TestBinaryFlagDeprecation_Upgrade(t *testing.T) {
 
 		// Run upgrade command with --binary flag
 		// Note: Upgrade requires additional flags like --name, but deprecation check happens first
-		cmd := exec.CommandContext(ctx, "/tmp/devnet-builder-test", "upgrade",
+		cmd := exec.CommandContext(ctx, binaryPath, "upgrade",
 			"--binary", "/path/to/binary",
 			"--name", "test-upgrade",
 			"--version", "v1.0.0")
+		cmd.Env = append(os.Environ(), "DEVNET_HOME="+tempHome) // Use isolated home
 		output, err := cmd.CombinedOutput()
 
 		// Command should fail
@@ -184,10 +207,11 @@ func TestBinaryFlagDeprecation_Upgrade(t *testing.T) {
 		defer cancel()
 
 		// Run upgrade command with -b flag (short form)
-		cmd := exec.CommandContext(ctx, "/tmp/devnet-builder-test", "upgrade",
+		cmd := exec.CommandContext(ctx, binaryPath, "upgrade",
 			"-b", "/path/to/binary",
 			"--name", "test-upgrade",
 			"--version", "v1.0.0")
+		cmd.Env = append(os.Environ(), "DEVNET_HOME="+tempHome) // Use isolated home
 		output, err := cmd.CombinedOutput()
 
 		// Command should fail
@@ -220,8 +244,13 @@ func TestBinaryFlagDeprecation_Upgrade(t *testing.T) {
 //   - Help text should not show --binary or -b flag
 //   - Help text should show other flags (--mode, --validators, etc.)
 func TestBinaryFlagNotInHelpText(t *testing.T) {
+	// Create isolated temp home directory
+	tempHome, cleanup := createTempHomeDir(t)
+	defer cleanup()
+
 	// Build the binary for testing
-	buildCmd := exec.Command("go", "build", "-o", "/tmp/devnet-builder-test", "./cmd/devnet-builder")
+	binaryPath := filepath.Join(tempHome, "devnet-builder-test")
+	buildCmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/devnet-builder")
 	buildCmd.Dir = "../../" // Go up from tests/integration to project root
 
 	output, err := buildCmd.CombinedOutput()
@@ -229,13 +258,13 @@ func TestBinaryFlagNotInHelpText(t *testing.T) {
 		t.Logf("Build output: %s", output)
 		t.Fatalf("Failed to build devnet-builder: %v", err)
 	}
-	defer os.Remove("/tmp/devnet-builder-test")
 
 	t.Run("Deploy help text does not mention --binary", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		cmd := exec.CommandContext(ctx, "/tmp/devnet-builder-test", "deploy", "--help")
+		cmd := exec.CommandContext(ctx, binaryPath, "deploy", "--help")
+		cmd.Env = append(os.Environ(), "DEVNET_HOME="+tempHome) // Use isolated home
 		output, err := cmd.CombinedOutput()
 
 		if err != nil {
@@ -262,7 +291,8 @@ func TestBinaryFlagNotInHelpText(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		cmd := exec.CommandContext(ctx, "/tmp/devnet-builder-test", "upgrade", "--help")
+		cmd := exec.CommandContext(ctx, binaryPath, "upgrade", "--help")
+		cmd.Env = append(os.Environ(), "DEVNET_HOME="+tempHome) // Use isolated home
 		output, err := cmd.CombinedOutput()
 
 		if err != nil {

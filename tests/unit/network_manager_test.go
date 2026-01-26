@@ -3,6 +3,7 @@ package unit
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"regexp"
 	"strings"
 	"testing"
@@ -10,11 +11,24 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/docker"
 )
 
-// TestNetworkManager_CreateNetwork tests basic network creation
-func TestNetworkManager_CreateNetwork(t *testing.T) {
+// skipIfNoDocker skips the test if Docker is not available.
+// This allows tests to pass in CI environments without Docker.
+func skipIfNoDocker(t *testing.T) {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("skipping network manager test in short mode (requires Docker)")
 	}
+
+	// Quick check: try to run `docker info`
+	cmd := exec.Command("docker", "info")
+	if err := cmd.Run(); err != nil {
+		t.Skip("skipping test: Docker daemon not accessible")
+	}
+}
+
+// TestNetworkManager_CreateNetwork tests basic network creation
+func TestNetworkManager_CreateNetwork(t *testing.T) {
+	skipIfNoDocker(t)
 
 	ctx := context.Background()
 	manager := docker.NewNetworkManager()
@@ -106,9 +120,7 @@ func TestNetworkManager_CreateNetwork(t *testing.T) {
 
 // TestNetworkManager_SubnetAutoIncrement tests subnet auto-increment on conflicts
 func TestNetworkManager_SubnetAutoIncrement(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping subnet auto-increment test in short mode (requires Docker)")
-	}
+	skipIfNoDocker(t)
 
 	ctx := context.Background()
 	manager := docker.NewNetworkManager()
@@ -161,9 +173,7 @@ func TestNetworkManager_SubnetAutoIncrement(t *testing.T) {
 
 // TestNetworkManager_DeleteNetwork tests network deletion
 func TestNetworkManager_DeleteNetwork(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping network deletion test in short mode (requires Docker)")
-	}
+	skipIfNoDocker(t)
 
 	ctx := context.Background()
 	manager := docker.NewNetworkManager()
@@ -207,9 +217,7 @@ func TestNetworkManager_DeleteNetwork(t *testing.T) {
 
 // TestNetworkManager_GetNetworkSubnet tests subnet retrieval
 func TestNetworkManager_GetNetworkSubnet(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping get subnet test in short mode (requires Docker)")
-	}
+	skipIfNoDocker(t)
 
 	ctx := context.Background()
 	manager := docker.NewNetworkManager()
@@ -244,9 +252,7 @@ func TestNetworkManager_GetNetworkSubnet(t *testing.T) {
 
 // TestNetworkManager_ListDevnetNetworks tests listing devnet networks
 func TestNetworkManager_ListDevnetNetworks(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping list networks test in short mode (requires Docker)")
-	}
+	skipIfNoDocker(t)
 
 	ctx := context.Background()
 	manager := docker.NewNetworkManager()
@@ -315,9 +321,7 @@ func TestNetworkManager_ListDevnetNetworks(t *testing.T) {
 
 // TestNetworkManager_NetworkExists tests network existence check
 func TestNetworkManager_NetworkExists(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping network exists test in short mode (requires Docker)")
-	}
+	skipIfNoDocker(t)
 
 	ctx := context.Background()
 	manager := docker.NewNetworkManager()
