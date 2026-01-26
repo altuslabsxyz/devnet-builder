@@ -46,51 +46,17 @@ build: $(BUILDDIR)/
 	@echo "  Build date: $(BUILD_DATE)"
 	@echo "  Networks:   plugin-only"
 	@go build -ldflags "$(LDFLAGS)" -o $(BUILDDIR)/$(BINARY_NAME) ./cmd/devnet-builder
+	@go install -ldflags "$(LDFLAGS)" -o $(BUILDDIR)/$(BINARY_NAME) ./cmd/devnetd
+	@go install -ldflags "$(LDFLAGS)" -o $(BUILDDIR)/$(BINARY_NAME) ./cmd/dvb
 	@echo "Build successful: $(BUILDDIR)/$(BINARY_NAME)"
 
-# Build with private networks (stable, ault) for development
-# This uses the private/ directory which has private network implementations
-build-private: $(BUILDDIR)/
-	@echo "Building devnet-builder (with private networks)..."
-	@echo "  Version:    $(VERSION)"
-	@echo "  Git commit: $(GIT_COMMIT)"
-	@echo "  Build date: $(BUILD_DATE)"
-	@echo "  Networks:   stable, ault (private)"
-	@echo ""
-	@echo "Note: Requires access to private repositories (github.com/stablelabs/*)"
-	@go build -tags "network_stable,network_ault" \
-		-ldflags "$(LDFLAGS) -X main.BuildNetworks=stable,ault" \
-		-o $(BUILDDIR)/$(BINARY_NAME) ./cmd/devnet-builder
-	@echo "Build successful: $(BUILDDIR)/$(BINARY_NAME)"
-
-# Build with stable network only
-build-stable: $(BUILDDIR)/
-	@echo "Building devnet-builder (stable only)..."
-	@go build -tags "network_stable" \
-		-ldflags "$(LDFLAGS) -X main.BuildNetworks=stable" \
-		-o $(BUILDDIR)/$(BINARY_NAME) ./cmd/devnet-builder
-	@echo "Build successful: $(BUILDDIR)/$(BINARY_NAME)"
-
-# Build with ault network only
-build-ault: $(BUILDDIR)/
-	@echo "Building devnet-builder (ault only)..."
-	@go build -tags "network_ault" \
-		-ldflags "$(LDFLAGS) -X main.BuildNetworks=ault" \
-		-o $(BUILDDIR)/$(BINARY_NAME) ./cmd/devnet-builder
-	@echo "Build successful: $(BUILDDIR)/$(BINARY_NAME)"
 
 # Install to GOPATH/bin (plugin-only mode)
 install:
 	@echo "Installing devnet-builder ..."
 	@go install -ldflags "$(LDFLAGS)" ./cmd/devnet-builder
-	@echo "Install complete"
-
-# Install with private networks
-install-private:
-	@echo "Installing devnet-builder (with private networks)..."
-	@go install -tags "network_stable,network_ault" \
-		-ldflags "$(LDFLAGS) -X main.BuildNetworks=stable,ault" \
-		./cmd/devnet-builder
+	@go install -ldflags "$(LDFLAGS)" ./cmd/devnetd
+	@go install -ldflags "$(LDFLAGS)" ./cmd/dvb
 	@echo "Install complete"
 
 # =============================================================================
