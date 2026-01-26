@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/server"
+	"github.com/altuslabsxyz/devnet-builder/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -34,6 +35,9 @@ func main() {
 	rootCmd.Flags().StringVar(&config.LogLevel, "log-level", defaults.LogLevel, "Log level (debug, info, warn, error)")
 	rootCmd.Flags().BoolVar(&config.EnableDocker, "docker", false, "Enable Docker container runtime")
 	rootCmd.Flags().StringVar(&config.DockerImage, "docker-image", "stablelabs/stabled:latest", "Default Docker image for nodes")
+
+	// Add version command
+	rootCmd.AddCommand(version.NewCmd("devnet-builder", "devnetd"))
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
