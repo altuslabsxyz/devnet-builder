@@ -74,6 +74,16 @@ func (c *Client) StopDevnet(ctx context.Context, name string) (*v1.Devnet, error
 	return c.grpc.StopDevnet(ctx, name)
 }
 
+// ApplyDevnet creates or updates a devnet (idempotent).
+func (c *Client) ApplyDevnet(ctx context.Context, name string, spec *v1.DevnetSpec, labels, annotations map[string]string) (*v1.ApplyDevnetResponse, error) {
+	return c.grpc.ApplyDevnet(ctx, name, spec, labels, annotations)
+}
+
+// UpdateDevnet updates an existing devnet.
+func (c *Client) UpdateDevnet(ctx context.Context, name string, spec *v1.DevnetSpec, labels, annotations map[string]string) (*v1.Devnet, error) {
+	return c.grpc.UpdateDevnet(ctx, name, spec, labels, annotations)
+}
+
 // GetNode retrieves a node by devnet name and index.
 func (c *Client) GetNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
 	return c.grpc.GetNode(ctx, devnetName, index)

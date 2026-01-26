@@ -28,6 +28,8 @@ const (
 	DevnetService_DeleteDevnet_FullMethodName = "/devnetbuilder.v1.DevnetService/DeleteDevnet"
 	DevnetService_StartDevnet_FullMethodName  = "/devnetbuilder.v1.DevnetService/StartDevnet"
 	DevnetService_StopDevnet_FullMethodName   = "/devnetbuilder.v1.DevnetService/StopDevnet"
+	DevnetService_ApplyDevnet_FullMethodName  = "/devnetbuilder.v1.DevnetService/ApplyDevnet"
+	DevnetService_UpdateDevnet_FullMethodName = "/devnetbuilder.v1.DevnetService/UpdateDevnet"
 )
 
 // DevnetServiceClient is the client API for DevnetService service.
@@ -43,6 +45,10 @@ type DevnetServiceClient interface {
 	DeleteDevnet(ctx context.Context, in *DeleteDevnetRequest, opts ...grpc.CallOption) (*DeleteDevnetResponse, error)
 	StartDevnet(ctx context.Context, in *StartDevnetRequest, opts ...grpc.CallOption) (*StartDevnetResponse, error)
 	StopDevnet(ctx context.Context, in *StopDevnetRequest, opts ...grpc.CallOption) (*StopDevnetResponse, error)
+	// Apply creates or updates a devnet from YAML spec
+	ApplyDevnet(ctx context.Context, in *ApplyDevnetRequest, opts ...grpc.CallOption) (*ApplyDevnetResponse, error)
+	// Update modifies an existing devnet
+	UpdateDevnet(ctx context.Context, in *UpdateDevnetRequest, opts ...grpc.CallOption) (*UpdateDevnetResponse, error)
 }
 
 type devnetServiceClient struct {
@@ -113,6 +119,26 @@ func (c *devnetServiceClient) StopDevnet(ctx context.Context, in *StopDevnetRequ
 	return out, nil
 }
 
+func (c *devnetServiceClient) ApplyDevnet(ctx context.Context, in *ApplyDevnetRequest, opts ...grpc.CallOption) (*ApplyDevnetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ApplyDevnetResponse)
+	err := c.cc.Invoke(ctx, DevnetService_ApplyDevnet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *devnetServiceClient) UpdateDevnet(ctx context.Context, in *UpdateDevnetRequest, opts ...grpc.CallOption) (*UpdateDevnetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateDevnetResponse)
+	err := c.cc.Invoke(ctx, DevnetService_UpdateDevnet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DevnetServiceServer is the server API for DevnetService service.
 // All implementations must embed UnimplementedDevnetServiceServer
 // for forward compatibility.
@@ -126,6 +152,10 @@ type DevnetServiceServer interface {
 	DeleteDevnet(context.Context, *DeleteDevnetRequest) (*DeleteDevnetResponse, error)
 	StartDevnet(context.Context, *StartDevnetRequest) (*StartDevnetResponse, error)
 	StopDevnet(context.Context, *StopDevnetRequest) (*StopDevnetResponse, error)
+	// Apply creates or updates a devnet from YAML spec
+	ApplyDevnet(context.Context, *ApplyDevnetRequest) (*ApplyDevnetResponse, error)
+	// Update modifies an existing devnet
+	UpdateDevnet(context.Context, *UpdateDevnetRequest) (*UpdateDevnetResponse, error)
 	mustEmbedUnimplementedDevnetServiceServer()
 }
 
@@ -153,6 +183,12 @@ func (UnimplementedDevnetServiceServer) StartDevnet(context.Context, *StartDevne
 }
 func (UnimplementedDevnetServiceServer) StopDevnet(context.Context, *StopDevnetRequest) (*StopDevnetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method StopDevnet not implemented")
+}
+func (UnimplementedDevnetServiceServer) ApplyDevnet(context.Context, *ApplyDevnetRequest) (*ApplyDevnetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ApplyDevnet not implemented")
+}
+func (UnimplementedDevnetServiceServer) UpdateDevnet(context.Context, *UpdateDevnetRequest) (*UpdateDevnetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateDevnet not implemented")
 }
 func (UnimplementedDevnetServiceServer) mustEmbedUnimplementedDevnetServiceServer() {}
 func (UnimplementedDevnetServiceServer) testEmbeddedByValue()                       {}
@@ -283,6 +319,42 @@ func _DevnetService_StopDevnet_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DevnetService_ApplyDevnet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApplyDevnetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DevnetServiceServer).ApplyDevnet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DevnetService_ApplyDevnet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DevnetServiceServer).ApplyDevnet(ctx, req.(*ApplyDevnetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DevnetService_UpdateDevnet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateDevnetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DevnetServiceServer).UpdateDevnet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DevnetService_UpdateDevnet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DevnetServiceServer).UpdateDevnet(ctx, req.(*UpdateDevnetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DevnetService_ServiceDesc is the grpc.ServiceDesc for DevnetService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -313,6 +385,14 @@ var DevnetService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "StopDevnet",
 			Handler:    _DevnetService_StopDevnet_Handler,
+		},
+		{
+			MethodName: "ApplyDevnet",
+			Handler:    _DevnetService_ApplyDevnet_Handler,
+		},
+		{
+			MethodName: "UpdateDevnet",
+			Handler:    _DevnetService_UpdateDevnet_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -58,6 +58,59 @@ func CreateRequestToDevnet(req *v1.CreateDevnetRequest) *types.Devnet {
 	return devnet
 }
 
+// ApplyRequestToDevnet converts an ApplyDevnetRequest to a domain Devnet.
+func ApplyRequestToDevnet(req *v1.ApplyDevnetRequest) *types.Devnet {
+	now := time.Now()
+
+	devnet := &types.Devnet{
+		Metadata: types.ResourceMeta{
+			Name:        req.Name,
+			Generation:  1,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+			Labels:      req.Labels,
+			Annotations: req.Annotations,
+		},
+		Status: types.DevnetStatus{
+			Phase: types.PhasePending,
+		},
+	}
+
+	if req.Spec != nil {
+		devnet.Spec = specFromProto(req.Spec)
+	}
+
+	return devnet
+}
+
+// specsEqual compares a domain DevnetSpec with a proto DevnetSpec for equality.
+func specsEqual(a types.DevnetSpec, b *v1.DevnetSpec) bool {
+	if b == nil {
+		return false
+	}
+	return a.Plugin == b.Plugin &&
+		a.NetworkType == b.NetworkType &&
+		a.Validators == int(b.Validators) &&
+		a.FullNodes == int(b.FullNodes) &&
+		a.Mode == b.Mode &&
+		a.BinarySource.Version == b.SdkVersion &&
+		a.GenesisPath == b.GenesisPath &&
+		a.SnapshotURL == b.SnapshotUrl
+}
+
+// labelsEqual compares two label maps for equality.
+func labelsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
 func metadataToProto(m *types.ResourceMeta) *v1.DevnetMetadata {
 	return &v1.DevnetMetadata{
 		Name:        m.Name,

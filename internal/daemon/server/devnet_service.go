@@ -217,6 +217,120 @@ func (s *DevnetService) StopDevnet(ctx context.Context, req *v1.StopDevnetReques
 	return &v1.StopDevnetResponse{Devnet: DevnetToProto(devnet)}, nil
 }
 
+// ApplyDevnet creates or updates a devnet (idempotent).
+func (s *DevnetService) ApplyDevnet(ctx context.Context, req *v1.ApplyDevnetRequest) (*v1.ApplyDevnetResponse, error) {
+	if req.Name == "" {
+		return nil, status.Error(codes.InvalidArgument, "name is required")
+	}
+
+	s.logger.Info("applying devnet", "name", req.Name)
+
+	// Check if devnet exists
+	existing, err := s.store.GetDevnet(ctx, req.Name)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		s.logger.Error("failed to get devnet", "name", req.Name, "error", err)
+		return nil, status.Errorf(codes.Internal, "failed to get devnet: %v", err)
+	}
+
+	if existing == nil {
+		// Create new devnet
+		devnet := ApplyRequestToDevnet(req)
+		err = s.store.CreateDevnet(ctx, devnet)
+		if err != nil {
+			s.logger.Error("failed to create devnet", "name", req.Name, "error", err)
+			return nil, status.Errorf(codes.Internal, "failed to create devnet: %v", err)
+		}
+
+		if s.manager != nil {
+			s.manager.Enqueue("devnets", req.Name)
+		}
+
+		return &v1.ApplyDevnetResponse{
+			Devnet: DevnetToProto(devnet),
+			Action: "created",
+		}, nil
+	}
+
+	// Check if spec, labels, or annotations changed
+	if specsEqual(existing.Spec, req.Spec) &&
+		labelsEqual(existing.Metadata.Labels, req.Labels) &&
+		labelsEqual(existing.Metadata.Annotations, req.Annotations) {
+		return &v1.ApplyDevnetResponse{
+			Devnet: DevnetToProto(existing),
+			Action: "unchanged",
+		}, nil
+	}
+
+	// Update existing devnet
+	if req.Spec != nil {
+		existing.Spec = specFromProto(req.Spec)
+	}
+	if req.Labels != nil {
+		existing.Metadata.Labels = req.Labels
+	}
+	if req.Annotations != nil {
+		existing.Metadata.Annotations = req.Annotations
+	}
+	existing.Metadata.UpdatedAt = time.Now()
+	existing.Metadata.Generation++
+
+	err = s.store.UpdateDevnet(ctx, existing)
+	if err != nil {
+		s.logger.Error("failed to update devnet", "name", req.Name, "error", err)
+		return nil, status.Errorf(codes.Internal, "failed to update devnet: %v", err)
+	}
+
+	if s.manager != nil {
+		s.manager.Enqueue("devnets", req.Name)
+	}
+
+	return &v1.ApplyDevnetResponse{
+		Devnet: DevnetToProto(existing),
+		Action: "configured",
+	}, nil
+}
+
+// UpdateDevnet updates an existing devnet.
+func (s *DevnetService) UpdateDevnet(ctx context.Context, req *v1.UpdateDevnetRequest) (*v1.UpdateDevnetResponse, error) {
+	if req.Name == "" {
+		return nil, status.Error(codes.InvalidArgument, "name is required")
+	}
+
+	s.logger.Info("updating devnet", "name", req.Name)
+
+	existing, err := s.store.GetDevnet(ctx, req.Name)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, status.Errorf(codes.NotFound, "devnet %q not found", req.Name)
+		}
+		return nil, status.Errorf(codes.Internal, "failed to get devnet: %v", err)
+	}
+
+	if req.Spec != nil {
+		existing.Spec = specFromProto(req.Spec)
+	}
+	if req.Labels != nil {
+		existing.Metadata.Labels = req.Labels
+	}
+	if req.Annotations != nil {
+		existing.Metadata.Annotations = req.Annotations
+	}
+	existing.Metadata.UpdatedAt = time.Now()
+	existing.Metadata.Generation++
+
+	err = s.store.UpdateDevnet(ctx, existing)
+	if err != nil {
+		s.logger.Error("failed to update devnet", "name", req.Name, "error", err)
+		return nil, status.Errorf(codes.Internal, "failed to update devnet: %v", err)
+	}
+
+	if s.manager != nil {
+		s.manager.Enqueue("devnets", req.Name)
+	}
+
+	return &v1.UpdateDevnetResponse{Devnet: DevnetToProto(existing)}, nil
+}
+
 // parseLabelSelector parses a comma-separated label selector string into a map.
 // Format: "key1=value1,key2=value2"
 // Returns an empty map if the selector is empty.

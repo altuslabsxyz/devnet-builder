@@ -110,6 +110,34 @@ func (c *GRPCClient) StopDevnet(ctx context.Context, name string) (*v1.Devnet, e
 	return resp.Devnet, nil
 }
 
+// ApplyDevnet creates or updates a devnet.
+func (c *GRPCClient) ApplyDevnet(ctx context.Context, name string, spec *v1.DevnetSpec, labels, annotations map[string]string) (*v1.ApplyDevnetResponse, error) {
+	resp, err := c.devnet.ApplyDevnet(ctx, &v1.ApplyDevnetRequest{
+		Name:        name,
+		Spec:        spec,
+		Labels:      labels,
+		Annotations: annotations,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("apply devnet: %w", err)
+	}
+	return resp, nil
+}
+
+// UpdateDevnet updates an existing devnet.
+func (c *GRPCClient) UpdateDevnet(ctx context.Context, name string, spec *v1.DevnetSpec, labels, annotations map[string]string) (*v1.Devnet, error) {
+	resp, err := c.devnet.UpdateDevnet(ctx, &v1.UpdateDevnetRequest{
+		Name:        name,
+		Spec:        spec,
+		Labels:      labels,
+		Annotations: annotations,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("update devnet: %w", err)
+	}
+	return resp.Devnet, nil
+}
+
 // GetNode retrieves a node by devnet name and index.
 func (c *GRPCClient) GetNode(ctx context.Context, devnetName string, index int) (*v1.Node, error) {
 	resp, err := c.node.GetNode(ctx, &v1.GetNodeRequest{
