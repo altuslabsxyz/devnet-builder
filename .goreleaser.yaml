@@ -27,6 +27,51 @@ builds:
       - -X github.com/altuslabsxyz/devnet-builder/internal.Version={{.Version}}
       - -X github.com/altuslabsxyz/devnet-builder/internal.GitCommit={{.FullCommit}}
       - -X github.com/altuslabsxyz/devnet-builder/internal.BuildDate={{.Date}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal/version.Version={{.Version}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal/version.GitCommit={{.FullCommit}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal/version.BuildDate={{.Date}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+  - id: devnetd
+    main: ./cmd/devnetd
+    binary: devnetd
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/altuslabsxyz/devnet-builder/internal.Version={{.Version}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal.GitCommit={{.FullCommit}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal.BuildDate={{.Date}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal/version.Version={{.Version}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal/version.GitCommit={{.FullCommit}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal/version.BuildDate={{.Date}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+  - id: dvb
+    main: ./cmd/dvb
+    binary: dvb
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/altuslabsxyz/devnet-builder/internal.Version={{.Version}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal.GitCommit={{.FullCommit}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal.BuildDate={{.Date}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal/version.Version={{.Version}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal/version.GitCommit={{.FullCommit}}
+      - -X github.com/altuslabsxyz/devnet-builder/internal/version.BuildDate={{.Date}}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 universal_binaries:
