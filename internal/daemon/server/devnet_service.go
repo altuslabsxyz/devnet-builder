@@ -251,8 +251,10 @@ func (s *DevnetService) ApplyDevnet(ctx context.Context, req *v1.ApplyDevnetRequ
 		}, nil
 	}
 
-	// Check if spec changed
-	if specsEqual(existing.Spec, req.Spec) && labelsEqual(existing.Metadata.Labels, req.Labels) {
+	// Check if spec, labels, or annotations changed
+	if specsEqual(existing.Spec, req.Spec) &&
+		labelsEqual(existing.Metadata.Labels, req.Labels) &&
+		labelsEqual(existing.Metadata.Annotations, req.Annotations) {
 		return &v1.ApplyDevnetResponse{
 			Devnet: DevnetToProto(existing),
 			Action: "unchanged",
@@ -260,7 +262,9 @@ func (s *DevnetService) ApplyDevnet(ctx context.Context, req *v1.ApplyDevnetRequ
 	}
 
 	// Update existing devnet
-	existing.Spec = specFromProto(req.Spec)
+	if req.Spec != nil {
+		existing.Spec = specFromProto(req.Spec)
+	}
 	if req.Labels != nil {
 		existing.Metadata.Labels = req.Labels
 	}
@@ -302,7 +306,9 @@ func (s *DevnetService) UpdateDevnet(ctx context.Context, req *v1.UpdateDevnetRe
 		return nil, status.Errorf(codes.Internal, "failed to get devnet: %v", err)
 	}
 
-	existing.Spec = specFromProto(req.Spec)
+	if req.Spec != nil {
+		existing.Spec = specFromProto(req.Spec)
+	}
 	if req.Labels != nil {
 		existing.Metadata.Labels = req.Labels
 	}
