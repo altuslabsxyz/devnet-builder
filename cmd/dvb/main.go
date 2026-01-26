@@ -61,13 +61,14 @@ func main() {
 		newDaemonCmd(),
 		newApplyCmd(),
 		newGetCmd(),
+		newDeleteCmd(),
 		newDiffCmd(),
-		newDeployCmd(),
+		newDeployCmd(),  // deprecated
 		newListCmd(),
 		newStatusCmd(),
 		newStartCmd(),
 		newStopCmd(),
-		newDestroyCmd(),
+		newDestroyCmd(), // deprecated
 		newNodeCmd(),
 		newUpgradeCmd(),
 		newTxCmd(),
@@ -163,9 +164,10 @@ func newDeployCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "deploy [name]",
-		Short: "Deploy a new devnet",
-		Args:  cobra.ExactArgs(1),
+		Use:        "deploy [name]",
+		Short:      "Deploy a new devnet",
+		Deprecated: "use 'dvb apply -f <file>' instead",
+		Args:       cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
@@ -316,9 +318,10 @@ func newDestroyCmd() *cobra.Command {
 	var force bool
 
 	cmd := &cobra.Command{
-		Use:   "destroy [devnet]",
-		Short: "Destroy a devnet",
-		Args:  cobra.ExactArgs(1),
+		Use:        "destroy [devnet]",
+		Short:      "Destroy a devnet",
+		Deprecated: "use 'dvb delete devnet <name>' or 'dvb delete -f <file>' instead",
+		Args:       cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
