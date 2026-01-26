@@ -40,11 +40,17 @@ type supervisor struct {
 
 	stopCh    chan struct{}
 	stoppedCh chan struct{}
+	stopOnce  sync.Once
 	mu        sync.RWMutex
 }
 
 // newSupervisor creates a new process supervisor
 func newSupervisor(config supervisorConfig) *supervisor {
+	// Validate command - must have at least one element
+	if len(config.command) == 0 {
+		config.command = []string{"/bin/false"} // Will fail immediately but won't panic
+	}
+
 	if config.stopSignal == 0 {
 		config.stopSignal = syscall.SIGTERM
 	}
@@ -94,14 +100,18 @@ func (s *supervisor) run(ctx context.Context) {
 			return
 		}
 
+		// Increment restart count under lock to avoid race condition
+		s.mu.Lock()
 		s.restartCount++
+		restartCount := s.restartCount
+		s.mu.Unlock()
 
 		// Calculate backoff
-		backoff := s.calculateBackoff(s.restartCount - 1)
+		backoff := s.calculateBackoff(restartCount - 1)
 
 		if s.config.logger != nil {
 			s.config.logger.Info("restarting process",
-				"restartCount", s.restartCount,
+				"restartCount", restartCount,
 				"backoff", backoff,
 				"exitCode", exitCode,
 			)
@@ -122,8 +132,9 @@ func (s *supervisor) run(ctx context.Context) {
 func (s *supervisor) startAndWait(ctx context.Context) (int, error) {
 	s.mu.Lock()
 
-	// Build command
-	cmd := exec.CommandContext(ctx, s.config.command[0], s.config.command[1:]...)
+	// Build command - use exec.Command instead of exec.CommandContext
+	// to avoid SIGKILL race condition (CommandContext sends SIGKILL on context cancellation)
+	cmd := exec.Command(s.config.command[0], s.config.command[1:]...)
 	cmd.Dir = s.config.workDir
 
 	// Set environment
@@ -166,36 +177,37 @@ func (s *supervisor) startAndWait(ctx context.Context) (int, error) {
 }
 
 // stopProcess stops the running process
+// Note: This function only signals the process to stop. The actual Wait() is handled
+// by startAndWait() to avoid double-Wait on the same exec.Cmd (undefined behavior).
 func (s *supervisor) stopProcess() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if s.cmd == nil || s.cmd.Process == nil {
+		s.mu.Unlock()
 		return
 	}
+	process := s.cmd.Process
+	gracePeriod := s.config.gracePeriod
+	stopSignal := s.config.stopSignal
+	s.mu.Unlock()
 
 	// Send graceful signal
-	s.cmd.Process.Signal(s.config.stopSignal)
+	_ = process.Signal(stopSignal)
 
-	// Wait for graceful shutdown
-	done := make(chan struct{})
+	// Start a goroutine to force kill after grace period if process hasn't exited
+	// The actual wait is handled by startAndWait(), this just ensures we escalate to SIGKILL
 	go func() {
-		s.cmd.Wait()
-		close(done)
+		time.Sleep(gracePeriod)
+		// Process may have already exited, Signal will return error which we ignore
+		_ = process.Signal(syscall.SIGKILL)
 	}()
-
-	select {
-	case <-done:
-		return
-	case <-time.After(s.config.gracePeriod):
-		// Force kill
-		s.cmd.Process.Signal(syscall.SIGKILL)
-	}
 }
 
 // stop signals the supervisor to stop
+// Uses sync.Once to prevent double-close panic on stopCh
 func (s *supervisor) stop() {
-	close(s.stopCh)
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+	})
 	<-s.stoppedCh
 }
 
