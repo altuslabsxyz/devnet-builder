@@ -314,5 +314,48 @@ func (r *DockerRuntime) StartNode(ctx context.Context, node *types.Node, opts St
 	return nil
 }
 
+// StopNode stops a node's container.
+func (r *DockerRuntime) StopNode(ctx context.Context, nodeID string, graceful bool) error {
+	r.mu.Lock()
+	state, exists := r.containers[nodeID]
+	if !exists {
+		r.mu.Unlock()
+		return fmt.Errorf("node %s not found", nodeID)
+	}
+	delete(r.containers, nodeID)
+	r.mu.Unlock()
+
+	// Signal supervision to stop
+	close(state.stopCh)
+
+	containerID := state.containerID
+
+	if graceful {
+		// Graceful stop with timeout
+		timeout := 30
+		r.logger.Info("stopping container gracefully",
+			"containerID", containerID[:min(12, len(containerID))],
+			"nodeID", nodeID,
+			"timeout", timeout)
+
+		if err := r.client.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeout}); err != nil {
+			r.logger.Warn("graceful stop failed, forcing removal",
+				"containerID", containerID[:min(12, len(containerID))],
+				"error", err)
+		}
+	}
+
+	// Remove container
+	r.logger.Info("removing container",
+		"containerID", containerID[:min(12, len(containerID))],
+		"nodeID", nodeID)
+
+	if err := r.client.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true}); err != nil {
+		return fmt.Errorf("failed to remove container: %w", err)
+	}
+
+	return nil
+}
+
 // Ensure DockerRuntime implements NodeRuntime.
 var _ controller.NodeRuntime = (*DockerRuntime)(nil)

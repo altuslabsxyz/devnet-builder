@@ -179,6 +179,69 @@ func TestDockerRuntime_StartNode(t *testing.T) {
 	assert.Equal(t, "test-container-id", state.containerID)
 }
 
+func TestDockerRuntime_StopNode_Graceful(t *testing.T) {
+	mock := &mockDockerClient{}
+
+	rt := &DockerRuntime{
+		client:       mock,
+		logger:       testLogger(),
+		defaultImage: "stablelabs/stabled:latest",
+		containers: map[string]*containerState{
+			"test-node": {
+				containerID: "container-123",
+				nodeID:      "test-node",
+				stopCh:      make(chan struct{}),
+				stoppedCh:   make(chan struct{}),
+			},
+		},
+	}
+
+	err := rt.StopNode(context.Background(), "test-node", true)
+	require.NoError(t, err)
+
+	// Verify container was stopped
+	require.Len(t, mock.stopCalls, 1)
+	assert.Equal(t, "container-123", mock.stopCalls[0])
+
+	// Verify container was removed
+	require.Len(t, mock.removeCalls, 1)
+	assert.Equal(t, "container-123", mock.removeCalls[0])
+
+	// Verify state removed
+	_, exists := rt.containers["test-node"]
+	assert.False(t, exists)
+}
+
+func TestDockerRuntime_StopNode_Force(t *testing.T) {
+	mock := &mockDockerClient{}
+
+	rt := &DockerRuntime{
+		client:       mock,
+		logger:       testLogger(),
+		defaultImage: "stablelabs/stabled:latest",
+		containers: map[string]*containerState{
+			"test-node": {
+				containerID: "container-456",
+				nodeID:      "test-node",
+				stopCh:      make(chan struct{}),
+				stoppedCh:   make(chan struct{}),
+			},
+		},
+	}
+
+	err := rt.StopNode(context.Background(), "test-node", false)
+	require.NoError(t, err)
+
+	// Force stop should skip graceful stop and go straight to remove
+	require.Len(t, mock.stopCalls, 0)
+	require.Len(t, mock.removeCalls, 1)
+	assert.Equal(t, "container-456", mock.removeCalls[0])
+
+	// Verify state removed
+	_, exists := rt.containers["test-node"]
+	assert.False(t, exists)
+}
+
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
