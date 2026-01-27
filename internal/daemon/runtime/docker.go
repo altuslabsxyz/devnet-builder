@@ -27,6 +27,7 @@ type dockerClient interface {
 		platform *specs.Platform, containerName string) (container.CreateResponse, error)
 	ContainerStart(ctx context.Context, containerID string, opts container.StartOptions) error
 	ContainerStop(ctx context.Context, containerID string, opts container.StopOptions) error
+	ContainerRestart(ctx context.Context, containerID string, opts container.StopOptions) error
 	ContainerRemove(ctx context.Context, containerID string, opts container.RemoveOptions) error
 	ContainerInspect(ctx context.Context, containerID string) (dockertypes.ContainerJSON, error)
 	ContainerLogs(ctx context.Context, containerID string, opts container.LogsOptions) (io.ReadCloser, error)
@@ -401,6 +402,30 @@ func (r *DockerRuntime) GetNodeStatus(ctx context.Context, nodeID string) (*Node
 	}
 
 	return status, nil
+}
+
+// RestartNode restarts a node's container.
+func (r *DockerRuntime) RestartNode(ctx context.Context, nodeID string) error {
+	r.mu.Lock()
+	state, exists := r.containers[nodeID]
+	if !exists {
+		r.mu.Unlock()
+		return fmt.Errorf("node %s not found", nodeID)
+	}
+	state.restartCount++
+	containerID := state.containerID
+	r.mu.Unlock()
+
+	r.logger.Info("restarting container",
+		"containerID", containerID[:min(12, len(containerID))],
+		"nodeID", nodeID)
+
+	timeout := 30
+	if err := r.client.ContainerRestart(ctx, containerID, container.StopOptions{Timeout: &timeout}); err != nil {
+		return fmt.Errorf("failed to restart container: %w", err)
+	}
+
+	return nil
 }
 
 // Ensure DockerRuntime implements NodeRuntime.
