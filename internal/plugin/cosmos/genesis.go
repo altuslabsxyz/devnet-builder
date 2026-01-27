@@ -103,6 +103,15 @@ func (g *CosmosGenesis) PatchGenesis(genesis []byte, opts types.GenesisPatchOpti
 		gen["chain_id"] = opts.ChainID
 	}
 
+	// Embed binary version metadata if provided
+	if opts.BinaryVersion != "" {
+		gen["devnet_builder"] = map[string]interface{}{
+			"binary_version": opts.BinaryVersion,
+			"binary_name":    g.binaryName,
+			"patched_at":     time.Now().UTC().Format(time.RFC3339),
+		}
+	}
+
 	// Get app_state
 	appState, ok := gen["app_state"].(map[string]interface{})
 	if !ok {
