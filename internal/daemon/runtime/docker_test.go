@@ -242,6 +242,61 @@ func TestDockerRuntime_StopNode_Force(t *testing.T) {
 	assert.False(t, exists)
 }
 
+func TestDockerRuntime_GetNodeStatus(t *testing.T) {
+	startedAt := time.Now().Add(-5 * time.Minute)
+
+	mock := &mockDockerClient{
+		inspectFn: func(ctx context.Context, containerID string) (dockertypes.ContainerJSON, error) {
+			return dockertypes.ContainerJSON{
+				ContainerJSONBase: &dockertypes.ContainerJSONBase{
+					State: &dockertypes.ContainerState{
+						Running:    true,
+						StartedAt:  startedAt.Format(time.RFC3339),
+						Pid:        12345,
+						ExitCode:   0,
+						OOMKilled:  false,
+						Restarting: false,
+					},
+				},
+			}, nil
+		},
+	}
+
+	rt := &DockerRuntime{
+		client:       mock,
+		logger:       testLogger(),
+		defaultImage: "stablelabs/stabled:latest",
+		containers: map[string]*containerState{
+			"test-node": {
+				containerID:  "container-789",
+				nodeID:       "test-node",
+				restartCount: 2,
+			},
+		},
+	}
+
+	status, err := rt.GetNodeStatus(context.Background(), "test-node")
+	require.NoError(t, err)
+
+	assert.True(t, status.Running)
+	assert.Equal(t, 12345, status.PID)
+	assert.Equal(t, 2, status.Restarts)
+}
+
+func TestDockerRuntime_GetNodeStatus_NotFound(t *testing.T) {
+	mock := &mockDockerClient{}
+
+	rt := &DockerRuntime{
+		client:     mock,
+		logger:     testLogger(),
+		containers: make(map[string]*containerState),
+	}
+
+	status, err := rt.GetNodeStatus(context.Background(), "nonexistent")
+	require.NoError(t, err)
+	assert.False(t, status.Running)
+}
+
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }

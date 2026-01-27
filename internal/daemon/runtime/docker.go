@@ -357,5 +357,51 @@ func (r *DockerRuntime) StopNode(ctx context.Context, nodeID string, graceful bo
 	return nil
 }
 
+// GetNodeStatus returns the current status of a node.
+func (r *DockerRuntime) GetNodeStatus(ctx context.Context, nodeID string) (*NodeStatus, error) {
+	r.mu.RLock()
+	state, exists := r.containers[nodeID]
+	r.mu.RUnlock()
+
+	if !exists {
+		return &NodeStatus{Running: false}, nil
+	}
+
+	// Inspect container for current state
+	info, err := r.client.ContainerInspect(ctx, state.containerID)
+	if err != nil {
+		return &NodeStatus{
+			Running:   false,
+			LastError: err.Error(),
+			Restarts:  state.restartCount,
+		}, nil
+	}
+
+	status := &NodeStatus{
+		Running:   info.State.Running,
+		Restarts:  state.restartCount,
+		UpdatedAt: time.Now(),
+	}
+
+	if info.State.Pid != 0 {
+		status.PID = info.State.Pid
+	}
+
+	if info.State.StartedAt != "" {
+		if t, err := time.Parse(time.RFC3339, info.State.StartedAt); err == nil {
+			status.StartedAt = t
+		}
+	}
+
+	if !info.State.Running {
+		status.ExitCode = info.State.ExitCode
+		if info.State.Error != "" {
+			status.LastError = info.State.Error
+		}
+	}
+
+	return status, nil
+}
+
 // Ensure DockerRuntime implements NodeRuntime.
 var _ controller.NodeRuntime = (*DockerRuntime)(nil)
