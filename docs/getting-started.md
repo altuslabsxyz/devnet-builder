@@ -59,12 +59,24 @@ sudo apt install -y docker.io curl jq zstd
 git clone https://github.com/altuslabsxyz/devnet-builder.git
 cd devnet-builder
 
-# Build the binary
+# Build all binaries
 make build
+
+# This creates three binaries in ./build/:
+#   devnet-builder  - Main interactive CLI
+#   dvb             - Daemon-based kubectl-style CLI
+#   devnetd         - Daemon server (for dvb)
 
 # Verify installation
 ./build/devnet-builder version
 ./build/devnet-builder --help
+```
+
+### Install to GOPATH
+
+```bash
+# Install all binaries to $GOPATH/bin
+make install
 ```
 
 ### Optional: Add to PATH
@@ -72,6 +84,8 @@ make build
 ```bash
 # Move to system path
 sudo cp ./build/devnet-builder /usr/local/bin/
+sudo cp ./build/dvb /usr/local/bin/
+sudo cp ./build/devnetd /usr/local/bin/
 
 # Or add build directory to PATH
 export PATH="$PATH:$(pwd)/build"
@@ -81,7 +95,11 @@ export PATH="$PATH:$(pwd)/build"
 
 ## First Deployment
 
-### Step 1: Deploy the Devnet
+You can deploy devnets using either `devnet-builder` (standalone) or `dvb` (daemon-based). Choose the approach that fits your workflow.
+
+### Option A: Using devnet-builder (Recommended for Beginners)
+
+#### Step 1: Deploy the Devnet
 
 ```bash
 # Deploy with default settings
@@ -98,33 +116,160 @@ This will:
 4. Create 4 validator nodes with keys
 5. Start all validators
 
-### Step 2: Verify It's Running
+#### Step 2: Verify It's Running
 
 ```bash
 # Check status
 ./build/devnet-builder status
 ```
 
-Expected output:
+Example output:
 ```
-Devnet Status: running
-Chain ID: <network-specific>
-Execution ExecutionMode: docker
-Network Source: mainnet
-
-Nodes:
-  node0: healthy (height: 12345)
-  node1: healthy (height: 12345)
-  node2: healthy (height: 12345)
-  node3: healthy (height: 12345)
+Chain ID:     stable-devnet
+Network:      mainnet
+Blockchain:   stable
+Mode:         docker
+Validators:   4
 
 Endpoints:
-  RPC:     http://localhost:26657
-  EVM:     http://localhost:8545
-  gRPC:    localhost:9090
+  Node 0: http://localhost:26657 (RPC) | http://localhost:8545 (EVM)
+  Node 1: http://localhost:26757 (RPC) | http://localhost:8645 (EVM)
+  ...
 ```
 
-### Step 3: Query the Chain
+#### Step 3: View Logs
+
+```bash
+# View logs from all nodes (last 100 lines by default)
+./build/devnet-builder logs
+
+# Follow logs (like tail -f)
+./build/devnet-builder logs -f
+
+# View specific node (0-indexed)
+./build/devnet-builder logs 0
+./build/devnet-builder logs node0
+
+# Show last 50 lines
+./build/devnet-builder logs --tail 50
+
+# Filter by log level
+./build/devnet-builder logs --level error
+```
+
+#### Step 4: Stop the Devnet
+
+```bash
+# Stop nodes (preserves data)
+./build/devnet-builder stop
+
+# Restart later
+./build/devnet-builder start
+
+# Remove everything (requires confirmation)
+./build/devnet-builder destroy
+
+# Remove without confirmation (use with caution!)
+./build/devnet-builder destroy --force
+```
+
+---
+
+### Option B: Using dvb with Daemon (kubectl-style)
+
+The `dvb` CLI provides a declarative, YAML-driven approach similar to kubectl.
+
+#### Step 1: Start the Daemon
+
+```bash
+# Start devnetd (runs in foreground by default)
+./build/devnetd
+
+# Or with custom options
+./build/devnetd --data-dir ~/.devnet-builder --log-level info
+```
+
+#### Step 2: Provision Using Interactive Wizard
+
+```bash
+# Interactive wizard mode (recommended for first-time users)
+./build/dvb provision -i
+```
+
+The wizard will guide you through:
+- Devnet name
+- Network type (stable, cosmos, etc.)
+- Number of validators
+- Chain ID
+
+#### Step 2 Alternative: Apply YAML Configuration
+
+```bash
+# Create a devnet configuration file
+cat > my-devnet.yaml << EOF
+apiVersion: devnet.lagos/v1
+kind: Devnet
+metadata:
+  name: my-devnet
+  namespace: default
+spec:
+  network: stable
+  networkType: mainnet
+  validators: 4
+  mode: docker
+EOF
+
+# Apply the configuration
+./build/dvb apply -f my-devnet.yaml
+
+# Preview changes without applying
+./build/dvb apply -f my-devnet.yaml --dry-run
+```
+
+#### Step 3: Check Status
+
+```bash
+# List all devnets
+./build/dvb get devnets
+./build/dvb list  # alias
+
+# Get detailed info about a specific devnet
+./build/dvb describe my-devnet
+
+# Output in different formats
+./build/dvb get devnets -o wide
+./build/dvb get devnet my-devnet -o yaml
+./build/dvb get devnet my-devnet -o json
+```
+
+#### Step 4: Manage Lifecycle
+
+```bash
+# Stop a devnet
+./build/dvb stop my-devnet
+
+# Start a stopped devnet
+./build/dvb start my-devnet
+
+# View logs
+./build/dvb logs my-devnet
+./build/dvb logs my-devnet validator-0 -f
+
+# Destroy a devnet
+./build/dvb destroy my-devnet
+./build/dvb destroy my-devnet --force
+```
+
+#### Step 5: Check Daemon Status
+
+```bash
+# Check if daemon is running
+./build/dvb daemon status
+```
+
+---
+
+## Query the Chain
 
 ```bash
 # Check block height via RPC
@@ -137,32 +282,6 @@ curl -s http://localhost:8545 \
   | jq -r '.result'
 ```
 
-### Step 4: View Logs
-
-```bash
-# View logs from all nodes
-./build/devnet-builder logs
-
-# Follow logs (like tail -f)
-./build/devnet-builder logs -f
-
-# View specific node
-./build/devnet-builder logs node0
-```
-
-### Step 5: Stop the Devnet
-
-```bash
-# Stop nodes (preserves data)
-./build/devnet-builder stop
-
-# Restart later
-./build/devnet-builder start
-
-# Remove everything
-./build/devnet-builder destroy --force
-```
-
 ---
 
 ## Deployment Options
@@ -170,23 +289,24 @@ curl -s http://localhost:8545 \
 ### Validator Count
 
 ```bash
-# Single validator (fastest startup, good for basic testing)
-devnet-builder deploy --validators 1
+# Docker mode: 1-100 validators
+devnet-builder deploy --validators 1   # Single validator (fastest)
+devnet-builder deploy --validators 4   # Default (recommended)
+devnet-builder deploy --validators 10  # Large scale testing
 
-# Two validators
-devnet-builder deploy --validators 2
-
-# Default: 4 validators (full consensus testing)
-devnet-builder deploy --validators 4
+# Local mode: 1-4 validators only
+devnet-builder deploy --mode local --validators 2
 ```
 
 ### Test Accounts
 
 ```bash
-# Create 5 additional funded accounts
+# Create 5 additional funded accounts (default: 4)
 devnet-builder deploy --accounts 5
 
-# Export account keys
+# Export account keys after deployment
+devnet-builder export-keys
+devnet-builder export-keys --json
 devnet-builder export-keys --type accounts
 ```
 
@@ -200,14 +320,37 @@ devnet-builder deploy --network mainnet
 devnet-builder deploy --network testnet
 ```
 
-### Execution ExecutionMode
+### Execution Mode
 
 ```bash
 # Docker mode (recommended, default)
+# - Isolated network, automatic port management
+# - Supports 1-100 validators
 devnet-builder deploy --mode docker
 
 # Local binary mode (advanced)
+# - Uses local filesystem
+# - Supports 1-4 validators
+# - Requires chain binary
 devnet-builder deploy --mode local
+```
+
+### Blockchain Network
+
+```bash
+# Select blockchain network module
+devnet-builder deploy --blockchain stable  # Default
+devnet-builder deploy --blockchain ault
+```
+
+### Fork Mode
+
+```bash
+# Fork live network state via snapshot export (default: enabled)
+devnet-builder deploy --fork
+
+# Disable forking (use RPC genesis instead)
+devnet-builder deploy --fork=false
 ```
 
 ---
@@ -216,11 +359,11 @@ devnet-builder deploy --mode local
 
 After deployment, verify your devnet is working:
 
-- [ ] `devnet-builder status` shows all nodes healthy
+- [ ] `devnet-builder status` shows all nodes running
 - [ ] `curl http://localhost:26657/status` returns JSON
 - [ ] `curl http://localhost:8545` responds to EVM requests (if supported)
 - [ ] Block height is increasing (check twice with 5 second gap)
-- [ ] Logs show no errors: `devnet-builder logs --tail 20`
+- [ ] Logs show no errors: `devnet-builder logs --level error`
 
 ---
 
@@ -228,6 +371,6 @@ After deployment, verify your devnet is working:
 
 - **[Command Reference](commands.md)** - Learn all available commands
 - **[Configuration](configuration.md)** - Customize behavior with config.toml
+- **[YAML Devnet Guide](yaml-devnet-guide.md)** - Using dvb with YAML configurations
 - **[Workflows](workflows.md)** - Common debugging workflows
-- **[Plugin Development](PLUGIN_DEVELOPMENT.md)** - Create custom network plugins
 - **[Troubleshooting](troubleshooting.md)** - Fix common issues

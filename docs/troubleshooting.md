@@ -13,10 +13,12 @@ Solutions for common issues when using devnet-builder.
   - [Binary/ExecutionMode Mismatch](#binarymode-mismatch)
   - [Chain Not Syncing](#chain-not-syncing)
   - [Upgrade Failure](#upgrade-failure)
+  - [Upgrade State Corruption](#upgrade-state-corruption)
   - [Permission Issues](#permission-issues)
   - [Node Unhealthy](#node-unhealthy)
   - [Snapshot Download Failed](#snapshot-download-failed)
   - [Genesis Export Failed](#genesis-export-failed)
+  - [Daemon Connection Issues](#daemon-connection-issues)
 
 ---
 
@@ -30,21 +32,32 @@ Understanding the directory structure helps locate files for debugging:
 ├── build/                  # Build artifacts
 ├── cache/                  # Binary cache for upgrades
 │   └── binaries/          # Cached network binaries by commit
+│       └── <network>/     # Network-specific binaries
+│           └── <commit>-<config>/  # Cache key directory
 ├── config.toml            # User configuration
 ├── devnet/                # Active devnet data
 │   ├── metadata.json      # Devnet state and config
+│   ├── genesis.json       # Shared genesis file
 │   ├── node0/             # First validator
 │   │   ├── config/        # genesis.json, config.toml, app.toml
 │   │   ├── data/          # Chain data (blocks, state)
-│   │   └── keyring-test/  # Validator key
+│   │   ├── keyring-test/  # Validator key
+│   │   ├── <binary>.pid   # Process ID file (local mode)
+│   │   └── <binary>.log   # Node log file (local mode)
 │   ├── node1/             # Additional validators...
 │   ├── node2/
 │   ├── node3/
 │   └── accounts/          # Funded test accounts
 │       └── keyring-test/
-├── genesis/               # Genesis exports
+├── exports/               # Genesis and state exports
+│   └── <export-name>/     # Named export directory
+│       ├── metadata.json  # Export metadata
+│       └── genesis-<height>-<commit>.json
+├── plugins/               # Plugin directory
 └── snapshots/             # Snapshot cache
-    └── mainnet/           # Network-specific snapshots
+    └── <cache-key>/       # Network-specific snapshots
+        ├── snapshot.tar.zst
+        └── snapshot.meta.json
 ```
 
 ### Important Files
@@ -52,10 +65,12 @@ Understanding the directory structure helps locate files for debugging:
 | File | Location | Purpose |
 |------|----------|---------|
 | metadata.json | devnet/ | Current devnet state |
-| genesis.json | node*/config/ | Chain genesis |
+| genesis.json | devnet/ or node*/config/ | Chain genesis |
 | config.toml | node*/config/ | Tendermint configuration |
 | app.toml | node*/config/ | Application configuration |
 | priv_validator_key.json | node*/config/ | Validator private key |
+| `<binary>.log` | node*/ | Node logs (local mode) |
+| `<binary>.pid` | node*/ | Process ID (local mode) |
 
 ---
 
@@ -160,6 +175,9 @@ rm -rf ~/.devnet-builder/snapshots/*
 # Clear binary cache
 devnet-builder cache clean
 
+# Clear exports
+rm -rf ~/.devnet-builder/exports/*
+
 # Full cleanup
 devnet-builder destroy --cache --force
 ```
@@ -168,6 +186,7 @@ devnet-builder destroy --cache --force
 - Mainnet snapshot: ~5-10GB
 - Testnet snapshot: ~2-5GB
 - Per devnet: ~1-2GB additional
+- Binary cache: ~500MB-1GB per version
 
 ---
 
@@ -223,8 +242,9 @@ curl -s http://localhost:26657/consensus_state | jq '.result.round_state.height_
 # View logs for errors
 devnet-builder logs --tail 200 | grep -i "error\|panic"
 
-# Restart nodes
-devnet-builder restart
+# Stop and restart all nodes
+devnet-builder stop
+devnet-builder start
 
 # If persistent, reset state
 devnet-builder reset --force
@@ -246,6 +266,9 @@ devnet-builder start
 # Check upgrade status
 devnet-builder status
 
+# Show detailed upgrade state
+devnet-builder upgrade --show-status
+
 # Check for panic in logs
 devnet-builder logs --tail 100 | grep -i "panic\|upgrade"
 ```
@@ -255,6 +278,9 @@ devnet-builder logs --tail 100 | grep -i "panic\|upgrade"
 ```bash
 # If chain halted, check binary is correct
 devnet-builder logs node0 | grep "upgrade"
+
+# Resume interrupted upgrade
+devnet-builder upgrade --resume
 
 # Manually restart with correct binary
 devnet-builder stop
@@ -267,8 +293,36 @@ devnet-builder deploy --image <new-image>
 
 **Prevention:**
 - Test upgrades in isolation first
-- Use `--export-genesis` to capture state
+- Use `--with-export` to capture state before/after
 - Verify binary compatibility before upgrading
+
+---
+
+### Upgrade State Corruption
+
+**Symptoms:**
+- Error: `upgrade state file corrupted`
+- Upgrade stuck in unexpected stage
+- Cannot resume or restart upgrade
+
+**Solutions:**
+
+```bash
+# Clear upgrade state
+devnet-builder upgrade --clear-state
+
+# Force restart with new parameters
+devnet-builder upgrade \
+  --name v2-upgrade \
+  --version v2.0.0 \
+  --force-restart
+
+# If still failing, manually clear state file
+rm ~/.devnet-builder/devnet/upgrade-state.json
+
+# Then restart normally
+devnet-builder start
+```
 
 ---
 
@@ -307,13 +361,13 @@ sudo -E devnet-builder deploy
 
 ```bash
 # Check container status (Docker mode)
-docker ps -a | grep devnet-builder
+docker ps -a | grep devnet
 
 # Check specific node logs
 devnet-builder logs node0 --tail 100
 
-# Check resource usage
-docker stats devnet-builder-node0
+# Check resource usage (Docker mode)
+docker stats --no-stream | grep devnet
 ```
 
 **Solutions:**
@@ -324,7 +378,8 @@ devnet-builder node stop node0
 devnet-builder node start node0
 
 # Restart all nodes
-devnet-builder restart
+devnet-builder stop
+devnet-builder start
 
 # Check if it's a resource issue
 docker stats --no-stream
@@ -343,7 +398,7 @@ docker stats --no-stream
 
 ```bash
 # Clear corrupted snapshot
-rm -rf ~/.devnet-builder/snapshots/mainnet/*
+rm -rf ~/.devnet-builder/snapshots/*
 
 # Retry with verbose logging
 devnet-builder deploy -v
@@ -378,10 +433,55 @@ curl -s http://localhost:26657/status | jq '.result.sync_info.catching_up'
 # Should return "false"
 
 # Try manual export (Docker mode)
-docker exec devnet-builder-node0 <binary-name> export --home /home/network/.<network-home>
+docker exec devnet-node0 <binary-name> export --home /home/network/.<network-home>
 
 # Check logs for specific error
 devnet-builder logs node0 | grep -i "export\|genesis"
+
+# Check exports directory
+ls -la ~/.devnet-builder/exports/
+```
+
+---
+
+### Daemon Connection Issues
+
+**Symptoms:**
+- Error: `daemon not running - start with: devnetd`
+- dvb commands fail to connect
+- Error: `connection refused`
+
+**Solutions:**
+
+```bash
+# Check if daemon is running
+ps aux | grep devnetd
+
+# Start the daemon
+devnetd
+
+# Or start in background
+devnetd &
+
+# Check daemon logs
+cat /tmp/devnetd.log  # or wherever logs are configured
+
+# Verify socket exists
+ls -la /tmp/devnetd.sock  # default socket location
+
+# If socket is stale, remove it
+rm /tmp/devnetd.sock
+devnetd
+```
+
+**Using custom socket:**
+```bash
+# Start daemon with custom socket
+devnetd --socket /var/run/devnetd.sock
+
+# Connect dvb to custom socket
+export DVB_SOCKET=/var/run/devnetd.sock
+dvb get devnets
 ```
 
 ---
@@ -405,14 +505,19 @@ devnet-builder status --json
 
 # Recent logs
 devnet-builder logs --tail 200 > devnet-logs.txt
+
+# Check upgrade state (if applicable)
+devnet-builder upgrade --show-status
 ```
 
 ### Log Locations
 
 | ExecutionMode | Log Location |
 |------|--------------|
-| Docker | `docker logs devnet-builder-node0` |
-| Local | `~/.devnet-builder/devnet/node0/node.log` |
+| Docker | `docker logs devnet-node0` |
+| Local | `~/.devnet-builder/devnet/node0/<binary>.log` |
+
+**Note:** In local mode, the log filename matches the binary name (e.g., `simd.log` for a cosmos-sdk chain).
 
 ### Useful Debug Commands
 
@@ -424,7 +529,10 @@ devnet-builder status --json | jq
 docker ps -a | grep devnet
 
 # Check Docker logs
-docker logs devnet-builder-node0 --tail 100
+docker logs devnet-node0 --tail 100
+
+# Check local mode logs
+tail -100 ~/.devnet-builder/devnet/node0/*.log
 
 # Check disk usage
 du -sh ~/.devnet-builder/*
@@ -432,6 +540,12 @@ du -sh ~/.devnet-builder/*
 # Network diagnostics
 curl -s http://localhost:26657/health
 curl -s http://localhost:26657/net_info | jq '.result.n_peers'
+
+# Check binary cache
+ls -la ~/.devnet-builder/cache/binaries/
+
+# Check exports
+ls -la ~/.devnet-builder/exports/
 ```
 
 ---

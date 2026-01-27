@@ -1,355 +1,663 @@
-# Plugin Development Guide
+# V2 Plugin Development Guide
 
-Learn how to create network plugins for Devnet Builder v2 to support new blockchain platforms.
+Comprehensive guide for developing network plugins for the devnetd daemon and dvb CLI.
 
 ## Overview
 
-Network plugins provide chain-specific implementations for:
-- Genesis generation
-- Node lifecycle management
-- Transaction building and signing
-- Status queries and monitoring
+The V2 plugin system provides advanced features for managing blockchain network plugins:
 
-Plugins use the HashiCorp go-plugin framework with gRPC for process isolation and language independence.
+- **Multi-Directory Discovery** - Plugins loaded from multiple locations
+- **Hot Reload** - Update plugins without restarting the daemon
+- **Version Constraints** - Semver-based compatibility checking
+- **Lifecycle Management** - Proper startup, shutdown, and resource cleanup
+- **Concurrent Loading** - Parallel plugin initialization
 
-## Plugin Interface
+This guide focuses on V2-specific features. For general plugin development, see the [Plugin System Guide](../plugins.md).
 
-### Core Interface
+## Plugin Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                           devnetd Daemon                             │
+├─────────────────────────────────────────────────────────────────────┤
+│                     Plugin Loader (pkg/network/plugin/)              │
+│  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────────────┐ │
+│  │   Discover  │  │    Load     │  │  Version Constraint Checker  │ │
+│  └──────┬──────┘  └──────┬──────┘  └──────────────────────────────┘ │
+│         │                │                                           │
+│  ┌──────▼──────────────▼─────────────────────────────────────────┐ │
+│  │                    Plugin Registry                             │ │
+│  │  map[string]*PluginClient                                      │ │
+│  └────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+            │                    │                    │
+            ▼                    ▼                    ▼
+     ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+     │stable-plugin │    │osmosis-plugin│    │cosmos-plugin │
+     │ (subprocess) │    │ (subprocess) │    │ (subprocess) │
+     └──────────────┘    └──────────────┘    └──────────────┘
+```
+
+## Core Interface
+
+All V2 plugins implement the `network.Module` interface from `pkg/network/interface.go`:
 
 ```go
-// pkg/network/plugin/interface.go
-package plugin
+package network
 
-type NetworkPlugin interface {
-    // Metadata
-    GetInfo() (*PluginInfo, error)
-    GetSupportedSDKVersions() (*SDKVersionRange, error)
+import (
+    "context"
+    "time"
+)
 
-    // Lifecycle
-    Initialize(config *Config) error
-    GenerateGenesis(req *GenesisRequest) (*GenesisResult, error)
-    StartNode(req *StartNodeRequest) (*StartNodeResult, error)
-    StopNode(req *StopNodeRequest) error
+// Module is the interface that all network plugins must implement.
+type Module interface {
+    // ============================================
+    // Identity Methods
+    // ============================================
 
-    // Queries
-    GetNodeStatus(req *NodeStatusRequest) (*NodeStatus, error)
-    GetBlockHeight(rpcURL string) (int64, error)
+    // Name returns the unique identifier for this network.
+    // Must be lowercase, alphanumeric with hyphens only.
+    // Examples: "stable", "osmosis", "cosmos-hub"
+    Name() string
 
-    // Transactions
-    CreateTxBuilder(req *CreateTxBuilderRequest) (TxBuilder, error)
-    GetSupportedTxTypes() (*SupportedTxTypes, error)
+    // DisplayName returns a human-readable name.
+    // Examples: "Stable Network", "Osmosis DEX"
+    DisplayName() string
 
-    // Cleanup
-    Close() error
+    // Version returns the module version (semantic versioning).
+    // Examples: "1.0.0", "2.3.1"
+    Version() string
+
+    // ============================================
+    // Binary Configuration
+    // ============================================
+
+    // BinaryName returns the network CLI binary name.
+    // Examples: "stabled", "osmosisd", "gaiad"
+    BinaryName() string
+
+    // BinarySource returns configuration for acquiring the binary.
+    BinarySource() BinarySource
+
+    // DefaultBinaryVersion returns the default version to use.
+    // Examples: "v1.1.3", "latest"
+    DefaultBinaryVersion() string
+
+    // GetBuildConfig returns network-specific build configuration.
+    // Parameters:
+    //   - networkType: "mainnet", "testnet", "devnet"
+    // Returns custom build tags, ldflags, and environment variables.
+    GetBuildConfig(networkType string) (*BuildConfig, error)
+
+    // ============================================
+    // Chain Configuration
+    // ============================================
+
+    // DefaultChainID returns the default chain ID for devnets.
+    // Deprecated: Chain ID extracted from genesis. Return empty string.
+    DefaultChainID() string
+
+    // Bech32Prefix returns the address prefix.
+    // Examples: "stable", "osmo", "cosmos"
+    Bech32Prefix() string
+
+    // BaseDenom returns the base token denomination.
+    // Examples: "ustable", "uosmo", "uatom"
+    BaseDenom() string
+
+    // GenesisConfig returns default genesis parameters.
+    GenesisConfig() GenesisConfig
+
+    // DefaultPorts returns the default port configuration.
+    DefaultPorts() PortConfig
+
+    // ============================================
+    // Docker Configuration
+    // ============================================
+
+    // DockerImage returns the Docker image name.
+    // Example: "ghcr.io/stablelabs/stable"
+    DockerImage() string
+
+    // DockerImageTag returns the Docker tag for a version.
+    DockerImageTag(version string) string
+
+    // DockerHomeDir returns the home directory in containers.
+    DockerHomeDir() string
+
+    // ============================================
+    // Path Configuration
+    // ============================================
+
+    DefaultNodeHome() string    // Default node home (e.g., "/root/.stabled")
+    PIDFileName() string        // PID file name (e.g., "stabled.pid")
+    LogFileName() string        // Log file name (e.g., "stabled.log")
+    ProcessPattern() string     // Regex for process matching
+
+    // ============================================
+    // Command Generation
+    // ============================================
+
+    // InitCommand returns node initialization arguments.
+    InitCommand(homeDir, chainID, moniker string) []string
+
+    // StartCommand returns node start arguments.
+    StartCommand(homeDir string) []string
+
+    // ExportCommand returns state export arguments.
+    ExportCommand(homeDir string) []string
+
+    // ============================================
+    // Devnet Operations
+    // ============================================
+
+    // ModifyGenesis applies network-specific genesis modifications.
+    ModifyGenesis(genesis []byte, opts GenesisOptions) ([]byte, error)
+
+    // GenerateDevnet generates validators, accounts, and genesis.
+    GenerateDevnet(ctx context.Context, config GeneratorConfig, genesisFile string) error
+
+    // DefaultGeneratorConfig returns default devnet generation config.
+    DefaultGeneratorConfig() GeneratorConfig
+
+    // ============================================
+    // Codec
+    // ============================================
+
+    // GetCodec returns network-specific codec configuration.
+    GetCodec() ([]byte, error)
+
+    // ============================================
+    // Validation
+    // ============================================
+
+    // Validate checks if module configuration is valid.
+    Validate() error
+
+    // ============================================
+    // Snapshot Configuration
+    // ============================================
+
+    // SnapshotURL returns snapshot download URL for network type.
+    SnapshotURL(networkType string) string
+
+    // RPCEndpoint returns RPC endpoint for network type.
+    RPCEndpoint(networkType string) string
+
+    // AvailableNetworks returns supported network types.
+    AvailableNetworks() []string
+
+    // ============================================
+    // Node Configuration
+    // ============================================
+
+    // GetConfigOverrides returns TOML config overrides for a node.
+    // Returns config.toml and app.toml partial overrides.
+    GetConfigOverrides(nodeIndex int, opts NodeConfigOptions) (configToml, appToml []byte, err error)
 }
 ```
 
-### TxBuilder Interface
+## Supporting Types
+
+### BinarySource
 
 ```go
-type TxBuilder interface {
-    // BuildTx constructs an unsigned transaction
-    BuildTx(ctx context.Context, req *TxBuildRequest) (*UnsignedTx, error)
-
-    // SignTx signs an unsigned transaction
-    SignTx(ctx context.Context, tx *UnsignedTx, key *SigningKey) (*SignedTx, error)
-
-    // BroadcastTx submits a signed transaction
-    BroadcastTx(ctx context.Context, tx *SignedTx) (*TxBroadcastResult, error)
-
-    // SupportedTxTypes returns supported transaction types
-    SupportedTxTypes() []TxType
+type BinarySource struct {
+    Type      string   `json:"type"`       // "github", "local", "docker"
+    Owner     string   `json:"owner"`      // GitHub owner/org
+    Repo      string   `json:"repo"`       // GitHub repository
+    AssetName string   `json:"asset_name"` // Release asset pattern
+    LocalPath string   `json:"local_path"` // Path to local binary
+    BuildTags []string `json:"build_tags"` // Go build tags
 }
 ```
 
-## Creating a Plugin
+### BuildConfig
 
-### Project Structure
+```go
+type BuildConfig struct {
+    Tags      []string          `json:"tags"`       // Go build tags
+    LDFlags   []string          `json:"ldflags"`    // Linker flags
+    Env       map[string]string `json:"env"`        // Environment variables
+    ExtraArgs []string          `json:"extra_args"` // Additional build args
+}
+```
+
+### PortConfig
+
+```go
+type PortConfig struct {
+    RPC       int `json:"rpc"`        // Tendermint RPC (26657)
+    P2P       int `json:"p2p"`        // P2P networking (26656)
+    GRPC      int `json:"grpc"`       // gRPC server (9090)
+    GRPCWeb   int `json:"grpc_web"`   // gRPC-Web (9091)
+    API       int `json:"api"`        // REST API (1317)
+    EVMRPC    int `json:"evm_rpc"`    // EVM JSON-RPC (8545)
+    EVMSocket int `json:"evm_socket"` // EVM WebSocket (8546)
+}
+```
+
+### GenesisConfig
+
+```go
+type GenesisConfig struct {
+    ChainIDPattern    string        `json:"chain_id_pattern"`
+    EVMChainID        int64         `json:"evm_chain_id"`
+    BaseDenom         string        `json:"base_denom"`
+    DenomExponent     int           `json:"denom_exponent"`
+    DisplayDenom      string        `json:"display_denom"`
+    BondDenom         string        `json:"bond_denom"`
+    MinSelfDelegation string        `json:"min_self_delegation"`
+    UnbondingTime     time.Duration `json:"unbonding_time"`
+    MaxValidators     uint32        `json:"max_validators"`
+    MinDeposit        string        `json:"min_deposit"`
+    VotingPeriod      time.Duration `json:"voting_period"`
+    MaxDepositPeriod  time.Duration `json:"max_deposit_period"`
+    CommunityTax      string        `json:"community_tax"`
+}
+```
+
+## Optional Interfaces
+
+### FileBasedGenesisModifier
+
+For genesis files exceeding gRPC message size limits (4MB default):
+
+```go
+type FileBasedGenesisModifier interface {
+    // ModifyGenesisFile processes large genesis files via filesystem.
+    // Used for fork-based devnets with 50-100+ MB genesis files.
+    ModifyGenesisFile(inputPath, outputPath string, opts GenesisOptions) (outputSize int64, err error)
+}
+```
+
+**When to implement:** Fork devnets from mainnet/testnet with large state exports.
+
+### StateExporter
+
+For snapshot-based devnet creation:
+
+```go
+type StateExporter interface {
+    // ExportCommandWithOptions returns export arguments with options.
+    ExportCommandWithOptions(homeDir string, opts ExportOptions) []string
+
+    // ValidateExportedGenesis validates the exported genesis.
+    ValidateExportedGenesis(genesis []byte) error
+
+    // RequiredModules returns modules that must be present.
+    RequiredModules() []string
+
+    // SnapshotFormat returns the archive format.
+    SnapshotFormat(networkType string) SnapshotFormat
+}
+```
+
+## Creating a V2 Plugin
+
+### Step 1: Project Structure
 
 ```
-my-plugin/
-├── main.go              # Plugin entry point
-├── plugin.go            # Plugin implementation
-├── txbuilder.go         # TxBuilder implementation
-├── genesis.go           # Genesis generation
+mynetwork-plugin/
+├── main.go              # Entry point with plugin.Serve()
+├── module.go            # network.Module implementation
+├── genesis.go           # Genesis modification logic
+├── rpc.go               # RPC query implementations
+├── config.go            # Configuration generation
 ├── go.mod
 └── go.sum
 ```
 
-### Basic Plugin Implementation
+### Step 2: Main Entry Point
 
 ```go
 // main.go
 package main
 
 import (
-    "github.com/hashicorp/go-plugin"
     "github.com/altuslabsxyz/devnet-builder/pkg/network/plugin"
 )
 
 func main() {
-    plugin.Serve(&plugin.ServeConfig{
-        HandshakeConfig: plugin.Handshake,
-        Plugins: map[string]plugin.Plugin{
-            "network": &plugin.NetworkPluginGRPC{
-                Impl: &MyPlugin{},
-            },
-        },
-        GRPCServer: plugin.DefaultGRPCServer,
-    })
+    // Serve registers the plugin with the gRPC server
+    // and handles the HashiCorp go-plugin handshake
+    plugin.Serve(&MyNetwork{})
 }
 ```
 
+### Step 3: Implement network.Module
+
 ```go
-// plugin.go
+// module.go
 package main
 
 import (
     "context"
-    "github.com/altuslabsxyz/devnet-builder/pkg/network/plugin"
+    "fmt"
+    "time"
+
+    "github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
-type MyPlugin struct {
-    config *plugin.Config
+type MyNetwork struct{}
+
+var _ network.Module = (*MyNetwork)(nil)
+
+// Identity
+func (n *MyNetwork) Name() string        { return "mynetwork" }
+func (n *MyNetwork) DisplayName() string { return "My Network" }
+func (n *MyNetwork) Version() string     { return "1.0.0" }
+
+// Binary Configuration
+func (n *MyNetwork) BinaryName() string { return "mynetworkd" }
+
+func (n *MyNetwork) BinarySource() network.BinarySource {
+    return network.BinarySource{
+        Type:      "github",
+        Owner:     "myorg",
+        Repo:      "mynetwork",
+        AssetName: "mynetworkd-*-linux-amd64",
+    }
 }
 
-func (p *MyPlugin) GetInfo() (*plugin.PluginInfo, error) {
-    return &plugin.PluginInfo{
-        Name:        "my-chain",
-        Version:     "v1.0.0",
-        NetworkType: "cosmos",
-        Description: "My custom blockchain plugin",
-    }, nil
-}
+func (n *MyNetwork) DefaultBinaryVersion() string { return "v1.0.0" }
 
-func (p *MyPlugin) GetSupportedSDKVersions() (*plugin.SDKVersionRange, error) {
-    return &plugin.SDKVersionRange{
-        Min: "v0.50.0",
-        Max: "v0.50.99",
-    }, nil
-}
-
-func (p *MyPlugin) Initialize(config *plugin.Config) error {
-    p.config = config
-    return nil
-}
-
-func (p *MyPlugin) GenerateGenesis(req *plugin.GenesisRequest) (*plugin.GenesisResult, error) {
-    // Implement genesis generation
-    // Return genesis.json and config files
-    return &plugin.GenesisResult{
-        GenesisJSON: genesisBytes,
-        ConfigFiles: map[string][]byte{
-            "config.toml": configToml,
-            "app.toml":    appToml,
-        },
-    }, nil
-}
-
-func (p *MyPlugin) StartNode(req *plugin.StartNodeRequest) (*plugin.StartNodeResult, error) {
-    // Start the node process
-    // Return process info
-    return &plugin.StartNodeResult{
-        PID:         pid,
-        ContainerID: containerID,
-        RPCAddress:  "http://localhost:26657",
-    }, nil
-}
-
-func (p *MyPlugin) StopNode(req *plugin.StopNodeRequest) error {
-    // Stop the node gracefully
-    return nil
-}
-
-func (p *MyPlugin) GetNodeStatus(req *plugin.NodeStatusRequest) (*plugin.NodeStatus, error) {
-    // Query node status via RPC
-    return &plugin.NodeStatus{
-        BlockHeight: height,
-        PeerCount:   peers,
-        CatchingUp:  false,
-        Synced:      true,
-    }, nil
-}
-
-func (p *MyPlugin) GetBlockHeight(rpcURL string) (int64, error) {
-    // Query current block height
-    return height, nil
-}
-
-func (p *MyPlugin) CreateTxBuilder(req *plugin.CreateTxBuilderRequest) (plugin.TxBuilder, error) {
-    // Create SDK-version-specific builder
-    return &MyTxBuilder{
-        chainID:    req.ChainID,
-        sdkVersion: req.SDKVersion,
-        rpcClient:  client,
-    }, nil
-}
-
-func (p *MyPlugin) GetSupportedTxTypes() (*plugin.SupportedTxTypes, error) {
-    return &plugin.SupportedTxTypes{
-        Types: []plugin.TxType{
-            plugin.TxTypeGovProposal,
-            plugin.TxTypeGovVote,
-            plugin.TxTypeBankSend,
-        },
-    }, nil
-}
-
-func (p *MyPlugin) Close() error {
-    // Cleanup resources
-    return nil
-}
-```
-
-### TxBuilder Implementation
-
-```go
-// txbuilder.go
-package main
-
-import (
-    "context"
-    "github.com/altuslabsxyz/devnet-builder/pkg/network/plugin"
-)
-
-type MyTxBuilder struct {
-    chainID    string
-    sdkVersion string
-    rpcClient  RPCClient
-}
-
-func (b *MyTxBuilder) BuildTx(ctx context.Context, req *plugin.TxBuildRequest) (*plugin.UnsignedTx, error) {
-    switch req.TxType {
-    case plugin.TxTypeBankSend:
-        return b.buildBankSend(ctx, req)
-    case plugin.TxTypeGovProposal:
-        return b.buildGovProposal(ctx, req)
-    case plugin.TxTypeGovVote:
-        return b.buildGovVote(ctx, req)
+func (n *MyNetwork) GetBuildConfig(networkType string) (*network.BuildConfig, error) {
+    switch networkType {
+    case "mainnet":
+        return &network.BuildConfig{
+            Tags:    []string{"netgo", "ledger"},
+            LDFlags: []string{"-X main.Version=1.0.0"},
+        }, nil
     default:
-        return nil, fmt.Errorf("unsupported tx type: %s", req.TxType)
+        return &network.BuildConfig{}, nil
     }
 }
 
-func (b *MyTxBuilder) buildBankSend(ctx context.Context, req *plugin.TxBuildRequest) (*plugin.UnsignedTx, error) {
-    // Parse payload
-    var payload struct {
-        ToAddress string `json:"to_address"`
-        Amount    string `json:"amount"`
-    }
-    if err := json.Unmarshal(req.Payload, &payload); err != nil {
-        return nil, err
-    }
+// Chain Configuration
+func (n *MyNetwork) DefaultChainID() string  { return "" } // Deprecated
+func (n *MyNetwork) Bech32Prefix() string    { return "mynet" }
+func (n *MyNetwork) BaseDenom() string       { return "umytoken" }
 
-    // Query account info
-    account, err := b.rpcClient.GetAccount(ctx, req.Sender)
-    if err != nil {
-        return nil, err
+func (n *MyNetwork) GenesisConfig() network.GenesisConfig {
+    return network.GenesisConfig{
+        ChainIDPattern:    "mynetwork-{type}-{num}",
+        EVMChainID:        1234,
+        BaseDenom:         "umytoken",
+        DenomExponent:     18,
+        DisplayDenom:      "MYTOKEN",
+        BondDenom:         "umytoken",
+        MinSelfDelegation: "1",
+        UnbondingTime:     120 * time.Second,
+        MaxValidators:     100,
+        MinDeposit:        "10000000umytoken",
+        VotingPeriod:      60 * time.Second,
+        MaxDepositPeriod:  120 * time.Second,
+        CommunityTax:      "0.02",
     }
-
-    // Build message using SDK
-    msg := &banktypes.MsgSend{
-        FromAddress: req.Sender,
-        ToAddress:   payload.ToAddress,
-        Amount:      sdk.NewCoins(sdk.MustParse Coin(payload.Amount)),
-    }
-
-    // Create transaction
-    txBuilder := b.getTxBuilder()
-    if err := txBuilder.SetMsgs(msg); err != nil {
-        return nil, err
-    }
-
-    // Set gas and fees
-    txBuilder.SetGasLimit(req.GasLimit)
-    if req.Memo != "" {
-        txBuilder.SetMemo(req.Memo)
-    }
-
-    // Generate sign doc
-    signDoc, err := b.getSignDoc(txBuilder, account)
-    if err != nil {
-        return nil, err
-    }
-
-    return &plugin.UnsignedTx{
-        TxBytes:       txBuilder.GetTx().GetTxBytes(),
-        SignDoc:       signDoc,
-        AccountNumber: account.GetAccountNumber(),
-        Sequence:      account.GetSequence(),
-    }, nil
 }
 
-func (b *MyTxBuilder) SignTx(ctx context.Context, tx *plugin.UnsignedTx, key *plugin.SigningKey) (*plugin.SignedTx, error) {
-    // Sign the transaction
-    privKey := secp256k1.PrivKey{Key: key.PrivKey}
-    signature, err := privKey.Sign(tx.SignDoc)
-    if err != nil {
-        return nil, err
+func (n *MyNetwork) DefaultPorts() network.PortConfig {
+    return network.PortConfig{
+        RPC:       26657,
+        P2P:       26656,
+        GRPC:      9090,
+        GRPCWeb:   9091,
+        API:       1317,
+        EVMRPC:    8545,
+        EVMSocket: 8546,
     }
-
-    // Build signed tx
-    signedTxBytes, err := b.attachSignature(tx.TxBytes, signature)
-    if err != nil {
-        return nil, err
-    }
-
-    return &plugin.SignedTx{
-        TxBytes:   signedTxBytes,
-        Signature: signature,
-        PubKey:    privKey.PubKey().Bytes(),
-    }, nil
 }
 
-func (b *MyTxBuilder) BroadcastTx(ctx context.Context, tx *plugin.SignedTx) (*plugin.TxBroadcastResult, error) {
-    // Broadcast to network
-    result, err := b.rpcClient.BroadcastTxSync(ctx, tx.TxBytes)
-    if err != nil {
-        return nil, err
-    }
+// Docker Configuration
+func (n *MyNetwork) DockerImage() string                      { return "ghcr.io/myorg/mynetwork" }
+func (n *MyNetwork) DockerImageTag(version string) string     { return version }
+func (n *MyNetwork) DockerHomeDir() string                    { return "/home/mynetwork" }
 
-    return &plugin.TxBroadcastResult{
-        TxHash: result.Hash.String(),
-        Code:   result.Code,
-        Log:    result.Log,
-        Height: result.Height,
-    }, nil
+// Path Configuration
+func (n *MyNetwork) DefaultNodeHome() string  { return "/root/.mynetwork" }
+func (n *MyNetwork) PIDFileName() string      { return "mynetworkd.pid" }
+func (n *MyNetwork) LogFileName() string      { return "mynetworkd.log" }
+func (n *MyNetwork) ProcessPattern() string   { return "mynetworkd.*start" }
+
+// Command Generation
+func (n *MyNetwork) InitCommand(homeDir, chainID, moniker string) []string {
+    return []string{"init", moniker, "--chain-id", chainID, "--home", homeDir}
 }
 
-func (b *MyTxBuilder) SupportedTxTypes() []plugin.TxType {
-    return []plugin.TxType{
-        plugin.TxTypeBankSend,
-        plugin.TxTypeGovProposal,
-        plugin.TxTypeGovVote,
+func (n *MyNetwork) StartCommand(homeDir string) []string {
+    return []string{"start", "--home", homeDir}
+}
+
+func (n *MyNetwork) ExportCommand(homeDir string) []string {
+    return []string{"export", "--home", homeDir}
+}
+
+// Devnet Operations
+func (n *MyNetwork) ModifyGenesis(genesis []byte, opts network.GenesisOptions) ([]byte, error) {
+    // Implement genesis modification
+    return genesis, nil
+}
+
+func (n *MyNetwork) GenerateDevnet(ctx context.Context, config network.GeneratorConfig, genesisFile string) error {
+    // Implement devnet generation
+    return nil
+}
+
+func (n *MyNetwork) DefaultGeneratorConfig() network.GeneratorConfig {
+    return network.GeneratorConfig{
+        NumValidators:    4,
+        NumAccounts:      10,
+        AccountBalance:   "100000000000umytoken",
+        ValidatorBalance: "1000000000000umytoken",
+        ValidatorStake:   "100000000umytoken",
+        ChainID:          "mynetwork-devnet-1",
     }
+}
+
+// Codec
+func (n *MyNetwork) GetCodec() ([]byte, error) { return nil, nil }
+
+// Validation
+func (n *MyNetwork) Validate() error {
+    if n.Name() == "" || n.BinaryName() == "" {
+        return fmt.Errorf("name and binary name are required")
+    }
+    return nil
+}
+
+// Snapshot Configuration
+func (n *MyNetwork) SnapshotURL(networkType string) string {
+    urls := map[string]string{
+        "mainnet": "https://snapshots.mynetwork.io/mainnet/latest.tar.zst",
+        "testnet": "https://snapshots.mynetwork.io/testnet/latest.tar.zst",
+    }
+    return urls[networkType]
+}
+
+func (n *MyNetwork) RPCEndpoint(networkType string) string {
+    endpoints := map[string]string{
+        "mainnet": "https://rpc.mynetwork.io",
+        "testnet": "https://rpc-testnet.mynetwork.io",
+    }
+    return endpoints[networkType]
+}
+
+func (n *MyNetwork) AvailableNetworks() []string {
+    return []string{"mainnet", "testnet"}
+}
+
+// Node Configuration
+func (n *MyNetwork) GetConfigOverrides(nodeIndex int, opts network.NodeConfigOptions) ([]byte, []byte, error) {
+    // Return TOML overrides for EVM-enabled chains
+    appToml := []byte(fmt.Sprintf(`
+[json-rpc]
+enable = true
+address = "0.0.0.0:%d"
+`, opts.Ports.EVMRPC))
+    return nil, appToml, nil
 }
 ```
 
-## Building and Installing
-
-### Build Plugin
+### Step 4: Build and Install
 
 ```bash
-# Build binary
-go build -o my-chain-plugin main.go
+# Build for V2
+go build -o mynetwork-plugin .
 
 # Install to plugin directory
-cp my-chain-plugin ~/.devnet-builder/plugins/
+mkdir -p ~/.devnet-builder/plugins
+cp mynetwork-plugin ~/.devnet-builder/plugins/
+chmod +x ~/.devnet-builder/plugins/mynetwork-plugin
 
 # Verify
 dvb plugins list
 ```
 
+## V2-Specific Features
+
 ### Plugin Discovery
 
-Plugins are discovered automatically from:
+V2 discovers plugins from multiple directories:
 
+```go
+// Default search paths (in order of priority)
+[]string{
+    "./plugins",                              // Current directory
+    "~/.devnet-builder/plugins",              // User directory
+    "/usr/local/lib/devnet-builder/plugins",  // System directory
+}
 ```
-~/.devnet-builder/plugins/
-├── cosmos-v047-plugin
-├── cosmos-v050-plugin
-├── my-chain-plugin  # Your plugin
-└── evm-geth-plugin
+
+**Naming Convention:** `<network>-plugin` (e.g., `stable-plugin`, `osmosis-plugin`)
+
+### Version Constraints
+
+V2 supports semantic versioning constraints:
+
+```go
+// Loader with version constraint
+loader := plugin.NewLoader(
+    plugin.WithVersionConstraint(plugin.VersionConstraint{
+        MinVersion: "1.0.0",
+        MaxVersion: "2.0.0",
+    }),
+)
+
+// Check specific plugin version
+version, err := loader.GetPluginVersion("mynetwork")
+
+// Validate plugin version without permanent load
+err := loader.ValidatePlugin("mynetwork")
+```
+
+### Hot Reload
+
+Plugins can be reloaded without restarting the daemon:
+
+```bash
+# Reload a specific plugin
+dvb plugins reload mynetwork
+
+# Reload all plugins
+dvb plugins reload --all
+```
+
+Programmatic reload:
+
+```go
+loader := plugin.NewLoader()
+
+// Reload a specific plugin
+err := loader.Reload("mynetwork")
+
+// Unload and reload
+loader.UnloadPlugin("mynetwork")
+err := loader.Load("mynetwork")
+```
+
+### Concurrent Loading
+
+V2 loads plugins in parallel for faster startup:
+
+```go
+loader := plugin.NewLoader()
+
+// Load all plugins concurrently
+result := loader.LoadAllWithErrors()
+
+for name, err := range result.Errors {
+    log.Printf("Failed to load %s: %v", name, err)
+}
+
+for _, name := range result.Loaded {
+    log.Printf("Loaded: %s", name)
+}
+```
+
+### Plugin Lifecycle
+
+```go
+type PluginClient struct {
+    client *hcplugin.Client
+    module network.Module
+    name   string
+}
+
+// Lifecycle methods
+loader.Load("mynetwork")           // Start plugin process
+loader.IsLoaded("mynetwork")       // Check if loaded
+loader.LoadedPlugins()             // List loaded plugins
+loader.UnloadPlugin("mynetwork")   // Stop plugin process
+loader.Reload("mynetwork")         // Unload and reload
+```
+
+## RPC Query Methods
+
+V2 plugins can implement blockchain RPC queries for upgrade workflows:
+
+```go
+// Governance Parameters
+func (n *MyNetwork) GetGovernanceParams(rpcEndpoint, networkType string) (*plugin.GovernanceParamsResponse, error) {
+    // Query /cosmos/gov/v1/params/voting and /cosmos/gov/v1/params/deposit
+    return &plugin.GovernanceParamsResponse{
+        VotingPeriodNs:          int64(60 * time.Second),
+        ExpeditedVotingPeriodNs: int64(30 * time.Second),
+        MinDeposit:              "10000000umytoken",
+        ExpeditedMinDeposit:     "50000000umytoken",
+    }, nil
+}
+
+// Block Height
+func (n *MyNetwork) GetBlockHeight(ctx context.Context, rpcEndpoint string) (*plugin.BlockHeightResponse, error) {
+    // Query /status endpoint
+    return &plugin.BlockHeightResponse{Height: 12345}, nil
+}
+
+// Wait for Block
+func (n *MyNetwork) WaitForBlock(ctx context.Context, rpcEndpoint string, targetHeight int64, timeoutMs int64) (*plugin.WaitForBlockResponse, error) {
+    // Poll until target height reached
+    return &plugin.WaitForBlockResponse{
+        CurrentHeight: targetHeight,
+        Reached:       true,
+    }, nil
+}
+
+// Governance Proposal
+func (n *MyNetwork) GetProposal(ctx context.Context, rpcEndpoint string, proposalID uint64) (*plugin.ProposalResponse, error) {
+    // Query /cosmos/gov/v1/proposals/{id}
+    return &plugin.ProposalResponse{
+        Id:     proposalID,
+        Status: "PROPOSAL_STATUS_VOTING_PERIOD",
+    }, nil
+}
+
+// Upgrade Plan
+func (n *MyNetwork) GetUpgradePlan(ctx context.Context, rpcEndpoint string) (*plugin.UpgradePlanResponse, error) {
+    // Query /cosmos/upgrade/v1beta1/current_plan
+    return &plugin.UpgradePlanResponse{HasPlan: false}, nil
+}
 ```
 
 ## Testing Plugins
@@ -357,115 +665,199 @@ Plugins are discovered automatically from:
 ### Unit Tests
 
 ```go
-// plugin_test.go
-func TestPluginInfo(t *testing.T) {
-    p := &MyPlugin{}
-    info, err := p.GetInfo()
-    require.NoError(t, err)
-    assert.Equal(t, "my-chain", info.Name)
+func TestModuleInterface(t *testing.T) {
+    m := &MyNetwork{}
+
+    // Test identity
+    assert.Equal(t, "mynetwork", m.Name())
+    assert.Equal(t, "1.0.0", m.Version())
+
+    // Test validation
+    assert.NoError(t, m.Validate())
+
+    // Test build config
+    cfg, err := m.GetBuildConfig("mainnet")
+    assert.NoError(t, err)
+    assert.Contains(t, cfg.Tags, "netgo")
 }
 
-func TestBuildBankSend(t *testing.T) {
-    builder := &MyTxBuilder{
-        chainID: "test-1",
-        rpcClient: mockClient,
-    }
+func TestGenesisModification(t *testing.T) {
+    m := &MyNetwork{}
 
-    req := &plugin.TxBuildRequest{
-        TxType:  plugin.TxTypeBankSend,
-        Sender:  "cosmos1abc...",
-        Payload: []byte(`{"to_address":"cosmos1xyz...","amount":"1000000uatom"}`),
-    }
+    genesis := []byte(`{"chain_id":"test-1"}`)
+    opts := network.GenesisOptions{ChainID: "modified-1"}
 
-    tx, err := builder.BuildTx(context.Background(), req)
-    require.NoError(t, err)
-    assert.NotEmpty(t, tx.TxBytes)
+    modified, err := m.ModifyGenesis(genesis, opts)
+    assert.NoError(t, err)
+    assert.Contains(t, string(modified), "modified-1")
 }
 ```
 
 ### Integration Tests
 
 ```bash
-# Deploy test devnet with your plugin
-dvb deploy my-chain --name test-devnet
+# Deploy with your plugin
+dvb apply -f - <<EOF
+apiVersion: v1
+kind: Devnet
+metadata:
+  name: test-devnet
+  namespace: default
+spec:
+  plugin: mynetwork
+  validators: 2
+EOF
 
-# Test transaction submission
-dvb tx submit test-devnet \
-  --type bank/send \
-  --signer validator:0 \
-  --payload '{"to_address":"...","amount":"1000000"}'
+# Verify deployment
+dvb get devnets
+dvb describe devnet test-devnet
 
-# Verify
-dvb status test-devnet
+# Check node health
+dvb node health -n default test-devnet
+
+# Cleanup
+dvb delete devnet test-devnet
 ```
 
-## Example Plugins
+## Debugging
 
-### Cosmos SDK v0.50 Plugin
+### Enable Debug Logging
 
-See full implementation: `pkg/network/cosmos/v050/`
+```bash
+# Start daemon with debug logging
+devnetd start --log-level debug
 
-Key features:
-- Genesis generation with SDK modules
-- Transaction building with protobuf
-- Query support for status/height
-- Support for multiple tx types
+# View plugin-specific logs
+dvb daemon logs | grep mynetwork
+```
 
-### EVM Plugin
+### Test Plugin Directly
 
-See full implementation: `pkg/network/evm/`
+```bash
+# Plugin should hang waiting for handshake when run directly
+./mynetwork-plugin
+# Expected: No output (waiting for gRPC handshake)
+# Ctrl+C to exit
 
-Key features:
-- Geth integration
-- Native and contract transactions
-- EIP-155 chain ID support
-- RLP encoding/decoding
+# Check if plugin responds to handshake
+DEVNET_BUILDER_PLUGIN=network_module_v1 ./mynetwork-plugin
+```
+
+### Common Issues
+
+**Plugin not discovered:**
+```bash
+# Check naming convention
+ls ~/.devnet-builder/plugins/
+# Should be: mynetwork-plugin (not devnet-mynetwork for V2)
+
+# Check permissions
+chmod +x ~/.devnet-builder/plugins/mynetwork-plugin
+```
+
+**Version mismatch:**
+```bash
+# Check plugin version
+dvb plugins info mynetwork
+
+# Ensure Version() returns valid semver
+# Good: "1.0.0", "2.3.1-beta"
+# Bad: "v1.0.0", "1.0" (missing patch)
+```
+
+**gRPC errors:**
+```bash
+# Check if port is in use
+lsof -i :50051
+
+# Restart daemon
+dvb daemon stop
+devnetd start
+```
 
 ## Best Practices
 
-1. **Version SDK dependencies** - Pin exact SDK versions
-2. **Handle all tx types** - Return clear errors for unsupported types
-3. **Validate payloads** - Check required fields early
-4. **Use structured logging** - Help with debugging
-5. **Test thoroughly** - Unit and integration tests
-6. **Document tx formats** - Clear payload examples
-7. **Support SDK upgrades** - Version-aware builders
-8. **Clean up resources** - Implement Close() properly
+### 1. Semantic Versioning
 
-## Troubleshooting
+Always return proper semver from `Version()`:
 
-### Plugin Not Loading
-
-```bash
-# Check plugin exists
-ls ~/.devnet-builder/plugins/my-chain-plugin
-
-# Check permissions
-chmod +x ~/.devnet-builder/plugins/my-chain-plugin
-
-# Test plugin directly
-./my-chain-plugin
-
-# View daemon logs
-dvb daemon logs --follow | grep plugin
+```go
+func (n *MyNetwork) Version() string {
+    return "1.2.3"  // Major.Minor.Patch
+}
 ```
 
-### Transaction Building Fails
+### 2. Error Handling in RPC Methods
 
-```bash
-# Enable debug logging
-devnetd start --log-level debug
+Return errors in response, not as Go errors:
 
-# View detailed errors
-dvb tx status tx-12345 --output json | jq .status.error
-
-# Test payload locally
-go test -v ./txbuilder_test.go -run TestBuildBankSend
+```go
+func (n *MyNetwork) GetBlockHeight(ctx context.Context, rpcEndpoint string) (*plugin.BlockHeightResponse, error) {
+    height, err := queryHeight(rpcEndpoint)
+    if err != nil {
+        return &plugin.BlockHeightResponse{
+            Height: 0,
+            Error:  err.Error(),  // Return error in response
+        }, nil  // Return nil Go error
+    }
+    return &plugin.BlockHeightResponse{Height: height}, nil
+}
 ```
 
-## Next Steps
+### 3. Timeout Handling
 
-- **[Architecture](architecture.md)** - Understanding the plugin system
-- **[Transactions](transactions.md)** - Transaction payload formats
-- **[API Reference](api-reference.md)** - Plugin gRPC interface
-- **Example Plugins** - Study existing implementations in `pkg/network/`
+Always respect context deadlines:
+
+```go
+func (n *MyNetwork) WaitForBlock(ctx context.Context, rpcEndpoint string, target int64, timeoutMs int64) (*plugin.WaitForBlockResponse, error) {
+    deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+
+    for time.Now().Before(deadline) {
+        select {
+        case <-ctx.Done():
+            return &plugin.WaitForBlockResponse{
+                Error: "context cancelled",
+            }, nil
+        default:
+            height, _ := queryHeight(rpcEndpoint)
+            if height >= target {
+                return &plugin.WaitForBlockResponse{
+                    CurrentHeight: height,
+                    Reached:       true,
+                }, nil
+            }
+            time.Sleep(time.Second)
+        }
+    }
+
+    return &plugin.WaitForBlockResponse{
+        Error: "timeout waiting for block",
+    }, nil
+}
+```
+
+### 4. Resource Cleanup
+
+Plugins should handle cleanup gracefully:
+
+```go
+// The plugin framework handles process cleanup automatically
+// But if you have custom resources, implement cleanup in module methods
+func (n *MyNetwork) GenerateDevnet(ctx context.Context, config network.GeneratorConfig, genesisFile string) error {
+    // Create temp files
+    tmpDir, err := os.MkdirTemp("", "devnet-*")
+    if err != nil {
+        return err
+    }
+    defer os.RemoveAll(tmpDir)  // Cleanup on exit
+
+    // ... implementation
+}
+```
+
+## See Also
+
+- [Plugin System Guide](../plugins.md) - General plugin development
+- [Architecture](architecture.md) - V2 system architecture
+- [API Reference](api-reference.md) - gRPC API documentation
+- [Example Plugin](../../examples/cosmos-plugin/) - Complete working example

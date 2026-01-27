@@ -5,9 +5,12 @@ Step-by-step guides for common development and debugging scenarios.
 ## Table of Contents
 
 - [Upgrade Testing Workflow](#upgrade-testing-workflow)
+- [Quick Upgrade (Skip Governance)](#quick-upgrade-skip-governance)
+- [Resuming Interrupted Upgrades](#resuming-interrupted-upgrades)
 - [Key Export Workflow](#key-export-workflow)
 - [State Reset Workflow](#state-reset-workflow)
 - [Docker vs Local ExecutionMode](#docker-vs-local-mode)
+- [dvb CLI Workflows (Daemon Mode)](#dvb-cli-workflows-daemon-mode)
 
 ---
 
@@ -47,8 +50,13 @@ curl -s http://localhost:26657/status | jq '.result.sync_info.latest_block_heigh
 #### Step 3: Initiate Upgrade
 
 ```bash
-# Start upgrade to new version
-devnet-builder startgrade \
+# Start upgrade to new version (interactive binary selection)
+devnet-builder upgrade \
+  --name v2-upgrade \
+  --version v2.0.0
+
+# Or specify image directly
+devnet-builder upgrade \
   --name v2-upgrade \
   --image <docker-registry>/<network-image>:v2.0.0
 ```
@@ -67,6 +75,9 @@ devnet-builder logs -f
 
 # Check upgrade progress
 devnet-builder status
+
+# Show detailed upgrade status
+devnet-builder upgrade --show-status
 ```
 
 #### Step 5: Verify Post-Upgrade
@@ -84,31 +95,89 @@ curl -s http://localhost:26657/abci_info | jq '.result.response.version'
 For debugging upgrade issues, export genesis before and after:
 
 ```bash
-devnet-builder startgrade \
+devnet-builder upgrade \
   --name v2-upgrade \
-  --image v2.0.0-mainnet \
-  --export-genesis
+  --version v2.0.0 \
+  --with-export
 ```
 
 Genesis files saved to:
-- `~/.devnet-builder/genesis/pre-upgrade-v2-upgrade.json`
-- `~/.devnet-builder/genesis/post-upgrade-v2-upgrade.json`
+- `~/.devnet-builder/exports/<export-name>/genesis-<height>-<commit>.json` (pre-upgrade)
+- `~/.devnet-builder/exports/<export-name>/genesis-<height>-<commit>.json` (post-upgrade)
 
-### Upgrade with Local Binary
+---
 
-For testing locally-built binaries:
+## Quick Upgrade (Skip Governance)
+
+For rapid testing iterations, bypass the governance process entirely:
 
 ```bash
-# Build your binary first
-cd /path/to/network
-make build
-
-# Upgrade using local binary
-devnet-builder startgrade \
+# Direct binary replacement without governance proposal
+devnet-builder upgrade \
   --name v2-upgrade \
-  --binary /path/to/network/build/<binary-name> \
-  --mode local
+  --version v2.0.0 \
+  --skip-gov
 ```
+
+This will:
+- Stop all nodes immediately
+- Replace binary/image
+- Restart nodes with new version
+
+**Use cases:**
+- Rapid iteration during development
+- Testing binary compatibility
+- Debugging upgrade migration code
+
+**Note:** `--skip-gov` does not test the governance upgrade mechanism itself.
+
+---
+
+## Resuming Interrupted Upgrades
+
+If an upgrade is interrupted (network issue, crash, etc.), you can resume:
+
+### Check Upgrade Status
+
+```bash
+# View current upgrade state
+devnet-builder upgrade --show-status
+```
+
+### Resume from Last Stage
+
+```bash
+# Continue from where it stopped
+devnet-builder upgrade --resume
+```
+
+### Clear Stuck State
+
+If upgrade state is corrupted:
+
+```bash
+# Clear upgrade state and start fresh
+devnet-builder upgrade --clear-state
+
+# Or force restart the upgrade
+devnet-builder upgrade \
+  --name v2-upgrade \
+  --version v2.0.0 \
+  --force-restart
+```
+
+### Upgrade Stages
+
+The upgrade process goes through these stages:
+1. **Pending** - Initial state
+2. **Proposing** - Submitting governance proposal
+3. **Voting** - Waiting for votes
+4. **Waiting** - Waiting for upgrade height
+5. **Halted** - Chain halted at upgrade height
+6. **Switching** - Replacing binary/image
+7. **Restarting** - Starting nodes with new version
+8. **Verifying** - Confirming chain resumed
+9. **Completed** - Upgrade successful
 
 ---
 
@@ -341,6 +410,73 @@ devnet-builder deploy --mode local
 # Final validation with Docker (production-like)
 devnet-builder destroy --force
 devnet-builder deploy --mode docker
+```
+
+---
+
+## dvb CLI Workflows (Daemon Mode)
+
+The `dvb` CLI provides a kubectl-style interface for managing devnets through the daemon.
+
+### Starting the Daemon
+
+```bash
+# Start the daemon
+devnetd
+
+# Or with custom socket
+devnetd --socket /tmp/devnetd.sock
+```
+
+### Managing Devnets with dvb
+
+```bash
+# Apply a devnet configuration
+dvb apply -f devnet.yaml
+
+# List devnets
+dvb get devnets
+
+# Get detailed status
+dvb describe devnet my-devnet
+
+# Delete a devnet
+dvb delete devnet my-devnet
+```
+
+### Managing Upgrades with dvb
+
+```bash
+# Create an upgrade
+dvb upgrade create v2-upgrade \
+  --devnet my-devnet \
+  --upgrade-name v2-upgrade \
+  --version v2.0.0
+
+# List upgrades
+dvb upgrade list
+
+# Check upgrade status
+dvb upgrade status v2-upgrade
+
+# Cancel an upgrade
+dvb upgrade cancel v2-upgrade
+
+# Retry a failed upgrade
+dvb upgrade retry v2-upgrade
+```
+
+### Namespace Support
+
+```bash
+# Work in a specific namespace
+dvb apply -f devnet.yaml -n team-alpha
+
+# List devnets in namespace
+dvb get devnets -n team-alpha
+
+# List all devnets across namespaces
+dvb get devnets --all-namespaces
 ```
 
 ---

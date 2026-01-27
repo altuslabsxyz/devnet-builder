@@ -1,43 +1,871 @@
 # Command Reference
 
-Complete reference for all devnet-builder commands.
+Complete reference for devnet-builder CLI commands.
+
+This documentation covers both the modern `dvb` CLI and the legacy `devnet-builder` CLI.
 
 ## Table of Contents
 
-- [Main Commands](#main-commands)
-  - [deploy](#deploy)
-  - [init](#init)
-  - [start](#start)
-  - [stop](#stop)
-  - [destroy](#destroy)
-- [Monitoring Commands](#monitoring-commands)
-  - [status](#status)
-  - [logs](#logs)
-  - [node](#node)
-- [Advanced Commands](#advanced-commands)
-  - [upgrade](#upgrade)
-  - [build](#build)
-  - [export-keys](#export-keys)
-  - [reset](#reset)
-- [Utility Commands](#utility-commands)
-  - [config](#config)
-  - [cache](#cache)
-  - [versions](#versions)
-- [Global Flags](#global-flags)
+- [DVB CLI (Modern)](#dvb-cli-modern)
+  - [Core Commands](#core-commands)
+    - [apply](#apply)
+    - [get](#get)
+    - [delete](#delete)
+    - [diff](#diff)
+    - [describe](#describe)
+    - [list](#list)
+  - [Lifecycle Commands](#lifecycle-commands)
+    - [provision](#provision)
+    - [start](#start)
+    - [stop](#stop)
+    - [destroy](#destroy)
+  - [Node Management](#node-management)
+    - [node list](#node-list)
+    - [node get](#node-get)
+    - [node health](#node-health)
+    - [node ports](#node-ports)
+    - [node start](#node-start)
+    - [node stop](#node-stop)
+    - [node restart](#node-restart)
+    - [node exec](#node-exec)
+    - [node init](#node-init)
+  - [Build Commands](#build-commands)
+    - [build](#build)
+  - [Utility Commands](#utility-commands)
+    - [version](#version)
+    - [daemon](#daemon)
+    - [logs](#logs)
+  - [DVB Global Flags](#dvb-global-flags)
+- [Legacy devnet-builder CLI](#legacy-devnet-builder-cli)
+  - [Main Commands](#main-commands)
+    - [deploy](#deploy)
+    - [init](#init)
+    - [start (legacy)](#start-legacy)
+    - [stop (legacy)](#stop-legacy)
+    - [destroy (legacy)](#destroy-legacy)
+  - [Monitoring Commands](#monitoring-commands)
+    - [status](#status)
+    - [logs (legacy)](#logs-legacy)
+    - [node (legacy)](#node-legacy)
+  - [Advanced Commands](#advanced-commands)
+    - [upgrade](#upgrade)
+    - [build (legacy)](#build-legacy)
+    - [export-keys](#export-keys)
+    - [reset](#reset)
+  - [Utility Commands (Legacy)](#utility-commands-legacy)
+    - [config](#config)
+    - [cache](#cache)
+    - [versions](#versions)
+    - [exec](#exec)
+    - [port-forward](#port-forward)
+  - [Legacy Global Flags](#legacy-global-flags)
+- [Environment Variables](#environment-variables)
+- [Port Reference](#port-reference)
 
 ---
 
-## Main Commands
+## DVB CLI (Modern)
 
-### deploy
+The `dvb` CLI is the modern interface for managing devnets. It supports both daemon mode (connecting to `devnetd`) and standalone mode for local development.
 
-Deploy a new local devnet with mainnet or testnet state. This is the primary command for getting started.
+### Core Commands
+
+#### apply
+
+Apply a devnet configuration from a YAML file. This is the primary way to create or update devnets.
+
+```bash
+dvb apply -f <file> [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-f, --file` | string | | Path to YAML file or directory (required) |
+| `--dry-run` | bool | false | Preview changes without applying |
+| `--data-dir` | string | ~/.devnet-builder | Base data directory for standalone mode |
+
+##### Examples
+
+```bash
+# Apply a devnet configuration
+dvb apply -f devnet.yaml
+
+# Preview changes without applying
+dvb apply -f devnet.yaml --dry-run
+
+# Apply all YAML files in a directory
+dvb apply -f ./devnets/
+
+# Apply in standalone mode with custom data directory
+dvb apply -f devnet.yaml --standalone --data-dir /path/to/data
+```
+
+---
+
+#### get
+
+Display devnet resources. Similar to `kubectl get`.
+
+```bash
+dvb get [resource] [name] [flags]
+```
+
+##### Resource Types
+
+| Resource | Aliases | Description |
+|----------|---------|-------------|
+| `devnets` | `devnet`, `dn` | List or get devnets |
+| `nodes` | `node` | List nodes (use `dvb node list` instead) |
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-n, --namespace` | string | | Namespace (empty = all namespaces for list) |
+| `-o, --output` | string | | Output format: wide, yaml, json |
+| `-l, --selector` | string | | Label selector (e.g., 'env=prod') |
+| `--show-nodes` | bool | false | Show nodes when getting a devnet |
+| `-A, --all-namespaces` | bool | false | List across all namespaces |
+
+##### Examples
+
+```bash
+# List all devnets
+dvb get devnets
+
+# List devnets in a specific namespace
+dvb get devnets -n production
+
+# Get a specific devnet
+dvb get devnet my-devnet
+
+# Get devnet with node details
+dvb get devnet my-devnet --show-nodes
+
+# Output in wide format
+dvb get devnets -o wide
+
+# Output as YAML
+dvb get devnet my-devnet -o yaml
+```
+
+##### Sample Output
+
+```
+NAMESPACE    NAME        PHASE     NODES  READY  HEIGHT
+default      my-devnet   Running   4      4      12345
+production   prod-net    Running   2      2      54321
+```
+
+---
+
+#### delete
+
+Delete devnet resources by name or from a YAML file.
+
+```bash
+dvb delete [resource] [name] [flags]
+dvb delete -f <file> [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-f, --file` | string | | Path to YAML file containing resources to delete |
+| `-n, --namespace` | string | | Namespace (defaults to server default) |
+| `--force` | bool | false | Skip confirmation prompt |
+| `--dry-run` | bool | false | Preview what would be deleted |
+| `--data-dir` | string | ~/.devnet-builder | Base data directory for standalone mode |
+
+##### Examples
+
+```bash
+# Delete a devnet by name
+dvb delete devnet my-devnet
+
+# Delete a devnet in a specific namespace
+dvb delete devnet my-devnet -n production
+
+# Delete devnets defined in a YAML file
+dvb delete -f devnet.yaml
+
+# Delete without confirmation
+dvb delete devnet my-devnet --force
+
+# Preview what would be deleted
+dvb delete -f devnet.yaml --dry-run
+```
+
+---
+
+#### diff
+
+Show differences between a YAML configuration and the current state.
+
+```bash
+dvb diff -f <file> [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-f, --file` | string | | Path to YAML file or directory (required) |
+| `-o, --output` | string | text | Output format: text, json |
+
+##### Examples
+
+```bash
+# Show diff for a single file
+dvb diff -f devnet.yaml
+
+# Show diff for all YAML files in a directory
+dvb diff -f ./devnets/
+
+# Output in JSON format
+dvb diff -f devnet.yaml -o json
+```
+
+---
+
+#### describe
+
+Show detailed devnet information including status conditions, events, and nodes.
+
+```bash
+dvb describe <devnet> [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-n, --namespace` | string | | Namespace (defaults to server default) |
+| `-o, --output` | string | | Output format (yaml) |
+
+##### Examples
+
+```bash
+# Describe a devnet
+dvb describe my-devnet
+
+# Describe with YAML output
+dvb describe my-devnet -o yaml
+
+# Describe in a specific namespace
+dvb describe my-devnet -n production
+```
+
+---
+
+#### list
+
+List all devnets. Alias for `dvb get devnets`.
+
+```bash
+dvb list [flags]
+```
+
+##### Aliases
+
+`ls`
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-n, --namespace` | string | | Filter by namespace (empty = all namespaces) |
+
+##### Examples
+
+```bash
+# List all devnets
+dvb list
+
+# List devnets in a namespace
+dvb list -n production
+
+# Using alias
+dvb ls
+```
+
+---
+
+### Lifecycle Commands
+
+#### provision
+
+Provision a new devnet using the ProvisioningOrchestrator. This command works in standalone mode without requiring the daemon.
+
+```bash
+dvb provision [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-i, --interactive` | bool | false | Use interactive wizard mode |
+| `--name` | string | | Devnet name (required unless using -i) |
+| `--network` | string | stable | Plugin/network name (e.g., stable, cosmos) |
+| `--chain-id` | string | | Chain ID (default: `<name>-devnet`) |
+| `--validators` | int | 1 | Number of validators |
+| `--full-nodes` | int | 0 | Number of full nodes |
+| `--binary-path` | string | | Path to chain binary (skips build if provided) |
+| `--data-dir` | string | ~/.devnet-builder | Base data directory |
+| `--mocks` | bool | false | Use mock implementations (for testing/demo) |
+
+##### Examples
+
+```bash
+# Interactive wizard mode (recommended for first-time users)
+dvb provision -i
+
+# Provision a devnet with default settings
+dvb provision --name my-devnet
+
+# Provision with custom chain ID and 4 validators
+dvb provision --name my-devnet --chain-id my-chain-1 --validators 4
+
+# Provision using a pre-built binary
+dvb provision --name my-devnet --binary-path /usr/local/bin/stabled
+
+# Provision with 3 validators and 2 full nodes
+dvb provision --name my-devnet --validators 3 --full-nodes 2
+
+# Provision with custom data directory
+dvb provision --name my-devnet --data-dir /path/to/devnets
+```
+
+---
+
+#### start
+
+Start a stopped devnet.
+
+```bash
+dvb start <devnet> [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-n, --namespace` | string | | Namespace (defaults to server default) |
+
+##### Examples
+
+```bash
+# Start a devnet
+dvb start my-devnet
+
+# Start in a specific namespace
+dvb start my-devnet -n production
+```
+
+---
+
+#### stop
+
+Stop a running devnet.
+
+```bash
+dvb stop <devnet> [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-n, --namespace` | string | | Namespace (defaults to server default) |
+
+##### Examples
+
+```bash
+# Stop a devnet
+dvb stop my-devnet
+
+# Stop in a specific namespace
+dvb stop my-devnet -n production
+```
+
+---
+
+#### destroy
+
+Destroy a devnet and remove all its data.
+
+```bash
+dvb destroy [devnet] [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-n, --namespace` | string | | Namespace (defaults to server default) |
+| `-f, --force` | bool | false | Skip confirmation prompt |
+| `--data-dir` | string | ~/.devnet-builder | Base data directory |
+
+##### Examples
+
+```bash
+# List available devnets to destroy
+dvb destroy
+
+# Destroy a devnet (with type-to-confirm prompt)
+dvb destroy my-devnet
+
+# Destroy without confirmation (use with caution!)
+dvb destroy my-devnet --force
+```
+
+---
+
+### Node Management
+
+#### node list
+
+List nodes in a devnet with their status.
+
+```bash
+dvb node list <devnet-name> [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-n, --namespace` | string | | Namespace (defaults to server default) |
+| `-w, --watch` | bool | false | Watch for changes (like kubectl -w) |
+| `--interval` | int | 2 | Watch interval in seconds |
+| `--wide` | bool | false | Wide output with additional details |
+
+##### Examples
+
+```bash
+# List all nodes in a devnet
+dvb node list my-devnet
+
+# Watch node status in real-time
+dvb node list my-devnet -w
+
+# Watch with custom interval (5 seconds)
+dvb node list my-devnet -w --interval 5
+
+# Wide output with additional details
+dvb node list my-devnet --wide
+```
+
+##### Sample Output
+
+```
+INDEX  HEALTH  ROLE        PHASE    CONTAINER     RESTARTS
+0      ●       validator   Running  abc123def456  0
+1      ●       validator   Running  def456abc789  0
+2      ●       validator   Running  789abc123def  0
+3      ●       full        Running  456def789abc  0
+```
+
+---
+
+#### node get
+
+Get details of a specific node.
+
+```bash
+dvb node get <devnet-name> <index> [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-n, --namespace` | string | | Namespace (defaults to server default) |
+
+##### Examples
+
+```bash
+# Get node 0 details
+dvb node get my-devnet 0
+
+# Get node in a specific namespace
+dvb node get my-devnet 1 -n production
+```
+
+---
+
+#### node health
+
+Get health status of a specific node.
+
+```bash
+dvb node health <devnet-name> <index>
+```
+
+##### Health Status Values
+
+| Status | Description |
+|--------|-------------|
+| Healthy | Node is running normally |
+| Unhealthy | Node has health check failures |
+| Stopped | Node is intentionally stopped |
+| Transitioning | Node is changing state |
+| Unknown | Health cannot be determined |
+
+##### Examples
+
+```bash
+# Check health of node 0
+dvb node health my-devnet 0
+
+# Check health of node 1
+dvb node health my-devnet 1
+```
+
+---
+
+#### node ports
+
+Show port mappings for a specific node.
+
+```bash
+dvb node ports <devnet-name> <index>
+```
+
+##### Examples
+
+```bash
+# Show ports for node 0 (host ports: 26656, 26657, 1317, 9090)
+dvb node ports my-devnet 0
+
+# Show ports for node 1 (host ports: 26756, 26757, 1417, 9190)
+dvb node ports my-devnet 1
+```
+
+##### Sample Output
+
+```
+Ports for my-devnet/0:
+
+SERVICE    CONTAINER  HOST   PROTOCOL
+p2p        26656      26656  tcp
+rpc        26657      26657  tcp
+rest       1317       1317   tcp
+grpc       9090       9090   tcp
+
+RPC endpoint:  http://localhost:26657
+REST endpoint: http://localhost:1317
+gRPC endpoint: localhost:9090
+```
+
+---
+
+#### node start
+
+Start a specific node.
+
+```bash
+dvb node start <devnet-name> <index> [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-n, --namespace` | string | | Namespace (defaults to server default) |
+
+##### Examples
+
+```bash
+# Start node 1
+dvb node start my-devnet 1
+```
+
+---
+
+#### node stop
+
+Stop a specific node.
+
+```bash
+dvb node stop <devnet-name> <index> [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-n, --namespace` | string | | Namespace (defaults to server default) |
+
+##### Examples
+
+```bash
+# Stop node 1
+dvb node stop my-devnet 1
+```
+
+---
+
+#### node restart
+
+Restart a specific node.
+
+```bash
+dvb node restart <devnet-name> <index> [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-n, --namespace` | string | | Namespace (defaults to server default) |
+
+##### Examples
+
+```bash
+# Restart node 0
+dvb node restart my-devnet 0
+```
+
+---
+
+#### node exec
+
+Execute a command inside a running node container.
+
+```bash
+dvb node exec <devnet-name> <index> -- <command> [args...]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--timeout` | int | 30 | Command timeout in seconds |
+
+##### Examples
+
+```bash
+# Check the chain binary version
+dvb node exec my-devnet 0 -- stabled version
+
+# List files in the home directory
+dvb node exec my-devnet 0 -- ls -la /home/.stable
+
+# Query the node status via RPC
+dvb node exec my-devnet 0 -- curl -s localhost:26657/status
+
+# Run a command with a longer timeout
+dvb node exec my-devnet 0 --timeout 60 -- stabled query bank balances cosmos1...
+```
+
+---
+
+#### node init
+
+Initialize one or more node directories for a devnet.
+
+```bash
+dvb node init [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--chain-id` | string | | Chain ID for the devnet (required) |
+| `--network` | string | stable | Network type (e.g., stable, cosmos) |
+| `--data-dir` | string | ~/.devnet-builder/nodes | Base directory for node data |
+| `--binary-path` | string | | Path to chain binary (uses network default if not specified) |
+| `--num-nodes` | int | 1 | Number of nodes to initialize |
+| `--moniker-prefix` | string | validator | Prefix for node monikers |
+
+##### Examples
+
+```bash
+# Initialize a single node with default settings
+dvb node init --chain-id my-devnet-1
+
+# Initialize 4 validator nodes
+dvb node init --chain-id my-devnet-1 --num-nodes 4
+
+# Initialize with custom data directory
+dvb node init --chain-id my-devnet-1 --data-dir /path/to/nodes
+
+# Initialize using a specific binary
+dvb node init --chain-id my-devnet-1 --binary-path /usr/local/bin/gaiad
+
+# Initialize with custom moniker prefix
+dvb node init --chain-id my-devnet-1 --num-nodes 3 --moniker-prefix node
+```
+
+---
+
+### Build Commands
+
+#### build
+
+Build a blockchain binary from a git repository.
+
+```bash
+dvb build [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--git-repo` | string | | Git repository URL (uses plugin default if not specified) |
+| `--git-ref` | string | | Git ref (branch, tag, or commit) - required |
+| `--network` | string | | Network/plugin name (e.g., stable, cosmos) - required |
+| `--build-flags` | map | | Build flags as key=value pairs |
+| `--go-version` | string | | Go version constraint (e.g., 1.21) |
+| `--no-cache` | bool | false | Skip cache and force rebuild |
+| `--timeout` | duration | 30m | Build timeout duration |
+
+##### Examples
+
+```bash
+# Build stable binary from default repo at a specific tag
+dvb build --network stable --git-ref v1.0.0
+
+# Build from a custom repository
+dvb build --network stable --git-repo github.com/myorg/mychain --git-ref main
+
+# Build with custom Go version
+dvb build --network cosmos --git-ref v15.0.0 --go-version 1.21
+
+# Build with custom build flags
+dvb build --network stable --git-ref v1.0.0 --build-flags ldflags="-s -w"
+
+# Force rebuild without cache
+dvb build --network stable --git-ref v1.0.0 --no-cache
+```
+
+---
+
+### Utility Commands
+
+#### version
+
+Print version information.
+
+```bash
+dvb version [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--long` | bool | false | Show detailed version info including build dependencies |
+| `--json` | bool | false | Output version info in JSON format |
+
+##### Examples
+
+```bash
+# Show version
+dvb version
+
+# Show detailed version
+dvb version --long
+
+# Output as JSON
+dvb version --json
+```
+
+---
+
+#### daemon
+
+Manage the devnetd daemon.
+
+```bash
+dvb daemon <subcommand>
+```
+
+##### Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `status` | Check daemon status |
+
+##### Examples
+
+```bash
+# Check if daemon is running
+dvb daemon status
+```
+
+---
+
+#### logs
+
+View logs from devnet nodes.
+
+```bash
+dvb logs <devnet> [node] [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-f, --follow` | bool | false | Follow log output (like tail -f) |
+| `-n, --tail` | int | 0 | Number of lines to show from the end (0 = all) |
+| `--data-dir` | string | ~/.devnet-builder | Base data directory |
+| `-t, --timestamps` | bool | false | Show timestamps |
+
+##### Examples
+
+```bash
+# Show all logs from a devnet
+dvb logs my-devnet
+
+# Show logs from a specific node
+dvb logs my-devnet validator-0
+
+# Follow logs in real-time
+dvb logs my-devnet -f
+
+# Show last 100 lines
+dvb logs my-devnet --tail 100
+
+# Show logs with timestamps
+dvb logs my-devnet --timestamps
+```
+
+---
+
+### DVB Global Flags
+
+These flags work with all `dvb` commands.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--standalone` | bool | false | Force standalone mode (don't connect to daemon) |
+
+---
+
+## Legacy devnet-builder CLI
+
+The legacy `devnet-builder` CLI is still available for backward compatibility.
+
+### Main Commands
+
+#### deploy
+
+Deploy a new local devnet with mainnet or testnet state.
 
 ```bash
 devnet-builder deploy [flags]
 ```
 
-#### Flags
+##### Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -51,7 +879,7 @@ devnet-builder deploy [flags]
 | `--no-interactive` | bool | false | Disable interactive mode |
 | `--start-version` | string | | Version for devnet binary (non-interactive) |
 
-#### Examples
+##### Examples
 
 ```bash
 # Deploy with default settings (4 validators, mainnet, docker)
@@ -75,15 +903,15 @@ devnet-builder deploy --network-version v1.1.3
 
 ---
 
-### init
+#### init
 
-Initialize devnet configuration without starting nodes. Useful for customizing config files before starting.
+Initialize devnet configuration without starting nodes.
 
 ```bash
 devnet-builder init [flags]
 ```
 
-#### Flags
+##### Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -95,9 +923,7 @@ devnet-builder init [flags]
 | `--no-cache` | bool | false | Skip snapshot cache, download fresh |
 | `--test-mnemonic` | bool | true | Use deterministic test mnemonics |
 
-**Note:** The `init` command supports 1-4 validators only, regardless of mode. Use `deploy` directly for more validators in docker mode (up to 100).
-
-#### Examples
+##### Examples
 
 ```bash
 # Initialize with default settings
@@ -111,15 +937,15 @@ devnet-builder start
 
 ---
 
-### start
+#### start (legacy)
 
-Start nodes from existing configuration. Use after `init` or `stop`.
+Start nodes from existing configuration.
 
 ```bash
 devnet-builder start [flags]
 ```
 
-#### Flags
+##### Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -128,51 +954,25 @@ devnet-builder start [flags]
 | `--health-timeout` | duration | 5m | Timeout waiting for nodes to be healthy |
 | `--network-version` | string | | Network repository version (overrides init version) |
 
-#### Examples
-
-```bash
-# Start all nodes
-devnet-builder start
-
-# Start with longer health timeout
-devnet-builder start --health-timeout 10m
-
-# Start in local mode (overrides original)
-devnet-builder start --mode local
-
-# Start with specific binary from cache
-devnet-builder start --binary-ref v1.2.3
-```
-
 ---
 
-### stop
+#### stop (legacy)
 
-Stop running nodes without removing data. Use `start` to restart.
+Stop running nodes without removing data.
 
 ```bash
 devnet-builder stop [flags]
 ```
 
-#### Flags
+##### Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--timeout` | duration | 30s | Timeout for graceful shutdown |
 
-#### Examples
-
-```bash
-# Stop all nodes gracefully
-devnet-builder stop
-
-# Stop with longer timeout for busy nodes
-devnet-builder stop --timeout 60s
-```
-
 ---
 
-### destroy
+#### destroy (legacy)
 
 Remove all devnet data and optionally clear cache.
 
@@ -180,31 +980,18 @@ Remove all devnet data and optionally clear cache.
 devnet-builder destroy [flags]
 ```
 
-#### Flags
+##### Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--cache` | bool | false | Also remove snapshot cache |
 | `--force` | bool | false | Skip confirmation prompt |
 
-#### Examples
-
-```bash
-# Remove devnet data (prompts for confirmation)
-devnet-builder destroy
-
-# Remove without confirmation
-devnet-builder destroy --force
-
-# Remove everything including snapshot cache
-devnet-builder destroy --cache --force
-```
-
 ---
 
-## Monitoring Commands
+### Monitoring Commands
 
-### status
+#### status
 
 Show current devnet status including node health and endpoints.
 
@@ -212,31 +999,18 @@ Show current devnet status including node health and endpoints.
 devnet-builder status [flags]
 ```
 
-#### Flags
+##### Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--json` | bool | false | Output in JSON format |
 
-#### Examples
-
-```bash
-# Show human-readable status
-devnet-builder status
-
-# Get JSON output for scripts
-devnet-builder status --json
-
-# Check specific fields with jq
-devnet-builder status --json | jq '.nodes[0].height'
-```
-
-#### Sample Output
+##### Sample Output
 
 ```
 Devnet Status: running
 Chain ID: <chain-id>
-Execution ExecutionMode: docker
+Execution Mode: docker
 Network Source: mainnet
 
 Nodes:
@@ -253,7 +1027,7 @@ Endpoints:
 
 ---
 
-### logs
+#### logs (legacy)
 
 View node logs with filtering and follow options.
 
@@ -261,13 +1035,7 @@ View node logs with filtering and follow options.
 devnet-builder logs [node] [flags]
 ```
 
-#### Arguments
-
-| Argument | Description |
-|----------|-------------|
-| `node` | Optional node name (node0, node1, etc.) |
-
-#### Flags
+##### Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -275,31 +1043,9 @@ devnet-builder logs [node] [flags]
 | `--tail` | int | 100 | Number of lines to show |
 | `--since` | duration | | Show logs since duration (e.g., 5m) |
 
-#### Examples
-
-```bash
-# View recent logs from all nodes
-devnet-builder logs
-
-# Follow logs in real-time
-devnet-builder logs -f
-
-# View logs from specific node
-devnet-builder logs node0
-
-# Show last 50 lines
-devnet-builder logs --tail 50
-
-# Show logs from last 5 minutes
-devnet-builder logs --since 5m
-
-# Follow specific node
-devnet-builder logs node0 -f
-```
-
 ---
 
-### node
+#### node (legacy)
 
 Control individual nodes.
 
@@ -307,7 +1053,7 @@ Control individual nodes.
 devnet-builder node <subcommand> <node> [flags]
 ```
 
-#### Subcommands
+##### Subcommands
 
 | Subcommand | Description |
 |------------|-------------|
@@ -315,35 +1061,19 @@ devnet-builder node <subcommand> <node> [flags]
 | `stop` | Stop a specific node |
 | `logs` | View logs for a specific node |
 
-#### Examples
-
-```bash
-# Stop node 1
-devnet-builder node stop 1
-
-# Start node 1
-devnet-builder node start 1
-
-# View node 2 logs
-devnet-builder node logs 2
-
-# Follow node 0 logs
-devnet-builder node logs 0 -f
-```
-
 ---
 
-## Advanced Commands
+### Advanced Commands
 
-### upgrade
+#### upgrade
 
-Perform software upgrade via expedited governance proposal, or directly replace the binary without governance.
+Perform software upgrade via expedited governance proposal, or directly replace the binary.
 
 ```bash
 devnet-builder upgrade [flags]
 ```
 
-#### Flags
+##### Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -354,52 +1084,14 @@ devnet-builder upgrade [flags]
 | `--version` | string | | Target version (tag or branch/commit for building) |
 | `--export-genesis` | bool | false | Export genesis before/after upgrade |
 | `--genesis-dir` | string | | Directory for genesis exports |
-| `--height-buffer` | int | 0 | Blocks to add after voting period ends (0 = auto-calculate based on block time from recent 5 blocks) |
+| `--height-buffer` | int | 0 | Blocks to add after voting period ends |
 | `--voting-period` | duration | 60s | Expedited voting period duration |
 | `--skip-gov` | bool | false | Skip governance proposal and directly replace binary |
 | `--no-interactive` | bool | false | Disable interactive mode |
 
-#### Examples
-
-```bash
-# Interactive mode (select version interactively)
-devnet-builder upgrade
-
-# Upgrade to new Docker image
-devnet-builder upgrade --name v2 --image <docker-registry>/<network-image>:v2.0.0
-
-# Upgrade with local binary
-devnet-builder upgrade --name v2 --binary /path/to/<binary-name>
-
-# Upgrade and export genesis for debugging
-devnet-builder upgrade --name v2 --image v2.0.0-mainnet --export-genesis
-
-# Non-interactive with explicit version
-devnet-builder upgrade --no-interactive --name v2 --version v2.0.0
-
-# Custom voting period
-devnet-builder upgrade --name v2 --image v2.0.0 --voting-period 120s
-
-# Direct binary replacement (skip governance)
-devnet-builder upgrade --skip-gov --image v2.0.0-mainnet
-
-# Replace binary in local mode without governance
-devnet-builder upgrade --skip-gov --mode local --version v2.0.0
-```
-
-#### Skip Governance Mode
-
-The `--skip-gov` flag allows direct binary replacement without going through the governance proposal process. This is useful for:
-
-- Quick testing during development
-- Switching between compatible binary versions
-- Environments where governance overhead is unnecessary
-
-**Note:** When using `--skip-gov`, ensure the chain state is compatible with the new binary version, as there is no upgrade handler executed.
-
 ---
 
-### build
+#### build (legacy)
 
 Build devnet configuration from an exported genesis file.
 
@@ -407,43 +1099,21 @@ Build devnet configuration from an exported genesis file.
 devnet-builder build [genesis-export.json] [flags]
 ```
 
-#### Arguments
-
-| Argument | Description |
-|----------|-------------|
-| `genesis-export.json` | Path to exported genesis file |
-
-#### Flags
+##### Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--validators` | int | 4 | Number of validators |
 | `--accounts` | int | 10 | Number of funded accounts |
-| `--validator-balance` | string | 1000000000000000000000<base-denom>,500000000000000000000<secondary-denom> | Balance for each validator |
-| `--account-balance` | string | 1000000000000000000000<base-denom>,500000000000000000000<secondary-denom> | Balance for each account |
-| `--validator-stake` | string | 100000000000000000000 | Stake amount for each validator (in base denom) |
+| `--validator-balance` | string | | Balance for each validator |
+| `--account-balance` | string | | Balance for each account |
+| `--validator-stake` | string | | Stake amount for each validator |
 | `--output` | string | ./devnet | Output directory for devnet files |
 | `--chain-id` | string | | Chain ID (defaults to from genesis) |
 
-#### Examples
-
-```bash
-# Build from genesis file
-devnet-builder build genesis-export.json
-
-# Build with custom validator count
-devnet-builder build genesis-export.json --validators 2
-
-# Build with funded accounts
-devnet-builder build genesis-export.json --validators 4 --accounts 5
-
-# Build to custom output directory
-devnet-builder build genesis-export.json --output /tmp/my-devnet
-```
-
 ---
 
-### export-keys
+#### export-keys
 
 Export validator and account private keys.
 
@@ -451,32 +1121,16 @@ Export validator and account private keys.
 devnet-builder export-keys [flags]
 ```
 
-#### Flags
+##### Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--type` | string | all | Key type: validators, accounts, or all |
 | `--json` | bool | false | Output in JSON format |
 
-#### Examples
-
-```bash
-# Export all keys
-devnet-builder export-keys
-
-# Export only validator keys
-devnet-builder export-keys --type validators
-
-# Export only account keys
-devnet-builder export-keys --type accounts
-
-# Export as JSON for scripts
-devnet-builder export-keys --json
-```
-
 ---
 
-### reset
+#### reset
 
 Reset chain data while preserving configuration.
 
@@ -484,31 +1138,18 @@ Reset chain data while preserving configuration.
 devnet-builder reset [flags]
 ```
 
-#### Flags
+##### Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--hard` | bool | false | Also reset configuration |
 | `--force` | bool | false | Skip confirmation prompt |
 
-#### Examples
-
-```bash
-# Soft reset (keep config, reset data)
-devnet-builder reset
-
-# Hard reset (reset everything)
-devnet-builder reset --hard
-
-# Reset without confirmation
-devnet-builder reset --force
-```
-
 ---
 
-## Utility Commands
+### Utility Commands (Legacy)
 
-### config
+#### config
 
 Manage devnet-builder configuration.
 
@@ -516,7 +1157,7 @@ Manage devnet-builder configuration.
 devnet-builder config <subcommand> [flags]
 ```
 
-#### Subcommands
+##### Subcommands
 
 | Subcommand | Description |
 |------------|-------------|
@@ -524,25 +1165,9 @@ devnet-builder config <subcommand> [flags]
 | `show` | Display current configuration |
 | `set` | Set a configuration value |
 
-#### Examples
-
-```bash
-# Create default config file
-devnet-builder config init
-
-# Show current config
-devnet-builder config show
-
-# Set default validator count
-devnet-builder config set validators 2
-
-# Set default execution mode
-devnet-builder config set mode local
-```
-
 ---
 
-### cache
+#### cache
 
 Manage binary cache used for upgrades.
 
@@ -550,7 +1175,7 @@ Manage binary cache used for upgrades.
 devnet-builder cache <subcommand> [flags]
 ```
 
-#### Subcommands
+##### Subcommands
 
 | Subcommand | Description |
 |------------|-------------|
@@ -558,22 +1183,9 @@ devnet-builder cache <subcommand> [flags]
 | `info` | Show cache size and location |
 | `clean` | Remove cached binaries |
 
-#### Examples
-
-```bash
-# List cached binaries
-devnet-builder cache list
-
-# Show cache info
-devnet-builder cache info
-
-# Clear all cached binaries
-devnet-builder cache clean
-```
-
 ---
 
-### versions
+#### versions
 
 Manage version information and cache.
 
@@ -581,7 +1193,7 @@ Manage version information and cache.
 devnet-builder versions [flags]
 ```
 
-#### Flags
+##### Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -590,30 +1202,44 @@ devnet-builder versions [flags]
 | `--clear-cache` | bool | false | Clear version cache |
 | `--cache-info` | bool | false | Show cache status (age, expiry) |
 
-#### Examples
+---
+
+#### exec
+
+Execute a command in a running node container.
 
 ```bash
-# Show current version
-devnet-builder versions
-
-# List available versions
-devnet-builder versions --list
-
-# Refresh version list
-devnet-builder versions --refresh
-
-# Clear version cache
-devnet-builder versions --clear-cache
-
-# Show cache status
-devnet-builder versions --cache-info
+devnet-builder exec <node> -- <command> [flags]
 ```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-t, --tty` | bool | false | Allocate a pseudo-TTY |
+| `-i, --interactive` | bool | false | Keep STDIN open |
 
 ---
 
-## Global Flags
+#### port-forward
 
-These flags work with all commands.
+Forward local ports to a node.
+
+```bash
+devnet-builder port-forward <node> [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--address` | string | 127.0.0.1 | Local address to bind |
+
+---
+
+### Legacy Global Flags
+
+These flags work with all `devnet-builder` commands.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -622,22 +1248,6 @@ These flags work with all commands.
 | `--json` | bool | false | Output in JSON format |
 | `--no-color` | bool | false | Disable colored output |
 | `-v, --verbose` | bool | false | Enable verbose logging |
-
-### Examples
-
-```bash
-# Use custom home directory
-devnet-builder --home /tmp/my-devnet deploy
-
-# Use custom config file
-devnet-builder --config ./custom-config.toml deploy
-
-# Enable verbose output for debugging
-devnet-builder -v deploy
-
-# Disable colors (useful for CI)
-devnet-builder --no-color status
-```
 
 ---
 
@@ -663,13 +1273,14 @@ devnet-builder deploy
 
 ## Port Reference
 
-Default ports used by devnet nodes:
+Default ports used by devnet nodes. Each node's ports are offset by `index * 100`:
 
 | Service | Node 0 | Node 1 | Node 2 | Node 3 |
 |---------|--------|--------|--------|--------|
-| P2P | 26656 | 26666 | 26676 | 26686 |
-| RPC | 26657 | 26667 | 26677 | 26687 |
-| gRPC | 9090 | 9091 | 9092 | 9093 |
+| P2P | 26656 | 26756 | 26856 | 26956 |
+| RPC | 26657 | 26757 | 26857 | 26957 |
+| REST | 1317 | 1417 | 1517 | 1617 |
+| gRPC | 9090 | 9190 | 9290 | 9390 |
 | EVM RPC | 8545 | - | - | - |
 | EVM WS | 8546 | - | - | - |
 

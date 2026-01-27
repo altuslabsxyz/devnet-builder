@@ -20,6 +20,7 @@ apiVersion: devnet.lagos/v1
 kind: Devnet
 metadata:
   name: my-devnet
+  namespace: default            # Optional: namespace for isolation (default: "default")
   labels:
     team: core
     environment: development
@@ -36,26 +37,29 @@ apiVersion: devnet.lagos/v1
 kind: Devnet
 metadata:
   name: my-devnet
+  namespace: default           # Optional: namespace for isolation (default: "default")
   labels:
     team: core
     environment: development
   annotations:
     description: "Development network for testing"
 spec:
-  # Network configuration
-  network: stable              # Required: network plugin (stable, cosmos, etc.)
+  # Network configuration (required)
+  network: stable              # Required: network plugin (stable, osmosis, geth, etc.)
+
+  # Network options (optional)
   networkType: mainnet         # Optional: mainnet, testnet (default: mainnet)
-  networkVersion: v1.0.0       # Optional: specific SDK version
+  networkVersion: v1.0.0       # Optional: specific SDK/binary version
 
   # Node configuration
-  validators: 4                # Number of validator nodes (default: 1)
+  validators: 4                # Number of validator nodes (min: 1, default: 1)
   fullNodes: 0                 # Number of full nodes (default: 0)
-  accounts: 10                 # Number of accounts to create (default: 10)
+  accounts: 10                 # Number of accounts to create (default: 0)
 
   # Execution mode
   mode: docker                 # docker or local (default: docker)
 
-  # Resource limits (optional)
+  # Resource limits (optional, Docker mode only)
   resources:
     cpu: "2"
     memory: "4Gi"
@@ -186,6 +190,7 @@ apiVersion: devnet.lagos/v1
 kind: Devnet
 metadata:
   name: prod-like
+  namespace: staging
   labels:
     team: infra
     environment: staging
@@ -195,7 +200,7 @@ spec:
   network: stable
   networkType: mainnet
   networkVersion: v1.2.0
-  validators: 7
+  validators: 4                # Max 4 validators supported
   fullNodes: 3
   accounts: 100
   mode: docker
@@ -300,7 +305,7 @@ devnet-builder apply -f devnet.yaml
 Edit the YAML file and check differences:
 
 ```bash
-# Edit devnet.yaml (e.g., change validators to 6)
+# Edit devnet.yaml (e.g., change validators to 4)
 devnet-builder diff -f devnet.yaml
 ```
 
@@ -321,8 +326,58 @@ $ devnet-builder apply -f invalid.yaml
 Error: validation failed:
   - metadata.name is required
   - spec.network is required
-  - spec.validators must be between 1 and 100
+  - spec.validators must be at least 1
+  - spec.mode must be 'docker' or 'local'
+  - spec.networkType must be 'mainnet' or 'testnet'
 ```
+
+## Field Reference
+
+### Metadata Fields
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `name` | string | Yes | - | Unique name for the devnet |
+| `namespace` | string | No | `default` | Namespace for resource isolation |
+| `labels` | map[string]string | No | - | Key-value pairs for organization |
+| `annotations` | map[string]string | No | - | Arbitrary metadata |
+
+### Spec Fields
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `network` | string | Yes | - | Network plugin name (stable, osmosis, geth, etc.) |
+| `networkType` | string | No | `mainnet` | Network source: mainnet or testnet |
+| `networkVersion` | string | No | (plugin default) | Specific SDK/binary version |
+| `mode` | string | No | `docker` | Execution mode: docker or local |
+| `validators` | int | No | `1` | Number of validator nodes (min: 1) |
+| `fullNodes` | int | No | `0` | Number of full nodes |
+| `accounts` | int | No | `0` | Number of funded accounts to create |
+
+### Resources Fields (Optional)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cpu` | string | CPU limit (e.g., "2", "4") |
+| `memory` | string | Memory limit (e.g., "4Gi", "8Gi") |
+| `storage` | string | Storage limit (e.g., "10Gi") |
+
+### Node Override Fields (Optional)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `index` | int | Node index (0-based) |
+| `role` | string | Node role: validator or fullnode |
+| `resources` | Resources | Per-node resource overrides |
+
+### Daemon Config Fields (Optional)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `autoStart` | bool | Auto-start nodes on daemon launch |
+| `idleTimeout` | string | Idle timeout duration (e.g., "30m") |
+| `logs.bufferSize` | string | Log buffer size |
+| `logs.retention` | string | Log retention period (e.g., "24h") |
 
 ## Best Practices
 
@@ -331,3 +386,4 @@ Error: validation failed:
 3. **Dry Run First**: Always preview changes with `--dry-run` before applying
 4. **Environment Separation**: Use separate files or directories for different environments
 5. **Resource Limits**: Specify resource limits for production-like environments
+6. **Namespaces**: Use namespaces to isolate devnets for different projects or teams
