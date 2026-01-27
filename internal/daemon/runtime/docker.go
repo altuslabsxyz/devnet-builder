@@ -4,19 +4,36 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"time"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
+	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	specs "github.com/opencontainers/image-spec/specs-go/v1"
 )
+
+// dockerClient abstracts Docker API operations for testability.
+type dockerClient interface {
+	ContainerCreate(ctx context.Context, config *container.Config,
+		hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig,
+		platform *specs.Platform, containerName string) (container.CreateResponse, error)
+	ContainerStart(ctx context.Context, containerID string, opts container.StartOptions) error
+	ContainerStop(ctx context.Context, containerID string, opts container.StopOptions) error
+	ContainerRemove(ctx context.Context, containerID string, opts container.RemoveOptions) error
+	ContainerInspect(ctx context.Context, containerID string) (dockertypes.ContainerJSON, error)
+	ContainerLogs(ctx context.Context, containerID string, opts container.LogsOptions) (io.ReadCloser, error)
+	Close() error
+}
 
 // DockerRuntime implements NodeRuntime using Docker containers.
 type DockerRuntime struct {
-	client       *client.Client
+	client       dockerClient
 	logger       *slog.Logger
 	defaultImage string
 }
