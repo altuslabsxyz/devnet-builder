@@ -407,7 +407,6 @@ func TestNodeToProto(t *testing.T) {
 		},
 		Status: types.NodeStatus{
 			Phase:        types.NodePhaseRunning,
-			ContainerID:  "abc123",
 			PID:          12345,
 			BlockHeight:  100000,
 			PeerCount:    10,
@@ -440,9 +439,7 @@ func TestNodeToProto(t *testing.T) {
 	if pb.Status.Phase != types.NodePhaseRunning {
 		t.Errorf("Status.Phase = %q, want %q", pb.Status.Phase, types.NodePhaseRunning)
 	}
-	if pb.Status.ContainerId != "abc123" {
-		t.Errorf("Status.ContainerId = %q, want %q", pb.Status.ContainerId, "abc123")
-	}
+	// ContainerId is no longer populated (runtime tracks internally)
 	if pb.Status.RestartCount != 3 {
 		t.Errorf("Status.RestartCount = %d, want 3", pb.Status.RestartCount)
 	}

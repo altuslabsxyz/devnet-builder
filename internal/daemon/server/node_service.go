@@ -291,7 +291,6 @@ func NodeToProto(n *types.Node) *v1.Node {
 		},
 		Status: &v1.NodeStatus{
 			Phase:        n.Status.Phase,
-			ContainerId:  n.Status.ContainerID,
 			Pid:          int32(n.Status.PID),
 			BlockHeight:  n.Status.BlockHeight,
 			PeerCount:    int32(n.Status.PeerCount),
@@ -333,7 +332,6 @@ func NodeFromProto(pb *v1.Node) *types.Node {
 
 	if pb.Status != nil {
 		n.Status.Phase = pb.Status.Phase
-		n.Status.ContainerID = pb.Status.ContainerId
 		n.Status.PID = int(pb.Status.Pid)
 		n.Status.BlockHeight = pb.Status.BlockHeight
 		n.Status.PeerCount = int(pb.Status.PeerCount)

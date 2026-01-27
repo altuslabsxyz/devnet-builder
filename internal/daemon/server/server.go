@@ -105,7 +105,7 @@ func New(config *Config) (*Server, error) {
 	mgr.Register("devnets", devnetCtrl)
 
 	// Create node runtime (Docker or nil)
-	var nodeRuntime controller.NodeRuntime
+	var nodeRuntime runtime.NodeRuntime
 	if config.EnableDocker {
 		dockerRuntime, err := runtime.NewDockerRuntime(runtime.DockerConfig{
 			DefaultImage: config.DockerImage,

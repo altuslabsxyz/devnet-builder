@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -112,7 +111,7 @@ func (m *mockDockerClient) Close() error {
 func TestDockerRuntimeImplementsInterface(t *testing.T) {
 	// This is a compile-time check - if DockerRuntime doesn't implement
 	// NodeRuntime, this won't compile.
-	var _ controller.NodeRuntime = (*DockerRuntime)(nil)
+	var _ NodeRuntime = (*DockerRuntime)(nil)
 }
 
 func TestContainerName(t *testing.T) {

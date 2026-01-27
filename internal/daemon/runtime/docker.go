@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -526,4 +525,4 @@ func (r *DockerRuntime) Cleanup(ctx context.Context) error {
 }
 
 // Ensure DockerRuntime implements NodeRuntime.
-var _ controller.NodeRuntime = (*DockerRuntime)(nil)
+var _ NodeRuntime = (*DockerRuntime)(nil)
