@@ -186,6 +186,11 @@ type ProvisionOptions struct {
 	// HealthCheckTimeout is how long to wait for nodes to become healthy.
 	// If zero, defaults to 2 minutes. Use -1 to skip health checking entirely.
 	HealthCheckTimeout time.Duration
+
+	// SkipStart skips the start and health check phases when true.
+	// Used in daemon mode where NodeController handles starting nodes
+	// via reconciliation instead of the orchestrator starting them directly.
+	SkipStart bool
 }
 
 // ProvisionResult contains the result of a full provisioning operation.

@@ -28,16 +28,26 @@ type Orchestrator interface {
 	CurrentPhase() ProvisioningPhase
 }
 
+// OrchestratorFactory creates orchestrators for different networks.
+// This allows DevnetProvisioner to create the correct orchestrator
+// based on the devnet's network/plugin type.
+type OrchestratorFactory interface {
+	// CreateOrchestrator creates an orchestrator for the given network.
+	// Returns the Orchestrator interface for testability.
+	CreateOrchestrator(network string) (Orchestrator, error)
+}
+
 // DevnetProvisioner implements the Provisioner interface for devnets.
 // It creates Node resources when a devnet is provisioned.
-// When an Orchestrator is provided, it also executes the full provisioning
-// flow (build, fork, init, start) before creating Node resources.
+// When an OrchestratorFactory is provided, it creates orchestrators for each
+// network type and executes the full provisioning flow (build, fork, init)
+// before creating Node resources.
 type DevnetProvisioner struct {
-	store        store.Store
-	dataDir      string
-	logger       *slog.Logger
-	orchestrator Orchestrator
-	onProgress   ProgressCallback
+	store               store.Store
+	dataDir             string
+	logger              *slog.Logger
+	orchestratorFactory OrchestratorFactory
+	onProgress          ProgressCallback
 }
 
 // Config configures the DevnetProvisioner.
@@ -48,10 +58,11 @@ type Config struct {
 	// Logger for provisioner operations.
 	Logger *slog.Logger
 
-	// Orchestrator is optional. When provided, Provision() uses the orchestrator
-	// to execute the full provisioning flow (build, fork, init, start).
-	// When nil, only Node resources are created in the store (resource-only behavior).
-	Orchestrator Orchestrator
+	// OrchestratorFactory is optional. When provided, Provision() creates
+	// an orchestrator for the devnet's network type and executes the full
+	// provisioning flow (build, fork, init). When nil, only Node resources
+	// are created in the store (resource-only behavior).
+	OrchestratorFactory OrchestratorFactory
 
 	// OnProgress is an optional callback for provisioning progress updates.
 	// This is used to update devnet status in the store during provisioning.
@@ -65,55 +76,80 @@ func NewDevnetProvisioner(s store.Store, cfg Config) *DevnetProvisioner {
 		logger = slog.Default()
 	}
 
-	p := &DevnetProvisioner{
-		store:        s,
-		dataDir:      cfg.DataDir,
-		logger:       logger,
-		orchestrator: cfg.Orchestrator,
-		onProgress:   cfg.OnProgress,
+	return &DevnetProvisioner{
+		store:               s,
+		dataDir:             cfg.DataDir,
+		logger:              logger,
+		orchestratorFactory: cfg.OrchestratorFactory,
+		onProgress:          cfg.OnProgress,
 	}
-
-	// If orchestrator is provided and progress callback is set, wire them together
-	if p.orchestrator != nil && p.onProgress != nil {
-		p.orchestrator.OnProgress(p.onProgress)
-	}
-
-	return p
 }
 
 // Provision creates Node resources for all validators and fullnodes in the devnet.
-// When an orchestrator is configured, it first executes the full provisioning flow
-// (build, fork, init, start) before creating Node resources.
+// When an OrchestratorFactory is configured, it first executes the full provisioning
+// flow (build, fork, init) before creating Node resources.
 func (p *DevnetProvisioner) Provision(ctx context.Context, devnet *types.Devnet) error {
 	p.logger.Info("provisioning devnet",
 		"name", devnet.Metadata.Name,
 		"validators", devnet.Spec.Validators,
 		"fullnodes", devnet.Spec.FullNodes,
-		"hasOrchestrator", p.orchestrator != nil)
+		"hasOrchestratorFactory", p.orchestratorFactory != nil)
 
-	// If orchestrator is present, execute the full provisioning flow
-	if p.orchestrator != nil {
-		if err := p.provisionWithOrchestrator(ctx, devnet); err != nil {
+	// Track binary path from orchestration (may be built)
+	var builtBinaryPath string
+
+	// If orchestrator factory is present, execute the full provisioning flow
+	if p.orchestratorFactory != nil {
+		result, err := p.provisionWithOrchestrator(ctx, devnet)
+		if err != nil {
 			return err
 		}
+		builtBinaryPath = result.BinaryPath
 	}
 
 	// Create Node resources in the store (existing behavior)
-	return p.createNodeResources(ctx, devnet)
+	// Pass the built binary path so nodes get the correct binary
+	return p.createNodeResources(ctx, devnet, builtBinaryPath)
 }
 
-// provisionWithOrchestrator executes the full provisioning flow using the orchestrator.
-func (p *DevnetProvisioner) provisionWithOrchestrator(ctx context.Context, devnet *types.Devnet) error {
-	p.logger.Info("executing orchestrator provisioning flow",
-		"name", devnet.Metadata.Name)
+// provisionWithOrchestrator executes the full provisioning flow using an orchestrator.
+// Creates an orchestrator for the devnet's network type and returns the provision result.
+func (p *DevnetProvisioner) provisionWithOrchestrator(ctx context.Context, devnet *types.Devnet) (*ports.ProvisionResult, error) {
+	// Determine network from devnet spec (Plugin field)
+	network := devnet.Spec.Plugin
+	if network == "" {
+		return nil, fmt.Errorf("devnet %s has no plugin/network specified", devnet.Metadata.Name)
+	}
+
+	p.logger.Info("creating orchestrator for network",
+		"name", devnet.Metadata.Name,
+		"network", network)
+
+	// Create orchestrator for this network
+	orchestrator, err := p.orchestratorFactory.CreateOrchestrator(network)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create orchestrator for network %q: %w", network, err)
+	}
+
+	// Wire progress callback if set
+	if p.onProgress != nil {
+		orchestrator.OnProgress(p.onProgress)
+	}
 
 	// Convert devnet spec to provisioning options
 	opts := devnetToProvisionOptions(devnet, p.dataDir)
 
-	// Execute the full provisioning flow
-	result, err := p.orchestrator.Execute(ctx, opts)
+	// In daemon mode, skip start phase - NodeController will handle starting
+	opts.SkipStart = true
+
+	p.logger.Info("executing orchestrator provisioning flow",
+		"name", devnet.Metadata.Name,
+		"network", network)
+
+	// Execute the full provisioning flow (build, fork, init)
+	result, err := orchestrator.Execute(ctx, opts)
 	if err != nil {
-		return fmt.Errorf("orchestrator execution failed: %w", err)
+		return nil, fmt.Errorf("orchestrator execution failed: %w", err)
 	}
 
 	p.logger.Info("orchestrator provisioning completed",
@@ -121,18 +157,19 @@ func (p *DevnetProvisioner) provisionWithOrchestrator(ctx context.Context, devne
 		"binaryPath", result.BinaryPath,
 		"nodeCount", result.NodeCount)
 
-	return nil
+	return result, nil
 }
 
 // createNodeResources creates Node resources in the store.
 // This is the original resource-only provisioning behavior.
-func (p *DevnetProvisioner) createNodeResources(ctx context.Context, devnet *types.Devnet) error {
+// builtBinaryPath is the path to the binary built by orchestrator (empty if no orchestration).
+func (p *DevnetProvisioner) createNodeResources(ctx context.Context, devnet *types.Devnet, builtBinaryPath string) error {
 	totalNodes := devnet.Spec.Validators + devnet.Spec.FullNodes
 	devnetDataDir := filepath.Join(p.dataDir, devnet.Metadata.Name)
 
 	// Create validator nodes (indices 0 to Validators-1)
 	for i := 0; i < devnet.Spec.Validators; i++ {
-		node := p.createNodeSpec(devnet, i, "validator", devnetDataDir)
+		node := p.createNodeSpec(devnet, i, "validator", devnetDataDir, builtBinaryPath)
 		if err := p.createNodeIfNotExists(ctx, node); err != nil {
 			return fmt.Errorf("failed to create validator node %d: %w", i, err)
 		}
@@ -140,7 +177,7 @@ func (p *DevnetProvisioner) createNodeResources(ctx context.Context, devnet *typ
 
 	// Create fullnode nodes (indices Validators to totalNodes-1)
 	for i := devnet.Spec.Validators; i < totalNodes; i++ {
-		node := p.createNodeSpec(devnet, i, "fullnode", devnetDataDir)
+		node := p.createNodeSpec(devnet, i, "fullnode", devnetDataDir, builtBinaryPath)
 		if err := p.createNodeIfNotExists(ctx, node); err != nil {
 			return fmt.Errorf("failed to create fullnode %d: %w", i, err)
 		}
@@ -154,15 +191,19 @@ func (p *DevnetProvisioner) createNodeResources(ctx context.Context, devnet *typ
 }
 
 // createNodeSpec creates a Node spec for the given devnet and index.
-func (p *DevnetProvisioner) createNodeSpec(devnet *types.Devnet, index int, role, devnetDataDir string) *types.Node {
-	// Determine binary path from devnet spec
-	binaryPath := ""
-	if devnet.Spec.BinarySource.Type == "local" {
-		binaryPath = devnet.Spec.BinarySource.Path
-	}
-	// For docker mode, binaryPath can be the docker image
-	if devnet.Spec.Mode == "docker" && devnet.Spec.BinarySource.URL != "" {
-		binaryPath = devnet.Spec.BinarySource.URL // Could be image reference
+// builtBinaryPath is the path to the binary built by orchestrator (takes precedence if set).
+func (p *DevnetProvisioner) createNodeSpec(devnet *types.Devnet, index int, role, devnetDataDir, builtBinaryPath string) *types.Node {
+	// Determine binary path - built path takes precedence
+	binaryPath := builtBinaryPath
+	if binaryPath == "" {
+		// Fall back to devnet spec
+		if devnet.Spec.BinarySource.Type == "local" {
+			binaryPath = devnet.Spec.BinarySource.Path
+		}
+		// For docker mode, binaryPath can be the docker image
+		if devnet.Spec.Mode == "docker" && devnet.Spec.BinarySource.URL != "" {
+			binaryPath = devnet.Spec.BinarySource.URL // Could be image reference
+		}
 	}
 
 	// Ensure namespace is set

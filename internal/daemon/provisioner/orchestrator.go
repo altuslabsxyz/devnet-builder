@@ -61,6 +61,21 @@ const (
 type ProgressCallback func(phase ProvisioningPhase, message string)
 
 // =============================================================================
+// Binary Path Updater Interface
+// =============================================================================
+
+// BinaryPathUpdater is an optional interface that NodeInitializer implementations
+// can implement to support deferred binary path injection. This is needed in daemon
+// mode where the orchestrator is created before the binary is built.
+//
+// If a NodeInitializer implements this interface, the orchestrator will call
+// SetBinaryPath after the build phase completes, before the init phase begins.
+type BinaryPathUpdater interface {
+	// SetBinaryPath sets the binary path for use in subsequent operations.
+	SetBinaryPath(path string)
+}
+
+// =============================================================================
 // Orchestrator Configuration
 // =============================================================================
 
@@ -201,6 +216,13 @@ func (o *ProvisioningOrchestrator) Execute(ctx context.Context, opts ports.Provi
 		binaryPath = buildResult.BinaryPath
 	}
 
+	// Update NodeInitializer with binary path if it supports deferred injection.
+	// This is needed in daemon mode where the adapter is created before build.
+	if updater, ok := o.config.NodeInitializer.(BinaryPathUpdater); ok {
+		o.logger.Debug("updating node initializer with binary path", "binaryPath", binaryPath)
+		updater.SetBinaryPath(binaryPath)
+	}
+
 	// Phase 2: Forking
 	if err := ctx.Err(); err != nil {
 		o.setError(fmt.Errorf("context cancelled: %w", err))
@@ -229,44 +251,49 @@ func (o *ProvisioningOrchestrator) Execute(ctx context.Context, opts ports.Provi
 		return nil, o.lastErr
 	}
 
-	// Phase 4: Starting
-	if err := ctx.Err(); err != nil {
-		o.setError(fmt.Errorf("context cancelled: %w", err))
-		return nil, o.lastErr
-	}
-
-	o.setPhase(PhaseStarting, "Starting node processes")
-
-	if err := o.executeStartPhase(ctx, nodes); err != nil {
-		o.setError(fmt.Errorf("starting phase failed: %w", err))
-		return nil, o.lastErr
-	}
-
-	// Phase 5: Health Checking
-	if err := ctx.Err(); err != nil {
-		o.setError(fmt.Errorf("context cancelled: %w", err))
-		return nil, o.lastErr
-	}
-
-	// Skip health checking if timeout is negative (explicit opt-out)
-	if opts.HealthCheckTimeout >= 0 {
-		o.setPhase(PhaseHealthChecking, "Verifying node health")
-
-		healthResult, err := o.executeHealthPhase(ctx, nodes, opts.HealthCheckTimeout)
-		if err != nil {
-			o.setError(fmt.Errorf("health checking phase failed: %w", err))
+	// Phase 4: Starting (skip if SkipStart is true - daemon mode)
+	if opts.SkipStart {
+		o.logger.Info("skipping start phase (SkipStart=true, daemon mode)")
+		o.setPhase(PhasePending, "Provisioning complete (nodes will be started by controller)")
+	} else {
+		if err := ctx.Err(); err != nil {
+			o.setError(fmt.Errorf("context cancelled: %w", err))
 			return nil, o.lastErr
 		}
 
-		// Determine final phase based on health check result
-		if healthResult.AllHealthy {
-			o.setPhase(PhaseRunning, "Devnet is operational")
-		} else {
-			o.setPhase(PhaseDegraded, fmt.Sprintf("Devnet running but degraded (%d/%d nodes healthy)", healthResult.HealthyCount, healthResult.TotalCount))
+		o.setPhase(PhaseStarting, "Starting node processes")
+
+		if err := o.executeStartPhase(ctx, nodes); err != nil {
+			o.setError(fmt.Errorf("starting phase failed: %w", err))
+			return nil, o.lastErr
 		}
-	} else {
-		// Health checking skipped by explicit opt-out
-		o.setPhase(PhaseRunning, "Devnet is operational (health check skipped)")
+
+		// Phase 5: Health Checking
+		if err := ctx.Err(); err != nil {
+			o.setError(fmt.Errorf("context cancelled: %w", err))
+			return nil, o.lastErr
+		}
+
+		// Skip health checking if timeout is negative (explicit opt-out)
+		if opts.HealthCheckTimeout >= 0 {
+			o.setPhase(PhaseHealthChecking, "Verifying node health")
+
+			healthResult, err := o.executeHealthPhase(ctx, nodes, opts.HealthCheckTimeout)
+			if err != nil {
+				o.setError(fmt.Errorf("health checking phase failed: %w", err))
+				return nil, o.lastErr
+			}
+
+			// Determine final phase based on health check result
+			if healthResult.AllHealthy {
+				o.setPhase(PhaseRunning, "Devnet is operational")
+			} else {
+				o.setPhase(PhaseDegraded, fmt.Sprintf("Devnet running but degraded (%d/%d nodes healthy)", healthResult.HealthyCount, healthResult.TotalCount))
+			}
+		} else {
+			// Health checking skipped by explicit opt-out
+			o.setPhase(PhaseRunning, "Devnet is operational (health check skipped)")
+		}
 	}
 
 	// Build and return result

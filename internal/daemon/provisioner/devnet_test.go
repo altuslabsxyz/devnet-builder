@@ -255,12 +255,25 @@ func (m *mockOrchestrator) CurrentPhase() ProvisioningPhase {
 	return PhaseRunning
 }
 
-func TestDevnetProvisioner_ProvisionWithNilOrchestrator(t *testing.T) {
-	// Test that existing behavior is preserved when orchestrator is nil
+// mockOrchestratorFactory implements OrchestratorFactory for testing
+type mockOrchestratorFactory struct {
+	orchestrator Orchestrator
+	createErr    error
+}
+
+func (f *mockOrchestratorFactory) CreateOrchestrator(network string) (Orchestrator, error) {
+	if f.createErr != nil {
+		return nil, f.createErr
+	}
+	return f.orchestrator, nil
+}
+
+func TestDevnetProvisioner_ProvisionWithNilOrchestratorFactory(t *testing.T) {
+	// Test that existing behavior is preserved when orchestrator factory is nil
 	s := store.NewMemoryStore()
 	p := NewDevnetProvisioner(s, Config{
-		DataDir:      "/tmp/devnet",
-		Orchestrator: nil, // Explicitly nil
+		DataDir:             "/tmp/devnet",
+		OrchestratorFactory: nil, // Explicitly nil
 	})
 
 	devnet := &types.Devnet{
@@ -302,8 +315,8 @@ func TestDevnetProvisioner_ProvisionWithOrchestrator(t *testing.T) {
 	}
 
 	p := NewDevnetProvisioner(s, Config{
-		DataDir:      "/tmp/devnet",
-		Orchestrator: mockOrch,
+		DataDir:             "/tmp/devnet",
+		OrchestratorFactory: &mockOrchestratorFactory{orchestrator: mockOrch},
 	})
 
 	devnet := &types.Devnet{
@@ -321,7 +334,7 @@ func TestDevnetProvisioner_ProvisionWithOrchestrator(t *testing.T) {
 		},
 	}
 
-	// Provision should call orchestrator
+	// Provision should call orchestrator (via factory)
 	err := p.Provision(context.Background(), devnet)
 	if err != nil {
 		t.Fatalf("Provision failed with orchestrator: %v", err)
@@ -346,8 +359,8 @@ func TestDevnetProvisioner_ProvisionWithOrchestratorError(t *testing.T) {
 	}
 
 	p := NewDevnetProvisioner(s, Config{
-		DataDir:      "/tmp/devnet",
-		Orchestrator: mockOrch,
+		DataDir:             "/tmp/devnet",
+		OrchestratorFactory: &mockOrchestratorFactory{orchestrator: mockOrch},
 	})
 
 	devnet := &types.Devnet{
@@ -391,8 +404,8 @@ func TestDevnetProvisioner_ProvisionConvertsDevnetToOptions(t *testing.T) {
 	}
 
 	p := NewDevnetProvisioner(s, Config{
-		DataDir:      "/tmp/devnet",
-		Orchestrator: mockOrch,
+		DataDir:             "/tmp/devnet",
+		OrchestratorFactory: &mockOrchestratorFactory{orchestrator: mockOrch},
 	})
 
 	devnet := &types.Devnet{
@@ -449,7 +462,7 @@ func TestDevnetProvisioner_ProvisionWithBinaryVersion(t *testing.T) {
 
 	p := NewDevnetProvisioner(s, Config{
 		DataDir:      "/tmp/devnet",
-		Orchestrator: mockOrch,
+		OrchestratorFactory: &mockOrchestratorFactory{orchestrator: mockOrch},
 	})
 
 	// Test with cache source (no path, but has version)
@@ -495,7 +508,7 @@ func TestDevnetProvisioner_ProvisionWithGenesisPath(t *testing.T) {
 
 	p := NewDevnetProvisioner(s, Config{
 		DataDir:      "/tmp/devnet",
-		Orchestrator: mockOrch,
+		OrchestratorFactory: &mockOrchestratorFactory{orchestrator: mockOrch},
 	})
 
 	devnet := &types.Devnet{
@@ -537,7 +550,7 @@ func TestDevnetProvisioner_ProvisionWithSnapshotURL(t *testing.T) {
 
 	p := NewDevnetProvisioner(s, Config{
 		DataDir:      "/tmp/devnet",
-		Orchestrator: mockOrch,
+		OrchestratorFactory: &mockOrchestratorFactory{orchestrator: mockOrch},
 	})
 
 	devnet := &types.Devnet{
@@ -584,7 +597,7 @@ func TestDevnetProvisioner_ProvisionProgressCallback(t *testing.T) {
 
 	p := NewDevnetProvisioner(s, Config{
 		DataDir:      "/tmp/devnet",
-		Orchestrator: mockOrch,
+		OrchestratorFactory: &mockOrchestratorFactory{orchestrator: mockOrch},
 		OnProgress: func(phase ProvisioningPhase, message string) {
 			progressPhase = phase
 			progressMessage = message

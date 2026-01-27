@@ -4,6 +4,7 @@ package provisioner
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -136,6 +137,10 @@ func (m *mockNodeRuntime) GetLogs(ctx context.Context, nodeID string, opts runti
 
 func (m *mockNodeRuntime) Cleanup(ctx context.Context) error {
 	return nil
+}
+
+func (m *mockNodeRuntime) ExecInNode(ctx context.Context, nodeID string, command []string, timeout time.Duration) (*runtime.ExecResult, error) {
+	return nil, fmt.Errorf("exec not implemented in mock")
 }
 
 // mockHealthChecker implements controller.HealthChecker for testing
