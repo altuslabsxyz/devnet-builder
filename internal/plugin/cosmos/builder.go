@@ -46,7 +46,7 @@ func (b *CosmosBuilder) DefaultBuildFlags() map[string]string {
 			"-X github.com/cosmos/cosmos-sdk/version.AppName={{.BinaryName}} " +
 			"-X github.com/cosmos/cosmos-sdk/version.Version={{.GitRef}} " +
 			"-X github.com/cosmos/cosmos-sdk/version.Commit={{.GitCommit}}",
-		"tags": "netgo,ledger",
+		"tags": "netgo ledger",
 	}
 }
 
