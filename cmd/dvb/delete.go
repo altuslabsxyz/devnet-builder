@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
 	"github.com/fatih/color"
@@ -16,12 +17,16 @@ func newDeleteCmd() *cobra.Command {
 		namespace string
 		force     bool
 		dryRun    bool
+		dataDir   string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "delete [resource] [name]",
 		Short: "Delete devnet resources",
 		Long: `Delete devnet resources by name or from a YAML file.
+
+In daemon mode, the daemon handles resource cleanup.
+In standalone mode, removes devnet data from the filesystem.
 
 Examples:
   # Delete a devnet by name
@@ -37,12 +42,15 @@ Examples:
   dvb delete devnet my-devnet --force
 
   # Preview what would be deleted
-  dvb delete -f devnet.yaml --dry-run`,
+  dvb delete -f devnet.yaml --dry-run
+
+  # Delete in standalone mode with custom data directory
+  dvb delete devnet my-devnet --data-dir /path/to/data`,
 		Args: cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// If -f is provided, delete from file
 			if filePath != "" {
-				return runDeleteFromFile(cmd, filePath, force, dryRun)
+				return runDeleteFromFile(cmd, namespace, filePath, force, dryRun, dataDir)
 			}
 
 			// Otherwise expect resource type and name
@@ -55,7 +63,7 @@ Examples:
 
 			switch resourceType {
 			case "devnet", "devnets", "dn":
-				return runDeleteDevnet(cmd, namespace, name, force, dryRun)
+				return runDeleteDevnet(cmd, namespace, name, force, dryRun, dataDir)
 			default:
 				return fmt.Errorf("unknown resource type: %s", resourceType)
 			}
@@ -66,12 +74,13 @@ Examples:
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview what would be deleted without actually deleting")
+	cmd.Flags().StringVar(&dataDir, "data-dir", "", "Base data directory for standalone mode (default: ~/.devnet-builder)")
 
 	return cmd
 }
 
 // runDeleteFromFile deletes devnets defined in a YAML file
-func runDeleteFromFile(cmd *cobra.Command, filePath string, force, dryRun bool) error {
+func runDeleteFromFile(cmd *cobra.Command, namespace, filePath string, force, dryRun bool, dataDir string) error {
 	// Check file exists
 	if _, err := os.Stat(filePath); err != nil {
 		return fmt.Errorf("cannot access %s: %w", filePath, err)
@@ -92,7 +101,11 @@ func runDeleteFromFile(cmd *cobra.Command, filePath string, force, dryRun bool) 
 	if dryRun {
 		fmt.Printf("Would delete %d devnet(s):\n", len(devnets))
 		for i := range devnets {
-			fmt.Printf("  - devnet/%s\n", devnets[i].Metadata.Name)
+			ns := devnets[i].Metadata.Namespace
+			if ns == "" {
+				ns = namespace
+			}
+			fmt.Printf("  - devnet/%s (namespace: %s)\n", devnets[i].Metadata.Name, ns)
 		}
 		fmt.Println("\nRun without --dry-run to delete.")
 		return nil
@@ -102,7 +115,11 @@ func runDeleteFromFile(cmd *cobra.Command, filePath string, force, dryRun bool) 
 	if !force {
 		fmt.Printf("This will delete %d devnet(s):\n", len(devnets))
 		for i := range devnets {
-			fmt.Printf("  - devnet/%s\n", devnets[i].Metadata.Name)
+			ns := devnets[i].Metadata.Namespace
+			if ns == "" {
+				ns = namespace
+			}
+			fmt.Printf("  - devnet/%s (namespace: %s)\n", devnets[i].Metadata.Name, ns)
 		}
 		fmt.Print("\nAre you sure? [y/N] ")
 		var response string
@@ -112,34 +129,36 @@ func runDeleteFromFile(cmd *cobra.Command, filePath string, force, dryRun bool) 
 		}
 	}
 
-	// Check daemon connection
-	if daemonClient == nil {
-		return fmt.Errorf("daemon not running - start with: devnetd")
-	}
-
-	// Delete each devnet
-	var hasErrors bool
-	for i := range devnets {
-		name := devnets[i].Metadata.Name
-		namespace := devnets[i].Metadata.Namespace
-		err := daemonClient.DeleteDevnet(cmd.Context(), namespace, name)
-		if err != nil {
-			color.Red("devnet/%s (namespace: %s) deletion failed: %v", name, namespace, err)
-			hasErrors = true
-			continue
+	// Try daemon first if available and not in standalone mode
+	if daemonClient != nil && !standalone {
+		var hasErrors bool
+		for i := range devnets {
+			name := devnets[i].Metadata.Name
+			ns := devnets[i].Metadata.Namespace
+			if ns == "" {
+				ns = namespace
+			}
+			err := daemonClient.DeleteDevnet(cmd.Context(), ns, name)
+			if err != nil {
+				color.Red("devnet/%s (namespace: %s) deletion failed: %v", name, ns, err)
+				hasErrors = true
+				continue
+			}
+			color.Green("devnet/%s deleted (namespace: %s)", name, ns)
 		}
-		color.Green("devnet/%s deleted (namespace: %s)", name, namespace)
+
+		if hasErrors {
+			return fmt.Errorf("some deletions failed")
+		}
+		return nil
 	}
 
-	if hasErrors {
-		return fmt.Errorf("some deletions failed")
-	}
-
-	return nil
+	// Standalone mode: delete from filesystem
+	return deleteDevnetsStandalone(devnets, dataDir)
 }
 
 // runDeleteDevnet deletes a single devnet by name
-func runDeleteDevnet(cmd *cobra.Command, namespace, name string, force, dryRun bool) error {
+func runDeleteDevnet(cmd *cobra.Command, namespace, name string, force, dryRun bool, dataDir string) error {
 	// Preview mode
 	if dryRun {
 		fmt.Printf("Would delete devnet/%s (namespace: %s)\n", name, namespace)
@@ -157,16 +176,82 @@ func runDeleteDevnet(cmd *cobra.Command, namespace, name string, force, dryRun b
 		}
 	}
 
-	// Check daemon connection
-	if daemonClient == nil {
-		return fmt.Errorf("daemon not running - start with: devnetd")
+	// Try daemon first if available and not in standalone mode
+	if daemonClient != nil && !standalone {
+		err := daemonClient.DeleteDevnet(cmd.Context(), namespace, name)
+		if err != nil {
+			return err
+		}
+		color.Green("devnet/%s deleted (namespace: %s)", name, namespace)
+		return nil
 	}
 
-	err := daemonClient.DeleteDevnet(cmd.Context(), namespace, name)
-	if err != nil {
-		return err
+	// Standalone mode: delete from filesystem
+	return deleteDevnetStandalone(name, dataDir)
+}
+
+// deleteDevnetsStandalone deletes multiple devnets from the filesystem
+func deleteDevnetsStandalone(devnets []config.YAMLDevnet, dataDir string) error {
+	// Determine data directory
+	if dataDir == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get home directory: %w", err)
+		}
+		dataDir = filepath.Join(homeDir, ".devnet-builder")
 	}
 
-	color.Green("devnet/%s deleted (namespace: %s)", name, namespace)
+	var hasErrors bool
+	for i := range devnets {
+		name := devnets[i].Metadata.Name
+		devnetPath := filepath.Join(dataDir, "devnets", name)
+
+		// Check if devnet exists
+		if _, err := os.Stat(devnetPath); os.IsNotExist(err) {
+			color.Yellow("devnet/%s not found (skipping)", name)
+			continue
+		}
+
+		// Remove the devnet directory
+		if err := os.RemoveAll(devnetPath); err != nil {
+			color.Red("devnet/%s deletion failed: %v", name, err)
+			hasErrors = true
+			continue
+		}
+
+		color.Green("devnet/%s deleted", name)
+	}
+
+	if hasErrors {
+		return fmt.Errorf("some deletions failed")
+	}
+
+	return nil
+}
+
+// deleteDevnetStandalone deletes a single devnet from the filesystem
+func deleteDevnetStandalone(name string, dataDir string) error {
+	// Determine data directory
+	if dataDir == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get home directory: %w", err)
+		}
+		dataDir = filepath.Join(homeDir, ".devnet-builder")
+	}
+
+	devnetPath := filepath.Join(dataDir, "devnets", name)
+
+	// Check if devnet exists
+	if _, err := os.Stat(devnetPath); os.IsNotExist(err) {
+		return fmt.Errorf("devnet %q not found", name)
+	}
+
+	// Remove the devnet directory
+	if err := os.RemoveAll(devnetPath); err != nil {
+		return fmt.Errorf("failed to delete devnet: %w", err)
+	}
+
+	color.Green("devnet/%s deleted", name)
 	return nil
 }

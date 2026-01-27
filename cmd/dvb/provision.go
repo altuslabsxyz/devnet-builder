@@ -23,13 +23,15 @@ import (
 
 // provisionOptions holds options for the provision command
 type provisionOptions struct {
-	name       string
-	network    string
-	chainID    string
-	validators int
-	fullNodes  int
-	binaryPath string
-	dataDir    string
+	name        string
+	network     string
+	chainID     string
+	validators  int
+	fullNodes   int
+	binaryPath  string
+	dataDir     string
+	useMocks    bool // Use mock implementations (for testing/demo)
+	interactive bool // Use interactive wizard mode
 }
 
 func newProvisionCmd() *cobra.Command {
@@ -44,7 +46,12 @@ This command provisions a devnet in standalone mode without requiring the daemon
 It coordinates the full provisioning flow: building binary (if needed), forking
 genesis, initializing node directories, and starting node processes.
 
+Use -i/--interactive for a guided wizard experience.
+
 Examples:
+  # Interactive wizard mode (recommended for first-time users)
+  dvb provision -i
+
   # Provision a devnet with default settings
   dvb provision --name my-devnet
 
@@ -60,13 +67,36 @@ Examples:
   # Provision with custom data directory
   dvb provision --name my-devnet --data-dir /path/to/devnets`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Interactive wizard mode
+			if opts.interactive {
+				wizardOpts, err := RunProvisionWizard()
+				if err != nil {
+					if err.Error() == "cancelled" {
+						return nil
+					}
+					return err
+				}
+				if wizardOpts == nil {
+					return nil // User cancelled
+				}
+				// Transfer wizard options to provision options
+				opts.name = wizardOpts.Name
+				opts.network = wizardOpts.Network
+				opts.chainID = wizardOpts.ChainID
+				opts.validators = wizardOpts.Validators
+				opts.fullNodes = wizardOpts.FullNodes
+				opts.binaryPath = wizardOpts.BinaryPath
+				opts.dataDir = wizardOpts.DataDir
+			}
 			return runProvision(cmd.Context(), opts)
 		},
 	}
 
-	// Required flags
-	cmd.Flags().StringVar(&opts.name, "name", "", "Devnet name (required)")
-	_ = cmd.MarkFlagRequired("name")
+	// Interactive mode flag
+	cmd.Flags().BoolVarP(&opts.interactive, "interactive", "i", false, "Use interactive wizard mode")
+
+	// Name flag (required unless in interactive mode)
+	cmd.Flags().StringVar(&opts.name, "name", "", "Devnet name (required unless using -i)")
 
 	// Optional flags with defaults
 	cmd.Flags().StringVar(&opts.network, "network", "stable", "Plugin/network name (e.g., stable, cosmos)")
@@ -75,12 +105,16 @@ Examples:
 	cmd.Flags().IntVar(&opts.fullNodes, "full-nodes", 0, "Number of full nodes")
 	cmd.Flags().StringVar(&opts.binaryPath, "binary-path", "", "Path to chain binary (skips build if provided)")
 	cmd.Flags().StringVar(&opts.dataDir, "data-dir", "", "Base data directory (default: ~/.devnet-builder)")
+	cmd.Flags().BoolVar(&opts.useMocks, "mocks", false, "Use mock implementations (for testing/demo without real binaries)")
 
 	return cmd
 }
 
 func runProvision(ctx context.Context, opts *provisionOptions) error {
 	// Validate options
+	if opts.name == "" {
+		return fmt.Errorf("--name is required (or use -i for interactive mode)")
+	}
 	if opts.validators < 1 {
 		return fmt.Errorf("--validators must be at least 1")
 	}
@@ -130,25 +164,38 @@ func runProvision(ctx context.Context, opts *provisionOptions) error {
 	fmt.Fprintf(os.Stderr, "  Data Dir:   %s\n", devnetDataDir)
 	fmt.Fprintf(os.Stderr, "\n")
 
-	// Create mock/placeholder implementations for components
-	// These will be replaced with real implementations when available
-	mockBuilder := newStandaloneBinaryBuilder(opts.network, opts.binaryPath)
-	mockForker := newStandaloneGenesisForker()
-	mockInitializer := newStandaloneNodeInitializer()
-	mockRuntime := newStandaloneNodeRuntime()
+	// Create orchestrator - use real implementations by default, mocks only when --mocks flag is set
+	var orch *provisioner.ProvisioningOrchestrator
+	if opts.useMocks {
+		// Use mock implementations (for testing/demo)
+		fmt.Fprintf(os.Stderr, "  Mode:       mock (no real binaries)\n\n")
+		mockBuilder := newStandaloneBinaryBuilder(opts.network, opts.binaryPath)
+		mockForker := newStandaloneGenesisForker()
+		mockInitializer := newStandaloneNodeInitializer()
+		mockRuntime := newStandaloneNodeRuntime()
 
-	// Create orchestrator config
-	config := provisioner.OrchestratorConfig{
-		BinaryBuilder:   mockBuilder,
-		GenesisForker:   mockForker,
-		NodeInitializer: mockInitializer,
-		NodeRuntime:     mockRuntime,
-		DataDir:         devnetDataDir,
-		Logger:          logger,
+		config := provisioner.OrchestratorConfig{
+			BinaryBuilder:   mockBuilder,
+			GenesisForker:   mockForker,
+			NodeInitializer: mockInitializer,
+			NodeRuntime:     mockRuntime,
+			DataDir:         devnetDataDir,
+			Logger:          logger,
+		}
+		orch = provisioner.NewProvisioningOrchestrator(config)
+	} else {
+		// Use real implementations via wiring layer
+		var err error
+		orch, err = CreateOrchestrator(OrchestratorOptions{
+			Network:    opts.network,
+			BinaryPath: opts.binaryPath,
+			DataDir:    devnetDataDir,
+			Logger:     logger,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create orchestrator: %w", err)
+		}
 	}
-
-	// Create orchestrator
-	orch := provisioner.NewProvisioningOrchestrator(config)
 
 	// Set up progress callback
 	orch.OnProgress(func(phase provisioner.ProvisioningPhase, message string) {
