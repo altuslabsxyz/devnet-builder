@@ -1,23 +1,20 @@
-// cmd/dvb/wiring.go
-// Package main provides wiring for CLI commands.
-// This file contains the dependency injection layer that assembles real components
-// for the provisioning system.
-package main
+// internal/daemon/server/wiring.go
+// Package server provides wiring for the daemon server.
+// This file contains dependency injection for the provisioning system,
+// adapting the pattern from cmd/dvb/wiring.go for daemon context.
+package server
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/builder"
-	"github.com/altuslabsxyz/devnet-builder/internal/daemon/checker"
-	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/provisioner"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
 	"github.com/altuslabsxyz/devnet-builder/internal/plugin/cosmos"
@@ -29,8 +26,6 @@ import (
 // =============================================================================
 
 // NetworkPlugin bundles all plugin interfaces for a specific network type.
-// This ensures all required interfaces are provided together when configuring
-// the provisioning system for a given network.
 type NetworkPlugin struct {
 	// Name is the network identifier (e.g., "stable", "cosmos")
 	Name string
@@ -50,7 +45,7 @@ type NetworkPlugin struct {
 	// Initializer handles node initialization
 	Initializer plugintypes.PluginInitializer
 
-	// Runtime is optional - if nil, ProcessRuntime uses default command
+	// Runtime provides container/process runtime configuration
 	Runtime runtime.PluginRuntime
 }
 
@@ -85,6 +80,15 @@ func (r *NetworkRegistry) Get(name string) (*NetworkPlugin, error) {
 	return plugin, nil
 }
 
+// GetPluginRuntime returns the PluginRuntime for a network.
+func (r *NetworkRegistry) GetPluginRuntime(name string) (runtime.PluginRuntime, error) {
+	plugin, err := r.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	return plugin.Runtime, nil
+}
+
 // registerStable registers the Stable network (stablelabs chain).
 func (r *NetworkRegistry) registerStable() {
 	r.networks["stable"] = &NetworkPlugin{
@@ -96,6 +100,7 @@ func (r *NetworkRegistry) registerStable() {
 			WithRPCEndpoint("mainnet", "https://rpc.stable.io").
 			WithRPCEndpoint("testnet", "https://rpc-testnet.stable.io"),
 		Initializer: cosmos.NewCosmosInitializer("stabled"),
+		Runtime:     cosmos.NewCosmosRuntime("stabled"),
 	}
 }
 
@@ -108,6 +113,7 @@ func (r *NetworkRegistry) registerCosmos() {
 		Builder:     cosmos.NewCosmosBuilder("gaiad", "github.com/cosmos/gaia"),
 		Genesis:     cosmos.NewCosmosGenesis("gaiad"),
 		Initializer: cosmos.NewCosmosInitializer("gaiad"),
+		Runtime:     cosmos.NewCosmosRuntime("gaiad"),
 	}
 	r.networks["cosmos"] = cosmosPlugin
 	r.networks["gaia"] = cosmosPlugin // alias
@@ -117,36 +123,71 @@ func (r *NetworkRegistry) registerCosmos() {
 // Node Initializer Adapter
 // =============================================================================
 
-// nodeInitializerAdapter implements ports.NodeInitializer using a cosmos plugin.
+// nodeInitializerAdapter implements ports.NodeInitializer and provisioner.BinaryPathUpdater.
 // This adapter bridges the plugin interface to the port interface expected by
-// the orchestrator.
+// the orchestrator. It supports deferred binary path injection since the
+// daemon creates the orchestrator before the binary is built.
 type nodeInitializerAdapter struct {
 	plugin     plugintypes.PluginInitializer
-	binaryPath string
+	binaryName string // Binary name (e.g., "stabled", "gaiad")
+	binaryPath string // Full path to binary (set after build via SetBinaryPath)
 	logger     *slog.Logger
+	mu         sync.RWMutex // Protects binaryPath
 }
 
+// Ensure nodeInitializerAdapter implements ports.NodeInitializer
+var _ ports.NodeInitializer = (*nodeInitializerAdapter)(nil)
+
+// Ensure nodeInitializerAdapter implements provisioner.BinaryPathUpdater
+var _ provisioner.BinaryPathUpdater = (*nodeInitializerAdapter)(nil)
+
 // newNodeInitializerAdapter creates an adapter implementing ports.NodeInitializer.
-func newNodeInitializerAdapter(plugin plugintypes.PluginInitializer, binaryPath string, logger *slog.Logger) *nodeInitializerAdapter {
+// The binaryPath is not set at construction time; call SetBinaryPath after build.
+func newNodeInitializerAdapter(plugin plugintypes.PluginInitializer, binaryName string, logger *slog.Logger) *nodeInitializerAdapter {
 	return &nodeInitializerAdapter{
 		plugin:     plugin,
-		binaryPath: binaryPath,
+		binaryName: binaryName,
 		logger:     logger,
 	}
 }
 
+// SetBinaryPath sets the binary path for use in subsequent operations.
+// This implements provisioner.BinaryPathUpdater and is called by the orchestrator
+// after the build phase completes.
+func (a *nodeInitializerAdapter) SetBinaryPath(path string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.binaryPath = path
+	a.logger.Debug("binary path set", "binaryPath", path)
+}
+
+// getBinaryPath returns the current binary path (thread-safe).
+func (a *nodeInitializerAdapter) getBinaryPath() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.binaryPath
+}
+
 // Initialize runs the chain init command for a node.
+// The binaryPath must have been set via SetBinaryPath before calling this method.
 func (a *nodeInitializerAdapter) Initialize(ctx context.Context, nodeDir, moniker, chainID string) error {
+	binaryPath := a.getBinaryPath()
+	if binaryPath == "" {
+		return fmt.Errorf("binary path not set; SetBinaryPath must be called before Initialize")
+	}
+
 	// Get init command args from plugin
 	args := a.plugin.InitCommandArgs(nodeDir, moniker, chainID)
 
-	// Prepend binary path
-	cmd := exec.CommandContext(ctx, a.binaryPath, args...)
+	// Run the init command
+	cmd := exec.CommandContext(ctx, binaryPath, args...)
 
 	a.logger.Info("initializing node",
-		"binary", a.binaryPath,
+		"binary", binaryPath,
 		"args", args,
 		"nodeDir", nodeDir,
+		"moniker", moniker,
+		"chainID", chainID,
 	)
 
 	output, err := cmd.CombinedOutput()
@@ -154,26 +195,27 @@ func (a *nodeInitializerAdapter) Initialize(ctx context.Context, nodeDir, monike
 		return fmt.Errorf("init failed: %w\noutput: %s", err, string(output))
 	}
 
+	a.logger.Debug("node initialization completed",
+		"nodeDir", nodeDir,
+		"output", string(output),
+	)
+
 	return nil
 }
 
 // GetNodeID retrieves the node ID from an initialized node.
 func (a *nodeInitializerAdapter) GetNodeID(ctx context.Context, nodeDir string) (string, error) {
-	// Try to read from node_key.json first
-	nodeKeyPath := filepath.Join(a.plugin.ConfigDir(nodeDir), "node_key.json")
-	data, err := os.ReadFile(nodeKeyPath)
-	if err == nil {
-		// Parse node_key.json to extract ID
-		// For now, use tendermint show-node-id command
+	binaryPath := a.getBinaryPath()
+	if binaryPath == "" {
+		return "", fmt.Errorf("binary path not set; SetBinaryPath must be called before GetNodeID")
 	}
-	_ = data // silence unused warning
 
-	// Fallback: run tendermint show-node-id
-	cmd := exec.CommandContext(ctx, a.binaryPath, "tendermint", "show-node-id", "--home", nodeDir)
+	// Try tendermint show-node-id first
+	cmd := exec.CommandContext(ctx, binaryPath, "tendermint", "show-node-id", "--home", nodeDir)
 	output, err := cmd.Output()
 	if err != nil {
-		// Try alternative: comet show-node-id
-		cmd = exec.CommandContext(ctx, a.binaryPath, "comet", "show-node-id", "--home", nodeDir)
+		// Try alternative: comet show-node-id (newer SDK versions)
+		cmd = exec.CommandContext(ctx, binaryPath, "comet", "show-node-id", "--home", nodeDir)
 		output, err = cmd.Output()
 		if err != nil {
 			return "", fmt.Errorf("failed to get node ID: %w", err)
@@ -185,7 +227,12 @@ func (a *nodeInitializerAdapter) GetNodeID(ctx context.Context, nodeDir string) 
 
 // CreateAccountKey creates a secp256k1 account key.
 func (a *nodeInitializerAdapter) CreateAccountKey(ctx context.Context, keyringDir, keyName string) (*ports.AccountKeyInfo, error) {
-	cmd := exec.CommandContext(ctx, a.binaryPath,
+	binaryPath := a.getBinaryPath()
+	if binaryPath == "" {
+		return nil, fmt.Errorf("binary path not set; SetBinaryPath must be called before CreateAccountKey")
+	}
+
+	cmd := exec.CommandContext(ctx, binaryPath,
 		"keys", "add", keyName,
 		"--keyring-backend", "test",
 		"--keyring-dir", keyringDir,
@@ -197,16 +244,21 @@ func (a *nodeInitializerAdapter) CreateAccountKey(ctx context.Context, keyringDi
 		return nil, fmt.Errorf("failed to create key: %w", err)
 	}
 
-	return parseKeyOutput(output, a.logger)
+	return a.parseKeyOutput(output)
 }
 
 // CreateAccountKeyFromMnemonic creates/recovers an account key from a mnemonic.
 func (a *nodeInitializerAdapter) CreateAccountKeyFromMnemonic(ctx context.Context, keyringDir, keyName, mnemonic string) (*ports.AccountKeyInfo, error) {
-	cmd := exec.CommandContext(ctx, a.binaryPath,
+	binaryPath := a.getBinaryPath()
+	if binaryPath == "" {
+		return nil, fmt.Errorf("binary path not set; SetBinaryPath must be called before CreateAccountKeyFromMnemonic")
+	}
+
+	cmd := exec.CommandContext(ctx, binaryPath,
 		"keys", "add", keyName,
-		"--recover",
 		"--keyring-backend", "test",
 		"--keyring-dir", keyringDir,
+		"--recover",
 		"--output", "json",
 	)
 
@@ -215,15 +267,20 @@ func (a *nodeInitializerAdapter) CreateAccountKeyFromMnemonic(ctx context.Contex
 
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to recover key: %w", err)
+		return nil, fmt.Errorf("failed to recover key from mnemonic: %w", err)
 	}
 
-	return parseKeyOutput(output, a.logger)
+	return a.parseKeyOutput(output)
 }
 
 // GetAccountKey retrieves information about an existing account key.
 func (a *nodeInitializerAdapter) GetAccountKey(ctx context.Context, keyringDir, keyName string) (*ports.AccountKeyInfo, error) {
-	cmd := exec.CommandContext(ctx, a.binaryPath,
+	binaryPath := a.getBinaryPath()
+	if binaryPath == "" {
+		return nil, fmt.Errorf("binary path not set; SetBinaryPath must be called before GetAccountKey")
+	}
+
+	cmd := exec.CommandContext(ctx, binaryPath,
 		"keys", "show", keyName,
 		"--keyring-backend", "test",
 		"--keyring-dir", keyringDir,
@@ -235,25 +292,7 @@ func (a *nodeInitializerAdapter) GetAccountKey(ctx context.Context, keyringDir, 
 		return nil, fmt.Errorf("failed to get key: %w", err)
 	}
 
-	return parseKeyOutput(output, a.logger)
-}
-
-// GetTestMnemonic returns a deterministic test mnemonic for the given validator index.
-func (a *nodeInitializerAdapter) GetTestMnemonic(validatorIndex int) string {
-	// Well-known test mnemonics (these are public test values)
-	testMnemonics := []string{
-		"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
-		"zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong",
-		"vessel ladder alter error federal sibling chat ability sun glass valve picture",
-		"range sheriff try enroll deer over ten level bring display stamp recycle",
-	}
-
-	if validatorIndex < len(testMnemonics) {
-		return testMnemonics[validatorIndex]
-	}
-
-	// For additional validators, return a deterministic but less memorable mnemonic
-	return testMnemonics[validatorIndex%len(testMnemonics)]
+	return a.parseKeyOutput(output)
 }
 
 // keyOutputV1 is the JSON format for cosmos-sdk <= v0.45.x
@@ -275,8 +314,8 @@ type keyOutputV2 struct {
 
 // parseKeyOutput parses the JSON output from keys commands.
 // The output format varies by cosmos-sdk version, so we handle both formats.
-func parseKeyOutput(output []byte, logger *slog.Logger) (*ports.AccountKeyInfo, error) {
-	logger.Debug("parsing key output", "output", string(output))
+func (a *nodeInitializerAdapter) parseKeyOutput(output []byte) (*ports.AccountKeyInfo, error) {
+	a.logger.Debug("parsing key output", "output", string(output))
 
 	// Trim any leading/trailing whitespace
 	trimmed := strings.TrimSpace(string(output))
@@ -307,54 +346,52 @@ func parseKeyOutput(output []byte, logger *slog.Logger) (*ports.AccountKeyInfo, 
 	}
 
 	// If neither format works, try direct unmarshal into AccountKeyInfo
-	var info ports.AccountKeyInfo
-	if err := json.Unmarshal([]byte(trimmed), &info); err != nil {
-		return nil, fmt.Errorf("failed to parse key output: %w", err)
+	// (in case the JSON tags already match)
+	var direct ports.AccountKeyInfo
+	if err := json.Unmarshal([]byte(trimmed), &direct); err == nil && direct.Address != "" {
+		return &direct, nil
 	}
 
-	if info.Address == "" {
-		return nil, fmt.Errorf("unrecognized key output format: missing address field")
-	}
-
-	return &info, nil
+	// Return error with context for debugging
+	return nil, fmt.Errorf("failed to parse key output: unrecognized format (output: %.100s...)", trimmed)
 }
 
-// Ensure nodeInitializerAdapter implements ports.NodeInitializer
-var _ ports.NodeInitializer = (*nodeInitializerAdapter)(nil)
+// GetTestMnemonic returns a deterministic test mnemonic for the given validator index.
+func (a *nodeInitializerAdapter) GetTestMnemonic(validatorIndex int) string {
+	testMnemonics := []string{
+		"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+		"zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong",
+		"vessel ladder alter error federal sibling chat ability sun glass valve picture",
+		"range sheriff try enroll deer over ten level bring display stamp recycle",
+	}
+	if validatorIndex < len(testMnemonics) {
+		return testMnemonics[validatorIndex]
+	}
+	return testMnemonics[validatorIndex%len(testMnemonics)]
+}
 
 // =============================================================================
-// Component Factory
+// Orchestrator Factory
 // =============================================================================
 
-// ComponentFactory creates real component instances with proper dependency injection.
-type ComponentFactory struct {
+// OrchestratorFactory creates orchestrators for the daemon.
+type OrchestratorFactory struct {
 	registry *NetworkRegistry
 	dataDir  string
 	logger   *slog.Logger
 }
 
-// NewComponentFactory creates a new component factory.
-func NewComponentFactory(dataDir string, logger *slog.Logger) *ComponentFactory {
-	return &ComponentFactory{
+// NewOrchestratorFactory creates a new orchestrator factory.
+func NewOrchestratorFactory(dataDir string, logger *slog.Logger) *OrchestratorFactory {
+	return &OrchestratorFactory{
 		registry: NewNetworkRegistry(),
 		dataDir:  dataDir,
 		logger:   logger,
 	}
 }
 
-// GetNetworkPlugin returns the plugin for a network.
-func (f *ComponentFactory) GetNetworkPlugin(network string) (*NetworkPlugin, error) {
-	return f.registry.Get(network)
-}
-
-// CreateBinaryBuilder creates a real binary builder.
-// The builder uses the plugin system to handle network-specific build logic.
-func (f *ComponentFactory) CreateBinaryBuilder() *builder.DefaultBuilder {
-	return builder.NewDefaultBuilder(f.dataDir, f, f.logger)
-}
-
 // GetBuilder implements builder.PluginLoader interface.
-func (f *ComponentFactory) GetBuilder(pluginName string) (plugintypes.PluginBuilder, error) {
+func (f *OrchestratorFactory) GetBuilder(pluginName string) (plugintypes.PluginBuilder, error) {
 	plugin, err := f.registry.Get(pluginName)
 	if err != nil {
 		return nil, err
@@ -362,113 +399,46 @@ func (f *ComponentFactory) GetBuilder(pluginName string) (plugintypes.PluginBuil
 	return plugin.Builder, nil
 }
 
-// CreateGenesisForker creates a real genesis forker for a specific network.
-func (f *ComponentFactory) CreateGenesisForker(network string) (*provisioner.GenesisForker, error) {
+// GetPluginRuntime returns the PluginRuntime for a network.
+func (f *OrchestratorFactory) GetPluginRuntime(pluginName string) (runtime.PluginRuntime, error) {
+	return f.registry.GetPluginRuntime(pluginName)
+}
+
+// CreateOrchestrator creates an Orchestrator for the given network.
+// In daemon mode, the orchestrator is configured to skip the start phase
+// (SkipStart=true in ProvisionOptions), so NodeRuntime is not needed.
+// Returns provisioner.Orchestrator interface for testability.
+func (f *OrchestratorFactory) CreateOrchestrator(network string) (provisioner.Orchestrator, error) {
 	plugin, err := f.registry.Get(network)
 	if err != nil {
 		return nil, err
 	}
 
-	return provisioner.NewGenesisForker(provisioner.GenesisForkerConfig{
+	// Create binary builder
+	binaryBuilder := builder.NewDefaultBuilder(f.dataDir, f, f.logger)
+
+	// Create genesis forker
+	genesisForker := provisioner.NewGenesisForker(provisioner.GenesisForkerConfig{
 		DataDir:       f.dataDir,
 		PluginGenesis: plugin.Genesis,
 		Logger:        f.logger,
-	}), nil
-}
+	})
 
-// CreateNodeInitializer creates a real node initializer for a specific network.
-// Returns an adapter that implements ports.NodeInitializer.
-func (f *ComponentFactory) CreateNodeInitializer(network, binaryPath string) (ports.NodeInitializer, error) {
-	plugin, err := f.registry.Get(network)
-	if err != nil {
-		return nil, err
-	}
-
-	return newNodeInitializerAdapter(plugin.Initializer, binaryPath, f.logger), nil
-}
-
-// CreateProcessRuntime creates a real process runtime for a specific network.
-func (f *ComponentFactory) CreateProcessRuntime(network string) (*runtime.ProcessRuntime, error) {
-	plugin, err := f.registry.Get(network)
-	if err != nil {
-		return nil, err
-	}
-
-	return runtime.NewProcessRuntime(runtime.ProcessRuntimeConfig{
-		DataDir:       f.dataDir,
-		PluginRuntime: plugin.Runtime, // May be nil, ProcessRuntime handles this
-		Logger:        f.logger,
-	}), nil
-}
-
-// CreateHealthChecker creates a real health checker.
-func (f *ComponentFactory) CreateHealthChecker() controller.HealthChecker {
-	return checker.NewRPCHealthChecker(checker.DefaultConfig())
-}
-
-// =============================================================================
-// Orchestrator Factory
-// =============================================================================
-
-// OrchestratorOptions configures orchestrator creation.
-type OrchestratorOptions struct {
-	Network    string
-	BinaryPath string // Optional: if provided, skips build
-	DataDir    string
-	Logger     *slog.Logger
-}
-
-// CreateOrchestrator creates a fully-wired ProvisioningOrchestrator.
-// This is the main entry point for CLI commands that need to provision devnets.
-func CreateOrchestrator(opts OrchestratorOptions) (*provisioner.ProvisioningOrchestrator, error) {
-	factory := NewComponentFactory(opts.DataDir, opts.Logger)
-
-	// Get network plugin
-	plugin, err := factory.GetNetworkPlugin(opts.Network)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create builder
-	binaryBuilder := factory.CreateBinaryBuilder()
-
-	// Create genesis forker
-	genesisForker, err := factory.CreateGenesisForker(opts.Network)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create genesis forker: %w", err)
-	}
-
-	// Determine binary path for node initializer
-	// If not provided, we'll use the binary name - the orchestrator will update it after build
-	binaryPath := opts.BinaryPath
-	if binaryPath == "" {
-		binaryPath = plugin.BinaryName // Will be resolved during build phase
-	}
-
-	// Create node initializer
-	nodeInitializer, err := factory.CreateNodeInitializer(opts.Network, binaryPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create node initializer: %w", err)
-	}
-
-	// Create runtime
-	nodeRuntime, err := factory.CreateProcessRuntime(opts.Network)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create process runtime: %w", err)
-	}
-
-	// Create health checker
-	healthChecker := factory.CreateHealthChecker()
+	// Create node initializer adapter
+	// Note: The adapter is a placeholder since actual init uses the built binary path
+	nodeInitializer := newNodeInitializerAdapter(plugin.Initializer, plugin.BinaryName, f.logger)
 
 	// Assemble orchestrator config
+	// NodeRuntime and HealthChecker are nil since daemon uses SkipStart=true
+	// and NodeController handles starting/health checking
 	config := provisioner.OrchestratorConfig{
 		BinaryBuilder:   binaryBuilder,
 		GenesisForker:   genesisForker,
 		NodeInitializer: nodeInitializer,
-		NodeRuntime:     nodeRuntime,
-		HealthChecker:   healthChecker,
-		DataDir:         opts.DataDir,
-		Logger:          opts.Logger,
+		// NodeRuntime: nil - not needed, daemon skips start phase
+		// HealthChecker: nil - not needed, NodeController handles health
+		DataDir: f.dataDir,
+		Logger:  f.logger,
 	}
 
 	return provisioner.NewProvisioningOrchestrator(config), nil
