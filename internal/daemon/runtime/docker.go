@@ -17,7 +17,16 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/docker/go-connections/nat"
 	specs "github.com/opencontainers/image-spec/specs-go/v1"
+)
+
+// Base ports for Cosmos SDK nodes (container internal ports).
+const (
+	P2PPort  = 26656
+	RPCPort  = 26657
+	RESTPort = 1317
+	GRPCPort = 9090
 )
 
 // dockerClient abstracts Docker API operations for testability.
@@ -102,6 +111,36 @@ func NewDockerRuntime(cfg DockerConfig) (*DockerRuntime, error) {
 // containerName generates a container name from the node spec.
 func containerName(node *types.Node) string {
 	return fmt.Sprintf("dvb-%s-node-%d", node.Spec.DevnetRef, node.Spec.Index)
+}
+
+// buildPortBindings creates port mappings for a node based on its index.
+// Each node gets a 100-port range offset to avoid conflicts.
+func (r *DockerRuntime) buildPortBindings(node *types.Node) (nat.PortMap, nat.PortSet) {
+	offset := node.Spec.Index * 100
+
+	portBindings := nat.PortMap{
+		nat.Port(fmt.Sprintf("%d/tcp", P2PPort)): []nat.PortBinding{
+			{HostPort: fmt.Sprintf("%d", P2PPort+offset)},
+		},
+		nat.Port(fmt.Sprintf("%d/tcp", RPCPort)): []nat.PortBinding{
+			{HostPort: fmt.Sprintf("%d", RPCPort+offset)},
+		},
+		nat.Port(fmt.Sprintf("%d/tcp", RESTPort)): []nat.PortBinding{
+			{HostPort: fmt.Sprintf("%d", RESTPort+offset)},
+		},
+		nat.Port(fmt.Sprintf("%d/tcp", GRPCPort)): []nat.PortBinding{
+			{HostPort: fmt.Sprintf("%d", GRPCPort+offset)},
+		},
+	}
+
+	exposedPorts := nat.PortSet{
+		nat.Port(fmt.Sprintf("%d/tcp", P2PPort)):  struct{}{},
+		nat.Port(fmt.Sprintf("%d/tcp", RPCPort)):  struct{}{},
+		nat.Port(fmt.Sprintf("%d/tcp", RESTPort)): struct{}{},
+		nat.Port(fmt.Sprintf("%d/tcp", GRPCPort)): struct{}{},
+	}
+
+	return portBindings, exposedPorts
 }
 
 // StartContainer creates and starts a container for the node.
@@ -247,11 +286,15 @@ func (r *DockerRuntime) StartNode(ctx context.Context, node *types.Node, opts St
 		cmd = r.pluginRuntime.StartCommand(node)
 	}
 
+	// Build port bindings based on node index
+	portBindings, exposedPorts := r.buildPortBindings(node)
+
 	// Build container config
 	containerConfig := &container.Config{
-		Image: image,
-		Cmd:   cmd,
-		Tty:   true, // Simplified log handling
+		Image:        image,
+		Cmd:          cmd,
+		Tty:          true, // Simplified log handling
+		ExposedPorts: exposedPorts,
 		Labels: map[string]string{
 			"dvb.devnet": node.Spec.DevnetRef,
 			"dvb.node":   nodeID,
@@ -260,8 +303,9 @@ func (r *DockerRuntime) StartNode(ctx context.Context, node *types.Node, opts St
 		},
 	}
 
-	// Build host config with mounts and restart policy
+	// Build host config with mounts, port bindings, and restart policy
 	hostConfig := &container.HostConfig{
+		PortBindings: portBindings,
 		RestartPolicy: container.RestartPolicy{
 			Name: container.RestartPolicyOnFailure,
 		},

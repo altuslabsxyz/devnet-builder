@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/go-connections/nat"
 	specs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -572,4 +574,167 @@ func TestDockerRuntime_Cleanup_EmptyMap(t *testing.T) {
 
 	// Map should still be properly initialized (empty)
 	assert.Len(t, rt.containers, 0)
+}
+
+func TestDockerRuntime_PortMapping(t *testing.T) {
+	tests := []struct {
+		name          string
+		nodeIndex     int
+		expectedPorts map[string]string // containerPort -> hostPort
+	}{
+		{
+			name:      "validator-0 gets base ports",
+			nodeIndex: 0,
+			expectedPorts: map[string]string{
+				"26656/tcp": "26656",
+				"26657/tcp": "26657",
+				"1317/tcp":  "1317",
+				"9090/tcp":  "9090",
+			},
+		},
+		{
+			name:      "validator-1 gets offset ports (+100)",
+			nodeIndex: 1,
+			expectedPorts: map[string]string{
+				"26656/tcp": "26756",
+				"26657/tcp": "26757",
+				"1317/tcp":  "1417",
+				"9090/tcp":  "9190",
+			},
+		},
+		{
+			name:      "validator-2 gets offset ports (+200)",
+			nodeIndex: 2,
+			expectedPorts: map[string]string{
+				"26656/tcp": "26856",
+				"26657/tcp": "26857",
+				"1317/tcp":  "1517",
+				"9090/tcp":  "9290",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rt := &DockerRuntime{
+				logger: testLogger(),
+			}
+
+			node := &types.Node{
+				Spec: types.NodeSpec{
+					DevnetRef: "test-devnet",
+					Index:     tt.nodeIndex,
+					Role:      "validator",
+				},
+			}
+
+			portBindings, exposedPorts := rt.buildPortBindings(node)
+
+			// Verify port bindings
+			for containerPort, expectedHostPort := range tt.expectedPorts {
+				bindings, exists := portBindings[nat.Port(containerPort)]
+				require.True(t, exists, "port binding for %s should exist", containerPort)
+				require.Len(t, bindings, 1)
+				assert.Equal(t, expectedHostPort, bindings[0].HostPort,
+					"host port for %s should be %s", containerPort, expectedHostPort)
+
+				// Verify exposed port
+				_, exposed := exposedPorts[nat.Port(containerPort)]
+				assert.True(t, exposed, "port %s should be exposed", containerPort)
+			}
+
+			// Verify we have exactly 4 port mappings
+			assert.Len(t, portBindings, 4)
+			assert.Len(t, exposedPorts, 4)
+		})
+	}
+}
+
+func TestDockerRuntime_StartNode_WithPortBindings(t *testing.T) {
+	mock := &mockDockerClient{}
+
+	rt := &DockerRuntime{
+		client:       mock,
+		logger:       testLogger(),
+		defaultImage: "stablelabs/stabled:latest",
+		containers:   make(map[string]*containerState),
+	}
+
+	node := &types.Node{
+		Metadata: types.ResourceMeta{
+			Name: "test-devnet-validator-1",
+		},
+		Spec: types.NodeSpec{
+			DevnetRef:  "test-devnet",
+			Index:      1, // Should get +100 offset
+			Role:       "validator",
+			HomeDir:    "/tmp/node-home",
+			BinaryPath: "/usr/bin/stabled",
+		},
+	}
+
+	err := rt.StartNode(context.Background(), node, StartOptions{})
+	require.NoError(t, err)
+
+	// Verify container was created with port bindings
+	require.Len(t, mock.createCalls, 1)
+	createCall := mock.createCalls[0]
+
+	// Verify host config has port bindings
+	require.NotNil(t, createCall.hostConfig.PortBindings)
+	assert.Len(t, createCall.hostConfig.PortBindings, 4)
+
+	// Verify specific port mappings for index 1 (offset +100)
+	expectedMappings := map[string]string{
+		"26656/tcp": "26756", // P2P
+		"26657/tcp": "26757", // RPC
+		"1317/tcp":  "1417",  // REST
+		"9090/tcp":  "9190",  // gRPC
+	}
+
+	for containerPort, expectedHostPort := range expectedMappings {
+		bindings, exists := createCall.hostConfig.PortBindings[nat.Port(containerPort)]
+		require.True(t, exists, "port binding for %s should exist", containerPort)
+		require.Len(t, bindings, 1)
+		assert.Equal(t, expectedHostPort, bindings[0].HostPort,
+			"host port for container port %s should be %s", containerPort, expectedHostPort)
+	}
+
+	// Verify container config has exposed ports
+	require.NotNil(t, createCall.config.ExposedPorts)
+	assert.Len(t, createCall.config.ExposedPorts, 4)
+}
+
+func TestPortConstants(t *testing.T) {
+	// Verify port constants match expected Cosmos SDK defaults
+	assert.Equal(t, 26656, P2PPort, "P2P port should be 26656")
+	assert.Equal(t, 26657, RPCPort, "RPC port should be 26657")
+	assert.Equal(t, 1317, RESTPort, "REST port should be 1317")
+	assert.Equal(t, 9090, GRPCPort, "gRPC port should be 9090")
+}
+
+func TestDockerRuntime_PortMapping_HighIndex(t *testing.T) {
+	// Test that high indices still calculate ports correctly
+	rt := &DockerRuntime{
+		logger: testLogger(),
+	}
+
+	node := &types.Node{
+		Spec: types.NodeSpec{
+			DevnetRef: "test-devnet",
+			Index:     10, // Should get +1000 offset
+			Role:      "validator",
+		},
+	}
+
+	portBindings, _ := rt.buildPortBindings(node)
+
+	// Verify offset calculation (10 * 100 = 1000)
+	p2pBinding := portBindings[nat.Port("26656/tcp")]
+	require.Len(t, p2pBinding, 1)
+	assert.Equal(t, fmt.Sprintf("%d", 26656+1000), p2pBinding[0].HostPort)
+
+	rpcBinding := portBindings[nat.Port("26657/tcp")]
+	require.Len(t, rpcBinding, 1)
+	assert.Equal(t, fmt.Sprintf("%d", 26657+1000), rpcBinding[0].HostPort)
 }
