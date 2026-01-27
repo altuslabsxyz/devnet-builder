@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -213,6 +214,104 @@ func (r *DockerRuntime) RemoveContainer(ctx context.Context, containerID string)
 // Close closes the Docker client.
 func (r *DockerRuntime) Close() error {
 	return r.client.Close()
+}
+
+// StartNode starts a node in a Docker container.
+func (r *DockerRuntime) StartNode(ctx context.Context, node *types.Node, opts StartOptions) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	nodeID := node.Metadata.Name
+
+	// Check if already running
+	if state, exists := r.containers[nodeID]; exists {
+		if state.containerID != "" {
+			return fmt.Errorf("node %s is already running", nodeID)
+		}
+	}
+
+	// Build container name
+	containerName := fmt.Sprintf("dvb-%s-%s-%d", node.Spec.DevnetRef, node.Spec.Role, node.Spec.Index)
+
+	// Determine image
+	image := r.defaultImage
+	if node.Spec.BinaryPath != "" && strings.Contains(node.Spec.BinaryPath, "/") && strings.Contains(node.Spec.BinaryPath, ":") {
+		// Looks like a Docker image reference
+		image = node.Spec.BinaryPath
+	}
+
+	// Build command
+	cmd := []string{"start", "--home", "/root/.stabled"}
+	if r.pluginRuntime != nil {
+		cmd = r.pluginRuntime.StartCommand(node)
+	}
+
+	// Build container config
+	containerConfig := &container.Config{
+		Image: image,
+		Cmd:   cmd,
+		Tty:   true, // Simplified log handling
+		Labels: map[string]string{
+			"dvb.devnet": node.Spec.DevnetRef,
+			"dvb.node":   nodeID,
+			"dvb.index":  fmt.Sprintf("%d", node.Spec.Index),
+			"dvb.role":   node.Spec.Role,
+		},
+	}
+
+	// Build host config with mounts and restart policy
+	hostConfig := &container.HostConfig{
+		RestartPolicy: container.RestartPolicy{
+			Name: container.RestartPolicyOnFailure,
+		},
+	}
+
+	// Mount home directory
+	if node.Spec.HomeDir != "" {
+		hostConfig.Mounts = []mount.Mount{
+			{
+				Type:   mount.TypeBind,
+				Source: node.Spec.HomeDir,
+				Target: "/root/.stabled",
+			},
+		}
+	}
+
+	// Create container
+	r.logger.Info("creating container",
+		"name", containerName,
+		"image", image,
+		"nodeID", nodeID)
+
+	resp, err := r.client.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
+	if err != nil {
+		return fmt.Errorf("failed to create container: %w", err)
+	}
+
+	// Start container
+	if err := r.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		// Clean up created container
+		_ = r.client.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+		return fmt.Errorf("failed to start container: %w", err)
+	}
+
+	// Track container state
+	r.containers[nodeID] = &containerState{
+		containerID:   resp.ID,
+		nodeID:        nodeID,
+		node:          node,
+		startedAt:     time.Now(),
+		restartPolicy: opts.RestartPolicy,
+		stopCh:        make(chan struct{}),
+		stoppedCh:     make(chan struct{}),
+	}
+
+	r.logger.Info("container started",
+		"name", containerName,
+		"containerID", resp.ID[:min(12, len(resp.ID))],
+		"nodeID", nodeID)
+
+	return nil
 }
 
 // Ensure DockerRuntime implements NodeRuntime.
