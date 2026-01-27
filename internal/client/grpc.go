@@ -4,6 +4,8 @@ package client
 import (
 	"context"
 	"fmt"
+	"io"
+	"time"
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"google.golang.org/grpc"
@@ -219,6 +221,103 @@ func (c *GRPCClient) RestartNode(ctx context.Context, namespace, devnetName stri
 	return resp.Node, nil
 }
 
+// ExecResult contains the result of executing a command in a node.
+type ExecResult struct {
+	ExitCode int
+	Stdout   string
+	Stderr   string
+}
+
+// ExecInNode executes a command inside a running node container.
+func (c *GRPCClient) ExecInNode(ctx context.Context, devnetName string, index int, command []string, timeoutSeconds int) (*ExecResult, error) {
+	resp, err := c.node.ExecInNode(ctx, &v1.ExecInNodeRequest{
+		DevnetName:     devnetName,
+		Index:          int32(index),
+		Command:        command,
+		TimeoutSeconds: int32(timeoutSeconds),
+	})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return &ExecResult{
+		ExitCode: int(resp.ExitCode),
+		Stdout:   resp.Stdout,
+		Stderr:   resp.Stderr,
+	}, nil
+}
+
+// NodeHealth contains the health status of a node.
+type NodeHealth struct {
+	Status              string    // "Healthy", "Unhealthy", "Stopped", "Transitioning", "Unknown"
+	Message             string    // Human-readable health message
+	LastCheck           time.Time // Last health check timestamp
+	ConsecutiveFailures int       // Number of consecutive health check failures
+}
+
+// GetNodeHealth retrieves the health status of a node.
+func (c *GRPCClient) GetNodeHealth(ctx context.Context, devnetName string, index int) (*NodeHealth, error) {
+	resp, err := c.node.GetNodeHealth(ctx, &v1.GetNodeHealthRequest{
+		DevnetName: devnetName,
+		Index:      int32(index),
+	})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+
+	health := &NodeHealth{
+		Status:  resp.Health.Status,
+		Message: resp.Health.Message,
+	}
+	if resp.Health.LastCheck != nil {
+		health.LastCheck = resp.Health.LastCheck.AsTime()
+	}
+	health.ConsecutiveFailures = int(resp.Health.ConsecutiveFailures)
+
+	return health, nil
+}
+
+// PortInfo describes a port mapping for a node.
+type PortInfo struct {
+	Name          string // Service name: "p2p", "rpc", "rest", "grpc"
+	ContainerPort int    // Port inside container
+	HostPort      int    // Port on host
+	Protocol      string // "tcp" or "udp"
+}
+
+// NodePorts contains port mappings for a node.
+type NodePorts struct {
+	DevnetName string
+	Index      int
+	Ports      []PortInfo
+}
+
+// GetNodePorts retrieves the port mappings for a node.
+func (c *GRPCClient) GetNodePorts(ctx context.Context, devnetName string, index int) (*NodePorts, error) {
+	resp, err := c.node.GetNodePorts(ctx, &v1.GetNodePortsRequest{
+		DevnetName: devnetName,
+		Index:      int32(index),
+	})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+
+	ports := make([]PortInfo, len(resp.Ports))
+	for i, p := range resp.Ports {
+		ports[i] = PortInfo{
+			Name:          p.Name,
+			ContainerPort: int(p.ContainerPort),
+			HostPort:      int(p.HostPort),
+			Protocol:      p.Protocol,
+		}
+	}
+
+	return &NodePorts{
+		DevnetName: resp.DevnetName,
+		Index:      int(resp.Index),
+		Ports:      ports,
+	}, nil
+}
+
 // CreateUpgrade creates a new upgrade.
 func (c *GRPCClient) CreateUpgrade(ctx context.Context, namespace, name string, spec *v1.UpgradeSpec) (*v1.Upgrade, error) {
 	req := &v1.CreateUpgradeRequest{
@@ -368,6 +467,56 @@ func (c *GRPCClient) SubmitGovProposal(ctx context.Context, devnet, proposer, pr
 		return nil, wrapGRPCError(err)
 	}
 	return resp.Transaction, nil
+}
+
+// LogEntry represents a single log line from a node.
+type LogEntry struct {
+	Timestamp time.Time
+	Stream    string // "stdout" or "stderr"
+	Message   string
+}
+
+// StreamNodeLogs streams logs from a node, calling the callback for each log entry.
+// The callback should return an error to stop streaming.
+func (c *GRPCClient) StreamNodeLogs(ctx context.Context, devnetName string, index int, follow bool, since string, tail int, callback func(*LogEntry) error) error {
+	req := &v1.StreamNodeLogsRequest{
+		DevnetName: devnetName,
+		Index:      int32(index),
+		Follow:     follow,
+		Since:      since,
+		Tail:       int32(tail),
+	}
+
+	stream, err := c.node.StreamNodeLogs(ctx, req)
+	if err != nil {
+		return wrapGRPCError(err)
+	}
+
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			// Check if context was cancelled (normal for Ctrl+C)
+			if ctx.Err() != nil {
+				return nil
+			}
+			return wrapGRPCError(err)
+		}
+
+		entry := &LogEntry{
+			Stream:  resp.Stream,
+			Message: resp.Message,
+		}
+		if resp.Timestamp != nil {
+			entry.Timestamp = resp.Timestamp.AsTime()
+		}
+
+		if err := callback(entry); err != nil {
+			return err
+		}
+	}
 }
 
 // wrapGRPCError converts gRPC errors to user-friendly messages.

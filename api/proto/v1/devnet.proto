@@ -232,6 +232,7 @@ service NodeService {
   rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
   rpc GetNodeHealth(GetNodeHealthRequest) returns (GetNodeHealthResponse);
   rpc StreamNodeLogs(StreamNodeLogsRequest) returns (stream StreamNodeLogsResponse);
+  rpc GetNodePorts(GetNodePortsRequest) returns (GetNodePortsResponse);
 
   // Mutation
   rpc ExecInNode(ExecInNodeRequest) returns (ExecInNodeResponse);
@@ -325,6 +326,25 @@ message ExecInNodeResponse {
   int32 exit_code = 1;
   string stdout = 2;
   string stderr = 3;
+}
+
+// PortMapping describes a single port binding between container and host.
+message PortMapping {
+  string name = 1;           // Service name: "p2p", "rpc", "rest", "grpc"
+  int32 container_port = 2;  // Port inside container (e.g., 26656)
+  int32 host_port = 3;       // Port on host (e.g., 26756 for node index 1)
+  string protocol = 4;       // "tcp" or "udp"
+}
+
+message GetNodePortsRequest {
+  string devnet_name = 1;
+  int32 index = 2;
+}
+
+message GetNodePortsResponse {
+  string devnet_name = 1;
+  int32 index = 2;
+  repeated PortMapping ports = 3;
 }
 
 // =============================================================================
