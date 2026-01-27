@@ -235,6 +235,85 @@ func TestCosmosGenesisPatchGenesisInvalidAppState(t *testing.T) {
 	}
 }
 
+func TestCosmosGenesisPatchGenesisWithBinaryVersion(t *testing.T) {
+	g := NewCosmosGenesis("stabled")
+
+	genesis := []byte(`{
+		"chain_id": "cosmoshub-4",
+		"app_state": {
+			"auth": {},
+			"bank": {},
+			"staking": {"params": {"unbonding_time": "1814400s"}},
+			"slashing": {},
+			"gov": {"params": {"voting_period": "1209600s"}}
+		}
+	}`)
+
+	opts := types.GenesisPatchOptions{
+		ChainID:       "devnet-1",
+		BinaryVersion: "v1.2.3",
+	}
+
+	patched, err := g.PatchGenesis(genesis, opts)
+	if err != nil {
+		t.Fatalf("PatchGenesis with BinaryVersion failed: %v", err)
+	}
+
+	patchedStr := string(patched)
+
+	// Verify devnet_builder metadata is present
+	if !contains(patchedStr, `"devnet_builder"`) {
+		t.Error("Patched genesis should contain devnet_builder metadata")
+	}
+
+	// Verify binary_version is present
+	if !contains(patchedStr, `"binary_version": "v1.2.3"`) {
+		t.Error("Patched genesis should contain binary_version")
+	}
+
+	// Verify binary_name is present
+	if !contains(patchedStr, `"binary_name": "stabled"`) {
+		t.Error("Patched genesis should contain binary_name")
+	}
+
+	// Verify patched_at is present (just check the key exists)
+	if !contains(patchedStr, `"patched_at"`) {
+		t.Error("Patched genesis should contain patched_at timestamp")
+	}
+}
+
+func TestCosmosGenesisPatchGenesisWithoutBinaryVersion(t *testing.T) {
+	g := NewCosmosGenesis("stabled")
+
+	genesis := []byte(`{
+		"chain_id": "cosmoshub-4",
+		"app_state": {
+			"auth": {},
+			"bank": {},
+			"staking": {"params": {"unbonding_time": "1814400s"}},
+			"slashing": {},
+			"gov": {"params": {"voting_period": "1209600s"}}
+		}
+	}`)
+
+	// No BinaryVersion specified - should not add devnet_builder metadata
+	opts := types.GenesisPatchOptions{
+		ChainID: "devnet-1",
+	}
+
+	patched, err := g.PatchGenesis(genesis, opts)
+	if err != nil {
+		t.Fatalf("PatchGenesis without BinaryVersion failed: %v", err)
+	}
+
+	patchedStr := string(patched)
+
+	// Verify devnet_builder metadata is NOT present when BinaryVersion is empty
+	if contains(patchedStr, `"devnet_builder"`) {
+		t.Error("Patched genesis should NOT contain devnet_builder metadata when BinaryVersion is empty")
+	}
+}
+
 func TestCosmosGenesisExportCommandArgs(t *testing.T) {
 	g := NewCosmosGenesis("stabled")
 

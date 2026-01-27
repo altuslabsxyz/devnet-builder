@@ -537,6 +537,94 @@ func TestExecute_ForkerReceivesCorrectOptions(t *testing.T) {
 	assert.Equal(t, "my-chain-id", mockForker.forkOpts.PatchOpts.ChainID)
 }
 
+func TestExecute_ForkerReceivesBinaryVersion(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	mockForker := &mockGenesisForker{
+		forkResult: &ports.ForkResult{
+			Genesis:    []byte(`{"chain_id": "test-chain"}`),
+			NewChainID: "test-chain",
+		},
+	}
+
+	config := OrchestratorConfig{
+		BinaryBuilder: &mockBinaryBuilder{
+			buildResult: &builder.BuildResult{BinaryPath: "/path/to/binary"},
+		},
+		GenesisForker:   mockForker,
+		NodeInitializer: &mockNodeInitializer{nodeIDResult: "node123"},
+		NodeRuntime:     &mockNodeRuntime{},
+		DataDir:         tmpDir,
+		Logger:          slog.Default(),
+	}
+
+	orch := NewProvisioningOrchestrator(config)
+
+	opts := ports.ProvisionOptions{
+		DevnetName:    "test-devnet",
+		ChainID:       "my-chain-id",
+		BinaryVersion: "v1.2.3",
+		GenesisSource: plugintypes.GenesisSource{
+			Mode: plugintypes.GenesisModeRPC,
+		},
+		NumValidators: 1,
+		DataDir:       tmpDir,
+	}
+
+	_, err := orch.Execute(context.Background(), opts)
+	require.NoError(t, err)
+
+	// Verify BinaryVersion is propagated to PatchOpts
+	assert.True(t, mockForker.forkCalled)
+	assert.Equal(t, "v1.2.3", mockForker.forkOpts.PatchOpts.BinaryVersion)
+}
+
+func TestExecute_ForkerReceivesBinaryVersionFromPatchOpts(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	mockForker := &mockGenesisForker{
+		forkResult: &ports.ForkResult{
+			Genesis:    []byte(`{"chain_id": "test-chain"}`),
+			NewChainID: "test-chain",
+		},
+	}
+
+	config := OrchestratorConfig{
+		BinaryBuilder: &mockBinaryBuilder{
+			buildResult: &builder.BuildResult{BinaryPath: "/path/to/binary"},
+		},
+		GenesisForker:   mockForker,
+		NodeInitializer: &mockNodeInitializer{nodeIDResult: "node123"},
+		NodeRuntime:     &mockNodeRuntime{},
+		DataDir:         tmpDir,
+		Logger:          slog.Default(),
+	}
+
+	orch := NewProvisioningOrchestrator(config)
+
+	// BinaryVersion explicitly set in GenesisPatchOpts should take precedence
+	opts := ports.ProvisionOptions{
+		DevnetName:    "test-devnet",
+		ChainID:       "my-chain-id",
+		BinaryVersion: "v1.0.0", // This should be overridden
+		GenesisPatchOpts: plugintypes.GenesisPatchOptions{
+			BinaryVersion: "v2.0.0", // This takes precedence
+		},
+		GenesisSource: plugintypes.GenesisSource{
+			Mode: plugintypes.GenesisModeRPC,
+		},
+		NumValidators: 1,
+		DataDir:       tmpDir,
+	}
+
+	_, err := orch.Execute(context.Background(), opts)
+	require.NoError(t, err)
+
+	// Verify BinaryVersion from GenesisPatchOpts takes precedence
+	assert.True(t, mockForker.forkCalled)
+	assert.Equal(t, "v2.0.0", mockForker.forkOpts.PatchOpts.BinaryVersion)
+}
+
 // =============================================================================
 // Execute Tests - Error Handling
 // =============================================================================

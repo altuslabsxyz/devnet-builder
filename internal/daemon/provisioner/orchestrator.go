@@ -353,6 +353,11 @@ func (o *ProvisioningOrchestrator) executeForkPhase(ctx context.Context, opts po
 		forkOpts.PatchOpts.ChainID = opts.ChainID
 	}
 
+	// Propagate binary version to patch options for genesis modification
+	if forkOpts.PatchOpts.BinaryVersion == "" {
+		forkOpts.PatchOpts.BinaryVersion = opts.BinaryVersion
+	}
+
 	result, err := o.config.GenesisForker.Fork(ctx, forkOpts)
 	if err != nil {
 		return nil, fmt.Errorf("genesis fork failed: %w", err)

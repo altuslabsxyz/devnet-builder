@@ -33,6 +33,7 @@ type GenesisPatchOptions struct {
 	UnbondingTime time.Duration // staking unbonding time (e.g., 60s for devnet)
 	InflationRate string        // inflation rate (e.g., "0.0" for no inflation)
 	MinGasPrice   string        // minimum gas price
+	BinaryVersion string        // binary version/ref used for genesis modification (e.g., "v1.0.0" or commit hash)
 }
 
 // DefaultDevnetPatchOptions returns patch options suitable for local devnets
