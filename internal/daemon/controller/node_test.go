@@ -3,11 +3,74 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"testing"
+	"time"
 
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 )
+
+// mockNodeRuntime implements runtime.NodeRuntime for testing.
+type mockNodeRuntime struct {
+	startNodeFn     func(ctx context.Context, node *types.Node, opts runtime.StartOptions) error
+	stopNodeFn      func(ctx context.Context, nodeID string, graceful bool) error
+	restartNodeFn   func(ctx context.Context, nodeID string) error
+	getNodeStatusFn func(ctx context.Context, nodeID string) (*runtime.NodeStatus, error)
+	getLogsFn       func(ctx context.Context, nodeID string, opts runtime.LogOptions) (io.ReadCloser, error)
+	cleanupFn       func(ctx context.Context) error
+}
+
+func (m *mockNodeRuntime) StartNode(ctx context.Context, node *types.Node, opts runtime.StartOptions) error {
+	if m.startNodeFn != nil {
+		return m.startNodeFn(ctx, node, opts)
+	}
+	return nil
+}
+
+func (m *mockNodeRuntime) StopNode(ctx context.Context, nodeID string, graceful bool) error {
+	if m.stopNodeFn != nil {
+		return m.stopNodeFn(ctx, nodeID, graceful)
+	}
+	return nil
+}
+
+func (m *mockNodeRuntime) RestartNode(ctx context.Context, nodeID string) error {
+	if m.restartNodeFn != nil {
+		return m.restartNodeFn(ctx, nodeID)
+	}
+	return nil
+}
+
+func (m *mockNodeRuntime) GetNodeStatus(ctx context.Context, nodeID string) (*runtime.NodeStatus, error) {
+	if m.getNodeStatusFn != nil {
+		return m.getNodeStatusFn(ctx, nodeID)
+	}
+	return &runtime.NodeStatus{Running: true}, nil
+}
+
+func (m *mockNodeRuntime) GetLogs(ctx context.Context, nodeID string, opts runtime.LogOptions) (io.ReadCloser, error) {
+	if m.getLogsFn != nil {
+		return m.getLogsFn(ctx, nodeID, opts)
+	}
+	return nil, nil
+}
+
+func (m *mockNodeRuntime) Cleanup(ctx context.Context) error {
+	if m.cleanupFn != nil {
+		return m.cleanupFn(ctx)
+	}
+	return nil
+}
+
+func (m *mockNodeRuntime) ExecInNode(ctx context.Context, nodeID string, command []string, timeout time.Duration) (*runtime.ExecResult, error) {
+	return nil, fmt.Errorf("exec not implemented in mock")
+}
+
+// Ensure mockNodeRuntime implements runtime.NodeRuntime
+var _ runtime.NodeRuntime = (*mockNodeRuntime)(nil)
 
 func TestNodeController_Reconcile_PendingToStarting(t *testing.T) {
 	ms := store.NewMemoryStore()
@@ -370,5 +433,190 @@ func TestNodeKey(t *testing.T) {
 				t.Errorf("NodeKey(%q, %d) = %q, want %q", tt.devnet, tt.index, got, tt.want)
 			}
 		})
+	}
+}
+
+// Tests with mockNodeRuntime to verify runtime interactions
+
+func TestNodeController_Reconcile_StartingWithRuntime(t *testing.T) {
+	ms := store.NewMemoryStore()
+
+	startCalled := false
+	mock := &mockNodeRuntime{
+		startNodeFn: func(ctx context.Context, node *types.Node, opts runtime.StartOptions) error {
+			startCalled = true
+			if node.Spec.DevnetRef != "test" {
+				t.Errorf("StartNode called with wrong devnet: %q", node.Spec.DevnetRef)
+			}
+			return nil
+		},
+	}
+	nc := NewNodeController(ms, mock)
+
+	// Create a node in Starting phase
+	node := &types.Node{
+		Metadata: types.ResourceMeta{Name: "test-0"},
+		Spec: types.NodeSpec{
+			DevnetRef: "test",
+			Index:     0,
+			Role:      "validator",
+		},
+		Status: types.NodeStatus{
+			Phase: types.NodePhaseStarting,
+		},
+	}
+	if err := ms.CreateNode(context.Background(), node); err != nil {
+		t.Fatalf("CreateNode: %v", err)
+	}
+
+	// Reconcile
+	err := nc.Reconcile(context.Background(), "test/0")
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	// Verify StartNode was called
+	if !startCalled {
+		t.Error("StartNode was not called")
+	}
+
+	// Verify transition to Running
+	got, _ := ms.GetNode(context.Background(), "", "test", 0)
+	if got.Status.Phase != types.NodePhaseRunning {
+		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhaseRunning)
+	}
+}
+
+func TestNodeController_Reconcile_StartingWithRuntimeError(t *testing.T) {
+	ms := store.NewMemoryStore()
+
+	mock := &mockNodeRuntime{
+		startNodeFn: func(ctx context.Context, node *types.Node, opts runtime.StartOptions) error {
+			return fmt.Errorf("docker start failed")
+		},
+	}
+	nc := NewNodeController(ms, mock)
+
+	// Create a node in Starting phase
+	node := &types.Node{
+		Metadata: types.ResourceMeta{Name: "test-0"},
+		Spec: types.NodeSpec{
+			DevnetRef: "test",
+			Index:     0,
+			Role:      "validator",
+		},
+		Status: types.NodeStatus{
+			Phase: types.NodePhaseStarting,
+		},
+	}
+	if err := ms.CreateNode(context.Background(), node); err != nil {
+		t.Fatalf("CreateNode: %v", err)
+	}
+
+	// Reconcile
+	err := nc.Reconcile(context.Background(), "test/0")
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	// Verify transition to Crashed
+	got, _ := ms.GetNode(context.Background(), "", "test", 0)
+	if got.Status.Phase != types.NodePhaseCrashed {
+		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhaseCrashed)
+	}
+	if got.Status.Message != "Failed to start: docker start failed" {
+		t.Errorf("Message = %q, want %q", got.Status.Message, "Failed to start: docker start failed")
+	}
+}
+
+func TestNodeController_Reconcile_RunningWithRuntimeNotRunning(t *testing.T) {
+	ms := store.NewMemoryStore()
+
+	mock := &mockNodeRuntime{
+		getNodeStatusFn: func(ctx context.Context, nodeID string) (*runtime.NodeStatus, error) {
+			return &runtime.NodeStatus{Running: false}, nil
+		},
+	}
+	nc := NewNodeController(ms, mock)
+
+	// Create a running node
+	node := &types.Node{
+		Metadata: types.ResourceMeta{Name: "test-0"},
+		Spec: types.NodeSpec{
+			DevnetRef: "test",
+			Index:     0,
+			Role:      "validator",
+			Desired:   types.NodePhaseRunning,
+		},
+		Status: types.NodeStatus{
+			Phase: types.NodePhaseRunning,
+		},
+	}
+	if err := ms.CreateNode(context.Background(), node); err != nil {
+		t.Fatalf("CreateNode: %v", err)
+	}
+
+	// Reconcile
+	err := nc.Reconcile(context.Background(), "test/0")
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	// Verify transition to Crashed (node stopped unexpectedly)
+	got, _ := ms.GetNode(context.Background(), "", "test", 0)
+	if got.Status.Phase != types.NodePhaseCrashed {
+		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhaseCrashed)
+	}
+}
+
+func TestNodeController_Reconcile_StoppingWithRuntime(t *testing.T) {
+	ms := store.NewMemoryStore()
+
+	stopCalled := false
+	mock := &mockNodeRuntime{
+		stopNodeFn: func(ctx context.Context, nodeID string, graceful bool) error {
+			stopCalled = true
+			if nodeID != "test-0" {
+				t.Errorf("StopNode called with wrong nodeID: %q", nodeID)
+			}
+			if !graceful {
+				t.Error("StopNode called with graceful=false, want true")
+			}
+			return nil
+		},
+	}
+	nc := NewNodeController(ms, mock)
+
+	// Create a stopping node
+	node := &types.Node{
+		Metadata: types.ResourceMeta{Name: "test-0"},
+		Spec: types.NodeSpec{
+			DevnetRef: "test",
+			Index:     0,
+			Role:      "validator",
+		},
+		Status: types.NodeStatus{
+			Phase: types.NodePhaseStopping,
+		},
+	}
+	if err := ms.CreateNode(context.Background(), node); err != nil {
+		t.Fatalf("CreateNode: %v", err)
+	}
+
+	// Reconcile
+	err := nc.Reconcile(context.Background(), "test/0")
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	// Verify StopNode was called
+	if !stopCalled {
+		t.Error("StopNode was not called")
+	}
+
+	// Verify transition to Stopped
+	got, _ := ms.GetNode(context.Background(), "", "test", 0)
+	if got.Status.Phase != types.NodePhaseStopped {
+		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhaseStopped)
 	}
 }

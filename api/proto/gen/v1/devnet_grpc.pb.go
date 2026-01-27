@@ -407,6 +407,7 @@ const (
 	NodeService_ListNodes_FullMethodName      = "/devnetbuilder.v1.NodeService/ListNodes"
 	NodeService_GetNodeHealth_FullMethodName  = "/devnetbuilder.v1.NodeService/GetNodeHealth"
 	NodeService_StreamNodeLogs_FullMethodName = "/devnetbuilder.v1.NodeService/StreamNodeLogs"
+	NodeService_GetNodePorts_FullMethodName   = "/devnetbuilder.v1.NodeService/GetNodePorts"
 	NodeService_ExecInNode_FullMethodName     = "/devnetbuilder.v1.NodeService/ExecInNode"
 )
 
@@ -425,6 +426,7 @@ type NodeServiceClient interface {
 	ListNodes(ctx context.Context, in *ListNodesRequest, opts ...grpc.CallOption) (*ListNodesResponse, error)
 	GetNodeHealth(ctx context.Context, in *GetNodeHealthRequest, opts ...grpc.CallOption) (*GetNodeHealthResponse, error)
 	StreamNodeLogs(ctx context.Context, in *StreamNodeLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamNodeLogsResponse], error)
+	GetNodePorts(ctx context.Context, in *GetNodePortsRequest, opts ...grpc.CallOption) (*GetNodePortsResponse, error)
 	// Mutation
 	ExecInNode(ctx context.Context, in *ExecInNodeRequest, opts ...grpc.CallOption) (*ExecInNodeResponse, error)
 }
@@ -516,6 +518,16 @@ func (c *nodeServiceClient) StreamNodeLogs(ctx context.Context, in *StreamNodeLo
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NodeService_StreamNodeLogsClient = grpc.ServerStreamingClient[StreamNodeLogsResponse]
 
+func (c *nodeServiceClient) GetNodePorts(ctx context.Context, in *GetNodePortsRequest, opts ...grpc.CallOption) (*GetNodePortsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetNodePortsResponse)
+	err := c.cc.Invoke(ctx, NodeService_GetNodePorts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nodeServiceClient) ExecInNode(ctx context.Context, in *ExecInNodeRequest, opts ...grpc.CallOption) (*ExecInNodeResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ExecInNodeResponse)
@@ -541,6 +553,7 @@ type NodeServiceServer interface {
 	ListNodes(context.Context, *ListNodesRequest) (*ListNodesResponse, error)
 	GetNodeHealth(context.Context, *GetNodeHealthRequest) (*GetNodeHealthResponse, error)
 	StreamNodeLogs(*StreamNodeLogsRequest, grpc.ServerStreamingServer[StreamNodeLogsResponse]) error
+	GetNodePorts(context.Context, *GetNodePortsRequest) (*GetNodePortsResponse, error)
 	// Mutation
 	ExecInNode(context.Context, *ExecInNodeRequest) (*ExecInNodeResponse, error)
 	mustEmbedUnimplementedNodeServiceServer()
@@ -573,6 +586,9 @@ func (UnimplementedNodeServiceServer) GetNodeHealth(context.Context, *GetNodeHea
 }
 func (UnimplementedNodeServiceServer) StreamNodeLogs(*StreamNodeLogsRequest, grpc.ServerStreamingServer[StreamNodeLogsResponse]) error {
 	return status.Error(codes.Unimplemented, "method StreamNodeLogs not implemented")
+}
+func (UnimplementedNodeServiceServer) GetNodePorts(context.Context, *GetNodePortsRequest) (*GetNodePortsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetNodePorts not implemented")
 }
 func (UnimplementedNodeServiceServer) ExecInNode(context.Context, *ExecInNodeRequest) (*ExecInNodeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ExecInNode not implemented")
@@ -717,6 +733,24 @@ func _NodeService_StreamNodeLogs_Handler(srv interface{}, stream grpc.ServerStre
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NodeService_StreamNodeLogsServer = grpc.ServerStreamingServer[StreamNodeLogsResponse]
 
+func _NodeService_GetNodePorts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNodePortsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).GetNodePorts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_GetNodePorts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).GetNodePorts(ctx, req.(*GetNodePortsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NodeService_ExecInNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ExecInNodeRequest)
 	if err := dec(in); err != nil {
@@ -765,6 +799,10 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetNodeHealth",
 			Handler:    _NodeService_GetNodeHealth_Handler,
+		},
+		{
+			MethodName: "GetNodePorts",
+			Handler:    _NodeService_GetNodePorts_Handler,
 		},
 		{
 			MethodName: "ExecInNode",

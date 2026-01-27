@@ -2,7 +2,9 @@ package devnet
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -234,11 +236,48 @@ func (uc *DockerDestroyUseCase) Execute(ctx context.Context, homeDir string) err
 	return nil
 }
 
-// findDevnetContainers finds all containers in a Docker network
+// findDevnetContainers finds all containers attached to a Docker network.
+// Uses docker network inspect to get the list of container IDs.
 func (uc *DockerDestroyUseCase) findDevnetContainers(ctx context.Context, networkID string) ([]string, error) {
-	// TODO: Implement using docker network inspect to find attached containers
-	// For now, return empty list - containers will be cleaned up by label
-	return []string{}, nil
+	if networkID == "" {
+		return []string{}, nil
+	}
+
+	// Run docker network inspect to get network details
+	cmd := exec.CommandContext(ctx, "docker", "network", "inspect", networkID)
+	output, err := cmd.Output()
+	if err != nil {
+		// Network might not exist anymore, that's OK
+		uc.logger.Debug("Network inspect failed (may not exist): %v", err)
+		return []string{}, nil
+	}
+
+	// Parse the JSON output from docker network inspect
+	var inspectResults []struct {
+		Containers map[string]struct {
+			Name        string `json:"Name"`
+			EndpointID  string `json:"EndpointID"`
+			MacAddress  string `json:"MacAddress"`
+			IPv4Address string `json:"IPv4Address"`
+		} `json:"Containers"`
+	}
+
+	if err := json.Unmarshal(output, &inspectResults); err != nil {
+		return nil, fmt.Errorf("failed to parse network inspect output: %w", err)
+	}
+
+	if len(inspectResults) == 0 {
+		return []string{}, nil
+	}
+
+	// Extract container IDs from the Containers map
+	containers := make([]string, 0, len(inspectResults[0].Containers))
+	for containerID := range inspectResults[0].Containers {
+		containers = append(containers, containerID)
+	}
+
+	uc.logger.Debug("Found %d containers in network %s", len(containers), networkID)
+	return containers, nil
 }
 
 // GetDefaultNodePorts returns default ports for a node at given index in Docker mode

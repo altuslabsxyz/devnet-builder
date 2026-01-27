@@ -50,9 +50,6 @@ type NodeStatus struct {
 	// Phase is the current phase.
 	Phase string `json:"phase"`
 
-	// ContainerID is the Docker container ID (docker mode).
-	ContainerID string `json:"containerId,omitempty"`
-
 	// PID is the process ID (local mode).
 	PID int `json:"pid,omitempty"`
 

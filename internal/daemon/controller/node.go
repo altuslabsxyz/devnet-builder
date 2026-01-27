@@ -7,38 +7,22 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 )
-
-// NodeRuntime is the interface for node container/process operations.
-// This will be implemented by the Docker or local runtime.
-type NodeRuntime interface {
-	// StartContainer starts a container for the node.
-	StartContainer(ctx context.Context, node *types.Node) (containerID string, err error)
-
-	// StopContainer stops a running container.
-	StopContainer(ctx context.Context, containerID string, timeout time.Duration) error
-
-	// GetContainerStatus checks if a container is running.
-	GetContainerStatus(ctx context.Context, containerID string) (running bool, err error)
-
-	// RemoveContainer removes a container.
-	RemoveContainer(ctx context.Context, containerID string) error
-}
 
 // NodeController reconciles Node resources.
 // It manages the lifecycle of individual nodes within devnets.
 type NodeController struct {
 	store   store.Store
-	runtime NodeRuntime
+	runtime runtime.NodeRuntime
 	logger  *slog.Logger
 }
 
 // NewNodeController creates a new NodeController.
-func NewNodeController(s store.Store, r NodeRuntime) *NodeController {
+func NewNodeController(s store.Store, r runtime.NodeRuntime) *NodeController {
 	return &NodeController{
 		store:   s,
 		runtime: r,
@@ -163,11 +147,13 @@ func (c *NodeController) reconcileStarting(ctx context.Context, node *types.Node
 		"devnet", node.Spec.DevnetRef,
 		"index", node.Spec.Index)
 
-	// If we have a runtime and no container yet, start it
-	if c.runtime != nil && node.Status.ContainerID == "" {
-		containerID, err := c.runtime.StartContainer(ctx, node)
-		if err != nil {
-			c.logger.Error("failed to start container",
+	// Start the node if we have a runtime
+	if c.runtime != nil {
+		opts := runtime.StartOptions{
+			RestartPolicy: runtime.DefaultRestartPolicy(),
+		}
+		if err := c.runtime.StartNode(ctx, node, opts); err != nil {
+			c.logger.Error("failed to start node",
 				"devnet", node.Spec.DevnetRef,
 				"index", node.Spec.Index,
 				"error", err)
@@ -177,7 +163,6 @@ func (c *NodeController) reconcileStarting(ctx context.Context, node *types.Node
 
 			return c.store.UpdateNode(ctx, node)
 		}
-		node.Status.ContainerID = containerID
 	}
 
 	// Transition to Running
@@ -202,23 +187,23 @@ func (c *NodeController) reconcileRunning(ctx context.Context, node *types.Node)
 		return c.store.UpdateNode(ctx, node)
 	}
 
-	// If we have a runtime, check container status
-	if c.runtime != nil && node.Status.ContainerID != "" {
-		running, err := c.runtime.GetContainerStatus(ctx, node.Status.ContainerID)
+	// If we have a runtime, check node status
+	if c.runtime != nil {
+		nodeID := node.Metadata.Name
+		status, err := c.runtime.GetNodeStatus(ctx, nodeID)
 		if err != nil {
-			c.logger.Warn("failed to get container status",
+			c.logger.Warn("failed to get node status",
 				"devnet", node.Spec.DevnetRef,
 				"index", node.Spec.Index,
 				"error", err)
-		} else if !running {
-			// Container stopped unexpectedly
-			c.logger.Warn("container stopped unexpectedly",
+		} else if !status.Running {
+			// Node stopped unexpectedly
+			c.logger.Warn("node stopped unexpectedly",
 				"devnet", node.Spec.DevnetRef,
 				"index", node.Spec.Index)
 
 			node.Status.Phase = types.NodePhaseCrashed
-			node.Status.Message = "Container stopped unexpectedly"
-			node.Status.ContainerID = ""
+			node.Status.Message = "Node stopped unexpectedly"
 
 			return c.store.UpdateNode(ctx, node)
 		}
@@ -235,16 +220,16 @@ func (c *NodeController) reconcileStopping(ctx context.Context, node *types.Node
 		"devnet", node.Spec.DevnetRef,
 		"index", node.Spec.Index)
 
-	// Stop the container if we have a runtime and container ID
-	if c.runtime != nil && node.Status.ContainerID != "" {
-		if err := c.runtime.StopContainer(ctx, node.Status.ContainerID, 30*time.Second); err != nil {
-			c.logger.Warn("failed to stop container",
+	// Stop the node if we have a runtime
+	if c.runtime != nil {
+		nodeID := node.Metadata.Name
+		if err := c.runtime.StopNode(ctx, nodeID, true); err != nil {
+			c.logger.Warn("failed to stop node",
 				"devnet", node.Spec.DevnetRef,
 				"index", node.Spec.Index,
 				"error", err)
-			// Continue anyway - we'll clear the container ID
+			// Continue anyway - the node may already be stopped
 		}
-		node.Status.ContainerID = ""
 	}
 
 	// Clear PID if set

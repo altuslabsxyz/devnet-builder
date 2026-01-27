@@ -1,13 +1,19 @@
 package server
 
 import (
+	"bufio"
 	"context"
+	"io"
 	"log/slog"
+	"strings"
+	"time"
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -18,14 +24,16 @@ type NodeService struct {
 	v1.UnimplementedNodeServiceServer
 	store   store.Store
 	manager *controller.Manager
+	runtime runtime.NodeRuntime
 	logger  *slog.Logger
 }
 
 // NewNodeService creates a new NodeService.
-func NewNodeService(s store.Store, m *controller.Manager) *NodeService {
+func NewNodeService(s store.Store, m *controller.Manager, r runtime.NodeRuntime) *NodeService {
 	return &NodeService{
 		store:   s,
 		manager: m,
+		runtime: r,
 		logger:  slog.Default(),
 	}
 }
@@ -267,6 +275,246 @@ func (s *NodeService) GetNodeHealth(ctx context.Context, req *v1.GetNodeHealthRe
 	}, nil
 }
 
+// ExecInNode executes a command inside a running node container.
+func (s *NodeService) ExecInNode(ctx context.Context, req *v1.ExecInNodeRequest) (*v1.ExecInNodeResponse, error) {
+	if req.DevnetName == "" {
+		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
+	}
+	if len(req.Command) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "command is required")
+	}
+
+	s.logger.Info("executing command in node",
+		"devnet", req.DevnetName,
+		"index", req.Index,
+		"command", req.Command)
+
+	// Verify node exists and get its details
+	node, err := s.store.GetNode(ctx, req.Namespace, req.DevnetName, int(req.Index))
+	if err != nil {
+		if store.IsNotFound(err) {
+			return nil, status.Errorf(codes.NotFound, "node %s/%d not found", req.DevnetName, req.Index)
+		}
+		s.logger.Error("failed to get node", "devnet", req.DevnetName, "index", req.Index, "error", err)
+		return nil, status.Errorf(codes.Internal, "failed to get node: %v", err)
+	}
+
+	// Check if node is running
+	if node.Status.Phase != types.NodePhaseRunning {
+		return nil, status.Errorf(codes.FailedPrecondition, "node is not running (current phase: %s)", node.Status.Phase)
+	}
+
+	// Check if runtime is available
+	if s.runtime == nil {
+		return nil, status.Error(codes.Unavailable, "exec not available: no runtime configured")
+	}
+
+	// Determine timeout (default to 30 seconds if not specified)
+	timeout := 30 * time.Second
+	if req.TimeoutSeconds > 0 {
+		timeout = time.Duration(req.TimeoutSeconds) * time.Second
+	}
+
+	// Get the node ID for runtime lookup
+	nodeID := node.Metadata.Name
+	if nodeID == "" {
+		nodeID = controller.NodeKey(req.DevnetName, int(req.Index))
+	}
+
+	// Execute the command
+	result, err := s.runtime.ExecInNode(ctx, nodeID, req.Command, timeout)
+	if err != nil {
+		s.logger.Error("exec failed", "nodeID", nodeID, "error", err)
+		return nil, status.Errorf(codes.Internal, "exec failed: %v", err)
+	}
+
+	return &v1.ExecInNodeResponse{
+		ExitCode: int32(result.ExitCode),
+		Stdout:   result.Stdout,
+		Stderr:   result.Stderr,
+	}, nil
+}
+
+// Default Cosmos SDK ports for calculating exposed ports
+const (
+	defaultP2PPort  = 26656
+	defaultRPCPort  = 26657
+	defaultRESTPort = 1317
+	defaultGRPCPort = 9090
+)
+
+// GetNodePorts returns the port mappings for a node.
+func (s *NodeService) GetNodePorts(ctx context.Context, req *v1.GetNodePortsRequest) (*v1.GetNodePortsResponse, error) {
+	if req.DevnetName == "" {
+		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
+	}
+
+	// Verify node exists (GetNodePortsRequest doesn't have namespace, use default)
+	node, err := s.store.GetNode(ctx, "", req.DevnetName, int(req.Index))
+	if err != nil {
+		if store.IsNotFound(err) {
+			return nil, status.Errorf(codes.NotFound, "node %s/%d not found", req.DevnetName, req.Index)
+		}
+		s.logger.Error("failed to get node", "devnet", req.DevnetName, "index", req.Index, "error", err)
+		return nil, status.Errorf(codes.Internal, "failed to get node: %v", err)
+	}
+
+	// Calculate port offset: each node gets 100 ports apart
+	offset := int32(node.Spec.Index * 100)
+
+	ports := []*v1.PortMapping{
+		{
+			Name:          "p2p",
+			ContainerPort: defaultP2PPort,
+			HostPort:      defaultP2PPort + offset,
+			Protocol:      "tcp",
+		},
+		{
+			Name:          "rpc",
+			ContainerPort: defaultRPCPort,
+			HostPort:      defaultRPCPort + offset,
+			Protocol:      "tcp",
+		},
+		{
+			Name:          "rest",
+			ContainerPort: defaultRESTPort,
+			HostPort:      defaultRESTPort + offset,
+			Protocol:      "tcp",
+		},
+		{
+			Name:          "grpc",
+			ContainerPort: defaultGRPCPort,
+			HostPort:      defaultGRPCPort + offset,
+			Protocol:      "tcp",
+		},
+	}
+
+	return &v1.GetNodePortsResponse{
+		DevnetName: req.DevnetName,
+		Index:      req.Index,
+		Ports:      ports,
+	}, nil
+}
+
+// StreamNodeLogs streams logs from a node to the client.
+func (s *NodeService) StreamNodeLogs(req *v1.StreamNodeLogsRequest, stream grpc.ServerStreamingServer[v1.StreamNodeLogsResponse]) error {
+	if req.DevnetName == "" {
+		return status.Error(codes.InvalidArgument, "devnet_name is required")
+	}
+
+	ctx := stream.Context()
+
+	// Verify node exists
+	node, err := s.store.GetNode(ctx, req.Namespace, req.DevnetName, int(req.Index))
+	if err != nil {
+		if store.IsNotFound(err) {
+			return status.Errorf(codes.NotFound, "node %s/%d not found", req.DevnetName, req.Index)
+		}
+		s.logger.Error("failed to get node", "devnet", req.DevnetName, "index", req.Index, "error", err)
+		return status.Errorf(codes.Internal, "failed to get node: %v", err)
+	}
+
+	// Check if runtime is available
+	if s.runtime == nil {
+		return status.Error(codes.Unavailable, "log streaming not available: no runtime configured")
+	}
+
+	// Parse since timestamp if provided
+	var since time.Time
+	if req.Since != "" {
+		var err error
+		since, err = time.Parse(time.RFC3339, req.Since)
+		if err != nil {
+			return status.Errorf(codes.InvalidArgument, "invalid since timestamp: %v", err)
+		}
+	}
+
+	// Build log options
+	logOpts := runtime.LogOptions{
+		Follow: req.Follow,
+		Lines:  int(req.Tail),
+		Since:  since,
+	}
+
+	s.logger.Info("streaming logs",
+		"devnet", req.DevnetName,
+		"index", req.Index,
+		"follow", req.Follow,
+		"tail", req.Tail)
+
+	// Get logs from runtime
+	nodeID := controller.NodeKey(req.DevnetName, int(req.Index))
+	// Try to get logs using the node name from store
+	if node.Metadata.Name != "" {
+		nodeID = node.Metadata.Name
+	}
+
+	reader, err := s.runtime.GetLogs(ctx, nodeID, logOpts)
+	if err != nil {
+		s.logger.Error("failed to get logs", "nodeID", nodeID, "error", err)
+		return status.Errorf(codes.Internal, "failed to get logs: %v", err)
+	}
+	defer reader.Close()
+
+	// Stream logs to client
+	scanner := bufio.NewScanner(reader)
+	// Increase buffer size for long log lines
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		line := scanner.Text()
+		// Docker logs include a header (8 bytes) for stream type
+		// The first byte indicates: 0=stdin, 1=stdout, 2=stderr
+		streamType := "stdout"
+		message := line
+
+		// If line is long enough and starts with stream header, parse it
+		if len(line) >= 8 {
+			switch line[0] {
+			case 1:
+				streamType = "stdout"
+				message = line[8:]
+			case 2:
+				streamType = "stderr"
+				message = line[8:]
+			default:
+				// No header, use as-is
+				message = line
+			}
+		}
+
+		// Skip empty messages
+		message = strings.TrimSpace(message)
+		if message == "" {
+			continue
+		}
+
+		resp := &v1.StreamNodeLogsResponse{
+			Timestamp: timestamppb.Now(),
+			Stream:    streamType,
+			Message:   message,
+		}
+
+		if err := stream.Send(resp); err != nil {
+			s.logger.Debug("client disconnected", "error", err)
+			return nil
+		}
+	}
+
+	if err := scanner.Err(); err != nil && err != io.EOF {
+		s.logger.Error("error reading logs", "error", err)
+		return status.Errorf(codes.Internal, "error reading logs: %v", err)
+	}
+
+	return nil
+}
+
 // NodeToProto converts a domain Node to a proto Node.
 func NodeToProto(n *types.Node) *v1.Node {
 	if n == nil {
@@ -291,7 +539,6 @@ func NodeToProto(n *types.Node) *v1.Node {
 		},
 		Status: &v1.NodeStatus{
 			Phase:        n.Status.Phase,
-			ContainerId:  n.Status.ContainerID,
 			Pid:          int32(n.Status.PID),
 			BlockHeight:  n.Status.BlockHeight,
 			PeerCount:    int32(n.Status.PeerCount),
@@ -333,7 +580,6 @@ func NodeFromProto(pb *v1.Node) *types.Node {
 
 	if pb.Status != nil {
 		n.Status.Phase = pb.Status.Phase
-		n.Status.ContainerID = pb.Status.ContainerId
 		n.Status.PID = int(pb.Status.Pid)
 		n.Status.BlockHeight = pb.Status.BlockHeight
 		n.Status.PeerCount = int(pb.Status.PeerCount)

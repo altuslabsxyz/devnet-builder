@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"text/tabwriter"
 	"time"
 
@@ -66,6 +67,7 @@ func main() {
 		newGetCmd(),
 		newDeleteCmd(),
 		newDiffCmd(),
+		newBuildCmd(),
 		newDeployCmd(), // deprecated
 		newListCmd(),
 		newDescribeCmd(),
@@ -76,6 +78,9 @@ func main() {
 		newUpgradeCmd(),
 		newTxCmd(),
 		newGovCmd(),
+		newGenesisCmd(),
+		newProvisionCmd(),
+		newLogsCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -319,43 +324,147 @@ func newDestroyCmd() *cobra.Command {
 	var (
 		namespace string
 		force     bool
+		dataDir   string
 	)
 
 	cmd := &cobra.Command{
-		Use:        "destroy [devnet]",
-		Short:      "Destroy a devnet",
-		Deprecated: "use 'dvb delete devnet <name>' or 'dvb delete -f <file>' instead",
-		Args:       cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
+		Use:   "destroy [devnet]",
+		Short: "Destroy a devnet and remove all its data",
+		Long: `Destroy a devnet by stopping all nodes and removing all associated data.
 
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+This is a destructive operation that cannot be undone. You will be asked
+to type the devnet name to confirm unless --force is specified.
+
+In standalone mode, this removes the devnet directory. In daemon mode,
+it uses the daemon to properly clean up all resources.
+
+Examples:
+  # Destroy a devnet (with type-to-confirm prompt)
+  dvb destroy my-devnet
+
+  # Destroy without confirmation (use with caution!)
+  dvb destroy my-devnet --force
+
+  # List available devnets
+  dvb destroy`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Determine data directory for standalone mode
+			baseDataDir := dataDir
+			if baseDataDir == "" {
+				homeDir, err := os.UserHomeDir()
+				if err != nil {
+					return fmt.Errorf("failed to get home directory: %w", err)
+				}
+				baseDataDir = filepath.Join(homeDir, ".devnet-builder")
+			}
+			devnetsDir := filepath.Join(baseDataDir, "devnets")
+
+			// If no name provided, list available devnets
+			if len(args) == 0 {
+				return listDevnetsForDestroy(devnetsDir)
 			}
 
+			name := args[0]
+
+			// Try daemon first if available
+			if daemonClient != nil && !standalone {
+				if !force {
+					fmt.Printf("Are you sure you want to destroy devnet %q? [y/N] ", name)
+					var response string
+					if _, err := fmt.Scanln(&response); err != nil || (response != "y" && response != "Y") {
+						fmt.Println("Cancelled")
+						return nil
+					}
+				}
+
+				err := daemonClient.DeleteDevnet(cmd.Context(), namespace, name)
+				if err != nil {
+					return err
+				}
+
+				color.Green("✓ Devnet %q destroyed", name)
+				return nil
+			}
+
+			// Standalone mode: destroy locally
+			devnetPath := filepath.Join(devnetsDir, name)
+			info, err := os.Stat(devnetPath)
+			if os.IsNotExist(err) {
+				return fmt.Errorf("devnet '%s' not found in %s", name, devnetsDir)
+			}
+			if err != nil {
+				return fmt.Errorf("failed to check devnet: %w", err)
+			}
+			if !info.IsDir() {
+				return fmt.Errorf("'%s' is not a valid devnet directory", name)
+			}
+
+			// Confirm destruction with type-to-confirm (safer than y/N)
 			if !force {
-				fmt.Printf("Are you sure you want to destroy devnet %q? [y/N] ", name)
-				var response string
-				if _, err := fmt.Scanln(&response); err != nil || (response != "y" && response != "Y") {
-					fmt.Println("Cancelled")
+				confirmed, err := ConfirmDestroy(name)
+				if err != nil {
+					return err
+				}
+				if !confirmed {
 					return nil
 				}
 			}
 
-			err := daemonClient.DeleteDevnet(cmd.Context(), namespace, name)
-			if err != nil {
-				return err
+			// Remove devnet directory
+			fmt.Fprintf(os.Stderr, "Removing devnet data at %s...\n", devnetPath)
+			if err := os.RemoveAll(devnetPath); err != nil {
+				return fmt.Errorf("failed to remove devnet directory: %w", err)
 			}
 
-			color.Green("✓ Devnet %q destroyed", name)
+			color.Green("✔ Devnet '%s' destroyed successfully", name)
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
-	cmd.Flags().BoolVarP(&force, "force", "f", false, "Skip confirmation")
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "Skip confirmation prompt (dangerous!)")
+	cmd.Flags().StringVar(&dataDir, "data-dir", "", "Base data directory (default: ~/.devnet-builder)")
 
 	return cmd
+}
+
+// listDevnetsForDestroy lists all available devnets for the destroy command
+func listDevnetsForDestroy(devnetsDir string) error {
+	entries, err := os.ReadDir(devnetsDir)
+	if os.IsNotExist(err) {
+		fmt.Println("No devnets found.")
+		fmt.Println()
+		fmt.Println("Create a devnet with: dvb provision -i")
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to read devnets directory: %w", err)
+	}
+
+	var devnets []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			devnets = append(devnets, entry.Name())
+		}
+	}
+
+	if len(devnets) == 0 {
+		fmt.Println("No devnets found.")
+		fmt.Println()
+		fmt.Println("Create a devnet with: dvb provision -i")
+		return nil
+	}
+
+	fmt.Println("Available devnets:")
+	fmt.Println()
+	for _, name := range devnets {
+		fmt.Printf("  • %s\n", name)
+	}
+	fmt.Println()
+	fmt.Println("To destroy a devnet, run: dvb destroy <name>")
+
+	return nil
 }
 
 func newDescribeCmd() *cobra.Command {

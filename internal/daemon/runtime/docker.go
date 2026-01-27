@@ -4,21 +4,72 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
+	"strings"
+	"sync"
 	"time"
 
-	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
+	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/docker/go-connections/nat"
+	specs "github.com/opencontainers/image-spec/specs-go/v1"
 )
+
+// Base ports for Cosmos SDK nodes (container internal ports).
+const (
+	P2PPort  = 26656
+	RPCPort  = 26657
+	RESTPort = 1317
+	GRPCPort = 9090
+)
+
+// dockerClient abstracts Docker API operations for testability.
+type dockerClient interface {
+	ContainerCreate(ctx context.Context, config *container.Config,
+		hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig,
+		platform *specs.Platform, containerName string) (container.CreateResponse, error)
+	ContainerStart(ctx context.Context, containerID string, opts container.StartOptions) error
+	ContainerStop(ctx context.Context, containerID string, opts container.StopOptions) error
+	ContainerRestart(ctx context.Context, containerID string, opts container.StopOptions) error
+	ContainerRemove(ctx context.Context, containerID string, opts container.RemoveOptions) error
+	ContainerInspect(ctx context.Context, containerID string) (dockertypes.ContainerJSON, error)
+	ContainerLogs(ctx context.Context, containerID string, opts container.LogsOptions) (io.ReadCloser, error)
+	ContainerExecCreate(ctx context.Context, containerID string, config container.ExecOptions) (container.ExecCreateResponse, error)
+	ContainerExecAttach(ctx context.Context, execID string, config container.ExecStartOptions) (dockertypes.HijackedResponse, error)
+	ContainerExecInspect(ctx context.Context, execID string) (container.ExecInspect, error)
+	Close() error
+}
+
+// containerState tracks a managed container's state.
+type containerState struct {
+	containerID   string
+	nodeID        string
+	node          *types.Node
+	startedAt     time.Time
+	restartCount  int
+	lastError     string
+	restartPolicy RestartPolicy
+
+	// Supervision channels
+	stopCh    chan struct{}
+	stoppedCh chan struct{}
+}
 
 // DockerRuntime implements NodeRuntime using Docker containers.
 type DockerRuntime struct {
-	client       *client.Client
-	logger       *slog.Logger
-	defaultImage string
+	client        dockerClient
+	logger        *slog.Logger
+	pluginRuntime PluginRuntime
+	defaultImage  string
+
+	// Container tracking
+	containers map[string]*containerState
+	mu         sync.RWMutex
 }
 
 // DockerConfig configures the Docker runtime.
@@ -28,6 +79,9 @@ type DockerConfig struct {
 
 	// Logger for runtime operations.
 	Logger *slog.Logger
+
+	// PluginRuntime provides network-specific commands.
+	PluginRuntime PluginRuntime
 }
 
 // NewDockerRuntime creates a new Docker runtime.
@@ -48,15 +102,47 @@ func NewDockerRuntime(cfg DockerConfig) (*DockerRuntime, error) {
 	}
 
 	return &DockerRuntime{
-		client:       cli,
-		logger:       logger,
-		defaultImage: defaultImage,
+		client:        cli,
+		logger:        logger,
+		pluginRuntime: cfg.PluginRuntime,
+		defaultImage:  defaultImage,
+		containers:    make(map[string]*containerState),
 	}, nil
 }
 
 // containerName generates a container name from the node spec.
 func containerName(node *types.Node) string {
 	return fmt.Sprintf("dvb-%s-node-%d", node.Spec.DevnetRef, node.Spec.Index)
+}
+
+// buildPortBindings creates port mappings for a node based on its index.
+// Each node gets a 100-port range offset to avoid conflicts.
+func (r *DockerRuntime) buildPortBindings(node *types.Node) (nat.PortMap, nat.PortSet) {
+	offset := node.Spec.Index * 100
+
+	portBindings := nat.PortMap{
+		nat.Port(fmt.Sprintf("%d/tcp", P2PPort)): []nat.PortBinding{
+			{HostPort: fmt.Sprintf("%d", P2PPort+offset)},
+		},
+		nat.Port(fmt.Sprintf("%d/tcp", RPCPort)): []nat.PortBinding{
+			{HostPort: fmt.Sprintf("%d", RPCPort+offset)},
+		},
+		nat.Port(fmt.Sprintf("%d/tcp", RESTPort)): []nat.PortBinding{
+			{HostPort: fmt.Sprintf("%d", RESTPort+offset)},
+		},
+		nat.Port(fmt.Sprintf("%d/tcp", GRPCPort)): []nat.PortBinding{
+			{HostPort: fmt.Sprintf("%d", GRPCPort+offset)},
+		},
+	}
+
+	exposedPorts := nat.PortSet{
+		nat.Port(fmt.Sprintf("%d/tcp", P2PPort)):  struct{}{},
+		nat.Port(fmt.Sprintf("%d/tcp", RPCPort)):  struct{}{},
+		nat.Port(fmt.Sprintf("%d/tcp", RESTPort)): struct{}{},
+		nat.Port(fmt.Sprintf("%d/tcp", GRPCPort)): struct{}{},
+	}
+
+	return portBindings, exposedPorts
 }
 
 // StartContainer creates and starts a container for the node.
@@ -77,10 +163,28 @@ func (r *DockerRuntime) StartContainer(ctx context.Context, node *types.Node) (s
 		image = node.Spec.BinaryPath
 	}
 
+	// Get command and environment from plugin runtime (if available)
+	cmd := []string{"start", "--home", "/root/.stabled"} // fallback
+	var env []string
+	containerHomePath := "/root/.stabled" // fallback
+	if r.pluginRuntime != nil {
+		cmd = r.pluginRuntime.StartCommand(node)
+		containerHomePath = r.pluginRuntime.ContainerHomePath()
+		// Convert env map to Docker format
+		for k, v := range r.pluginRuntime.StartEnv(node) {
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
+		}
+	}
+
+	// Build port bindings for network access
+	portBindings, exposedPorts := r.buildPortBindings(node)
+
 	// Build container config
 	containerConfig := &container.Config{
-		Image: image,
-		Cmd:   []string{"start", "--home", "/root/.stabled"},
+		Image:        image,
+		Cmd:          cmd,
+		Env:          env,
+		ExposedPorts: exposedPorts,
 		Labels: map[string]string{
 			"dvb.devnet": node.Spec.DevnetRef,
 			"dvb.index":  fmt.Sprintf("%d", node.Spec.Index),
@@ -88,8 +192,9 @@ func (r *DockerRuntime) StartContainer(ctx context.Context, node *types.Node) (s
 		},
 	}
 
-	// Build host config with mounts
+	// Build host config with mounts and port bindings
 	hostConfig := &container.HostConfig{
+		PortBindings: portBindings,
 		RestartPolicy: container.RestartPolicy{
 			Name: container.RestartPolicyDisabled,
 		},
@@ -101,7 +206,7 @@ func (r *DockerRuntime) StartContainer(ctx context.Context, node *types.Node) (s
 			{
 				Type:   mount.TypeBind,
 				Source: node.Spec.HomeDir,
-				Target: "/root/.stabled",
+				Target: containerHomePath,
 			},
 		}
 	}
@@ -172,5 +277,391 @@ func (r *DockerRuntime) Close() error {
 	return r.client.Close()
 }
 
+// StartNode starts a node in a Docker container.
+func (r *DockerRuntime) StartNode(ctx context.Context, node *types.Node, opts StartOptions) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	nodeID := node.Metadata.Name
+
+	// Check if already running
+	if state, exists := r.containers[nodeID]; exists {
+		if state.containerID != "" {
+			return fmt.Errorf("node %s is already running", nodeID)
+		}
+	}
+
+	// Use PluginRuntime from opts if provided, otherwise fall back to default
+	pluginRuntime := opts.PluginRuntime
+	if pluginRuntime == nil {
+		pluginRuntime = r.pluginRuntime
+	}
+
+	// Build container name
+	containerName := fmt.Sprintf("dvb-%s-%s-%d", node.Spec.DevnetRef, node.Spec.Role, node.Spec.Index)
+
+	// Determine image
+	image := r.defaultImage
+	if node.Spec.BinaryPath != "" && strings.Contains(node.Spec.BinaryPath, "/") && strings.Contains(node.Spec.BinaryPath, ":") {
+		// Looks like a Docker image reference
+		image = node.Spec.BinaryPath
+	}
+
+	// Build command and environment from plugin
+	cmd := []string{"start", "--home", "/root/.stabled"} // fallback
+	var env []string
+	containerHomePath := "/root/.stabled" // fallback
+	if pluginRuntime != nil {
+		cmd = pluginRuntime.StartCommand(node)
+		containerHomePath = pluginRuntime.ContainerHomePath()
+		// Convert env map to Docker format
+		for k, v := range pluginRuntime.StartEnv(node) {
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
+		}
+	}
+
+	// Add any additional environment variables from opts
+	for k, v := range opts.Env {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	// Build port bindings based on node index
+	portBindings, exposedPorts := r.buildPortBindings(node)
+
+	// Build container config
+	containerConfig := &container.Config{
+		Image:        image,
+		Cmd:          cmd,
+		Env:          env,
+		Tty:          true, // Simplified log handling
+		ExposedPorts: exposedPorts,
+		Labels: map[string]string{
+			"dvb.devnet": node.Spec.DevnetRef,
+			"dvb.node":   nodeID,
+			"dvb.index":  fmt.Sprintf("%d", node.Spec.Index),
+			"dvb.role":   node.Spec.Role,
+		},
+	}
+
+	// Build host config with mounts, port bindings, and restart policy
+	hostConfig := &container.HostConfig{
+		PortBindings: portBindings,
+		RestartPolicy: container.RestartPolicy{
+			Name: container.RestartPolicyOnFailure,
+		},
+	}
+
+	// Mount home directory
+	if node.Spec.HomeDir != "" {
+		hostConfig.Mounts = []mount.Mount{
+			{
+				Type:   mount.TypeBind,
+				Source: node.Spec.HomeDir,
+				Target: containerHomePath,
+			},
+		}
+	}
+
+	// Create container
+	r.logger.Info("creating container",
+		"name", containerName,
+		"image", image,
+		"nodeID", nodeID)
+
+	resp, err := r.client.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
+	if err != nil {
+		return fmt.Errorf("failed to create container: %w", err)
+	}
+
+	// Start container
+	if err := r.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		// Clean up created container
+		_ = r.client.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+		return fmt.Errorf("failed to start container: %w", err)
+	}
+
+	// Track container state
+	r.containers[nodeID] = &containerState{
+		containerID:   resp.ID,
+		nodeID:        nodeID,
+		node:          node,
+		startedAt:     time.Now(),
+		restartPolicy: opts.RestartPolicy,
+		stopCh:        make(chan struct{}),
+		stoppedCh:     make(chan struct{}),
+	}
+
+	r.logger.Info("container started",
+		"name", containerName,
+		"containerID", resp.ID[:min(12, len(resp.ID))],
+		"nodeID", nodeID)
+
+	return nil
+}
+
+// StopNode stops a node's container.
+func (r *DockerRuntime) StopNode(ctx context.Context, nodeID string, graceful bool) error {
+	r.mu.Lock()
+	state, exists := r.containers[nodeID]
+	if !exists {
+		r.mu.Unlock()
+		return fmt.Errorf("node %s not found", nodeID)
+	}
+	delete(r.containers, nodeID)
+	r.mu.Unlock()
+
+	// Signal supervision to stop
+	close(state.stopCh)
+
+	containerID := state.containerID
+
+	if graceful {
+		// Graceful stop with timeout
+		timeout := 30
+		r.logger.Info("stopping container gracefully",
+			"containerID", containerID[:min(12, len(containerID))],
+			"nodeID", nodeID,
+			"timeout", timeout)
+
+		if err := r.client.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeout}); err != nil {
+			r.logger.Warn("graceful stop failed, forcing removal",
+				"containerID", containerID[:min(12, len(containerID))],
+				"error", err)
+		}
+	}
+
+	// Remove container
+	r.logger.Info("removing container",
+		"containerID", containerID[:min(12, len(containerID))],
+		"nodeID", nodeID)
+
+	if err := r.client.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true}); err != nil {
+		return fmt.Errorf("failed to remove container: %w", err)
+	}
+
+	return nil
+}
+
+// GetNodeStatus returns the current status of a node.
+func (r *DockerRuntime) GetNodeStatus(ctx context.Context, nodeID string) (*NodeStatus, error) {
+	r.mu.RLock()
+	state, exists := r.containers[nodeID]
+	r.mu.RUnlock()
+
+	if !exists {
+		return &NodeStatus{Running: false}, nil
+	}
+
+	// Inspect container for current state
+	info, err := r.client.ContainerInspect(ctx, state.containerID)
+	if err != nil {
+		return &NodeStatus{
+			Running:   false,
+			LastError: err.Error(),
+			Restarts:  state.restartCount,
+		}, nil
+	}
+
+	status := &NodeStatus{
+		Running:   info.State.Running,
+		Restarts:  state.restartCount,
+		UpdatedAt: time.Now(),
+	}
+
+	if info.State.Pid != 0 {
+		status.PID = info.State.Pid
+	}
+
+	if info.State.StartedAt != "" {
+		if t, err := time.Parse(time.RFC3339, info.State.StartedAt); err == nil {
+			status.StartedAt = t
+		}
+	}
+
+	if !info.State.Running {
+		status.ExitCode = info.State.ExitCode
+		if info.State.Error != "" {
+			status.LastError = info.State.Error
+		}
+	}
+
+	return status, nil
+}
+
+// RestartNode restarts a node's container.
+func (r *DockerRuntime) RestartNode(ctx context.Context, nodeID string) error {
+	r.mu.Lock()
+	state, exists := r.containers[nodeID]
+	if !exists {
+		r.mu.Unlock()
+		return fmt.Errorf("node %s not found", nodeID)
+	}
+	state.restartCount++
+	containerID := state.containerID
+	r.mu.Unlock()
+
+	r.logger.Info("restarting container",
+		"containerID", containerID[:min(12, len(containerID))],
+		"nodeID", nodeID)
+
+	timeout := 30
+	if err := r.client.ContainerRestart(ctx, containerID, container.StopOptions{Timeout: &timeout}); err != nil {
+		return fmt.Errorf("failed to restart container: %w", err)
+	}
+
+	return nil
+}
+
+// GetLogs retrieves logs from a Docker container.
+func (r *DockerRuntime) GetLogs(ctx context.Context, nodeID string, opts LogOptions) (io.ReadCloser, error) {
+	r.mu.RLock()
+	state, exists := r.containers[nodeID]
+	r.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("node %s not found", nodeID)
+	}
+
+	dockerOpts := container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     opts.Follow,
+		Timestamps: true,
+	}
+
+	if opts.Lines > 0 {
+		dockerOpts.Tail = fmt.Sprintf("%d", opts.Lines)
+	}
+
+	if !opts.Since.IsZero() {
+		dockerOpts.Since = opts.Since.Format(time.RFC3339)
+	}
+
+	return r.client.ContainerLogs(ctx, state.containerID, dockerOpts)
+}
+
+// Cleanup cleans up all managed containers.
+func (r *DockerRuntime) Cleanup(ctx context.Context) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var lastErr error
+	for nodeID, state := range r.containers {
+		r.logger.Info("cleaning up container",
+			"nodeID", nodeID,
+			"containerID", state.containerID[:min(12, len(state.containerID))])
+
+		if err := r.client.ContainerRemove(ctx, state.containerID, container.RemoveOptions{Force: true}); err != nil {
+			r.logger.Warn("failed to remove container during cleanup",
+				"nodeID", nodeID,
+				"error", err)
+			lastErr = err
+		}
+	}
+
+	// Clear the map
+	r.containers = make(map[string]*containerState)
+
+	return lastErr
+}
+
+// ExecInNode executes a command in a running container and returns the result.
+func (r *DockerRuntime) ExecInNode(ctx context.Context, nodeID string, command []string, timeout time.Duration) (*ExecResult, error) {
+	r.mu.RLock()
+	state, exists := r.containers[nodeID]
+	r.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("node %s not found", nodeID)
+	}
+
+	// Apply timeout to context if specified
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	r.logger.Info("executing command in container",
+		"nodeID", nodeID,
+		"containerID", state.containerID[:min(12, len(state.containerID))],
+		"command", command)
+
+	// Create exec configuration
+	execConfig := container.ExecOptions{
+		Cmd:          command,
+		AttachStdout: true,
+		AttachStderr: true,
+	}
+
+	// Create the exec instance
+	execResp, err := r.client.ContainerExecCreate(ctx, state.containerID, execConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create exec: %w", err)
+	}
+
+	// Attach to the exec instance to get output
+	attachResp, err := r.client.ContainerExecAttach(ctx, execResp.ID, container.ExecStartOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to attach to exec: %w", err)
+	}
+	defer attachResp.Close()
+
+	// Read all output - Docker multiplexes stdout/stderr when not using TTY
+	// We need to demultiplex the stream
+	var stdout, stderr strings.Builder
+	if err := demuxDockerStream(attachResp.Reader, &stdout, &stderr); err != nil {
+		return nil, fmt.Errorf("failed to read exec output: %w", err)
+	}
+
+	// Get the exit code by inspecting the exec instance
+	inspectResp, err := r.client.ContainerExecInspect(ctx, execResp.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect exec: %w", err)
+	}
+
+	return &ExecResult{
+		ExitCode: inspectResp.ExitCode,
+		Stdout:   stdout.String(),
+		Stderr:   stderr.String(),
+	}, nil
+}
+
+// demuxDockerStream reads the multiplexed Docker stream and separates stdout/stderr.
+// Docker uses an 8-byte header: [stream_type][0][0][0][size1][size2][size3][size4]
+// stream_type: 0=stdin, 1=stdout, 2=stderr
+func demuxDockerStream(reader io.Reader, stdout, stderr *strings.Builder) error {
+	header := make([]byte, 8)
+	for {
+		// Read the header
+		_, err := io.ReadFull(reader, header)
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		// Parse the header
+		streamType := header[0]
+		size := int(header[4])<<24 | int(header[5])<<16 | int(header[6])<<8 | int(header[7])
+
+		// Read the payload
+		payload := make([]byte, size)
+		_, err = io.ReadFull(reader, payload)
+		if err != nil {
+			return err
+		}
+
+		// Write to the appropriate builder
+		switch streamType {
+		case 1: // stdout
+			stdout.Write(payload)
+		case 2: // stderr
+			stderr.Write(payload)
+		}
+	}
+}
+
 // Ensure DockerRuntime implements NodeRuntime.
-var _ controller.NodeRuntime = (*DockerRuntime)(nil)
+var _ NodeRuntime = (*DockerRuntime)(nil)

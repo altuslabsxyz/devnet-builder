@@ -13,7 +13,7 @@ import (
 
 func TestNodeService_GetNode(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewNodeService(s, nil)
+	svc := NewNodeService(s, nil, nil)
 
 	// Create a node
 	node := &types.Node{
@@ -50,7 +50,7 @@ func TestNodeService_GetNode(t *testing.T) {
 
 func TestNodeService_GetNode_NotFound(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewNodeService(s, nil)
+	svc := NewNodeService(s, nil, nil)
 
 	_, err := svc.GetNode(context.Background(), &v1.GetNodeRequest{
 		DevnetName: "nonexistent",
@@ -71,7 +71,7 @@ func TestNodeService_GetNode_NotFound(t *testing.T) {
 
 func TestNodeService_GetNode_MissingDevnetName(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewNodeService(s, nil)
+	svc := NewNodeService(s, nil, nil)
 
 	_, err := svc.GetNode(context.Background(), &v1.GetNodeRequest{
 		DevnetName: "",
@@ -92,7 +92,7 @@ func TestNodeService_GetNode_MissingDevnetName(t *testing.T) {
 
 func TestNodeService_ListNodes(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewNodeService(s, nil)
+	svc := NewNodeService(s, nil, nil)
 
 	// Create devnets first (required for ListNodes)
 	devnetA := &types.Devnet{
@@ -150,7 +150,7 @@ func TestNodeService_ListNodes(t *testing.T) {
 
 func TestNodeService_ListNodes_DevnetNotFound(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewNodeService(s, nil)
+	svc := NewNodeService(s, nil, nil)
 
 	// List nodes for nonexistent devnet - should return NotFound
 	_, err := svc.ListNodes(context.Background(), &v1.ListNodesRequest{
@@ -171,7 +171,7 @@ func TestNodeService_ListNodes_DevnetNotFound(t *testing.T) {
 
 func TestNodeService_StartNode(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewNodeService(s, nil)
+	svc := NewNodeService(s, nil, nil)
 
 	// Create a stopped node
 	node := &types.Node{
@@ -203,7 +203,7 @@ func TestNodeService_StartNode(t *testing.T) {
 
 func TestNodeService_StartNode_AlreadyRunning(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewNodeService(s, nil)
+	svc := NewNodeService(s, nil, nil)
 
 	// Create a running node
 	node := &types.Node{
@@ -235,7 +235,7 @@ func TestNodeService_StartNode_AlreadyRunning(t *testing.T) {
 
 func TestNodeService_StopNode(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewNodeService(s, nil)
+	svc := NewNodeService(s, nil, nil)
 
 	// Create a running node
 	node := &types.Node{
@@ -267,7 +267,7 @@ func TestNodeService_StopNode(t *testing.T) {
 
 func TestNodeService_StopNode_AlreadyStopped(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewNodeService(s, nil)
+	svc := NewNodeService(s, nil, nil)
 
 	// Create a stopped node
 	node := &types.Node{
@@ -299,7 +299,7 @@ func TestNodeService_StopNode_AlreadyStopped(t *testing.T) {
 
 func TestNodeService_RestartNode(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewNodeService(s, nil)
+	svc := NewNodeService(s, nil, nil)
 
 	// Create a running node
 	node := &types.Node{
@@ -331,7 +331,7 @@ func TestNodeService_RestartNode(t *testing.T) {
 
 func TestNodeService_GetNodeHealth(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewNodeService(s, nil)
+	svc := NewNodeService(s, nil, nil)
 
 	tests := []struct {
 		name           string
@@ -372,7 +372,7 @@ func TestNodeService_GetNodeHealth(t *testing.T) {
 
 func TestNodeService_GetNodeHealth_NotFound(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewNodeService(s, nil)
+	svc := NewNodeService(s, nil, nil)
 
 	_, err := svc.GetNodeHealth(context.Background(), &v1.GetNodeHealthRequest{
 		DevnetName: "nonexistent",
@@ -388,6 +388,27 @@ func TestNodeService_GetNodeHealth_NotFound(t *testing.T) {
 	}
 	if st.Code() != codes.NotFound {
 		t.Errorf("expected NotFound, got %v", st.Code())
+	}
+}
+
+func TestNodeService_GetNodeHealth_MissingDevnetName(t *testing.T) {
+	s := store.NewMemoryStore()
+	svc := NewNodeService(s, nil, nil)
+
+	_, err := svc.GetNodeHealth(context.Background(), &v1.GetNodeHealthRequest{
+		DevnetName: "",
+		Index:      0,
+	})
+	if err == nil {
+		t.Fatal("expected error for missing devnet_name")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+	if st.Code() != codes.InvalidArgument {
+		t.Errorf("expected InvalidArgument, got %v", st.Code())
 	}
 }
 
@@ -407,7 +428,6 @@ func TestNodeToProto(t *testing.T) {
 		},
 		Status: types.NodeStatus{
 			Phase:        types.NodePhaseRunning,
-			ContainerID:  "abc123",
 			PID:          12345,
 			BlockHeight:  100000,
 			PeerCount:    10,
@@ -440,9 +460,7 @@ func TestNodeToProto(t *testing.T) {
 	if pb.Status.Phase != types.NodePhaseRunning {
 		t.Errorf("Status.Phase = %q, want %q", pb.Status.Phase, types.NodePhaseRunning)
 	}
-	if pb.Status.ContainerId != "abc123" {
-		t.Errorf("Status.ContainerId = %q, want %q", pb.Status.ContainerId, "abc123")
-	}
+	// ContainerId is no longer populated (runtime tracks internally)
 	if pb.Status.RestartCount != 3 {
 		t.Errorf("Status.RestartCount = %d, want 3", pb.Status.RestartCount)
 	}
@@ -451,5 +469,124 @@ func TestNodeToProto(t *testing.T) {
 func TestNodeToProto_Nil(t *testing.T) {
 	if NodeToProto(nil) != nil {
 		t.Error("NodeToProto(nil) should return nil")
+	}
+}
+
+func TestNodeService_GetNodePorts(t *testing.T) {
+	s := store.NewMemoryStore()
+	svc := NewNodeService(s, nil, nil)
+
+	tests := []struct {
+		name        string
+		nodeIndex   int
+		expectedP2P int32
+		expectedRPC int32
+	}{
+		{"node 0", 0, 26656, 26657},
+		{"node 1", 1, 26756, 26757},
+		{"node 5", 5, 27156, 27157},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a node with the specified index
+			node := &types.Node{
+				Metadata: types.ResourceMeta{Name: "test-" + string(rune('0'+tt.nodeIndex))},
+				Spec:     types.NodeSpec{DevnetRef: "port-test", Index: tt.nodeIndex, Role: "validator"},
+				Status:   types.NodeStatus{Phase: types.NodePhaseRunning},
+			}
+			if err := s.CreateNode(context.Background(), node); err != nil {
+				t.Fatalf("CreateNode: %v", err)
+			}
+
+			resp, err := svc.GetNodePorts(context.Background(), &v1.GetNodePortsRequest{
+				DevnetName: "port-test",
+				Index:      int32(tt.nodeIndex),
+			})
+			if err != nil {
+				t.Fatalf("GetNodePorts failed: %v", err)
+			}
+
+			if resp.DevnetName != "port-test" {
+				t.Errorf("DevnetName = %q, want %q", resp.DevnetName, "port-test")
+			}
+			if resp.Index != int32(tt.nodeIndex) {
+				t.Errorf("Index = %d, want %d", resp.Index, tt.nodeIndex)
+			}
+			if len(resp.Ports) != 4 {
+				t.Fatalf("got %d ports, want 4", len(resp.Ports))
+			}
+
+			// Check P2P port
+			var foundP2P, foundRPC bool
+			for _, p := range resp.Ports {
+				if p.Name == "p2p" {
+					foundP2P = true
+					if p.HostPort != tt.expectedP2P {
+						t.Errorf("P2P HostPort = %d, want %d", p.HostPort, tt.expectedP2P)
+					}
+					if p.ContainerPort != 26656 {
+						t.Errorf("P2P ContainerPort = %d, want 26656", p.ContainerPort)
+					}
+					if p.Protocol != "tcp" {
+						t.Errorf("P2P Protocol = %q, want %q", p.Protocol, "tcp")
+					}
+				}
+				if p.Name == "rpc" {
+					foundRPC = true
+					if p.HostPort != tt.expectedRPC {
+						t.Errorf("RPC HostPort = %d, want %d", p.HostPort, tt.expectedRPC)
+					}
+				}
+			}
+			if !foundP2P {
+				t.Error("P2P port not found in response")
+			}
+			if !foundRPC {
+				t.Error("RPC port not found in response")
+			}
+		})
+	}
+}
+
+func TestNodeService_GetNodePorts_NotFound(t *testing.T) {
+	s := store.NewMemoryStore()
+	svc := NewNodeService(s, nil, nil)
+
+	_, err := svc.GetNodePorts(context.Background(), &v1.GetNodePortsRequest{
+		DevnetName: "nonexistent",
+		Index:      0,
+	})
+	if err == nil {
+		t.Fatal("expected error for nonexistent node")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+	if st.Code() != codes.NotFound {
+		t.Errorf("expected NotFound, got %v", st.Code())
+	}
+}
+
+func TestNodeService_GetNodePorts_MissingDevnetName(t *testing.T) {
+	s := store.NewMemoryStore()
+	svc := NewNodeService(s, nil, nil)
+
+	_, err := svc.GetNodePorts(context.Background(), &v1.GetNodePortsRequest{
+		DevnetName: "",
+		Index:      0,
+	})
+	if err == nil {
+		t.Fatal("expected error for missing devnet_name")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+	if st.Code() != codes.InvalidArgument {
+		t.Errorf("expected InvalidArgument, got %v", st.Code())
 	}
 }

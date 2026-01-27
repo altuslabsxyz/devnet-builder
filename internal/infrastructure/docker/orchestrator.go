@@ -2,8 +2,11 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,6 +20,7 @@ type OrchestratorImpl struct {
 	networkManager ports.NetworkManager
 	portAllocator  ports.PortAllocator
 	dockerManager  *node.DockerManager
+	stateDir       string // Directory for storing deployment state files
 	logger         *output.Logger
 }
 
@@ -30,10 +34,36 @@ func NewOrchestrator(
 	if logger == nil {
 		logger = output.DefaultLogger
 	}
+
+	// Default state directory: ~/.devnet-builder/state
+	homeDir, _ := os.UserHomeDir()
+	stateDir := filepath.Join(homeDir, ".devnet-builder", "state")
+
 	return &OrchestratorImpl{
 		networkManager: networkManager,
 		portAllocator:  portAllocator,
 		dockerManager:  dockerManager,
+		stateDir:       stateDir,
+		logger:         logger,
+	}
+}
+
+// NewOrchestratorWithStateDir creates a new deployment orchestrator with a custom state directory
+func NewOrchestratorWithStateDir(
+	networkManager ports.NetworkManager,
+	portAllocator ports.PortAllocator,
+	dockerManager *node.DockerManager,
+	stateDir string,
+	logger *output.Logger,
+) *OrchestratorImpl {
+	if logger == nil {
+		logger = output.DefaultLogger
+	}
+	return &OrchestratorImpl{
+		networkManager: networkManager,
+		portAllocator:  portAllocator,
+		dockerManager:  dockerManager,
+		stateDir:       stateDir,
 		logger:         logger,
 	}
 }
@@ -48,31 +78,38 @@ func (o *OrchestratorImpl) Deploy(ctx context.Context, config *ports.DeploymentC
 		Errors:            []ports.DeploymentError{},
 	}
 
-	// Execute each phase sequentially
+	// Execute each phase sequentially, persisting state after each
 	if err := o.phaseValidate(ctx, config, state); err != nil {
 		return nil, o.handleFailure(ctx, state, err)
 	}
+	_ = o.saveState(state) // Best-effort state persistence
 
 	if err := o.phaseCreateNetwork(ctx, config, state); err != nil {
 		return nil, o.handleFailure(ctx, state, err)
 	}
+	_ = o.saveState(state)
 
 	if err := o.phaseAllocatePorts(ctx, config, state); err != nil {
 		return nil, o.handleFailure(ctx, state, err)
 	}
+	_ = o.saveState(state)
 
 	if err := o.phasePullImage(ctx, config, state); err != nil {
 		return nil, o.handleFailure(ctx, state, err)
 	}
+	_ = o.saveState(state)
 
 	if err := o.phaseStartContainers(ctx, config, state); err != nil {
 		return nil, o.handleFailure(ctx, state, err)
 	}
+	_ = o.saveState(state)
 
 	// Health checking phase would go here (not implemented yet)
 
-	// Finalize deployment
-	return o.finalizeDeployment(ctx, config, state), nil
+	// Finalize deployment and persist final state
+	result := o.finalizeDeployment(ctx, config, state)
+	_ = o.saveState(state)
+	return result, nil
 }
 
 // Rollback manually triggers rollback of a deployment
@@ -128,15 +165,116 @@ func (o *OrchestratorImpl) Rollback(ctx context.Context, state *ports.Deployment
 		return &MultiError{Errors: errs}
 	}
 
+	// Clean up state file after successful rollback
+	_ = o.deleteState(state.DevnetName)
+
 	o.logger.Info("Rollback completed successfully for %s", state.DevnetName)
 	return nil
 }
 
 // GetState retrieves current deployment state for a devnet
 func (o *OrchestratorImpl) GetState(ctx context.Context, devnetName string) (*ports.DeploymentState, error) {
-	// TODO: Implement state persistence and retrieval
-	// For now, return nil (no active deployment tracking)
-	return nil, nil
+	state, err := o.loadState(devnetName)
+	if err != nil {
+		// If file doesn't exist, return nil (no active deployment)
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to load state: %w", err)
+	}
+	return state, nil
+}
+
+// stateFilePath returns the path to the state file for a devnet
+func (o *OrchestratorImpl) stateFilePath(devnetName string) string {
+	return filepath.Join(o.stateDir, fmt.Sprintf("%s.json", devnetName))
+}
+
+// persistedState is the JSON-serializable representation of DeploymentState
+type persistedState struct {
+	DevnetName        string                `json:"devnet_name"`
+	Phase             ports.DeploymentPhase `json:"phase"`
+	NetworkID         *string               `json:"network_id,omitempty"`
+	PortRange         *ports.PortAllocation `json:"port_range,omitempty"`
+	StartedContainers []string              `json:"started_containers"`
+	HealthyContainers []string              `json:"healthy_containers"`
+	StartedAt         time.Time             `json:"started_at"`
+}
+
+// saveState persists the deployment state to a JSON file
+func (o *OrchestratorImpl) saveState(state *ports.DeploymentState) error {
+	if state == nil {
+		return nil
+	}
+
+	// Ensure state directory exists
+	if err := os.MkdirAll(o.stateDir, 0755); err != nil {
+		return fmt.Errorf("failed to create state directory: %w", err)
+	}
+
+	// Convert to persisted format (errors are not easily serializable)
+	ps := persistedState{
+		DevnetName:        state.DevnetName,
+		Phase:             state.Phase,
+		NetworkID:         state.NetworkID,
+		PortRange:         state.PortRange,
+		StartedContainers: state.StartedContainers,
+		HealthyContainers: state.HealthyContainers,
+		StartedAt:         state.StartedAt,
+	}
+
+	data, err := json.MarshalIndent(ps, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal state: %w", err)
+	}
+
+	statePath := o.stateFilePath(state.DevnetName)
+	if err := os.WriteFile(statePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write state file: %w", err)
+	}
+
+	o.logger.Debug("State saved to %s", statePath)
+	return nil
+}
+
+// loadState loads deployment state from a JSON file
+func (o *OrchestratorImpl) loadState(devnetName string) (*ports.DeploymentState, error) {
+	statePath := o.stateFilePath(devnetName)
+
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return nil, err // Returns os.IsNotExist if file doesn't exist
+	}
+
+	var ps persistedState
+	if err := json.Unmarshal(data, &ps); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal state: %w", err)
+	}
+
+	// Convert back to DeploymentState
+	state := &ports.DeploymentState{
+		DevnetName:        ps.DevnetName,
+		Phase:             ps.Phase,
+		NetworkID:         ps.NetworkID,
+		PortRange:         ps.PortRange,
+		StartedContainers: ps.StartedContainers,
+		HealthyContainers: ps.HealthyContainers,
+		Errors:            []ports.DeploymentError{}, // Errors are not persisted
+		StartedAt:         ps.StartedAt,
+	}
+
+	o.logger.Debug("State loaded from %s", statePath)
+	return state, nil
+}
+
+// deleteState removes the state file for a devnet
+func (o *OrchestratorImpl) deleteState(devnetName string) error {
+	statePath := o.stateFilePath(devnetName)
+	if err := os.Remove(statePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to delete state file: %w", err)
+	}
+	o.logger.Debug("State deleted: %s", statePath)
+	return nil
 }
 
 // phaseValidate validates deployment configuration
@@ -212,12 +350,14 @@ func (o *OrchestratorImpl) phaseAllocatePorts(ctx context.Context, config *ports
 // phasePullImage pulls or builds Docker image
 func (o *OrchestratorImpl) phasePullImage(ctx context.Context, config *ports.DeploymentConfig, state *ports.DeploymentState) error {
 	state.Phase = ports.PhaseImagePulling
-	o.logger.Info("Pulling Docker image: %s", config.Image)
 
-	// TODO: Handle custom build if config.CustomBuild is set
+	// Handle custom build if specified
 	if config.CustomBuild != nil {
-		return fmt.Errorf("%w: custom builds not yet implemented", ErrCustomBuildFailed)
+		return o.buildCustomImage(ctx, config)
 	}
+
+	// Standard image pull
+	o.logger.Info("Pulling Docker image: %s", config.Image)
 
 	// Validate/pull image
 	if err := o.dockerManager.ValidateImage(ctx); err != nil {
@@ -225,6 +365,60 @@ func (o *OrchestratorImpl) phasePullImage(ctx context.Context, config *ports.Dep
 	}
 
 	o.logger.Info("Image ready: %s", config.Image)
+	return nil
+}
+
+// buildCustomImage builds a Docker image from source
+func (o *OrchestratorImpl) buildCustomImage(ctx context.Context, config *ports.DeploymentConfig) error {
+	cb := config.CustomBuild
+
+	// Generate image tag based on devnet name
+	imageTag := fmt.Sprintf("devnet-%s:custom", config.DevnetName)
+	o.logger.Info("Building custom Docker image: %s", imageTag)
+
+	// Validate plugin path exists
+	if cb.PluginPath == "" {
+		return fmt.Errorf("%w: plugin path is required", ErrCustomBuildFailed)
+	}
+
+	if _, err := os.Stat(cb.PluginPath); os.IsNotExist(err) {
+		return fmt.Errorf("%w: plugin path does not exist: %s", ErrCustomBuildFailed, cb.PluginPath)
+	}
+
+	// Build docker build command args
+	args := []string{"build", "-t", imageTag}
+
+	// Add build args if specified
+	for key, value := range cb.BuildArgs {
+		args = append(args, "--build-arg", fmt.Sprintf("%s=%s", key, value))
+	}
+
+	// Add chain binary as build arg if specified
+	if cb.ChainBinary != "" {
+		args = append(args, "--build-arg", fmt.Sprintf("CHAIN_BINARY=%s", cb.ChainBinary))
+	}
+
+	// Add context path
+	args = append(args, cb.PluginPath)
+
+	o.logger.Debug("Running: docker %s", strings.Join(args, " "))
+
+	// Run docker build
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd.Dir = cb.PluginPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		o.logger.Error("Docker build failed: %s", string(output))
+		return fmt.Errorf("%w: docker build failed: %v", ErrCustomBuildFailed, err)
+	}
+
+	o.logger.Debug("Build output: %s", string(output))
+	o.logger.Info("Custom image built successfully: %s", imageTag)
+
+	// Update the docker manager to use the built image
+	o.dockerManager.Image = imageTag
+
 	return nil
 }
 

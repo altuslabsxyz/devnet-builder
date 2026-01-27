@@ -93,10 +93,15 @@ func New(config *Config) (*Server, error) {
 	mgr := controller.NewManager()
 	mgr.SetLogger(logger)
 
-	// Create devnet provisioner
+	// Create orchestrator factory for full provisioning flow (build, fork, init)
+	orchFactory := NewOrchestratorFactory(config.DataDir, logger)
+
+	// Create devnet provisioner with orchestrator factory
+	// The factory enables full provisioning (build, fork, init) before creating Node resources
 	devnetProv := provisioner.NewDevnetProvisioner(st, provisioner.Config{
-		DataDir: config.DataDir,
-		Logger:  logger,
+		DataDir:             config.DataDir,
+		Logger:              logger,
+		OrchestratorFactory: orchFactory,
 	})
 
 	// Register controllers
@@ -105,7 +110,7 @@ func New(config *Config) (*Server, error) {
 	mgr.Register("devnets", devnetCtrl)
 
 	// Create node runtime (Docker or nil)
-	var nodeRuntime controller.NodeRuntime
+	var nodeRuntime runtime.NodeRuntime
 	if config.EnableDocker {
 		dockerRuntime, err := runtime.NewDockerRuntime(runtime.DockerConfig{
 			DefaultImage: config.DockerImage,
@@ -157,7 +162,7 @@ func New(config *Config) (*Server, error) {
 	devnetSvc.SetLogger(logger)
 	v1.RegisterDevnetServiceServer(grpcServer, devnetSvc)
 
-	nodeSvc := NewNodeService(st, mgr)
+	nodeSvc := NewNodeService(st, mgr, nodeRuntime)
 	nodeSvc.SetLogger(logger)
 	v1.RegisterNodeServiceServer(grpcServer, nodeSvc)
 

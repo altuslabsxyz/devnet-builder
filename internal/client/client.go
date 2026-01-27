@@ -109,6 +109,21 @@ func (c *Client) RestartNode(ctx context.Context, namespace, devnetName string, 
 	return c.grpc.RestartNode(ctx, namespace, devnetName, index)
 }
 
+// ExecInNode executes a command inside a running node container.
+func (c *Client) ExecInNode(ctx context.Context, devnetName string, index int, command []string, timeoutSeconds int) (*ExecResult, error) {
+	return c.grpc.ExecInNode(ctx, devnetName, index, command, timeoutSeconds)
+}
+
+// GetNodePorts retrieves the port mappings for a node.
+func (c *Client) GetNodePorts(ctx context.Context, devnetName string, index int) (*NodePorts, error) {
+	return c.grpc.GetNodePorts(ctx, devnetName, index)
+}
+
+// GetNodeHealth retrieves the health status of a node.
+func (c *Client) GetNodeHealth(ctx context.Context, devnetName string, index int) (*NodeHealth, error) {
+	return c.grpc.GetNodeHealth(ctx, devnetName, index)
+}
+
 // CreateUpgrade creates a new upgrade.
 func (c *Client) CreateUpgrade(ctx context.Context, namespace, name string, spec *v1.UpgradeSpec) (*v1.Upgrade, error) {
 	return c.grpc.CreateUpgrade(ctx, namespace, name, spec)
@@ -167,4 +182,9 @@ func (c *Client) SubmitGovVote(ctx context.Context, devnet string, proposalID ui
 // SubmitGovProposal submits a governance proposal.
 func (c *Client) SubmitGovProposal(ctx context.Context, devnet, proposer, proposalType, title, description string, content []byte) (*v1.Transaction, error) {
 	return c.grpc.SubmitGovProposal(ctx, devnet, proposer, proposalType, title, description, content)
+}
+
+// StreamNodeLogs streams logs from a node, calling the callback for each log entry.
+func (c *Client) StreamNodeLogs(ctx context.Context, devnetName string, index int, follow bool, since string, tail int, callback func(*LogEntry) error) error {
+	return c.grpc.StreamNodeLogs(ctx, devnetName, index, follow, since, tail, callback)
 }
