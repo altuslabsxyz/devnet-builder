@@ -493,3 +493,83 @@ func TestDockerRuntime_GetLogs_WithOptions(t *testing.T) {
 	assert.Equal(t, "100", capturedOpts.Tail)
 	assert.Equal(t, sinceTime.Format(time.RFC3339), capturedOpts.Since)
 }
+
+func TestDockerRuntime_Cleanup(t *testing.T) {
+	mock := &mockDockerClient{}
+
+	rt := &DockerRuntime{
+		client: mock,
+		logger: testLogger(),
+		containers: map[string]*containerState{
+			"node-1": {containerID: "container-111", nodeID: "node-1"},
+			"node-2": {containerID: "container-222", nodeID: "node-2"},
+		},
+	}
+
+	err := rt.Cleanup(context.Background())
+	require.NoError(t, err)
+
+	// Verify all containers were removed
+	assert.Len(t, mock.removeCalls, 2)
+	assert.Contains(t, mock.removeCalls, "container-111")
+	assert.Contains(t, mock.removeCalls, "container-222")
+
+	// Verify map is cleared
+	assert.Len(t, rt.containers, 0)
+}
+
+func TestDockerRuntime_Cleanup_PartialFailure(t *testing.T) {
+	removeErr := assert.AnError
+
+	mock := &mockDockerClient{
+		removeFn: func(ctx context.Context, containerID string, opts container.RemoveOptions) error {
+			// Fail on the second container
+			if containerID == "container-222" {
+				return removeErr
+			}
+			return nil
+		},
+	}
+
+	rt := &DockerRuntime{
+		client: mock,
+		logger: testLogger(),
+		containers: map[string]*containerState{
+			"node-1": {containerID: "container-111", nodeID: "node-1"},
+			"node-2": {containerID: "container-222", nodeID: "node-2"},
+		},
+	}
+
+	err := rt.Cleanup(context.Background())
+
+	// Should return the last error
+	require.Error(t, err)
+	assert.Equal(t, removeErr, err)
+
+	// Verify removal was attempted for all containers (continues despite errors)
+	assert.Len(t, mock.removeCalls, 2)
+	assert.Contains(t, mock.removeCalls, "container-111")
+	assert.Contains(t, mock.removeCalls, "container-222")
+
+	// Map should still be cleared even with partial failure
+	assert.Len(t, rt.containers, 0)
+}
+
+func TestDockerRuntime_Cleanup_EmptyMap(t *testing.T) {
+	mock := &mockDockerClient{}
+
+	rt := &DockerRuntime{
+		client:     mock,
+		logger:     testLogger(),
+		containers: make(map[string]*containerState),
+	}
+
+	err := rt.Cleanup(context.Background())
+	require.NoError(t, err)
+
+	// Verify no container removal calls were made
+	assert.Len(t, mock.removeCalls, 0)
+
+	// Map should still be properly initialized (empty)
+	assert.Len(t, rt.containers, 0)
+}
