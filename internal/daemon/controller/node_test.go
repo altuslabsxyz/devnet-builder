@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
@@ -62,6 +63,10 @@ func (m *mockNodeRuntime) Cleanup(ctx context.Context) error {
 		return m.cleanupFn(ctx)
 	}
 	return nil
+}
+
+func (m *mockNodeRuntime) ExecInNode(ctx context.Context, nodeID string, command []string, timeout time.Duration) (*runtime.ExecResult, error) {
+	return nil, fmt.Errorf("exec not implemented in mock")
 }
 
 // Ensure mockNodeRuntime implements runtime.NodeRuntime

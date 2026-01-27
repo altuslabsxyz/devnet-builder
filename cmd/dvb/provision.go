@@ -445,3 +445,7 @@ func (r *standaloneNodeRuntime) GetLogs(ctx context.Context, nodeID string, opts
 func (r *standaloneNodeRuntime) Cleanup(ctx context.Context) error {
 	return nil
 }
+
+func (r *standaloneNodeRuntime) ExecInNode(ctx context.Context, nodeID string, command []string, timeout time.Duration) (*runtime.ExecResult, error) {
+	return nil, fmt.Errorf("exec not supported in standalone mode")
+}

@@ -8,9 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"text/tabwriter"
+	"time"
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
+	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/provisioner"
 	"github.com/altuslabsxyz/devnet-builder/internal/plugin/cosmos"
 	"github.com/altuslabsxyz/devnet-builder/internal/plugin/types"
@@ -43,64 +46,272 @@ Examples:
 	cmd.AddCommand(
 		newNodeListCmd(),
 		newNodeGetCmd(),
+		newNodeHealthCmd(),
+		newNodePortsCmd(),
 		newNodeStartCmd(),
 		newNodeStopCmd(),
 		newNodeRestartCmd(),
+		newNodeExecCmd(),
 		newNodeInitCmd(),
 	)
 
 	return cmd
 }
 
+// nodeListOptions holds options for the node list command
+type nodeListOptions struct {
+	namespace string
+	watch     bool
+	interval  int
+	wide      bool
+}
+
 func newNodeListCmd() *cobra.Command {
-	var namespace string
+	opts := &nodeListOptions{}
 
 	cmd := &cobra.Command{
 		Use:   "list <devnet-name>",
 		Short: "List nodes in a devnet",
-		Args:  cobra.ExactArgs(1),
+		Long: `List nodes in a devnet with their status.
+
+Use -w/--watch to continuously monitor node status in real-time.
+Press Ctrl+C to stop watching.
+
+Examples:
+  # List all nodes in a devnet
+  dvb node list my-devnet
+
+  # Watch node status in real-time (updates every 2 seconds)
+  dvb node list my-devnet -w
+
+  # Watch with custom interval (5 seconds)
+  dvb node list my-devnet -w --interval 5
+
+  # Wide output with additional details
+  dvb node list my-devnet --wide`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
 			devnetName := args[0]
-			nodes, err := daemonClient.ListNodes(cmd.Context(), namespace, devnetName)
-			if err != nil {
-				return err
+
+			if opts.watch {
+				return runNodeListWatch(cmd.Context(), devnetName, opts)
 			}
 
-			if len(nodes) == 0 {
-				fmt.Printf("No nodes found in devnet %q\n", devnetName)
-				return nil
-			}
-
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "INDEX\tROLE\tPHASE\tCONTAINER\tRESTARTS")
-			for _, n := range nodes {
-				containerID := n.Status.ContainerId
-				if len(containerID) > 12 {
-					containerID = containerID[:12]
-				}
-				if containerID == "" {
-					containerID = "-"
-				}
-				fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%d\n",
-					n.Metadata.Index,
-					n.Spec.Role,
-					n.Status.Phase,
-					containerID,
-					n.Status.RestartCount,
-				)
-			}
-			w.Flush()
-			return nil
+			return runNodeListOnce(cmd.Context(), devnetName, opts)
 		},
 	}
 
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+	cmd.Flags().StringVarP(&opts.namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+	cmd.Flags().BoolVarP(&opts.watch, "watch", "w", false, "Watch for changes (like kubectl -w)")
+	cmd.Flags().IntVar(&opts.interval, "interval", 2, "Watch interval in seconds (default: 2)")
+	cmd.Flags().BoolVar(&opts.wide, "wide", false, "Wide output with additional details")
 
 	return cmd
+}
+
+// runNodeListOnce runs a single list operation
+func runNodeListOnce(ctx context.Context, devnetName string, opts *nodeListOptions) error {
+	nodes, err := daemonClient.ListNodes(ctx, opts.namespace, devnetName)
+	if err != nil {
+		return err
+	}
+
+	if len(nodes) == 0 {
+		fmt.Printf("No nodes found in devnet %q\n", devnetName)
+		return nil
+	}
+
+	printNodeTable(nodes, opts.wide)
+	return nil
+}
+
+// runNodeListWatch continuously watches node status
+func runNodeListWatch(ctx context.Context, devnetName string, opts *nodeListOptions) error {
+	interval := time.Duration(opts.interval) * time.Second
+	if interval < time.Second {
+		interval = time.Second
+	}
+
+	// Track previous state for change detection
+	previousPhases := make(map[int32]string)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	// Print initial state
+	nodes, err := daemonClient.ListNodes(ctx, opts.namespace, devnetName)
+	if err != nil {
+		return err
+	}
+
+	// Store initial phases
+	for _, n := range nodes {
+		previousPhases[n.Metadata.Index] = n.Status.Phase
+	}
+
+	// Clear screen and print header
+	clearScreen()
+	printWatchHeader(devnetName, interval)
+	printNodeTable(nodes, opts.wide)
+
+	// Watch loop
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			nodes, err := daemonClient.ListNodes(ctx, opts.namespace, devnetName)
+			if err != nil {
+				// Print error but continue watching
+				fmt.Fprintf(os.Stderr, "\rError: %v", err)
+				continue
+			}
+
+			// Check for changes
+			hasChanges := false
+			for _, n := range nodes {
+				if prev, ok := previousPhases[n.Metadata.Index]; !ok || prev != n.Status.Phase {
+					hasChanges = true
+					previousPhases[n.Metadata.Index] = n.Status.Phase
+				}
+			}
+
+			// Always refresh in watch mode
+			clearScreen()
+			printWatchHeader(devnetName, interval)
+			printNodeTable(nodes, opts.wide)
+
+			// Show change indicator
+			if hasChanges {
+				color.Yellow("  (changed)")
+			}
+		}
+	}
+}
+
+// clearScreen clears the terminal screen
+func clearScreen() {
+	// ANSI escape sequence to clear screen and move cursor to top-left
+	fmt.Print("\033[2J\033[H")
+}
+
+// printWatchHeader prints the watch mode header
+func printWatchHeader(devnetName string, interval time.Duration) {
+	now := time.Now().Format("15:04:05")
+	fmt.Printf("Every %s: dvb node list %s    %s\n\n",
+		formatDuration(interval), devnetName, now)
+}
+
+// formatDuration formats a duration for display
+func formatDuration(d time.Duration) string {
+	if d >= time.Minute {
+		return fmt.Sprintf("%.0fm", d.Minutes())
+	}
+	return fmt.Sprintf("%.0fs", d.Seconds())
+}
+
+// printNodeTable prints nodes in a table format
+func printNodeTable(nodes []*v1.Node, wide bool) {
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+	if wide {
+		fmt.Fprintln(w, "INDEX\tHEALTH\tROLE\tPHASE\tCONTAINER\tRPC PORT\tRESTARTS\tMESSAGE")
+	} else {
+		fmt.Fprintln(w, "INDEX\tHEALTH\tROLE\tPHASE\tCONTAINER\tRESTARTS")
+	}
+
+	for _, n := range nodes {
+		containerID := n.Status.ContainerId
+		if len(containerID) > 12 {
+			containerID = containerID[:12]
+		}
+		if containerID == "" {
+			containerID = "-"
+		}
+
+		healthIcon := getHealthIcon(n.Status.Phase)
+
+		if wide {
+			// Calculate RPC port (26657 + index * 100)
+			rpcPort := 26657 + int(n.Metadata.Index)*100
+			message := n.Status.Message
+			if len(message) > 30 {
+				message = message[:27] + "..."
+			}
+			if message == "" {
+				message = "-"
+			}
+
+			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%d\t%d\t%s\n",
+				n.Metadata.Index,
+				healthIcon,
+				n.Spec.Role,
+				n.Status.Phase,
+				containerID,
+				rpcPort,
+				n.Status.RestartCount,
+				message,
+			)
+		} else {
+			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%d\n",
+				n.Metadata.Index,
+				healthIcon,
+				n.Spec.Role,
+				n.Status.Phase,
+				containerID,
+				n.Status.RestartCount,
+			)
+		}
+	}
+	w.Flush()
+}
+
+// getNodeListSummary returns a summary string of node states
+func getNodeListSummary(nodes []*v1.Node) string {
+	running, stopped, other := 0, 0, 0
+	for _, n := range nodes {
+		switch n.Status.Phase {
+		case "Running":
+			running++
+		case "Stopped":
+			stopped++
+		default:
+			other++
+		}
+	}
+
+	parts := []string{}
+	if running > 0 {
+		parts = append(parts, color.GreenString("%d running", running))
+	}
+	if stopped > 0 {
+		parts = append(parts, color.WhiteString("%d stopped", stopped))
+	}
+	if other > 0 {
+		parts = append(parts, color.YellowString("%d other", other))
+	}
+
+	return strings.Join(parts, ", ")
+}
+
+// getHealthIcon returns a colored health indicator based on node phase.
+func getHealthIcon(phase string) string {
+	switch phase {
+	case "Running":
+		return color.GreenString("●")
+	case "Crashed":
+		return color.RedString("✗")
+	case "Stopped":
+		return color.WhiteString("○")
+	case "Pending", "Starting", "Stopping":
+		return color.YellowString("◐")
+	default:
+		return color.YellowString("?")
+	}
 }
 
 func newNodeGetCmd() *cobra.Command {
@@ -134,6 +345,116 @@ func newNodeGetCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
 
 	return cmd
+}
+
+func newNodeHealthCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "health <devnet-name> <index>",
+		Short: "Get health status of a node",
+		Long: `Display the health status of a specific node.
+
+Shows whether the node is healthy, unhealthy, stopped, or in a transitional state.
+This is useful for monitoring node status and diagnosing issues.
+
+Health status values:
+  - Healthy:       Node is running normally
+  - Unhealthy:     Node has health check failures
+  - Stopped:       Node is intentionally stopped
+  - Transitioning: Node is changing state (starting, stopping)
+  - Unknown:       Health cannot be determined
+
+Examples:
+  # Check health of node 0
+  dvb node health my-devnet 0
+
+  # Check health of node 1
+  dvb node health my-devnet 1`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if daemonClient == nil {
+				return fmt.Errorf("daemon not running - start with: devnetd")
+			}
+
+			devnetName := args[0]
+			index, err := parseNodeIndex(args[1])
+			if err != nil {
+				return err
+			}
+
+			health, err := daemonClient.GetNodeHealth(cmd.Context(), devnetName, index)
+			if err != nil {
+				return err
+			}
+
+			// Print health status with color
+			printHealthStatus(devnetName, index, health)
+			return nil
+		},
+	}
+}
+
+func newNodePortsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "ports <devnet-name> <index>",
+		Short: "Show port mappings for a node",
+		Long: `Display the port mappings for a specific node.
+
+Each node in a devnet has its ports offset by index * 100 to avoid conflicts.
+This command shows both container ports and their mapped host ports.
+
+Examples:
+  # Show ports for node 0 (host ports: 26656, 26657, 1317, 9090)
+  dvb node ports my-devnet 0
+
+  # Show ports for node 1 (host ports: 26756, 26757, 1417, 9190)
+  dvb node ports my-devnet 1`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if daemonClient == nil {
+				return fmt.Errorf("daemon not running - start with: devnetd")
+			}
+
+			devnetName := args[0]
+			index, err := parseNodeIndex(args[1])
+			if err != nil {
+				return err
+			}
+
+			ports, err := daemonClient.GetNodePorts(cmd.Context(), devnetName, index)
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("Ports for %s/%d:\n\n", ports.DevnetName, ports.Index)
+
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			fmt.Fprintln(w, "SERVICE\tCONTAINER\tHOST\tPROTOCOL")
+			for _, p := range ports.Ports {
+				fmt.Fprintf(w, "%s\t%d\t%d\t%s\n",
+					p.Name,
+					p.ContainerPort,
+					p.HostPort,
+					p.Protocol,
+				)
+			}
+			w.Flush()
+
+			// Print helpful URLs
+			fmt.Println()
+			for _, p := range ports.Ports {
+				switch p.Name {
+				case "rpc":
+					fmt.Printf("RPC endpoint:  http://localhost:%d\n", p.HostPort)
+				case "rest":
+					fmt.Printf("REST endpoint: http://localhost:%d\n", p.HostPort)
+				case "grpc":
+					fmt.Printf("gRPC endpoint: localhost:%d\n", p.HostPort)
+				}
+			}
+
+			return nil
+		},
+	}
 }
 
 func newNodeStartCmd() *cobra.Command {
@@ -235,6 +556,85 @@ func newNodeRestartCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+
+	return cmd
+}
+
+func newNodeExecCmd() *cobra.Command {
+	var timeout int
+
+	cmd := &cobra.Command{
+		Use:   "exec <devnet-name> <index> -- <command> [args...]",
+		Short: "Execute a command in a running node container",
+		Long: `Execute a command inside a running node container.
+
+This command allows you to run arbitrary commands inside a node's container,
+useful for debugging, inspecting state, or running ad-hoc operations.
+
+The node must be in Running phase for exec to work.
+
+Examples:
+  # Check the chain binary version
+  dvb node exec my-devnet 0 -- stabled version
+
+  # List files in the home directory
+  dvb node exec my-devnet 0 -- ls -la /home/.stable
+
+  # Query the node status via RPC
+  dvb node exec my-devnet 0 -- curl -s localhost:26657/status
+
+  # Run a command with a longer timeout
+  dvb node exec my-devnet 0 --timeout 60 -- stabled query bank balances cosmos1...`,
+		Args: cobra.MinimumNArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if daemonClient == nil {
+				return fmt.Errorf("daemon not running - start with: devnetd")
+			}
+
+			devnetName := args[0]
+			index, err := parseNodeIndex(args[1])
+			if err != nil {
+				return err
+			}
+
+			// Find the -- separator and get command args after it
+			command := args[2:]
+			for i, arg := range args {
+				if arg == "--" {
+					command = args[i+1:]
+					break
+				}
+			}
+
+			if len(command) == 0 {
+				return fmt.Errorf("no command specified after --")
+			}
+
+			result, err := daemonClient.ExecInNode(cmd.Context(), devnetName, index, command, timeout)
+			if err != nil {
+				return err
+			}
+
+			// Print stdout if any
+			if result.Stdout != "" {
+				fmt.Print(result.Stdout)
+			}
+
+			// Print stderr to stderr if any
+			if result.Stderr != "" {
+				fmt.Fprint(os.Stderr, result.Stderr)
+			}
+
+			// Exit with the command's exit code
+			if result.ExitCode != 0 {
+				os.Exit(result.ExitCode)
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().IntVar(&timeout, "timeout", 30, "Command timeout in seconds")
 
 	return cmd
 }
@@ -464,5 +864,45 @@ func printNodeStatus(n *v1.Node) {
 
 	if n.Status.Message != "" {
 		fmt.Printf("Message:    %s\n", n.Status.Message)
+	}
+
+	// Show port mappings (deterministic based on index)
+	offset := int(n.Metadata.Index) * 100
+	fmt.Printf("\nPorts:\n")
+	fmt.Printf("  RPC:      localhost:%d\n", 26657+offset)
+	fmt.Printf("  REST:     localhost:%d\n", 1317+offset)
+	fmt.Printf("  gRPC:     localhost:%d\n", 9090+offset)
+	fmt.Printf("  P2P:      localhost:%d\n", 26656+offset)
+}
+
+func printHealthStatus(devnetName string, index int, health *client.NodeHealth) {
+	// Print health icon and status with color
+	switch health.Status {
+	case "Healthy":
+		color.Green("● Healthy")
+	case "Unhealthy":
+		color.Red("✗ Unhealthy")
+	case "Stopped":
+		color.White("○ Stopped")
+	case "Transitioning":
+		color.Yellow("◐ Transitioning")
+	default:
+		color.Yellow("? %s", health.Status)
+	}
+
+	fmt.Printf("\nDevnet:    %s\n", devnetName)
+	fmt.Printf("Node:      %d\n", index)
+	fmt.Printf("Status:    %s\n", health.Status)
+
+	if health.Message != "" {
+		fmt.Printf("Message:   %s\n", health.Message)
+	}
+
+	if !health.LastCheck.IsZero() {
+		fmt.Printf("Last Check: %s\n", health.LastCheck.Format("2006-01-02 15:04:05"))
+	}
+
+	if health.ConsecutiveFailures > 0 {
+		color.Yellow("Consecutive Failures: %d\n", health.ConsecutiveFailures)
 	}
 }

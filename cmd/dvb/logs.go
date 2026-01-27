@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -84,9 +85,16 @@ func runLogs(ctx context.Context, opts *logsOptions) error {
 		dataDir = filepath.Join(homeDir, ".devnet-builder")
 	}
 
-	// TODO: When daemon client supports logs streaming, use it first
-	// For now, only support standalone mode
+	// Try daemon streaming if available and a specific node is requested
+	if daemonClient != nil && !standalone && opts.node != "" {
+		index, err := parseNodeIndex(opts.node)
+		if err == nil {
+			return streamLogsFromDaemon(ctx, opts, index)
+		}
+		// If we can't parse the index, fall through to file-based
+	}
 
+	// Fall back to file-based logs (standalone mode or multi-node)
 	devnetPath := filepath.Join(dataDir, "devnets", opts.devnet)
 	if _, err := os.Stat(devnetPath); os.IsNotExist(err) {
 		return fmt.Errorf("devnet '%s' not found", opts.devnet)
@@ -351,4 +359,22 @@ func tailLines(file *os.File, n int) ([]string, error) {
 	file.Seek(0, io.SeekEnd)
 
 	return lines, nil
+}
+
+// streamLogsFromDaemon streams logs from the daemon for a specific node.
+func streamLogsFromDaemon(ctx context.Context, opts *logsOptions, index int) error {
+	nodeColor := getNodeColor(opts.node)
+
+	return daemonClient.StreamNodeLogs(ctx, opts.devnet, index, opts.follow, "", opts.tail,
+		func(entry *client.LogEntry) error {
+			if opts.timestamp && !entry.Timestamp.IsZero() {
+				fmt.Printf("%s %s %s\n",
+					color.WhiteString(entry.Timestamp.Format(time.RFC3339)),
+					nodeColor("["+opts.node+"]"),
+					entry.Message)
+			} else {
+				fmt.Printf("%s %s\n", nodeColor("["+opts.node+"]"), entry.Message)
+			}
+			return nil
+		})
 }
