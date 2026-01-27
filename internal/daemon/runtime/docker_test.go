@@ -4,14 +4,15 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
+	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
-	dockertypes "github.com/docker/docker/api/types"
 	specs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -386,4 +387,109 @@ func TestDockerRuntime_RestartNode(t *testing.T) {
 
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func TestDockerRuntime_GetLogs(t *testing.T) {
+	t.Run("happy path - returns log stream", func(t *testing.T) {
+		expectedLogs := "log line 1\nlog line 2\n"
+		var capturedOpts container.LogsOptions
+		var capturedContainerID string
+
+		mock := &mockDockerClient{
+			logsFn: func(ctx context.Context, containerID string, opts container.LogsOptions) (io.ReadCloser, error) {
+				capturedContainerID = containerID
+				capturedOpts = opts
+				return io.NopCloser(strings.NewReader(expectedLogs)), nil
+			},
+		}
+
+		rt := &DockerRuntime{
+			client:     mock,
+			logger:     testLogger(),
+			containers: map[string]*containerState{
+				"test-node": {
+					containerID: "container-logs-123",
+					nodeID:      "test-node",
+				},
+			},
+		}
+
+		reader, err := rt.GetLogs(context.Background(), "test-node", LogOptions{})
+		require.NoError(t, err)
+		require.NotNil(t, reader)
+		defer reader.Close()
+
+		// Verify correct container ID was used
+		assert.Equal(t, "container-logs-123", capturedContainerID)
+
+		// Verify default options
+		assert.True(t, capturedOpts.ShowStdout)
+		assert.True(t, capturedOpts.ShowStderr)
+		assert.True(t, capturedOpts.Timestamps)
+		assert.False(t, capturedOpts.Follow)
+		assert.Empty(t, capturedOpts.Tail)
+		assert.Empty(t, capturedOpts.Since)
+
+		// Verify log content
+		content, err := io.ReadAll(reader)
+		require.NoError(t, err)
+		assert.Equal(t, expectedLogs, string(content))
+	})
+}
+
+func TestDockerRuntime_GetLogs_NotFound(t *testing.T) {
+	mock := &mockDockerClient{}
+
+	rt := &DockerRuntime{
+		client:     mock,
+		logger:     testLogger(),
+		containers: make(map[string]*containerState),
+	}
+
+	reader, err := rt.GetLogs(context.Background(), "nonexistent", LogOptions{})
+	require.Error(t, err)
+	assert.Nil(t, reader)
+	assert.Contains(t, err.Error(), "node nonexistent not found")
+}
+
+func TestDockerRuntime_GetLogs_WithOptions(t *testing.T) {
+	sinceTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	var capturedOpts container.LogsOptions
+
+	mock := &mockDockerClient{
+		logsFn: func(ctx context.Context, containerID string, opts container.LogsOptions) (io.ReadCloser, error) {
+			capturedOpts = opts
+			return io.NopCloser(strings.NewReader("logs")), nil
+		},
+	}
+
+	rt := &DockerRuntime{
+		client:     mock,
+		logger:     testLogger(),
+		containers: map[string]*containerState{
+			"test-node": {
+				containerID: "container-opts-456",
+				nodeID:      "test-node",
+			},
+		},
+	}
+
+	opts := LogOptions{
+		Follow: true,
+		Lines:  100,
+		Since:  sinceTime,
+	}
+
+	reader, err := rt.GetLogs(context.Background(), "test-node", opts)
+	require.NoError(t, err)
+	require.NotNil(t, reader)
+	defer reader.Close()
+
+	// Verify options were mapped correctly
+	assert.True(t, capturedOpts.ShowStdout)
+	assert.True(t, capturedOpts.ShowStderr)
+	assert.True(t, capturedOpts.Timestamps)
+	assert.True(t, capturedOpts.Follow)
+	assert.Equal(t, "100", capturedOpts.Tail)
+	assert.Equal(t, sinceTime.Format(time.RFC3339), capturedOpts.Since)
 }

@@ -428,5 +428,58 @@ func (r *DockerRuntime) RestartNode(ctx context.Context, nodeID string) error {
 	return nil
 }
 
+// GetLogs retrieves logs from a Docker container.
+func (r *DockerRuntime) GetLogs(ctx context.Context, nodeID string, opts LogOptions) (io.ReadCloser, error) {
+	r.mu.RLock()
+	state, exists := r.containers[nodeID]
+	r.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("node %s not found", nodeID)
+	}
+
+	dockerOpts := container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     opts.Follow,
+		Timestamps: true,
+	}
+
+	if opts.Lines > 0 {
+		dockerOpts.Tail = fmt.Sprintf("%d", opts.Lines)
+	}
+
+	if !opts.Since.IsZero() {
+		dockerOpts.Since = opts.Since.Format(time.RFC3339)
+	}
+
+	return r.client.ContainerLogs(ctx, state.containerID, dockerOpts)
+}
+
+// Cleanup cleans up all managed containers.
+func (r *DockerRuntime) Cleanup(ctx context.Context) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var lastErr error
+	for nodeID, state := range r.containers {
+		r.logger.Info("cleaning up container",
+			"nodeID", nodeID,
+			"containerID", state.containerID[:min(12, len(state.containerID))])
+
+		if err := r.client.ContainerRemove(ctx, state.containerID, container.RemoveOptions{Force: true}); err != nil {
+			r.logger.Warn("failed to remove container during cleanup",
+				"nodeID", nodeID,
+				"error", err)
+			lastErr = err
+		}
+	}
+
+	// Clear the map
+	r.containers = make(map[string]*containerState)
+
+	return lastErr
+}
+
 // Ensure DockerRuntime implements NodeRuntime.
 var _ controller.NodeRuntime = (*DockerRuntime)(nil)
