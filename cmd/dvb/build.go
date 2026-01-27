@@ -76,7 +76,7 @@ Examples:
 	cmd.Flags().StringVar(&network, "network", "", "Network/plugin name (e.g., stable, cosmos) - required")
 	cmd.Flags().StringToStringVar(&buildFlags, "build-flags", nil, "Build flags as key=value pairs (e.g., --build-flags ldflags=\"-s -w\")")
 	cmd.Flags().StringVar(&goVersion, "go-version", "", "Go version constraint (e.g., 1.21)")
-	cmd.Flags().BoolVar(&noCache, "no-cache", false, "Skip cache and force rebuild (TODO: not yet implemented)")
+	cmd.Flags().BoolVar(&noCache, "no-cache", false, "Skip cache and force rebuild")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Minute, "Build timeout duration")
 
 	// Required flags
@@ -117,11 +117,7 @@ func runBuild(cmd *cobra.Command, gitRepo, gitRef, network string, buildFlags ma
 		PluginName: network,
 		BuildFlags: buildFlags,
 		GoVersion:  goVersion,
-	}
-
-	// Note about --no-cache
-	if noCache {
-		fmt.Fprintln(os.Stderr, "Note: --no-cache is not yet implemented, proceeding with normal build")
+		NoCache:    noCache,
 	}
 
 	// Create context with timeout

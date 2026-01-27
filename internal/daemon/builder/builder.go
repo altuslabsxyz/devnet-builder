@@ -107,11 +107,15 @@ func (b *DefaultBuilder) Build(ctx context.Context, spec BuildSpec) (*BuildResul
 	}
 	b.logger.Debug("resolved commit", "commit", resolvedCommit)
 
-	// Check cache with resolved commit
+	// Check cache with resolved commit (unless NoCache is set)
 	cacheKey := b.cache.CacheKey(spec, resolvedCommit)
-	if cachedResult, found := b.cache.Get(cacheKey); found {
-		b.logger.Info("cache hit", "cacheKey", cacheKey, "binaryPath", cachedResult.BinaryPath)
-		return cachedResult, nil
+	if !spec.NoCache {
+		if cachedResult, found := b.cache.Get(cacheKey); found {
+			b.logger.Info("cache hit", "cacheKey", cacheKey, "binaryPath", cachedResult.BinaryPath)
+			return cachedResult, nil
+		}
+	} else {
+		b.logger.Info("skipping cache lookup (--no-cache)")
 	}
 
 	// Create output directory via cache path

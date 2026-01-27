@@ -13,6 +13,7 @@ type BuildSpec struct {
 	PluginName string            // plugin handles build logic
 	BuildFlags map[string]string // plugin-specific flags (ldflags, tags, etc.)
 	GoVersion  string            // optional Go version constraint
+	NoCache    bool              // skip cache and force rebuild
 }
 
 // BuildResult contains the result of a successful build
