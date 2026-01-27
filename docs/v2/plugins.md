@@ -14,6 +14,179 @@ The V2 plugin system provides advanced features for managing blockchain network 
 
 This guide focuses on V2-specific features. For general plugin development, see the [Plugin System Guide](../plugins.md).
 
+## Adding Plugins to V2
+
+V2 uses **automatic plugin discovery** - no registration or configuration files required. Simply place the plugin binary in the right location and it's immediately available.
+
+### Quick Start: Install a Plugin
+
+```bash
+# 1. Create the plugins directory (if it doesn't exist)
+mkdir -p ~/.devnet-builder/plugins
+
+# 2. Copy your plugin binary
+cp mynetwork-plugin ~/.devnet-builder/plugins/
+
+# 3. Make it executable
+chmod +x ~/.devnet-builder/plugins/mynetwork-plugin
+
+# 4. Verify it's discovered
+dvb plugins list
+# Output should include: mynetwork
+
+# 5. Use it in your devnet
+dvb provision --network mynetwork --validators 4
+```
+
+That's it! No daemon restart, no configuration files, no registration commands.
+
+### Plugin Discovery Directories
+
+V2 searches for plugins in these locations (in order of priority):
+
+| Location | Purpose | Example |
+|----------|---------|---------|
+| `./plugins/` | Project-local plugins | `./plugins/mynetwork-plugin` |
+| `~/.devnet-builder/plugins/` | User plugins (recommended) | `~/.devnet-builder/plugins/mynetwork-plugin` |
+| `/usr/local/lib/devnet-builder/plugins/` | System-wide plugins | `/usr/local/lib/devnet-builder/plugins/mynetwork-plugin` |
+
+**Priority:** If the same plugin exists in multiple directories, the first one found (in order above) takes precedence.
+
+### Plugin Naming Convention
+
+**V2 plugins MUST follow this naming pattern:**
+
+```
+{network-name}-plugin
+```
+
+| ✅ Correct | ❌ Wrong |
+|-----------|----------|
+| `stable-plugin` | `devnet-stable` |
+| `cosmos-plugin` | `cosmos` |
+| `osmosis-plugin` | `osmosis-devnet-plugin` |
+| `mynetwork-plugin` | `plugin-mynetwork` |
+
+The `{network-name}` part becomes the identifier you use in commands and YAML specs.
+
+### Installation Methods
+
+#### Method 1: Manual Installation (Recommended)
+
+```bash
+# Download or build your plugin
+wget https://example.com/releases/mynetwork-plugin-linux-amd64
+# OR
+go build -o mynetwork-plugin ./cmd/plugin/
+
+# Install to user plugins directory
+mkdir -p ~/.devnet-builder/plugins
+mv mynetwork-plugin ~/.devnet-builder/plugins/
+chmod +x ~/.devnet-builder/plugins/mynetwork-plugin
+```
+
+#### Method 2: From Release Archive
+
+```bash
+# Download release archive
+wget https://github.com/myorg/mynetwork/releases/download/v1.0.0/mynetwork-plugin.tar.gz
+
+# Extract to plugins directory
+tar -xzf mynetwork-plugin.tar.gz -C ~/.devnet-builder/plugins/
+chmod +x ~/.devnet-builder/plugins/mynetwork-plugin
+```
+
+#### Method 3: Build from Source
+
+```bash
+# Clone and build
+git clone https://github.com/myorg/mynetwork-plugin
+cd mynetwork-plugin
+go build -o mynetwork-plugin .
+
+# Install
+cp mynetwork-plugin ~/.devnet-builder/plugins/
+```
+
+### Verifying Plugin Installation
+
+```bash
+# List all discovered plugins
+dvb plugins list
+
+# Get detailed info about a specific plugin
+dvb plugins info mynetwork
+
+# Check plugin version
+dvb plugins info mynetwork | grep version
+
+# Test plugin by creating a devnet
+dvb provision --network mynetwork --validators 2 --dry-run
+```
+
+### Using the Plugin
+
+Once installed, reference the plugin by its network name:
+
+**CLI Usage:**
+```bash
+# Provision command
+dvb provision --network mynetwork --validators 4
+
+# Apply YAML spec
+dvb apply -f devnet.yaml
+```
+
+**YAML Specification:**
+```yaml
+apiVersion: v1
+kind: Devnet
+metadata:
+  name: my-devnet
+  namespace: default
+spec:
+  plugin: mynetwork    # References mynetwork-plugin binary
+  validators: 4
+  fullNodes: 0
+  mode: docker
+```
+
+### Troubleshooting Plugin Installation
+
+**Plugin not found:**
+```bash
+# Check plugin exists and is named correctly
+ls -la ~/.devnet-builder/plugins/
+# Should show: mynetwork-plugin (not devnet-mynetwork)
+
+# Check file is executable
+file ~/.devnet-builder/plugins/mynetwork-plugin
+# Should show: executable
+
+# Check permissions
+chmod +x ~/.devnet-builder/plugins/mynetwork-plugin
+```
+
+**Plugin fails to load:**
+```bash
+# Test plugin binary directly (should hang waiting for handshake)
+~/.devnet-builder/plugins/mynetwork-plugin
+# Ctrl+C to exit
+
+# Check for missing dependencies
+ldd ~/.devnet-builder/plugins/mynetwork-plugin
+```
+
+**Version mismatch:**
+```bash
+# Plugin version must be valid semver
+# Good: 1.0.0, 2.3.1
+# Bad: v1.0.0, 1.0
+
+# Check current constraints
+dvb plugins info mynetwork
+```
+
 ## Plugin Architecture
 
 ```

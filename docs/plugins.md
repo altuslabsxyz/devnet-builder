@@ -47,6 +47,92 @@ Devnet-builder has two CLI modes, each with its own plugin loading mechanism:
 
 Both systems use the **same `network.Module` interface**, so a single plugin implementation works for both V1 and V2. The only difference is the binary naming convention.
 
+## Installing Plugins
+
+Plugins use **automatic discovery** - no registration or configuration files required. Just place the binary in the correct location.
+
+### V2 Installation (dvb + devnetd)
+
+V2 searches multiple directories for plugins named `{network}-plugin`:
+
+```bash
+# Create plugins directory
+mkdir -p ~/.devnet-builder/plugins
+
+# Install plugin
+cp mynetwork-plugin ~/.devnet-builder/plugins/
+chmod +x ~/.devnet-builder/plugins/mynetwork-plugin
+
+# Verify installation
+dvb plugins list
+```
+
+**V2 Search Paths (in priority order):**
+1. `./plugins/` - Project-local
+2. `~/.devnet-builder/plugins/` - User directory (recommended)
+3. `/usr/local/lib/devnet-builder/plugins/` - System-wide
+
+**V2 Naming:** `{network}-plugin` (e.g., `stable-plugin`, `cosmos-plugin`)
+
+### V1 Installation (devnet-builder)
+
+V1 searches the system PATH for plugins named `devnet-{network}`:
+
+```bash
+# Install to a directory in your PATH
+sudo cp devnet-mynetwork /usr/local/bin/
+sudo chmod +x /usr/local/bin/devnet-mynetwork
+
+# OR add a custom directory to PATH
+mkdir -p ~/bin
+cp devnet-mynetwork ~/bin/
+export PATH="$HOME/bin:$PATH"
+
+# Verify installation
+which devnet-mynetwork
+```
+
+**V1 Naming:** `devnet-{network}` (e.g., `devnet-stable`, `devnet-cosmos`)
+
+### Building for Both V1 and V2
+
+To support both CLI versions, build two binaries:
+
+```bash
+# From your plugin source code
+go build -o devnet-mynetwork .     # V1 binary
+go build -o mynetwork-plugin .      # V2 binary
+
+# Install both
+cp devnet-mynetwork /usr/local/bin/             # V1
+cp mynetwork-plugin ~/.devnet-builder/plugins/  # V2
+```
+
+### Usage After Installation
+
+**V1 (devnet-builder):**
+```bash
+devnet-builder create --network mynetwork --validators 4
+devnet-builder start
+```
+
+**V2 (dvb):**
+```bash
+dvb provision --network mynetwork --validators 4
+# OR
+dvb apply -f - <<EOF
+apiVersion: v1
+kind: Devnet
+metadata:
+  name: my-devnet
+spec:
+  plugin: mynetwork
+  validators: 4
+EOF
+```
+
+For detailed V2-specific features (hot reload, version constraints), see [V2 Plugin Development Guide](v2/plugins.md).
+
 ## Plugin Interface
 
 All plugins must implement the `network.Module` interface from `pkg/network/interface.go`:
