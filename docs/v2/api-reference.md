@@ -4,7 +4,7 @@ Complete reference for the devnetd gRPC API.
 
 ## Overview
 
-The devnetd daemon exposes a gRPC API for programmatic control. All services use protobuf for serialization and support bidirectional streaming for real-time updates.
+The devnetd daemon exposes a gRPC API for programmatic control. All services use protobuf for serialization. The daemon supports four core services: DevnetService, NodeService, UpgradeService, and TransactionService.
 
 ### API Endpoint
 
@@ -35,29 +35,25 @@ defer conn.Close()
 
 ## DevnetService
 
-Manages devnet lifecycle.
+Manages devnet lifecycle. Supports namespace isolation for resource organization.
 
-### Create
+### CreateDevnet
 
 Create a new devnet:
 
 ```protobuf
-rpc Create(CreateDevnetRequest) returns (CreateDevnetResponse);
+rpc CreateDevnet(CreateDevnetRequest) returns (CreateDevnetResponse);
 
 message CreateDevnetRequest {
     string name = 1;
-    string plugin = 2;
-    int32 validators = 3;
-    int32 full_nodes = 4;
-    string mode = 5;  // "docker", "local"
-    BinarySource binary_source = 6;
-    string chain_id = 7;
-    string snapshot_url = 8;
+    string namespace = 2;  // Optional, defaults to "default"
+    DevnetSpec spec = 3;
+    map<string, string> labels = 4;
+    map<string, string> annotations = 5;
 }
 
 message CreateDevnetResponse {
-    string name = 1;
-    string status = 2;
+    Devnet devnet = 1;
 }
 ```
 
@@ -66,47 +62,45 @@ message CreateDevnetResponse {
 ```go
 client := pb.NewDevnetServiceClient(conn)
 
-resp, err := client.Create(ctx, &pb.CreateDevnetRequest{
-    Name:       "my-devnet",
-    Plugin:     "osmosisd",
-    Validators: 4,
-    FullNodes:  2,
-    Mode:       "docker",
+resp, err := client.CreateDevnet(ctx, &pb.CreateDevnetRequest{
+    Name:      "my-devnet",
+    Namespace: "default",
+    Spec: &pb.DevnetSpec{
+        Plugin:     "osmosisd",
+        Validators: 4,
+        FullNodes:  2,
+        ChainId:    "osmosis-devnet-1",
+    },
 })
 ```
 
-### Get
+### GetDevnet
 
 Get devnet details:
 
 ```protobuf
-rpc Get(GetDevnetRequest) returns (GetDevnetResponse);
+rpc GetDevnet(GetDevnetRequest) returns (GetDevnetResponse);
 
 message GetDevnetRequest {
     string name = 1;
+    string namespace = 2;  // Optional, empty searches all namespaces
 }
 
 message GetDevnetResponse {
     Devnet devnet = 1;
 }
-
-message Devnet {
-    ResourceMeta metadata = 1;
-    DevnetSpec spec = 2;
-    DevnetStatus status = 3;
-}
 ```
 
-### List
+### ListDevnets
 
 List all devnets:
 
 ```protobuf
-rpc List(ListDevnetsRequest) returns (ListDevnetsResponse);
+rpc ListDevnets(ListDevnetsRequest) returns (ListDevnetsResponse);
 
 message ListDevnetsRequest {
-    string status_filter = 1;  // "running", "stopped", etc.
-    map<string, string> labels = 2;
+    string namespace = 1;       // Optional, empty returns all namespaces
+    string label_selector = 2;  // Optional, format: "key1=value1,key2=value2"
 }
 
 message ListDevnetsResponse {
@@ -114,108 +108,98 @@ message ListDevnetsResponse {
 }
 ```
 
-### Delete
+### DeleteDevnet
 
-Delete a devnet:
+Delete a devnet (cascades to nodes and upgrades):
 
 ```protobuf
-rpc Delete(DeleteDevnetRequest) returns (DeleteDevnetResponse);
+rpc DeleteDevnet(DeleteDevnetRequest) returns (DeleteDevnetResponse);
 
 message DeleteDevnetRequest {
     string name = 1;
-    bool force = 2;
-    bool keep_data = 3;
+    string namespace = 2;  // Optional, defaults to "default"
+}
+
+message DeleteDevnetResponse {
+    bool deleted = 1;
 }
 ```
 
-### Start/Stop
+### StartDevnet / StopDevnet
 
 Control devnet state:
 
 ```protobuf
-rpc Start(StartDevnetRequest) returns (StartDevnetResponse);
-rpc Stop(StopDevnetRequest) returns (StopDevnetResponse);
+rpc StartDevnet(StartDevnetRequest) returns (StartDevnetResponse);
+rpc StopDevnet(StopDevnetRequest) returns (StopDevnetResponse);
 
 message StartDevnetRequest {
     string name = 1;
+    string namespace = 2;
 }
 
 message StopDevnetRequest {
     string name = 1;
-    int32 graceful_timeout_seconds = 2;
+    string namespace = 2;
 }
 ```
 
-### Watch
+### ApplyDevnet
 
-Stream devnet events:
+Create or update a devnet (idempotent):
 
 ```protobuf
-rpc Watch(WatchDevnetRequest) returns (stream DevnetEvent);
+rpc ApplyDevnet(ApplyDevnetRequest) returns (ApplyDevnetResponse);
 
-message WatchDevnetRequest {
-    string name = 1;  // Empty for all devnets
+message ApplyDevnetRequest {
+    string name = 1;
+    string namespace = 2;
+    DevnetSpec spec = 3;
+    map<string, string> labels = 4;
+    map<string, string> annotations = 5;
 }
 
-message DevnetEvent {
-    string type = 1;  // "created", "updated", "deleted"
-    Devnet devnet = 2;
-    google.protobuf.Timestamp timestamp = 3;
-}
-```
-
-**Example:**
-
-```go
-stream, err := client.Watch(ctx, &pb.WatchDevnetRequest{
-    Name: "my-devnet",
-})
-
-for {
-    event, err := stream.Recv()
-    if err == io.EOF {
-        break
-    }
-    fmt.Printf("Event: %s, Phase: %s\n",
-        event.Type, event.Devnet.Status.Phase)
+message ApplyDevnetResponse {
+    Devnet devnet = 1;
+    string action = 2;  // "created", "configured", "unchanged"
 }
 ```
 
-### StreamLogs
+### UpdateDevnet
 
-Stream node logs:
+Update an existing devnet:
 
 ```protobuf
-rpc StreamLogs(StreamLogsRequest) returns (stream LogEntry);
+rpc UpdateDevnet(UpdateDevnetRequest) returns (UpdateDevnetResponse);
 
-message StreamLogsRequest {
-    string devnet = 1;
-    string node = 2;  // Empty for all nodes
-    bool follow = 3;
-    int32 tail = 4;
+message UpdateDevnetRequest {
+    string name = 1;
+    string namespace = 2;
+    DevnetSpec spec = 3;
+    map<string, string> labels = 4;
+    map<string, string> annotations = 5;
 }
 
-message LogEntry {
-    string node = 1;
-    string message = 2;
-    google.protobuf.Timestamp timestamp = 3;
+message UpdateDevnetResponse {
+    Devnet devnet = 1;
 }
 ```
 
 ## NodeService
 
-Manages individual nodes.
+Manages individual blockchain nodes within devnets.
 
-### Get
+### GetNode
 
 Get node details:
 
 ```protobuf
-rpc Get(GetNodeRequest) returns (GetNodeResponse);
+rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
 
 message GetNodeRequest {
-    string devnet = 1;
-    string node = 2;
+    string namespace = 1;
+    string devnet_name = 2;
+    string node_name = 3;
 }
 
 message GetNodeResponse {
@@ -223,16 +207,16 @@ message GetNodeResponse {
 }
 ```
 
-### List
+### ListNodes
 
-List nodes in devnet:
+List nodes in a devnet:
 
 ```protobuf
-rpc List(ListNodesRequest) returns (ListNodesResponse);
+rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
 
 message ListNodesRequest {
-    string devnet = 1;
-    string role_filter = 2;  // "validator", "fullnode"
+    string namespace = 1;
+    string devnet_name = 2;
 }
 
 message ListNodesResponse {
@@ -240,72 +224,126 @@ message ListNodesResponse {
 }
 ```
 
-### Start/Stop/Restart
+### StartNode / StopNode / RestartNode
 
 Control node state:
 
 ```protobuf
-rpc Start(StartNodeRequest) returns (StartNodeResponse);
-rpc Stop(StopNodeRequest) returns (StopNodeResponse);
-rpc Restart(RestartNodeRequest) returns (RestartNodeResponse);
+rpc StartNode(StartNodeRequest) returns (StartNodeResponse);
+rpc StopNode(StopNodeRequest) returns (StopNodeResponse);
+rpc RestartNode(RestartNodeRequest) returns (RestartNodeResponse);
 
 message StartNodeRequest {
-    string devnet = 1;
-    string node = 2;
+    string namespace = 1;
+    string devnet_name = 2;
+    string node_name = 3;
+}
+
+message StopNodeRequest {
+    string namespace = 1;
+    string devnet_name = 2;
+    string node_name = 3;
+}
+
+message RestartNodeRequest {
+    string namespace = 1;
+    string devnet_name = 2;
+    string node_name = 3;
 }
 ```
 
-### GetHealth
+### GetNodeHealth
 
 Check node health:
 
 ```protobuf
-rpc GetHealth(GetHealthRequest) returns (GetHealthResponse);
+rpc GetNodeHealth(GetNodeHealthRequest) returns (GetNodeHealthResponse);
 
-message GetHealthRequest {
-    string devnet = 1;
-    string node = 2;  // Empty for all nodes
+message GetNodeHealthRequest {
+    string namespace = 1;
+    string devnet_name = 2;
+    string node_name = 3;
 }
 
-message GetHealthResponse {
-    repeated NodeHealth nodes = 1;
-}
-
-message NodeHealth {
-    string name = 1;
-    string status = 2;
-    int64 block_height = 3;
+message GetNodeHealthResponse {
+    string phase = 1;
+    int64 block_height = 2;
+    bool catching_up = 3;
     int32 peer_count = 4;
-    bool healthy = 5;
-    string reason = 6;
+    string rpc_status = 5;
 }
 ```
 
-### StreamLogs
+### ExecInNode
 
-Stream logs from node:
+Execute a command in a node container:
 
 ```protobuf
-rpc StreamLogs(StreamNodeLogsRequest) returns (stream LogEntry);
+rpc ExecInNode(ExecInNodeRequest) returns (ExecInNodeResponse);
+
+message ExecInNodeRequest {
+    string namespace = 1;
+    string devnet_name = 2;
+    string node_name = 3;
+    repeated string command = 4;
+}
+
+message ExecInNodeResponse {
+    int32 exit_code = 1;
+    string stdout = 2;
+    string stderr = 3;
+}
+```
+
+### GetNodePorts
+
+Get exposed ports for a node:
+
+```protobuf
+rpc GetNodePorts(GetNodePortsRequest) returns (GetNodePortsResponse);
+
+message GetNodePortsRequest {
+    string namespace = 1;
+    string devnet_name = 2;
+    string node_name = 3;
+}
+
+message GetNodePortsResponse {
+    map<string, int32> ports = 1;  // e.g., {"rpc": 26657, "grpc": 9090}
+}
+```
+
+### StreamNodeLogs
+
+Stream logs from a node:
+
+```protobuf
+rpc StreamNodeLogs(StreamNodeLogsRequest) returns (stream LogEntry);
 
 message StreamNodeLogsRequest {
-    string devnet = 1;
-    string node = 2;
-    bool follow = 3;
-    int32 tail = 4;
+    string namespace = 1;
+    string devnet_name = 2;
+    string node_name = 3;
+    bool follow = 4;
+    int32 tail = 5;
+}
+
+message LogEntry {
+    string content = 1;
+    google.protobuf.Timestamp timestamp = 2;
 }
 ```
 
 ## TransactionService
 
-Manages transaction lifecycle.
+Manages transaction lifecycle for blockchain operations.
 
-### Submit
+### SubmitTransaction
 
 Submit a transaction:
 
 ```protobuf
-rpc Submit(SubmitTransactionRequest) returns (SubmitTransactionResponse);
+rpc SubmitTransaction(SubmitTransactionRequest) returns (SubmitTransactionResponse);
 
 message SubmitTransactionRequest {
     string devnet = 1;
@@ -317,8 +355,7 @@ message SubmitTransactionRequest {
 }
 
 message SubmitTransactionResponse {
-    string id = 1;
-    string status = 2;
+    Transaction transaction = 1;
 }
 ```
 
@@ -329,7 +366,7 @@ client := pb.NewTransactionServiceClient(conn)
 
 payload := []byte(`{"to_address":"cosmos1...","amount":"1000000uatom"}`)
 
-resp, err := client.Submit(ctx, &pb.SubmitTransactionRequest{
+resp, err := client.SubmitTransaction(ctx, &pb.SubmitTransactionRequest{
     Devnet:   "my-devnet",
     TxType:   "bank/send",
     Signer:   "validator:0",
@@ -338,32 +375,15 @@ resp, err := client.Submit(ctx, &pb.SubmitTransactionRequest{
 })
 ```
 
-### SubmitBatch
-
-Submit multiple transactions:
-
-```protobuf
-rpc SubmitBatch(SubmitBatchRequest) returns (SubmitBatchResponse);
-
-message SubmitBatchRequest {
-    string devnet = 1;
-    repeated TransactionRequest transactions = 2;
-}
-
-message SubmitBatchResponse {
-    repeated string ids = 1;
-}
-```
-
-### Get
+### GetTransaction
 
 Get transaction status:
 
 ```protobuf
-rpc Get(GetTransactionRequest) returns (GetTransactionResponse);
+rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
 
 message GetTransactionRequest {
-    string id = 1;
+    string name = 1;
 }
 
 message GetTransactionResponse {
@@ -371,24 +391,34 @@ message GetTransactionResponse {
 }
 
 message Transaction {
-    ResourceMeta metadata = 1;
-    TransactionSpec spec = 2;
-    TransactionStatus status = 3;
+    string name = 1;
+    string devnet_ref = 2;
+    string tx_type = 3;
+    string signer = 4;
+    bytes payload = 5;
+    string phase = 6;      // Pending, Building, Signing, Submitted, Confirmed, Failed
+    string tx_hash = 7;
+    int64 height = 8;
+    int64 gas_used = 9;
+    string error = 10;
+    string message = 11;
+    google.protobuf.Timestamp created_at = 12;
+    google.protobuf.Timestamp updated_at = 13;
 }
 ```
 
-### List
+### ListTransactions
 
 List transactions:
 
 ```protobuf
-rpc List(ListTransactionsRequest) returns (ListTransactionsResponse);
+rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse);
 
 message ListTransactionsRequest {
-    string devnet = 1;
-    string status_filter = 2;
-    string type_filter = 3;
-    int32 limit = 4;
+    string devnet = 1;   // Required
+    string tx_type = 2;  // Optional filter
+    string phase = 3;    // Optional filter
+    int32 limit = 4;     // Optional limit
 }
 
 message ListTransactionsResponse {
@@ -396,78 +426,102 @@ message ListTransactionsResponse {
 }
 ```
 
-### Watch
+### CancelTransaction
 
-Watch transaction progress:
+Cancel a pending transaction:
 
 ```protobuf
-rpc Watch(WatchTransactionRequest) returns (stream TransactionEvent);
+rpc CancelTransaction(CancelTransactionRequest) returns (CancelTransactionResponse);
 
-message WatchTransactionRequest {
-    string id = 1;
+message CancelTransactionRequest {
+    string name = 1;
 }
 
-message TransactionEvent {
-    string type = 1;
-    Transaction transaction = 2;
-    google.protobuf.Timestamp timestamp = 3;
+message CancelTransactionResponse {
+    Transaction transaction = 1;
 }
 ```
 
-**Example:**
+### SubmitGovVote
 
-```go
-stream, err := client.Watch(ctx, &pb.WatchTransactionRequest{
-    Id: "tx-12345",
-})
+Submit a governance vote transaction:
 
-for {
-    event, err := stream.Recv()
-    if err == io.EOF {
-        break
-    }
-    fmt.Printf("Phase: %s\n", event.Transaction.Status.Phase)
-    if event.Transaction.Status.Phase == "Confirmed" {
-        break
-    }
+```protobuf
+rpc SubmitGovVote(SubmitGovVoteRequest) returns (SubmitGovVoteResponse);
+
+message SubmitGovVoteRequest {
+    string devnet = 1;
+    uint64 proposal_id = 2;
+    string vote_option = 3;  // "yes", "no", "abstain", "no_with_veto"
+    string voter = 4;
+}
+
+message SubmitGovVoteResponse {
+    Transaction transaction = 1;
+}
+```
+
+### SubmitGovProposal
+
+Submit a governance proposal transaction:
+
+```protobuf
+rpc SubmitGovProposal(SubmitGovProposalRequest) returns (SubmitGovProposalResponse);
+
+message SubmitGovProposalRequest {
+    string devnet = 1;
+    string proposal_type = 2;
+    string title = 3;
+    string description = 4;
+    bytes content = 5;
+    string proposer = 6;
+}
+
+message SubmitGovProposalResponse {
+    Transaction transaction = 1;
 }
 ```
 
 ## UpgradeService
 
-Manages chain upgrades.
+Manages chain upgrades with governance proposal flow.
 
-### Create
+### CreateUpgrade
 
-Create upgrade proposal:
+Create an upgrade:
 
 ```protobuf
-rpc Create(CreateUpgradeRequest) returns (CreateUpgradeResponse);
+rpc CreateUpgrade(CreateUpgradeRequest) returns (CreateUpgradeResponse);
 
 message CreateUpgradeRequest {
-    string devnet = 1;
+    string name = 1;
+    string namespace = 2;
+    UpgradeSpec spec = 3;
+}
+
+message UpgradeSpec {
+    string devnet_ref = 1;
     string upgrade_name = 2;
     int64 target_height = 3;
     BinarySource new_binary = 4;
     bool auto_vote = 5;
-    bool with_export = 6;
 }
 
 message CreateUpgradeResponse {
-    string name = 1;
-    uint64 proposal_id = 2;
+    Upgrade upgrade = 1;
 }
 ```
 
-### Get
+### GetUpgrade
 
 Get upgrade status:
 
 ```protobuf
-rpc Get(GetUpgradeRequest) returns (GetUpgradeResponse);
+rpc GetUpgrade(GetUpgradeRequest) returns (GetUpgradeResponse);
 
 message GetUpgradeRequest {
     string name = 1;
+    string namespace = 2;
 }
 
 message GetUpgradeResponse {
@@ -475,22 +529,33 @@ message GetUpgradeResponse {
 }
 
 message Upgrade {
-    ResourceMeta metadata = 1;
-    UpgradeSpec spec = 2;
-    UpgradeStatus status = 3;
+    string name = 1;
+    string namespace = 2;
+    UpgradeSpec spec = 3;
+    UpgradeStatus status = 4;
+    google.protobuf.Timestamp created_at = 5;
+    google.protobuf.Timestamp updated_at = 6;
+}
+
+message UpgradeStatus {
+    string phase = 1;      // Pending, Proposing, Voting, Waiting, Switching, Verifying, Completed, Failed
+    uint64 proposal_id = 2;
+    int64 current_height = 3;
+    string message = 4;
+    string error = 5;
 }
 ```
 
-### List
+### ListUpgrades
 
 List upgrades:
 
 ```protobuf
-rpc List(ListUpgradesRequest) returns (ListUpgradesResponse);
+rpc ListUpgrades(ListUpgradesRequest) returns (ListUpgradesResponse);
 
 message ListUpgradesRequest {
-    string devnet = 1;
-    string status_filter = 2;
+    string namespace = 1;
+    string devnet_name = 2;  // Optional filter
 }
 
 message ListUpgradesResponse {
@@ -498,217 +563,54 @@ message ListUpgradesResponse {
 }
 ```
 
-### Cancel
+### DeleteUpgrade
 
-Cancel pending upgrade:
+Delete an upgrade (only pending/completed/failed):
 
 ```protobuf
-rpc Cancel(CancelUpgradeRequest) returns (CancelUpgradeResponse);
+rpc DeleteUpgrade(DeleteUpgradeRequest) returns (DeleteUpgradeResponse);
+
+message DeleteUpgradeRequest {
+    string name = 1;
+    string namespace = 2;
+}
+
+message DeleteUpgradeResponse {
+    bool deleted = 1;
+}
+```
+
+### CancelUpgrade
+
+Cancel an in-progress upgrade:
+
+```protobuf
+rpc CancelUpgrade(CancelUpgradeRequest) returns (CancelUpgradeResponse);
 
 message CancelUpgradeRequest {
     string name = 1;
+    string namespace = 2;
+}
+
+message CancelUpgradeResponse {
+    Upgrade upgrade = 1;
 }
 ```
 
-### Watch
+### RetryUpgrade
 
-Watch upgrade progress:
+Retry a failed upgrade:
 
 ```protobuf
-rpc Watch(WatchUpgradeRequest) returns (stream UpgradeEvent);
+rpc RetryUpgrade(RetryUpgradeRequest) returns (RetryUpgradeResponse);
 
-message WatchUpgradeRequest {
+message RetryUpgradeRequest {
     string name = 1;
+    string namespace = 2;
 }
 
-message UpgradeEvent {
-    string type = 1;
-    Upgrade upgrade = 2;
-    google.protobuf.Timestamp timestamp = 3;
-}
-```
-
-## ExportService
-
-Manages state exports.
-
-### Create
-
-Create state export:
-
-```protobuf
-rpc Create(CreateExportRequest) returns (CreateExportResponse);
-
-message CreateExportRequest {
-    string devnet = 1;
-    int64 height = 2;  // 0 for latest
-    string output_path = 3;
-}
-
-message CreateExportResponse {
-    string id = 1;
-    string path = 2;
-}
-```
-
-### Get
-
-Get export details:
-
-```protobuf
-rpc Get(GetExportRequest) returns (GetExportResponse);
-
-message GetExportRequest {
-    string id = 1;
-}
-
-message GetExportResponse {
-    Export export = 1;
-}
-```
-
-### List
-
-List exports:
-
-```protobuf
-rpc List(ListExportsRequest) returns (ListExportsResponse);
-
-message ListExportsRequest {
-    string devnet = 1;
-}
-
-message ListExportsResponse {
-    repeated Export exports = 1;
-}
-```
-
-### Delete
-
-Delete export:
-
-```protobuf
-rpc Delete(DeleteExportRequest) returns (DeleteExportResponse);
-
-message DeleteExportRequest {
-    string id = 1;
-}
-```
-
-## PluginService
-
-Manages network plugins.
-
-### List
-
-List installed plugins:
-
-```protobuf
-rpc List(ListPluginsRequest) returns (ListPluginsResponse);
-
-message ListPluginsRequest {}
-
-message ListPluginsResponse {
-    repeated PluginInfo plugins = 1;
-}
-
-message PluginInfo {
-    string name = 1;
-    string version = 2;
-    string network_type = 3;
-    repeated string supported_sdk_versions = 4;
-    repeated string supported_tx_types = 5;
-}
-```
-
-### Get
-
-Get plugin details:
-
-```protobuf
-rpc Get(GetPluginRequest) returns (GetPluginResponse);
-
-message GetPluginRequest {
-    string name = 1;
-}
-
-message GetPluginResponse {
-    PluginInfo plugin = 1;
-}
-```
-
-### Install
-
-Install new plugin:
-
-```protobuf
-rpc Install(InstallPluginRequest) returns (InstallPluginResponse);
-
-message InstallPluginRequest {
-    string path = 1;
-    string name = 2;
-}
-```
-
-### Uninstall
-
-Uninstall plugin:
-
-```protobuf
-rpc Uninstall(UninstallPluginRequest) returns (UninstallPluginResponse);
-
-message UninstallPluginRequest {
-    string name = 1;
-}
-```
-
-## DaemonService
-
-Manages daemon itself.
-
-### GetStatus
-
-Get daemon status:
-
-```protobuf
-rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
-
-message GetStatusRequest {}
-
-message GetStatusResponse {
-    string status = 1;
-    int32 pid = 2;
-    string version = 3;
-    int64 uptime_seconds = 4;
-    int32 active_devnets = 5;
-    int32 total_nodes = 6;
-    int64 memory_usage_bytes = 7;
-}
-```
-
-### GetConfig
-
-Get daemon configuration:
-
-```protobuf
-rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
-
-message GetConfigRequest {}
-
-message GetConfigResponse {
-    map<string, string> config = 1;
-}
-```
-
-### Shutdown
-
-Shutdown daemon:
-
-```protobuf
-rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
-
-message ShutdownRequest {
-    bool force = 1;
+message RetryUpgradeResponse {
+    Upgrade upgrade = 1;
 }
 ```
 

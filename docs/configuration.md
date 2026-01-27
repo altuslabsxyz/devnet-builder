@@ -18,16 +18,19 @@ Configuration values are resolved in the following order (highest to lowest prio
 
 1. **CLI flags** - Direct command-line arguments
 2. **Environment variables** - `DEVNET_*` prefixed variables
-3. **Local config file** - `./config.toml` in current directory
+3. **Explicit config file** - Specified via `--config` flag
 4. **User config file** - `~/.devnet-builder/config.toml`
 5. **Default values** - Built-in defaults
+
+> **Note:** The current directory (`./config.toml`) is NOT automatically checked.
+> Use `--config ./config.toml` to specify a local config file.
 
 ### Example
 
 ```bash
 # Default: validators = 4
 # In ~/.devnet-builder/config.toml: validators = 2
-# In ./config.toml: validators = 3
+# With --config flag: validators = 3
 # CLI flag wins:
 devnet-builder deploy --validators 1  # Uses 1 validator
 ```
@@ -47,17 +50,23 @@ home = "~/.devnet-builder"
 
 # Number of validator nodes
 # Default: 4
-# Range: 1-10
+# Range: 1-4
 validators = 4
 
 # Number of additional funded accounts
-# Default: 4
-accounts = 4
+# Default: 0
+# Range: 0-100
+accounts = 0
 
 # Network source for snapshot data
 # Options: "mainnet", "testnet"
 # Default: "mainnet"
 network = "mainnet"
+
+# Blockchain network module to use
+# Options: "stable", "ault", etc. (depends on registered plugins)
+# Default: "stable"
+blockchain_network = "stable"
 
 # Execution mode
 # Options: "docker", "local"
@@ -65,9 +74,9 @@ network = "mainnet"
 mode = "docker"
 
 # Network version to use
-# Options: "latest", specific version tag
-# Default: "latest"
-network_version = "latest"
+# Options: "", specific version tag
+# Default: "" (uses network module default)
+network_version = ""
 
 # Skip snapshot cache, always download fresh
 # Default: false
@@ -84,6 +93,14 @@ json = false
 # Disable colored output
 # Default: false
 no_color = false
+
+# GitHub API token for private repositories
+# Default: "" (not set)
+github_token = ""
+
+# Cache TTL for version lookups
+# Default: "1h"
+cache_ttl = "1h"
 ```
 
 ### Option Details
@@ -91,15 +108,18 @@ no_color = false
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `home` | string | `~/.devnet-builder` | Base directory for devnet data, cache, and configs |
-| `validators` | int | 4 | Number of validator nodes (1-10) |
-| `accounts` | int | 4 | Additional funded test accounts |
+| `validators` | int | 4 | Number of validator nodes (1-4) |
+| `accounts` | int | 0 | Additional funded test accounts (0-100) |
 | `network` | string | mainnet | Network source: mainnet or testnet |
+| `blockchain_network` | string | stable | Network module to use: stable, ault, etc. |
 | `mode` | string | docker | Execution mode: docker or local |
-| `network_version` | string | latest | Version tag for network binary |
+| `network_version` | string | (empty) | Version tag for network binary (empty = module default) |
 | `no_cache` | bool | false | Skip cached snapshots |
 | `verbose` | bool | false | Enable debug logging |
 | `json` | bool | false | JSON output for scripts |
 | `no_color` | bool | false | Disable terminal colors |
+| `github_token` | string | (not set) | GitHub API token for private repos |
+| `cache_ttl` | string | 1h | Cache TTL for version lookups |
 
 ---
 
@@ -115,12 +135,15 @@ All configuration options can be set via environment variables with the `DEVNET_
 | `DEVNET_VALIDATORS` | `validators` | int |
 | `DEVNET_ACCOUNTS` | `accounts` | int |
 | `DEVNET_NETWORK` | `network` | string |
+| `DEVNET_BLOCKCHAIN_NETWORK` | `blockchain_network` | string |
 | `DEVNET_MODE` | `mode` | string |
 | `DEVNET_NETWORK_VERSION` | `network_version` | string |
 | `DEVNET_NO_CACHE` | `no_cache` | bool |
 | `DEVNET_VERBOSE` | `verbose` | bool |
 | `DEVNET_JSON` | `json` | bool |
 | `DEVNET_NO_COLOR` | `no_color` | bool |
+| `GITHUB_TOKEN` | `github_token` | string |
+| `DEVNET_CACHE_TTL` | `cache_ttl` | string |
 
 ### Examples
 
@@ -176,6 +199,7 @@ mode = "docker"
 validators = 4
 accounts = 5
 network = "mainnet"
+blockchain_network = "stable"
 mode = "docker"
 verbose = true
 ```

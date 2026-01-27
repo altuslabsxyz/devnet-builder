@@ -22,6 +22,7 @@ After ~2 minutes, you'll have a running local blockchain network with:
 - [TL;DR](#tldr)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
+- [Architecture](#architecture)
 - [Basic Commands](#basic-commands)
 - [Documentation](#documentation)
 - [Test Accounts](#test-accounts)
@@ -58,10 +59,15 @@ git clone https://github.com/altuslabsxyz/devnet-builder.git
 cd devnet-builder
 make build
 
-# Binary will be at ./build/devnet-builder
+# This builds three binaries:
+#   ./build/devnet-builder  - Main CLI (interactive, recommended)
+#   ./build/dvb             - Daemon-based CLI (kubectl-style)
+#   ./build/devnetd         - Daemon server (for dvb)
 ```
 
 ### Deploy Your First Devnet
+
+**Option 1: Using devnet-builder (recommended for most users)**
 
 ```bash
 # Deploy with default settings (4 validators, mainnet data, docker mode)
@@ -77,35 +83,93 @@ make build
 ./build/devnet-builder stop
 ```
 
+**Option 2: Using dvb with daemon (kubectl-style workflow)**
+
+```bash
+# Start the daemon
+./build/devnetd &
+
+# Provision using interactive wizard
+./build/dvb provision -i
+
+# Or apply from YAML configuration
+./build/dvb apply -f devnet.yaml
+
+# List devnets
+./build/dvb get devnets
+
+# View detailed status
+./build/dvb describe my-devnet
+```
+
 ### Common Variations
 
 ```bash
 # Single validator (fastest startup)
 devnet-builder deploy --validators 1
 
-# With test accounts
+# With 5 funded test accounts
 devnet-builder deploy --accounts 5
 
 # Use testnet data instead of mainnet
 devnet-builder deploy --network testnet
 
-# Local binary mode (advanced)
-devnet-builder deploy --mode local
+# Local binary mode (requires binary, 1-4 validators max)
+devnet-builder deploy --mode local --validators 2
+
+# Docker mode with many validators (1-100)
+devnet-builder deploy --mode docker --validators 10
 ```
+
+---
+
+## Architecture
+
+The project provides three binaries for different use cases:
+
+| Binary | Purpose | Use Case |
+|--------|---------|----------|
+| `devnet-builder` | Full-featured interactive CLI | Most users, interactive workflows |
+| `dvb` | Daemon-based kubectl-style CLI | Automation, YAML-driven workflows |
+| `devnetd` | Daemon server | Required for `dvb` commands |
+
+**devnet-builder** is a standalone CLI that handles everything internally - ideal for interactive use and simple deployments.
+
+**dvb + devnetd** follow a client-server architecture similar to kubectl/kube-apiserver. The daemon manages devnet lifecycle and state, while dvb provides a declarative interface with YAML support.
 
 ---
 
 ## Basic Commands
 
+### devnet-builder (Standalone CLI)
+
 | Command | Description |
 |---------|-------------|
-| `devnet-builder deploy` | Deploy a new devnet |
+| `devnet-builder deploy` | Deploy a new devnet (provision + start) |
 | `devnet-builder status` | Show devnet status |
-| `devnet-builder logs` | View node logs |
+| `devnet-builder logs [node]` | View node logs |
 | `devnet-builder stop` | Stop running nodes |
 | `devnet-builder start` | Restart stopped nodes |
-| `devnet-builder export` | Export blockchain state at current height |
 | `devnet-builder destroy` | Remove all devnet data |
+| `devnet-builder export` | Export blockchain state |
+| `devnet-builder export-keys` | Export validator/account keys |
+| `devnet-builder upgrade` | Upgrade chain version |
+| `devnet-builder networks` | List available network plugins |
+
+### dvb (Daemon CLI)
+
+| Command | Description |
+|---------|-------------|
+| `dvb apply -f <file>` | Apply devnet configuration from YAML |
+| `dvb get devnets` | List all devnets |
+| `dvb get devnet <name>` | Get specific devnet details |
+| `dvb describe <devnet>` | Show detailed devnet info with events |
+| `dvb provision -i` | Interactive provisioning wizard |
+| `dvb start <devnet>` | Start a stopped devnet |
+| `dvb stop <devnet>` | Stop a running devnet |
+| `dvb destroy <devnet>` | Remove a devnet |
+| `dvb logs <devnet> [node]` | View logs from devnet nodes |
+| `dvb daemon status` | Check if daemon is running |
 
 For complete command reference, see [docs/commands.md](docs/commands.md).
 
@@ -118,9 +182,16 @@ For detailed documentation, see the [docs/](docs/) directory:
 - **[Getting Started](docs/getting-started.md)** - Detailed installation and first deployment guide
 - **[Command Reference](docs/commands.md)** - Complete CLI documentation with all flags and examples
 - **[Configuration](docs/configuration.md)** - config.toml options and customization
+- **[YAML Devnet Guide](docs/yaml-devnet-guide.md)** - Using dvb with YAML configurations
+- **[Plugin System](docs/plugins.md)** - Build custom network plugins for V1 and V2
 - **[Workflows](docs/workflows.md)** - Common debugging and testing workflows
-- **[Plugin Development](docs/PLUGIN_DEVELOPMENT.md)** - Create custom network plugins
 - **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
+
+### V2 Architecture (daemon-based)
+
+- **[V2 Overview](docs/v2/README.md)** - V2 architecture and features
+- **[V2 Plugins](docs/v2/plugins.md)** - Advanced V2 plugin development
+- **[API Reference](docs/v2/api-reference.md)** - gRPC API documentation
 
 ---
 
@@ -162,32 +233,6 @@ devnet-builder export --output-dir /path/to/exports
 devnet-builder export --force
 ```
 
-**Upgrade workflow with automatic exports:**
-
-```bash
-# Export state before and after upgrade
-devnet-builder upgrade --version v2.0.0 --with-export
-
-# This creates:
-# - Pre-upgrade export at current height
-# - Post-upgrade export after chain resumes
-```
-
-**Export directory structure:**
-
-```
-~/.stable-devnet/exports/
-└── mainnet-a1b2c3d4-1000000-20240115120000/
-    ├── genesis-1000000-a1b2c3d4.json  # Exported state
-    └── metadata.json                   # Export metadata
-```
-
-**Use cases:**
-- **Upgrade testing**: Verify state before/after upgrades
-- **State snapshots**: Create backups at critical heights
-- **Chain forking**: Bootstrap new chains from production state
-- **Debugging**: Analyze state at specific heights
-
 ### Network Configuration
 
 Configure your tools to connect to the local devnet:
@@ -209,11 +254,15 @@ devnet-builder supports multiple blockchain networks through a plugin architectu
 # List available networks
 devnet-builder networks
 
-# Deploy specific network
-devnet-builder --network <network-name> deploy
-```
+# Deploy with specific blockchain network
+devnet-builder deploy --blockchain stable
+devnet-builder deploy --blockchain ault
 
-See [docs/PLUGIN_DEVELOPMENT.md](docs/PLUGIN_DEVELOPMENT.md) for creating custom network plugins.
+# Build plugins separately
+make plugins          # Build public plugins
+make plugins-private  # Build private plugins
+make plugin-osmosis   # Build specific plugin
+```
 
 ---
 
@@ -237,6 +286,15 @@ lsof -i :26657
 ```bash
 devnet-builder destroy --force
 devnet-builder deploy
+```
+
+**Daemon not running (for dvb):**
+```bash
+# Check daemon status
+dvb daemon status
+
+# Start daemon
+devnetd
 ```
 
 For more troubleshooting help, see [docs/troubleshooting.md](docs/troubleshooting.md).

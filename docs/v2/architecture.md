@@ -55,9 +55,8 @@ The architecture draws from:
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │              gRPC Server (API Layer)                     │  │
 │  │                                                          │  │
-│  │  DevnetService    │ NodeService    │ UpgradeService    │  │
-│  │  TransactionSvc   │ ExportService  │ PluginService     │  │
-│  │  DaemonService                                          │  │
+│  │  DevnetService      │ NodeService                       │  │
+│  │  UpgradeService     │ TransactionService                │  │
 │  └────────────────────────┬─────────────────────────────────┘  │
 │                           │                                    │
 │  ┌────────────────────────▼─────────────────────────────────┐  │
@@ -71,7 +70,6 @@ The architecture draws from:
 │  │  │  - Events   │  │  - Dedupe   │  │ - Health    │     │  │
 │  │  └─────────────┘  └─────────────┘  │ - Upgrade   │     │  │
 │  │                                     │ - Tx        │     │  │
-│  │                                     │ - Network   │     │  │
 │  │                                     └─────────────┘     │  │
 │  └────────────────────────┬─────────────────────────────────┘  │
 │                           │                                    │
@@ -80,8 +78,7 @@ The architecture draws from:
 │  │                                                          │  │
 │  │  Buckets:                                               │  │
 │  │  - devnets/       - nodes/         - upgrades/         │  │
-│  │  - transactions/  - exports/       - events/           │  │
-│  │  - meta/          - locks/                             │  │
+│  │  - transactions/  - meta/                              │  │
 │  └────────────────────────┬─────────────────────────────────┘  │
 │                           │                                    │
 │  ┌────────────────────────▼─────────────────────────────────┐  │
@@ -107,26 +104,34 @@ Controllers continuously drive actual state toward desired state through reconci
 
 ```go
 type Controller interface {
-    // Reconcile a single resource by name
-    Reconcile(ctx context.Context, name string) error
+    // Reconcile a single resource by key (format: "namespace/name")
+    Reconcile(ctx context.Context, key string) error
 }
 
-// Generic reconciliation loop
-func (m *Manager) Run(ctx context.Context) error {
-    for {
-        select {
-        case <-ctx.Done():
-            return ctx.Err()
-        case key := <-m.workQueue:
-            // Get controller for resource type
-            controller := m.getController(key.Type)
-
-            // Reconcile with retries
-            err := controller.Reconcile(ctx, key.Name)
-            if err != nil {
-                m.workQueue.AddAfter(key, backoff)
-            }
+// Manager starts workers for each registered controller
+func (m *Manager) Start(ctx context.Context, workers int) {
+    for name, ctrl := range m.controllers {
+        queue := m.queues[name]
+        for i := 0; i < workers; i++ {
+            go m.runWorker(ctx, name, ctrl, queue)
         }
+    }
+    <-ctx.Done()
+}
+
+// Worker processes items from queue with retries
+func (m *Manager) runWorker(ctx context.Context, name string, ctrl Controller, q *WorkQueue) {
+    for {
+        key, shutdown := q.Get()
+        if shutdown {
+            return
+        }
+
+        err := ctrl.Reconcile(ctx, key)
+        if err != nil {
+            q.AddAfter(key, backoff)  // Retry with exponential backoff
+        }
+        q.Done(key)
     }
 }
 ```
@@ -136,8 +141,11 @@ func (m *Manager) Run(ctx context.Context) error {
 Each controller implements a state machine:
 
 ```go
-func (c *DevnetController) Reconcile(ctx context.Context, name string) error {
-    devnet, err := c.store.GetDevnet(ctx, name)
+func (c *DevnetController) Reconcile(ctx context.Context, key string) error {
+    // Parse namespace/name from key
+    namespace, name := parseKey(key)
+
+    devnet, err := c.store.GetDevnet(ctx, namespace, name)
     if err != nil {
         return err
     }
@@ -145,15 +153,15 @@ func (c *DevnetController) Reconcile(ctx context.Context, name string) error {
     switch devnet.Status.Phase {
     case "":
         return c.transitionToPending(ctx, devnet)
-    case types.DevnetPhasePending:
+    case types.PhasePending:
         return c.transitionToProvisioning(ctx, devnet)
-    case types.DevnetPhaseProvisioning:
+    case types.PhaseProvisioning:
         return c.waitForProvisioning(ctx, devnet)
-    case types.DevnetPhaseRunning:
+    case types.PhaseRunning:
         return c.ensureRunning(ctx, devnet)
-    case types.DevnetPhaseDegraded:
+    case types.PhaseDegraded:
         return c.attemptRecovery(ctx, devnet)
-    case types.DevnetPhaseStopped:
+    case types.PhaseStopped:
         return c.handleStopped(ctx, devnet)
     }
 
@@ -205,11 +213,13 @@ type Resource struct {
 }
 
 type ResourceMeta struct {
-    Name      string    `json:"name"`
-    Namespace string    `json:"namespace,omitempty"`
-    Labels    map[string]string `json:"labels,omitempty"`
-    CreatedAt time.Time `json:"createdAt"`
-    UpdatedAt time.Time `json:"updatedAt"`
+    Name        string            `json:"name"`
+    Namespace   string            `json:"namespace,omitempty"`
+    Labels      map[string]string `json:"labels,omitempty"`
+    Annotations map[string]string `json:"annotations,omitempty"`
+    Generation  int64             `json:"generation"`
+    CreatedAt   time.Time         `json:"createdAt"`
+    UpdatedAt   time.Time         `json:"updatedAt"`
 }
 ```
 
@@ -393,16 +403,14 @@ Each service maps to a resource controller:
 
 ```protobuf
 service DevnetService {
-  rpc Create(CreateDevnetRequest) returns (CreateDevnetResponse);
-  rpc Get(GetDevnetRequest) returns (GetDevnetResponse);
-  rpc List(ListDevnetsRequest) returns (ListDevnetsResponse);
-  rpc Delete(DeleteDevnetRequest) returns (DeleteDevnetResponse);
-  rpc Start(StartDevnetRequest) returns (StartDevnetResponse);
-  rpc Stop(StopDevnetRequest) returns (StopDevnetResponse);
-
-  // Streaming
-  rpc Watch(WatchDevnetRequest) returns (stream DevnetEvent);
-  rpc StreamLogs(StreamLogsRequest) returns (stream LogEntry);
+  rpc CreateDevnet(CreateDevnetRequest) returns (CreateDevnetResponse);
+  rpc GetDevnet(GetDevnetRequest) returns (GetDevnetResponse);
+  rpc ListDevnets(ListDevnetsRequest) returns (ListDevnetsResponse);
+  rpc DeleteDevnet(DeleteDevnetRequest) returns (DeleteDevnetResponse);
+  rpc StartDevnet(StartDevnetRequest) returns (StartDevnetResponse);
+  rpc StopDevnet(StopDevnetRequest) returns (StopDevnetResponse);
+  rpc ApplyDevnet(ApplyDevnetRequest) returns (ApplyDevnetResponse);
+  rpc UpdateDevnet(UpdateDevnetRequest) returns (UpdateDevnetResponse);
 }
 ```
 
@@ -431,35 +439,37 @@ gRPC Service Handler
      Event Watchers Notified
 ```
 
-### Streaming Implementation
+### Log Streaming Implementation
 
-Watch streams provide real-time updates:
+NodeService provides log streaming from running nodes:
 
 ```go
-func (s *DevnetService) Watch(
-    req *pb.WatchDevnetRequest,
-    stream pb.DevnetService_WatchServer,
+func (s *NodeService) StreamNodeLogs(
+    req *pb.StreamNodeLogsRequest,
+    stream pb.NodeService_StreamNodeLogsServer,
 ) error {
-    // Create event channel
-    events := make(chan *types.DevnetEvent, 100)
+    // Get node from store
+    node, err := s.store.GetNode(ctx, req.Namespace, req.DevnetName, req.NodeName)
+    if err != nil {
+        return status.Errorf(codes.NotFound, "node not found")
+    }
 
-    // Register with event system
-    s.events.Subscribe(events, func(e *types.Event) bool {
-        return e.Type == "devnet" && e.ResourceName == req.Name
-    })
-    defer s.events.Unsubscribe(events)
+    // Stream logs via runtime
+    logCh, err := s.runtime.StreamLogs(ctx, node, req.Follow, int(req.Tail))
+    if err != nil {
+        return status.Errorf(codes.Internal, "failed to stream logs: %v", err)
+    }
 
-    // Stream events
-    for {
-        select {
-        case <-stream.Context().Done():
-            return stream.Context().Err()
-        case event := <-events:
-            if err := stream.Send(event.ToProto()); err != nil {
-                return err
-            }
+    // Send log entries to client
+    for line := range logCh {
+        if err := stream.Send(&pb.LogEntry{
+            Content:   line,
+            Timestamp: timestamppb.Now(),
+        }); err != nil {
+            return err
         }
     }
+    return nil
 }
 ```
 
