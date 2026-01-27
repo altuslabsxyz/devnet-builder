@@ -179,6 +179,7 @@ func TestExecResult_NonZeroExitCode(t *testing.T) {
 	}
 
 	assert.Equal(t, 1, result.ExitCode)
+	assert.Empty(t, result.Stdout)
 	assert.NotEmpty(t, result.Stderr)
 }
 
@@ -205,6 +206,7 @@ func TestNodeHealth_Unhealthy(t *testing.T) {
 	}
 
 	assert.Equal(t, "Unhealthy", health.Status)
+	assert.Equal(t, "RPC endpoint not responding", health.Message)
 	assert.Equal(t, 3, health.ConsecutiveFailures)
 }
 
@@ -259,4 +261,5 @@ func TestLogEntry_Stderr(t *testing.T) {
 	}
 
 	assert.Equal(t, "stderr", entry.Stream)
+	assert.Equal(t, "Warning: low disk space", entry.Message)
 }

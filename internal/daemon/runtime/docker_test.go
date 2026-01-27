@@ -326,8 +326,8 @@ func TestDockerRuntime_RestartNode(t *testing.T) {
 		mock := &mockDockerClient{}
 
 		rt := &DockerRuntime{
-			client:     mock,
-			logger:     testLogger(),
+			client: mock,
+			logger: testLogger(),
 			containers: map[string]*containerState{
 				"test-node": {
 					containerID:  "container-abc123",
@@ -374,8 +374,8 @@ func TestDockerRuntime_RestartNode(t *testing.T) {
 		}
 
 		rt := &DockerRuntime{
-			client:     mock,
-			logger:     testLogger(),
+			client: mock,
+			logger: testLogger(),
 			containers: map[string]*containerState{
 				"test-node": {
 					containerID:  "container-xyz789",
@@ -417,8 +417,8 @@ func TestDockerRuntime_GetLogs(t *testing.T) {
 		}
 
 		rt := &DockerRuntime{
-			client:     mock,
-			logger:     testLogger(),
+			client: mock,
+			logger: testLogger(),
 			containers: map[string]*containerState{
 				"test-node": {
 					containerID: "container-logs-123",
@@ -477,8 +477,8 @@ func TestDockerRuntime_GetLogs_WithOptions(t *testing.T) {
 	}
 
 	rt := &DockerRuntime{
-		client:     mock,
-		logger:     testLogger(),
+		client: mock,
+		logger: testLogger(),
 		containers: map[string]*containerState{
 			"test-node": {
 				containerID: "container-opts-456",

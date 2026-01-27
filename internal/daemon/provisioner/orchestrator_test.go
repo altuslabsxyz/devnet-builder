@@ -145,10 +145,10 @@ func (m *mockNodeRuntime) ExecInNode(ctx context.Context, nodeID string, command
 
 // mockHealthChecker implements controller.HealthChecker for testing
 type mockHealthChecker struct {
-	checkHealthCalls []*types.Node
-	healthResults    map[string]*types.HealthCheckResult // keyed by node name
-	checkHealthErr   error
-	callCount        int
+	checkHealthCalls        []*types.Node
+	healthResults           map[string]*types.HealthCheckResult // keyed by node name
+	checkHealthErr          error
+	callCount               int
 	returnHealthyAfterCalls int // return healthy after this many calls (0 = always return configured result)
 }
 

@@ -27,8 +27,8 @@ type supervisorConfig struct {
 
 // supervisor manages a single process with restart logic
 type supervisor struct {
-	config       supervisorConfig
-	policy       RestartPolicy
+	config supervisorConfig
+	policy RestartPolicy
 
 	cmd          *exec.Cmd
 	pid          int

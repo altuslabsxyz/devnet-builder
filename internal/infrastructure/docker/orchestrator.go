@@ -192,13 +192,13 @@ func (o *OrchestratorImpl) stateFilePath(devnetName string) string {
 
 // persistedState is the JSON-serializable representation of DeploymentState
 type persistedState struct {
-	DevnetName        string              `json:"devnet_name"`
+	DevnetName        string                `json:"devnet_name"`
 	Phase             ports.DeploymentPhase `json:"phase"`
-	NetworkID         *string             `json:"network_id,omitempty"`
+	NetworkID         *string               `json:"network_id,omitempty"`
 	PortRange         *ports.PortAllocation `json:"port_range,omitempty"`
-	StartedContainers []string            `json:"started_containers"`
-	HealthyContainers []string            `json:"healthy_containers"`
-	StartedAt         time.Time           `json:"started_at"`
+	StartedContainers []string              `json:"started_containers"`
+	HealthyContainers []string              `json:"healthy_containers"`
+	StartedAt         time.Time             `json:"started_at"`
 }
 
 // saveState persists the deployment state to a JSON file

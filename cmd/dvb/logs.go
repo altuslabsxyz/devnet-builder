@@ -356,7 +356,7 @@ func tailLines(file *os.File, n int) ([]string, error) {
 	}
 
 	// Reset file position for potential follow mode
-	file.Seek(0, io.SeekEnd)
+	_, _ = file.Seek(0, io.SeekEnd)
 
 	return lines, nil
 }

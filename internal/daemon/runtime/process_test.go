@@ -40,6 +40,9 @@ func TestProcessRuntimeStartStop(t *testing.T) {
 		t.Fatalf("StartNode failed: %v", err)
 	}
 
+	// Give process time to start (supervisor runs in background goroutine)
+	time.Sleep(100 * time.Millisecond)
+
 	// Check status
 	status, err := pr.GetNodeStatus(ctx, "test-node")
 	if err != nil {

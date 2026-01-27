@@ -15,9 +15,9 @@ type NodeStatus struct {
 	Running   bool
 	PID       int
 	StartedAt time.Time
-	ExitCode  int       // last exit code if not running
-	Restarts  int       // number of restarts
-	LastError string    // last error message
+	ExitCode  int    // last exit code if not running
+	Restarts  int    // number of restarts
+	LastError string // last error message
 	UpdatedAt time.Time
 }
 
