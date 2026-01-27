@@ -138,6 +138,68 @@ func (m *mockNodeRuntime) Cleanup(ctx context.Context) error {
 	return nil
 }
 
+// mockHealthChecker implements controller.HealthChecker for testing
+type mockHealthChecker struct {
+	checkHealthCalls []*types.Node
+	healthResults    map[string]*types.HealthCheckResult // keyed by node name
+	checkHealthErr   error
+	callCount        int
+	returnHealthyAfterCalls int // return healthy after this many calls (0 = always return configured result)
+}
+
+func newMockHealthChecker() *mockHealthChecker {
+	return &mockHealthChecker{
+		healthResults: make(map[string]*types.HealthCheckResult),
+	}
+}
+
+func (m *mockHealthChecker) setHealthyForNode(nodeName string, healthy bool, catchingUp bool) {
+	m.healthResults[nodeName] = &types.HealthCheckResult{
+		NodeKey:    nodeName,
+		Healthy:    healthy,
+		CatchingUp: catchingUp,
+		CheckedAt:  time.Now(),
+	}
+}
+
+func (m *mockHealthChecker) setAllHealthy() {
+	for name := range m.healthResults {
+		m.healthResults[name].Healthy = true
+		m.healthResults[name].CatchingUp = false
+	}
+}
+
+func (m *mockHealthChecker) CheckHealth(ctx context.Context, node *types.Node) (*types.HealthCheckResult, error) {
+	m.checkHealthCalls = append(m.checkHealthCalls, node)
+	m.callCount++
+
+	if m.checkHealthErr != nil {
+		return nil, m.checkHealthErr
+	}
+
+	// If configured to return healthy after N calls, do so
+	if m.returnHealthyAfterCalls > 0 && m.callCount >= m.returnHealthyAfterCalls {
+		return &types.HealthCheckResult{
+			NodeKey:    node.Metadata.Name,
+			Healthy:    true,
+			CatchingUp: false,
+			CheckedAt:  time.Now(),
+		}, nil
+	}
+
+	result, ok := m.healthResults[node.Metadata.Name]
+	if !ok {
+		// Default to healthy if not configured
+		return &types.HealthCheckResult{
+			NodeKey:    node.Metadata.Name,
+			Healthy:    true,
+			CatchingUp: false,
+			CheckedAt:  time.Now(),
+		}, nil
+	}
+	return result, nil
+}
+
 // =============================================================================
 // Phase Constants Tests
 // =============================================================================
@@ -153,6 +215,7 @@ func TestProvisioningPhaseConstants(t *testing.T) {
 		{"PhaseForking", PhaseForking, "Forking"},
 		{"PhaseInitializing", PhaseInitializing, "Initializing"},
 		{"PhaseStarting", PhaseStarting, "Starting"},
+		{"PhaseHealthChecking", PhaseHealthChecking, "HealthChecking"},
 		{"PhaseRunning", PhaseRunning, "Running"},
 		{"PhaseDegraded", PhaseDegraded, "Degraded"},
 		{"PhaseFailed", PhaseFailed, "Failed"},
@@ -255,12 +318,13 @@ func TestExecute_PhaseTransitions(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	// Verify phase progression
+	// Verify phase progression (health checking is included but skips immediately when no checker configured)
 	expectedPhases := []ProvisioningPhase{
 		PhaseBuilding,
 		PhaseForking,
 		PhaseInitializing,
 		PhaseStarting,
+		PhaseHealthChecking,
 		PhaseRunning,
 	}
 	assert.Equal(t, expectedPhases, phases)
@@ -320,6 +384,7 @@ func TestExecute_SkipBuildingWhenBinaryProvided(t *testing.T) {
 	assert.Contains(t, phases, PhaseForking)
 	assert.Contains(t, phases, PhaseInitializing)
 	assert.Contains(t, phases, PhaseStarting)
+	assert.Contains(t, phases, PhaseHealthChecking)
 	assert.Contains(t, phases, PhaseRunning)
 }
 
@@ -849,4 +914,298 @@ func TestGetError_ReturnsNilOnSuccess(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NoError(t, orch.GetError())
+}
+
+// =============================================================================
+// Health Checking Phase Tests
+// =============================================================================
+
+func TestExecute_HealthPhase_AllHealthy(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	mockChecker := newMockHealthChecker()
+	// Default returns healthy=true for all nodes
+
+	config := OrchestratorConfig{
+		BinaryBuilder: &mockBinaryBuilder{
+			buildResult: &builder.BuildResult{BinaryPath: "/path/to/binary"},
+		},
+		GenesisForker: &mockGenesisForker{
+			forkResult: &ports.ForkResult{
+				Genesis:    []byte(`{"chain_id": "test-chain"}`),
+				NewChainID: "test-chain",
+			},
+		},
+		NodeInitializer: &mockNodeInitializer{nodeIDResult: "node123"},
+		NodeRuntime:     &mockNodeRuntime{},
+		HealthChecker:   mockChecker,
+		DataDir:         tmpDir,
+		Logger:          slog.Default(),
+	}
+
+	orch := NewProvisioningOrchestrator(config)
+
+	var phases []ProvisioningPhase
+	orch.OnProgress(func(phase ProvisioningPhase, message string) {
+		phases = append(phases, phase)
+	})
+
+	opts := ports.ProvisionOptions{
+		DevnetName:         "test-devnet",
+		ChainID:            "test-chain",
+		NumValidators:      2,
+		DataDir:            tmpDir,
+		HealthCheckTimeout: 10 * time.Second,
+	}
+
+	result, err := orch.Execute(context.Background(), opts)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Should progress through health checking to Running
+	assert.Contains(t, phases, PhaseHealthChecking)
+	assert.Contains(t, phases, PhaseRunning)
+	assert.Equal(t, PhaseRunning, orch.CurrentPhase())
+
+	// Health checker should have been called
+	assert.Greater(t, len(mockChecker.checkHealthCalls), 0)
+}
+
+func TestExecute_HealthPhase_Timeout_TransitionsToDegraded(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	mockChecker := newMockHealthChecker()
+	// Configure nodes to never become healthy
+	mockChecker.setHealthyForNode("test-devnet-validator-0", false, false)
+
+	config := OrchestratorConfig{
+		BinaryBuilder: &mockBinaryBuilder{
+			buildResult: &builder.BuildResult{BinaryPath: "/path/to/binary"},
+		},
+		GenesisForker: &mockGenesisForker{
+			forkResult: &ports.ForkResult{
+				Genesis:    []byte(`{"chain_id": "test-chain"}`),
+				NewChainID: "test-chain",
+			},
+		},
+		NodeInitializer: &mockNodeInitializer{nodeIDResult: "node123"},
+		NodeRuntime:     &mockNodeRuntime{},
+		HealthChecker:   mockChecker,
+		DataDir:         tmpDir,
+		Logger:          slog.Default(),
+	}
+
+	orch := NewProvisioningOrchestrator(config)
+
+	opts := ports.ProvisionOptions{
+		DevnetName:         "test-devnet",
+		ChainID:            "test-chain",
+		NumValidators:      1,
+		DataDir:            tmpDir,
+		HealthCheckTimeout: 100 * time.Millisecond, // Very short timeout
+	}
+
+	result, err := orch.Execute(context.Background(), opts)
+	require.NoError(t, err) // Should not error, just transition to Degraded
+	require.NotNil(t, result)
+
+	// Should end in Degraded phase, not Failed
+	assert.Equal(t, PhaseDegraded, orch.CurrentPhase())
+}
+
+func TestExecute_HealthPhase_CatchingUp_WaitsForSync(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	mockChecker := newMockHealthChecker()
+	// Node is healthy but still catching up - should not count as fully healthy
+	mockChecker.setHealthyForNode("test-devnet-validator-0", true, true) // catching up
+	// After a few calls, stop catching up
+	mockChecker.returnHealthyAfterCalls = 3
+
+	config := OrchestratorConfig{
+		BinaryBuilder: &mockBinaryBuilder{
+			buildResult: &builder.BuildResult{BinaryPath: "/path/to/binary"},
+		},
+		GenesisForker: &mockGenesisForker{
+			forkResult: &ports.ForkResult{
+				Genesis:    []byte(`{"chain_id": "test-chain"}`),
+				NewChainID: "test-chain",
+			},
+		},
+		NodeInitializer: &mockNodeInitializer{nodeIDResult: "node123"},
+		NodeRuntime:     &mockNodeRuntime{},
+		HealthChecker:   mockChecker,
+		DataDir:         tmpDir,
+		Logger:          slog.Default(),
+	}
+
+	orch := NewProvisioningOrchestrator(config)
+
+	opts := ports.ProvisionOptions{
+		DevnetName:         "test-devnet",
+		ChainID:            "test-chain",
+		NumValidators:      1,
+		DataDir:            tmpDir,
+		HealthCheckTimeout: 20 * time.Second, // Allow enough time for 3+ health check iterations
+	}
+
+	result, err := orch.Execute(context.Background(), opts)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Should reach Running after nodes stop catching up
+	assert.Equal(t, PhaseRunning, orch.CurrentPhase())
+
+	// Should have called health check multiple times while waiting (at least 3 per returnHealthyAfterCalls)
+	assert.GreaterOrEqual(t, mockChecker.callCount, 3)
+}
+
+func TestExecute_HealthPhase_NoChecker_SkipsHealthCheck(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// No health checker configured
+	config := OrchestratorConfig{
+		BinaryBuilder: &mockBinaryBuilder{
+			buildResult: &builder.BuildResult{BinaryPath: "/path/to/binary"},
+		},
+		GenesisForker: &mockGenesisForker{
+			forkResult: &ports.ForkResult{
+				Genesis:    []byte(`{"chain_id": "test-chain"}`),
+				NewChainID: "test-chain",
+			},
+		},
+		NodeInitializer: &mockNodeInitializer{nodeIDResult: "node123"},
+		NodeRuntime:     &mockNodeRuntime{},
+		HealthChecker:   nil, // No health checker
+		DataDir:         tmpDir,
+		Logger:          slog.Default(),
+	}
+
+	orch := NewProvisioningOrchestrator(config)
+
+	var phases []ProvisioningPhase
+	orch.OnProgress(func(phase ProvisioningPhase, message string) {
+		phases = append(phases, phase)
+	})
+
+	opts := ports.ProvisionOptions{
+		DevnetName:         "test-devnet",
+		ChainID:            "test-chain",
+		NumValidators:      1,
+		DataDir:            tmpDir,
+		HealthCheckTimeout: 10 * time.Second,
+	}
+
+	result, err := orch.Execute(context.Background(), opts)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Should still go through health checking phase (but skip quickly)
+	assert.Contains(t, phases, PhaseHealthChecking)
+	// Should reach Running
+	assert.Equal(t, PhaseRunning, orch.CurrentPhase())
+}
+
+func TestExecute_HealthPhase_NegativeTimeout_SkipsHealthCheck(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	mockChecker := newMockHealthChecker()
+
+	config := OrchestratorConfig{
+		BinaryBuilder: &mockBinaryBuilder{
+			buildResult: &builder.BuildResult{BinaryPath: "/path/to/binary"},
+		},
+		GenesisForker: &mockGenesisForker{
+			forkResult: &ports.ForkResult{
+				Genesis:    []byte(`{"chain_id": "test-chain"}`),
+				NewChainID: "test-chain",
+			},
+		},
+		NodeInitializer: &mockNodeInitializer{nodeIDResult: "node123"},
+		NodeRuntime:     &mockNodeRuntime{},
+		HealthChecker:   mockChecker,
+		DataDir:         tmpDir,
+		Logger:          slog.Default(),
+	}
+
+	orch := NewProvisioningOrchestrator(config)
+
+	var phases []ProvisioningPhase
+	orch.OnProgress(func(phase ProvisioningPhase, message string) {
+		phases = append(phases, phase)
+	})
+
+	opts := ports.ProvisionOptions{
+		DevnetName:         "test-devnet",
+		ChainID:            "test-chain",
+		NumValidators:      1,
+		DataDir:            tmpDir,
+		HealthCheckTimeout: -1, // Explicit opt-out
+	}
+
+	result, err := orch.Execute(context.Background(), opts)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Should NOT include HealthChecking phase when explicitly opted out
+	assert.NotContains(t, phases, PhaseHealthChecking)
+	// Should go directly to Running
+	assert.Equal(t, PhaseRunning, orch.CurrentPhase())
+	// Health checker should NOT have been called
+	assert.Equal(t, 0, len(mockChecker.checkHealthCalls))
+}
+
+func TestExecute_HealthPhase_ContextCancelled(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	mockChecker := newMockHealthChecker()
+	// Configure to never become healthy so we stay in the health check loop
+	mockChecker.setHealthyForNode("test-devnet-validator-0", false, false)
+
+	config := OrchestratorConfig{
+		BinaryBuilder: &mockBinaryBuilder{
+			buildResult: &builder.BuildResult{BinaryPath: "/path/to/binary"},
+		},
+		GenesisForker: &mockGenesisForker{
+			forkResult: &ports.ForkResult{
+				Genesis:    []byte(`{"chain_id": "test-chain"}`),
+				NewChainID: "test-chain",
+			},
+		},
+		NodeInitializer: &mockNodeInitializer{nodeIDResult: "node123"},
+		NodeRuntime:     &mockNodeRuntime{},
+		HealthChecker:   mockChecker,
+		DataDir:         tmpDir,
+		Logger:          slog.Default(),
+	}
+
+	orch := NewProvisioningOrchestrator(config)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Cancel context after a short delay (simulating user interrupt)
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	opts := ports.ProvisionOptions{
+		DevnetName:         "test-devnet",
+		ChainID:            "test-chain",
+		NumValidators:      1,
+		DataDir:            tmpDir,
+		HealthCheckTimeout: 10 * time.Second, // Long timeout, but context will be cancelled
+	}
+
+	result, err := orch.Execute(ctx, opts)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "context cancelled")
+	assert.Equal(t, PhaseFailed, orch.CurrentPhase())
+}
+
+func TestExecuteHealthPhase_DefaultTimeout(t *testing.T) {
+	// Test that zero timeout uses the default
+	assert.Equal(t, 2*time.Minute, DefaultHealthCheckTimeout)
+	assert.Equal(t, 5*time.Second, DefaultHealthCheckInterval)
 }

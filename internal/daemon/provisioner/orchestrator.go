@@ -8,9 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/builder"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 )
@@ -37,6 +39,9 @@ const (
 
 	// PhaseStarting indicates node processes are being started
 	PhaseStarting ProvisioningPhase = "Starting"
+
+	// PhaseHealthChecking indicates nodes are being verified healthy
+	PhaseHealthChecking ProvisioningPhase = "HealthChecking"
 
 	// PhaseRunning indicates the devnet is operational
 	PhaseRunning ProvisioningPhase = "Running"
@@ -72,6 +77,9 @@ type OrchestratorConfig struct {
 
 	// NodeRuntime manages node processes/containers
 	NodeRuntime runtime.NodeRuntime
+
+	// HealthChecker verifies node health during provisioning (optional)
+	HealthChecker controller.HealthChecker
 
 	// DataDir is the base directory for devnet data
 	DataDir string
@@ -234,8 +242,32 @@ func (o *ProvisioningOrchestrator) Execute(ctx context.Context, opts ports.Provi
 		return nil, o.lastErr
 	}
 
-	// Phase 5: Running
-	o.setPhase(PhaseRunning, "Devnet is operational")
+	// Phase 5: Health Checking
+	if err := ctx.Err(); err != nil {
+		o.setError(fmt.Errorf("context cancelled: %w", err))
+		return nil, o.lastErr
+	}
+
+	// Skip health checking if timeout is negative (explicit opt-out)
+	if opts.HealthCheckTimeout >= 0 {
+		o.setPhase(PhaseHealthChecking, "Verifying node health")
+
+		healthResult, err := o.executeHealthPhase(ctx, nodes, opts.HealthCheckTimeout)
+		if err != nil {
+			o.setError(fmt.Errorf("health checking phase failed: %w", err))
+			return nil, o.lastErr
+		}
+
+		// Determine final phase based on health check result
+		if healthResult.AllHealthy {
+			o.setPhase(PhaseRunning, "Devnet is operational")
+		} else {
+			o.setPhase(PhaseDegraded, fmt.Sprintf("Devnet running but degraded (%d/%d nodes healthy)", healthResult.HealthyCount, healthResult.TotalCount))
+		}
+	} else {
+		// Health checking skipped by explicit opt-out
+		o.setPhase(PhaseRunning, "Devnet is operational (health check skipped)")
+	}
 
 	// Build and return result
 	result := &ports.ProvisionResult{
@@ -433,4 +465,128 @@ func (o *ProvisioningOrchestrator) executeStartPhase(ctx context.Context, nodes 
 	)
 
 	return nil
+}
+
+// DefaultHealthCheckTimeout is the default duration to wait for nodes to become healthy.
+const DefaultHealthCheckTimeout = 2 * time.Minute
+
+// DefaultHealthCheckInterval is how often to poll node health during the health check phase.
+const DefaultHealthCheckInterval = 5 * time.Second
+
+// HealthPhaseResult indicates the outcome of the health checking phase.
+type HealthPhaseResult struct {
+	// AllHealthy is true if all nodes passed health checks.
+	AllHealthy bool
+	// HealthyCount is the number of healthy nodes.
+	HealthyCount int
+	// TotalCount is the total number of nodes checked.
+	TotalCount int
+	// TimedOut is true if the health check timed out.
+	TimedOut bool
+}
+
+// executeHealthPhase handles the health checking phase after nodes are started.
+// It polls nodes until all are healthy or the timeout is reached.
+// Returns a HealthPhaseResult indicating the outcome.
+func (o *ProvisioningOrchestrator) executeHealthPhase(ctx context.Context, nodes []*types.Node, timeout time.Duration) (*HealthPhaseResult, error) {
+	// Skip if no health checker configured
+	if o.config.HealthChecker == nil {
+		o.logger.Info("skipping health check phase (no health checker configured)")
+		return &HealthPhaseResult{
+			AllHealthy:   true,
+			HealthyCount: len(nodes),
+			TotalCount:   len(nodes),
+			TimedOut:     false,
+		}, nil
+	}
+
+	// Use default timeout if not specified
+	if timeout <= 0 {
+		timeout = DefaultHealthCheckTimeout
+	}
+
+	o.logger.Info("starting health check phase",
+		"nodeCount", len(nodes),
+		"timeout", timeout,
+	)
+
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(DefaultHealthCheckInterval)
+	defer ticker.Stop()
+
+	for {
+		// Check for context cancellation
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("context cancelled during health check: %w", err)
+		}
+
+		// Check all nodes
+		healthyCount := 0
+		for _, node := range nodes {
+			result, err := o.config.HealthChecker.CheckHealth(ctx, node)
+			if err != nil {
+				o.logger.Debug("health check failed for node",
+					"node", node.Metadata.Name,
+					"error", err,
+				)
+				continue
+			}
+
+			if result.Healthy && !result.CatchingUp {
+				healthyCount++
+				o.logger.Debug("node is healthy",
+					"node", node.Metadata.Name,
+					"blockHeight", result.BlockHeight,
+					"peerCount", result.PeerCount,
+				)
+			} else {
+				o.logger.Debug("node not yet healthy",
+					"node", node.Metadata.Name,
+					"healthy", result.Healthy,
+					"catchingUp", result.CatchingUp,
+					"error", result.Error,
+				)
+			}
+		}
+
+		// Check if all nodes are healthy
+		if healthyCount == len(nodes) {
+			o.logger.Info("all nodes healthy",
+				"healthyCount", healthyCount,
+				"totalCount", len(nodes),
+			)
+			return &HealthPhaseResult{
+				AllHealthy:   true,
+				HealthyCount: healthyCount,
+				TotalCount:   len(nodes),
+				TimedOut:     false,
+			}, nil
+		}
+
+		// Check for timeout
+		if time.Now().After(deadline) {
+			o.logger.Warn("health check timeout",
+				"healthyCount", healthyCount,
+				"totalCount", len(nodes),
+				"timeout", timeout,
+			)
+			return &HealthPhaseResult{
+				AllHealthy:   false,
+				HealthyCount: healthyCount,
+				TotalCount:   len(nodes),
+				TimedOut:     true,
+			}, nil
+		}
+
+		// Report progress
+		o.setPhase(PhaseHealthChecking, fmt.Sprintf("Waiting for nodes to become healthy (%d/%d)", healthyCount, len(nodes)))
+
+		// Wait for next poll
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("context cancelled during health check: %w", ctx.Err())
+		case <-ticker.C:
+			// Continue to next poll
+		}
+	}
 }

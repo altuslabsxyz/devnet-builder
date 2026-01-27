@@ -182,6 +182,10 @@ type ProvisionOptions struct {
 
 	// DataDir is the base directory for devnet data
 	DataDir string
+
+	// HealthCheckTimeout is how long to wait for nodes to become healthy.
+	// If zero, defaults to 2 minutes. Use -1 to skip health checking entirely.
+	HealthCheckTimeout time.Duration
 }
 
 // ProvisionResult contains the result of a full provisioning operation.

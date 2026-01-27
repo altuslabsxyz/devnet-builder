@@ -205,8 +205,12 @@ func printPhaseProgress(phase provisioner.ProvisioningPhase, message string) {
 		prefix = color.YellowString("[Initializing]")
 	case provisioner.PhaseStarting:
 		prefix = color.YellowString("[Starting]")
+	case provisioner.PhaseHealthChecking:
+		prefix = color.YellowString("[HealthCheck]")
 	case provisioner.PhaseRunning:
 		prefix = color.GreenString("[Running]")
+	case provisioner.PhaseDegraded:
+		prefix = color.YellowString("[Degraded]")
 	case provisioner.PhaseFailed:
 		prefix = color.RedString("[Failed]")
 	default:
