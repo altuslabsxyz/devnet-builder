@@ -103,6 +103,18 @@ func (m *mockDockerClient) ContainerLogs(ctx context.Context, containerID string
 	return io.NopCloser(nil), nil
 }
 
+func (m *mockDockerClient) ContainerExecCreate(ctx context.Context, containerID string, config container.ExecOptions) (container.ExecCreateResponse, error) {
+	return container.ExecCreateResponse{ID: "exec-test-id"}, nil
+}
+
+func (m *mockDockerClient) ContainerExecAttach(ctx context.Context, execID string, config container.ExecStartOptions) (dockertypes.HijackedResponse, error) {
+	return dockertypes.HijackedResponse{}, nil
+}
+
+func (m *mockDockerClient) ContainerExecInspect(ctx context.Context, execID string) (container.ExecInspect, error) {
+	return container.ExecInspect{ExitCode: 0}, nil
+}
+
 func (m *mockDockerClient) Close() error {
 	return nil
 }

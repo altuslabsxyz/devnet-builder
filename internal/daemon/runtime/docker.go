@@ -39,6 +39,9 @@ type dockerClient interface {
 	ContainerRemove(ctx context.Context, containerID string, opts container.RemoveOptions) error
 	ContainerInspect(ctx context.Context, containerID string) (dockertypes.ContainerJSON, error)
 	ContainerLogs(ctx context.Context, containerID string, opts container.LogsOptions) (io.ReadCloser, error)
+	ContainerExecCreate(ctx context.Context, containerID string, config container.ExecOptions) (container.ExecCreateResponse, error)
+	ContainerExecAttach(ctx context.Context, execID string, config container.ExecStartOptions) (dockertypes.HijackedResponse, error)
+	ContainerExecInspect(ctx context.Context, execID string) (container.ExecInspect, error)
 	Close() error
 }
 
@@ -160,10 +163,28 @@ func (r *DockerRuntime) StartContainer(ctx context.Context, node *types.Node) (s
 		image = node.Spec.BinaryPath
 	}
 
+	// Get command and environment from plugin runtime (if available)
+	cmd := []string{"start", "--home", "/root/.stabled"} // fallback
+	var env []string
+	containerHomePath := "/root/.stabled" // fallback
+	if r.pluginRuntime != nil {
+		cmd = r.pluginRuntime.StartCommand(node)
+		containerHomePath = r.pluginRuntime.ContainerHomePath()
+		// Convert env map to Docker format
+		for k, v := range r.pluginRuntime.StartEnv(node) {
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
+		}
+	}
+
+	// Build port bindings for network access
+	portBindings, exposedPorts := r.buildPortBindings(node)
+
 	// Build container config
 	containerConfig := &container.Config{
-		Image: image,
-		Cmd:   []string{"start", "--home", "/root/.stabled"},
+		Image:        image,
+		Cmd:          cmd,
+		Env:          env,
+		ExposedPorts: exposedPorts,
 		Labels: map[string]string{
 			"dvb.devnet": node.Spec.DevnetRef,
 			"dvb.index":  fmt.Sprintf("%d", node.Spec.Index),
@@ -171,8 +192,9 @@ func (r *DockerRuntime) StartContainer(ctx context.Context, node *types.Node) (s
 		},
 	}
 
-	// Build host config with mounts
+	// Build host config with mounts and port bindings
 	hostConfig := &container.HostConfig{
+		PortBindings: portBindings,
 		RestartPolicy: container.RestartPolicy{
 			Name: container.RestartPolicyDisabled,
 		},
@@ -184,7 +206,7 @@ func (r *DockerRuntime) StartContainer(ctx context.Context, node *types.Node) (s
 			{
 				Type:   mount.TypeBind,
 				Source: node.Spec.HomeDir,
-				Target: "/root/.stabled",
+				Target: containerHomePath,
 			},
 		}
 	}
@@ -269,6 +291,12 @@ func (r *DockerRuntime) StartNode(ctx context.Context, node *types.Node, opts St
 		}
 	}
 
+	// Use PluginRuntime from opts if provided, otherwise fall back to default
+	pluginRuntime := opts.PluginRuntime
+	if pluginRuntime == nil {
+		pluginRuntime = r.pluginRuntime
+	}
+
 	// Build container name
 	containerName := fmt.Sprintf("dvb-%s-%s-%d", node.Spec.DevnetRef, node.Spec.Role, node.Spec.Index)
 
@@ -279,10 +307,22 @@ func (r *DockerRuntime) StartNode(ctx context.Context, node *types.Node, opts St
 		image = node.Spec.BinaryPath
 	}
 
-	// Build command
-	cmd := []string{"start", "--home", "/root/.stabled"}
-	if r.pluginRuntime != nil {
-		cmd = r.pluginRuntime.StartCommand(node)
+	// Build command and environment from plugin
+	cmd := []string{"start", "--home", "/root/.stabled"} // fallback
+	var env []string
+	containerHomePath := "/root/.stabled" // fallback
+	if pluginRuntime != nil {
+		cmd = pluginRuntime.StartCommand(node)
+		containerHomePath = pluginRuntime.ContainerHomePath()
+		// Convert env map to Docker format
+		for k, v := range pluginRuntime.StartEnv(node) {
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
+		}
+	}
+
+	// Add any additional environment variables from opts
+	for k, v := range opts.Env {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 
 	// Build port bindings based on node index
@@ -292,6 +332,7 @@ func (r *DockerRuntime) StartNode(ctx context.Context, node *types.Node, opts St
 	containerConfig := &container.Config{
 		Image:        image,
 		Cmd:          cmd,
+		Env:          env,
 		Tty:          true, // Simplified log handling
 		ExposedPorts: exposedPorts,
 		Labels: map[string]string{
@@ -316,7 +357,7 @@ func (r *DockerRuntime) StartNode(ctx context.Context, node *types.Node, opts St
 			{
 				Type:   mount.TypeBind,
 				Source: node.Spec.HomeDir,
-				Target: "/root/.stabled",
+				Target: containerHomePath,
 			},
 		}
 	}
@@ -522,6 +563,104 @@ func (r *DockerRuntime) Cleanup(ctx context.Context) error {
 	r.containers = make(map[string]*containerState)
 
 	return lastErr
+}
+
+// ExecInNode executes a command in a running container and returns the result.
+func (r *DockerRuntime) ExecInNode(ctx context.Context, nodeID string, command []string, timeout time.Duration) (*ExecResult, error) {
+	r.mu.RLock()
+	state, exists := r.containers[nodeID]
+	r.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("node %s not found", nodeID)
+	}
+
+	// Apply timeout to context if specified
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	r.logger.Info("executing command in container",
+		"nodeID", nodeID,
+		"containerID", state.containerID[:min(12, len(state.containerID))],
+		"command", command)
+
+	// Create exec configuration
+	execConfig := container.ExecOptions{
+		Cmd:          command,
+		AttachStdout: true,
+		AttachStderr: true,
+	}
+
+	// Create the exec instance
+	execResp, err := r.client.ContainerExecCreate(ctx, state.containerID, execConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create exec: %w", err)
+	}
+
+	// Attach to the exec instance to get output
+	attachResp, err := r.client.ContainerExecAttach(ctx, execResp.ID, container.ExecStartOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to attach to exec: %w", err)
+	}
+	defer attachResp.Close()
+
+	// Read all output - Docker multiplexes stdout/stderr when not using TTY
+	// We need to demultiplex the stream
+	var stdout, stderr strings.Builder
+	if err := demuxDockerStream(attachResp.Reader, &stdout, &stderr); err != nil {
+		return nil, fmt.Errorf("failed to read exec output: %w", err)
+	}
+
+	// Get the exit code by inspecting the exec instance
+	inspectResp, err := r.client.ContainerExecInspect(ctx, execResp.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect exec: %w", err)
+	}
+
+	return &ExecResult{
+		ExitCode: inspectResp.ExitCode,
+		Stdout:   stdout.String(),
+		Stderr:   stderr.String(),
+	}, nil
+}
+
+// demuxDockerStream reads the multiplexed Docker stream and separates stdout/stderr.
+// Docker uses an 8-byte header: [stream_type][0][0][0][size1][size2][size3][size4]
+// stream_type: 0=stdin, 1=stdout, 2=stderr
+func demuxDockerStream(reader io.Reader, stdout, stderr *strings.Builder) error {
+	header := make([]byte, 8)
+	for {
+		// Read the header
+		_, err := io.ReadFull(reader, header)
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		// Parse the header
+		streamType := header[0]
+		size := int(header[4])<<24 | int(header[5])<<16 | int(header[6])<<8 | int(header[7])
+
+		// Read the payload
+		payload := make([]byte, size)
+		_, err = io.ReadFull(reader, payload)
+		if err != nil {
+			return err
+		}
+
+		// Write to the appropriate builder
+		switch streamType {
+		case 1: // stdout
+			stdout.Write(payload)
+		case 2: // stderr
+			stderr.Write(payload)
+		}
+	}
 }
 
 // Ensure DockerRuntime implements NodeRuntime.

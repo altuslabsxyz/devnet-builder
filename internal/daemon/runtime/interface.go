@@ -25,6 +25,7 @@ type NodeStatus struct {
 type StartOptions struct {
 	RestartPolicy RestartPolicy
 	Env           map[string]string // additional environment variables
+	PluginRuntime PluginRuntime     // network-specific runtime (overrides DockerConfig.PluginRuntime if set)
 }
 
 // RestartPolicy defines how to handle process restarts
@@ -56,6 +57,13 @@ type LogOptions struct {
 	Since  time.Time // logs after this time
 }
 
+// ExecResult contains the result of executing a command in a node
+type ExecResult struct {
+	ExitCode int
+	Stdout   string
+	Stderr   string
+}
+
 // NodeRuntime manages node processes/containers
 type NodeRuntime interface {
 	// StartNode starts a node
@@ -72,6 +80,9 @@ type NodeRuntime interface {
 
 	// GetLogs returns logs for a node
 	GetLogs(ctx context.Context, nodeID string, opts LogOptions) (io.ReadCloser, error)
+
+	// ExecInNode executes a command in a running node and returns the result
+	ExecInNode(ctx context.Context, nodeID string, command []string, timeout time.Duration) (*ExecResult, error)
 
 	// Cleanup cleans up all resources
 	Cleanup(ctx context.Context) error
@@ -93,4 +104,8 @@ type PluginRuntime interface {
 
 	// HealthEndpoint returns the health check endpoint
 	HealthEndpoint(node *types.Node) string
+
+	// ContainerHomePath returns the standardized home path inside containers.
+	// This is where host node data directories should be mounted.
+	ContainerHomePath() string
 }

@@ -209,6 +209,13 @@ func (pr *ProcessRuntime) Cleanup(ctx context.Context) error {
 	return nil
 }
 
+// ExecInNode executes a command in a running node process.
+// For ProcessRuntime, this is not directly supported since processes
+// don't have the same isolation model as containers.
+func (pr *ProcessRuntime) ExecInNode(ctx context.Context, nodeID string, command []string, timeout time.Duration) (*ExecResult, error) {
+	return nil, fmt.Errorf("exec in node not supported for process runtime")
+}
+
 // logPath returns the log file path for a node
 func (pr *ProcessRuntime) logPath(node *types.Node) string {
 	return filepath.Join(pr.config.DataDir, "logs", node.Metadata.Name+".log")
