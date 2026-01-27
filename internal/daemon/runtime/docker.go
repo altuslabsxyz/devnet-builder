@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
@@ -31,11 +32,31 @@ type dockerClient interface {
 	Close() error
 }
 
+// containerState tracks a managed container's state.
+type containerState struct {
+	containerID   string
+	nodeID        string
+	node          *types.Node
+	startedAt     time.Time
+	restartCount  int
+	lastError     string
+	restartPolicy RestartPolicy
+
+	// Supervision channels
+	stopCh    chan struct{}
+	stoppedCh chan struct{}
+}
+
 // DockerRuntime implements NodeRuntime using Docker containers.
 type DockerRuntime struct {
-	client       dockerClient
-	logger       *slog.Logger
-	defaultImage string
+	client        dockerClient
+	logger        *slog.Logger
+	pluginRuntime PluginRuntime
+	defaultImage  string
+
+	// Container tracking
+	containers map[string]*containerState
+	mu         sync.RWMutex
 }
 
 // DockerConfig configures the Docker runtime.
@@ -45,6 +66,9 @@ type DockerConfig struct {
 
 	// Logger for runtime operations.
 	Logger *slog.Logger
+
+	// PluginRuntime provides network-specific commands.
+	PluginRuntime PluginRuntime
 }
 
 // NewDockerRuntime creates a new Docker runtime.
@@ -65,9 +89,11 @@ func NewDockerRuntime(cfg DockerConfig) (*DockerRuntime, error) {
 	}
 
 	return &DockerRuntime{
-		client:       cli,
-		logger:       logger,
-		defaultImage: defaultImage,
+		client:        cli,
+		logger:        logger,
+		pluginRuntime: cfg.PluginRuntime,
+		defaultImage:  defaultImage,
+		containers:    make(map[string]*containerState),
 	}, nil
 }
 
