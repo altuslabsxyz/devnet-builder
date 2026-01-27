@@ -78,6 +78,7 @@ func main() {
 		newTxCmd(),
 		newGovCmd(),
 		newGenesisCmd(),
+		newProvisionCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
