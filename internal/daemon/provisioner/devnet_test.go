@@ -293,7 +293,7 @@ func TestDevnetProvisioner_ProvisionWithNilOrchestratorFactory(t *testing.T) {
 	}
 
 	// Verify nodes were created
-	nodes, _ := s.ListNodes(context.Background(), "test-devnet")
+	nodes, _ := s.ListNodes(context.Background(), "", "test-devnet")
 	if len(nodes) != 3 {
 		t.Errorf("Expected 3 nodes, got %d", len(nodes))
 	}
@@ -346,7 +346,7 @@ func TestDevnetProvisioner_ProvisionWithOrchestrator(t *testing.T) {
 	}
 
 	// Verify nodes were created after orchestrator succeeded
-	nodes, _ := s.ListNodes(context.Background(), "test-devnet")
+	nodes, _ := s.ListNodes(context.Background(), "", "test-devnet")
 	if len(nodes) != 3 {
 		t.Errorf("Expected 3 nodes, got %d", len(nodes))
 	}
@@ -384,7 +384,7 @@ func TestDevnetProvisioner_ProvisionWithOrchestratorError(t *testing.T) {
 	}
 
 	// Nodes should NOT be created when orchestrator fails
-	nodes, _ := s.ListNodes(context.Background(), "test-devnet")
+	nodes, _ := s.ListNodes(context.Background(), "", "test-devnet")
 	if len(nodes) != 0 {
 		t.Errorf("Expected 0 nodes when orchestrator fails, got %d", len(nodes))
 	}
@@ -461,7 +461,7 @@ func TestDevnetProvisioner_ProvisionWithBinaryVersion(t *testing.T) {
 	}
 
 	p := NewDevnetProvisioner(s, Config{
-		DataDir:      "/tmp/devnet",
+		DataDir:             "/tmp/devnet",
 		OrchestratorFactory: &mockOrchestratorFactory{orchestrator: mockOrch},
 	})
 
@@ -507,7 +507,7 @@ func TestDevnetProvisioner_ProvisionWithGenesisPath(t *testing.T) {
 	}
 
 	p := NewDevnetProvisioner(s, Config{
-		DataDir:      "/tmp/devnet",
+		DataDir:             "/tmp/devnet",
 		OrchestratorFactory: &mockOrchestratorFactory{orchestrator: mockOrch},
 	})
 
@@ -549,7 +549,7 @@ func TestDevnetProvisioner_ProvisionWithSnapshotURL(t *testing.T) {
 	}
 
 	p := NewDevnetProvisioner(s, Config{
-		DataDir:      "/tmp/devnet",
+		DataDir:             "/tmp/devnet",
 		OrchestratorFactory: &mockOrchestratorFactory{orchestrator: mockOrch},
 	})
 
@@ -596,7 +596,7 @@ func TestDevnetProvisioner_ProvisionProgressCallback(t *testing.T) {
 	}
 
 	p := NewDevnetProvisioner(s, Config{
-		DataDir:      "/tmp/devnet",
+		DataDir:             "/tmp/devnet",
 		OrchestratorFactory: &mockOrchestratorFactory{orchestrator: mockOrch},
 		OnProgress: func(phase ProvisioningPhase, message string) {
 			progressPhase = phase

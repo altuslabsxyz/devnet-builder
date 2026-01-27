@@ -290,7 +290,7 @@ func (s *NodeService) ExecInNode(ctx context.Context, req *v1.ExecInNodeRequest)
 		"command", req.Command)
 
 	// Verify node exists and get its details
-	node, err := s.store.GetNode(ctx, req.DevnetName, int(req.Index))
+	node, err := s.store.GetNode(ctx, req.Namespace, req.DevnetName, int(req.Index))
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "node %s/%d not found", req.DevnetName, req.Index)
@@ -349,8 +349,8 @@ func (s *NodeService) GetNodePorts(ctx context.Context, req *v1.GetNodePortsRequ
 		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
 	}
 
-	// Verify node exists
-	node, err := s.store.GetNode(ctx, req.DevnetName, int(req.Index))
+	// Verify node exists (GetNodePortsRequest doesn't have namespace, use default)
+	node, err := s.store.GetNode(ctx, "", req.DevnetName, int(req.Index))
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "node %s/%d not found", req.DevnetName, req.Index)
@@ -405,7 +405,7 @@ func (s *NodeService) StreamNodeLogs(req *v1.StreamNodeLogsRequest, stream grpc.
 	ctx := stream.Context()
 
 	// Verify node exists
-	node, err := s.store.GetNode(ctx, req.DevnetName, int(req.Index))
+	node, err := s.store.GetNode(ctx, req.Namespace, req.DevnetName, int(req.Index))
 	if err != nil {
 		if store.IsNotFound(err) {
 			return status.Errorf(codes.NotFound, "node %s/%d not found", req.DevnetName, req.Index)

@@ -481,7 +481,7 @@ func TestNodeController_Reconcile_StartingWithRuntime(t *testing.T) {
 	}
 
 	// Verify transition to Running
-	got, _ := ms.GetNode(context.Background(), "test", 0)
+	got, _ := ms.GetNode(context.Background(), "", "test", 0)
 	if got.Status.Phase != types.NodePhaseRunning {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhaseRunning)
 	}
@@ -520,7 +520,7 @@ func TestNodeController_Reconcile_StartingWithRuntimeError(t *testing.T) {
 	}
 
 	// Verify transition to Crashed
-	got, _ := ms.GetNode(context.Background(), "test", 0)
+	got, _ := ms.GetNode(context.Background(), "", "test", 0)
 	if got.Status.Phase != types.NodePhaseCrashed {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhaseCrashed)
 	}
@@ -563,7 +563,7 @@ func TestNodeController_Reconcile_RunningWithRuntimeNotRunning(t *testing.T) {
 	}
 
 	// Verify transition to Crashed (node stopped unexpectedly)
-	got, _ := ms.GetNode(context.Background(), "test", 0)
+	got, _ := ms.GetNode(context.Background(), "", "test", 0)
 	if got.Status.Phase != types.NodePhaseCrashed {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhaseCrashed)
 	}
@@ -615,7 +615,7 @@ func TestNodeController_Reconcile_StoppingWithRuntime(t *testing.T) {
 	}
 
 	// Verify transition to Stopped
-	got, _ := ms.GetNode(context.Background(), "test", 0)
+	got, _ := ms.GetNode(context.Background(), "", "test", 0)
 	if got.Status.Phase != types.NodePhaseStopped {
 		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhaseStopped)
 	}
