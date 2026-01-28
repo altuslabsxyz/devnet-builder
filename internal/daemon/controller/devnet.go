@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -73,7 +72,7 @@ func (c *DevnetController) Reconcile(ctx context.Context, key string) error {
 	// Get the devnet from store
 	devnet, err := c.store.GetDevnet(ctx, namespace, name)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if store.IsNotFound(err) {
 			// Devnet was deleted, nothing to do
 			c.logger.Debug("devnet not found (deleted?)", "key", key)
 			return nil

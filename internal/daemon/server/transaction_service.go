@@ -4,7 +4,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -99,7 +98,7 @@ func (s *TransactionService) GetTransaction(ctx context.Context, req *v1.GetTran
 
 	tx, err := s.store.GetTransaction(ctx, req.Name)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "transaction %s not found", req.Name)
 		}
 		return nil, status.Errorf(codes.Internal, "failed to get transaction: %v", err)
@@ -144,7 +143,7 @@ func (s *TransactionService) CancelTransaction(ctx context.Context, req *v1.Canc
 
 	tx, err := s.store.GetTransaction(ctx, req.Name)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "transaction %s not found", req.Name)
 		}
 		return nil, status.Errorf(codes.Internal, "failed to get transaction: %v", err)
