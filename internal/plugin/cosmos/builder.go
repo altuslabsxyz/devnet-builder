@@ -81,8 +81,22 @@ func (b *CosmosBuilder) BuildBinary(ctx context.Context, opts types.BuildOptions
 func (b *CosmosBuilder) buildWithMake(ctx context.Context, opts types.BuildOptions, ldflags, tags, outputPath string) error {
 	// Many Cosmos chains use `make install` which puts binary in GOBIN
 	// We'll set GOBIN to our output dir
+	//
+	// Note: Most Cosmos SDK Makefiles don't respect LDFLAGS env var directly.
+	// They typically use VERSION variable to set the version in ldflags.
+	// We pass VERSION as a make variable override to ensure version info is injected.
 
-	cmd := exec.CommandContext(ctx, "make", "install")
+	makeArgs := []string{"install"}
+	// Pass VERSION as make variable - this is respected by most Cosmos Makefiles
+	if opts.GitRef != "" {
+		makeArgs = append(makeArgs, fmt.Sprintf("VERSION=%s", opts.GitRef))
+	}
+	// Pass COMMIT as make variable for chains that use it
+	if opts.GitCommit != "" {
+		makeArgs = append(makeArgs, fmt.Sprintf("COMMIT=%s", opts.GitCommit))
+	}
+
+	cmd := exec.CommandContext(ctx, "make", makeArgs...)
 	cmd.Dir = opts.SourceDir
 	cmd.Env = append(os.Environ(),
 		"CGO_ENABLED=1",
@@ -90,6 +104,9 @@ func (b *CosmosBuilder) buildWithMake(ctx context.Context, opts types.BuildOptio
 		fmt.Sprintf("GOBIN=%s", opts.OutputDir),
 		fmt.Sprintf("LDFLAGS=%s", ldflags),
 		fmt.Sprintf("BUILD_TAGS=%s", tags),
+		// Also set VERSION and COMMIT as env vars for Makefiles that read them
+		fmt.Sprintf("VERSION=%s", opts.GitRef),
+		fmt.Sprintf("COMMIT=%s", opts.GitCommit),
 	)
 
 	var stdout, stderr bytes.Buffer

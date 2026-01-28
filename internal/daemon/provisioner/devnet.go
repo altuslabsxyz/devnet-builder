@@ -454,6 +454,13 @@ func devnetToProvisionOptions(devnet *types.Devnet, dataDir string, networkDefau
 	case "cache", "github", "url":
 		// For non-local sources, version is used to build the binary
 		opts.BinaryVersion = devnet.Spec.BinarySource.Version
+	case "":
+		// When Type is not specified but Version is set (e.g., from wizard via proto SdkVersion),
+		// use the version for building. This handles the proto→domain conversion where SdkVersion
+		// is mapped to BinarySource.Version without a corresponding Type field.
+		if devnet.Spec.BinarySource.Version != "" {
+			opts.BinaryVersion = devnet.Spec.BinarySource.Version
+		}
 	}
 
 	// Map Genesis source, using plugin defaults when URLs not specified
