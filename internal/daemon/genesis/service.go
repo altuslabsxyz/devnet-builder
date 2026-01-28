@@ -333,15 +333,32 @@ func (s *GenesisService) forkFromSnapshotInfra(ctx context.Context, module netwo
 	}
 
 	// Fetch RPC genesis for chain params
+	// The RPC genesis is required for the export command to read chain parameters
 	rpcURL := opts.RPCURL
 	if rpcURL == "" {
 		rpcURL = module.RPCEndpoint(opts.NetworkType)
 	}
 
-	var rpcGenesis []byte
-	if rpcURL != "" && s.genesisFetcher != nil {
-		rpcGenesis, _ = s.genesisFetcher.FetchFromRPC(ctx, rpcURL)
+	if rpcURL == "" {
+		return nil, fmt.Errorf("no RPC URL available for network type %q: plugin must implement RPCEndpoint() or provide RPCURL in options", opts.NetworkType)
 	}
+
+	if s.genesisFetcher == nil {
+		return nil, fmt.Errorf("genesis fetcher not configured: cannot fetch RPC genesis from %s", rpcURL)
+	}
+
+	s.logger.Debug("fetching RPC genesis for chain params", "rpcURL", rpcURL)
+
+	rpcGenesis, err := s.genesisFetcher.FetchFromRPC(ctx, rpcURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch RPC genesis from %s: %w", rpcURL, err)
+	}
+
+	if len(rpcGenesis) == 0 {
+		return nil, fmt.Errorf("RPC genesis is empty: fetched from %s but received no data", rpcURL)
+	}
+
+	s.logger.Debug("RPC genesis fetched successfully", "size", len(rpcGenesis))
 
 	// Export genesis from snapshot
 	exportOpts := ports.StateExportOptions{
