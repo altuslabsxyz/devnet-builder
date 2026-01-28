@@ -7,6 +7,7 @@ import (
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/server/ante"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	"google.golang.org/grpc/codes"
@@ -19,6 +20,7 @@ type UpgradeService struct {
 	store   store.Store
 	manager *controller.Manager
 	logger  *slog.Logger
+	ante    *ante.AnteHandler
 }
 
 // NewUpgradeService creates a new UpgradeService.
@@ -30,6 +32,16 @@ func NewUpgradeService(s store.Store, m *controller.Manager) *UpgradeService {
 	}
 }
 
+// NewUpgradeServiceWithAnte creates a new UpgradeService with ante handler.
+func NewUpgradeServiceWithAnte(s store.Store, m *controller.Manager, anteHandler *ante.AnteHandler) *UpgradeService {
+	return &UpgradeService{
+		store:   s,
+		manager: m,
+		logger:  slog.Default(),
+		ante:    anteHandler,
+	}
+}
+
 // SetLogger sets the logger for the service.
 func (s *UpgradeService) SetLogger(logger *slog.Logger) {
 	s.logger = logger
@@ -37,18 +49,25 @@ func (s *UpgradeService) SetLogger(logger *slog.Logger) {
 
 // CreateUpgrade creates a new upgrade.
 func (s *UpgradeService) CreateUpgrade(ctx context.Context, req *v1.CreateUpgradeRequest) (*v1.CreateUpgradeResponse, error) {
-	// Validate request
-	if req.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "name is required")
-	}
-	if req.Spec == nil {
-		return nil, status.Error(codes.InvalidArgument, "spec is required")
-	}
-	if req.Spec.DevnetRef == "" {
-		return nil, status.Error(codes.InvalidArgument, "spec.devnet_ref is required")
-	}
-	if req.Spec.UpgradeName == "" {
-		return nil, status.Error(codes.InvalidArgument, "spec.upgrade_name is required")
+	// Use ante handler if available
+	if s.ante != nil {
+		if err := s.ante.ValidateCreateUpgrade(ctx, req); err != nil {
+			return nil, ante.ToGRPCError(err)
+		}
+	} else {
+		// Fallback to basic validation (backward compatibility)
+		if req.Name == "" {
+			return nil, status.Error(codes.InvalidArgument, "name is required")
+		}
+		if req.Spec == nil {
+			return nil, status.Error(codes.InvalidArgument, "spec is required")
+		}
+		if req.Spec.DevnetRef == "" {
+			return nil, status.Error(codes.InvalidArgument, "spec.devnet_ref is required")
+		}
+		if req.Spec.UpgradeName == "" {
+			return nil, status.Error(codes.InvalidArgument, "spec.upgrade_name is required")
+		}
 	}
 
 	// Use namespace from request, default if empty

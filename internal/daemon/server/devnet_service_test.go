@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/server/ante"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	"google.golang.org/grpc/codes"
@@ -484,4 +486,46 @@ func TestDevnetServiceNamespaceIsolation(t *testing.T) {
 	if resp.Devnet.Metadata.Namespace != "prod" {
 		t.Errorf("expected namespace prod, got %s", resp.Devnet.Metadata.Namespace)
 	}
+}
+
+func TestDevnetService_CreateWithAnteHandler(t *testing.T) {
+	s := store.NewMemoryStore()
+	mockNetSvc := &mockNetworkServiceForDevnetTest{}
+	anteHandler := ante.New(s, mockNetSvc)
+	svc := NewDevnetServiceWithAnte(s, nil, anteHandler)
+
+	// Test invalid mode rejected by ante handler
+	req := &v1.CreateDevnetRequest{
+		Name: "test",
+		Spec: &v1.DevnetSpec{
+			Plugin: "stable",
+			Mode:   "invalid-mode",
+		},
+	}
+
+	_, err := svc.CreateDevnet(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error for invalid mode")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+	if st.Code() != codes.InvalidArgument {
+		t.Errorf("expected InvalidArgument, got %v", st.Code())
+	}
+}
+
+type mockNetworkServiceForDevnetTest struct{}
+
+func (m *mockNetworkServiceForDevnetTest) GetNetworkInfo(ctx context.Context, req *v1.GetNetworkInfoRequest) (*v1.GetNetworkInfoResponse, error) {
+	if req.Name == "stable" || req.Name == "osmosis" {
+		return &v1.GetNetworkInfoResponse{Network: &v1.NetworkInfo{Name: req.Name}}, nil
+	}
+	return nil, errors.New("not found")
+}
+
+func (m *mockNetworkServiceForDevnetTest) ListBinaryVersions(ctx context.Context, req *v1.ListBinaryVersionsRequest) (*v1.ListBinaryVersionsResponse, error) {
+	return &v1.ListBinaryVersionsResponse{}, nil
 }
