@@ -16,7 +16,7 @@ const ConfigFileName = "devnetd.toml"
 
 // Environment variable names
 const (
-	EnvGitHubToken        = "DEVNETD_GITHUB_TOKEN"
+	EnvGitHubToken        = "DEVNETD_GITHUB_TOKEN" //nolint:gosec // This is an env var name, not a credential
 	EnvLogLevel           = "DEVNETD_LOG_LEVEL"
 	EnvSocket             = "DEVNETD_SOCKET"
 	EnvDataDir            = "DEVNETD_DATA_DIR"
