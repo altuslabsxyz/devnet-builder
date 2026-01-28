@@ -23,6 +23,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/provisioner"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
 	daemontypes "github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/genesis"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/snapshot"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/stateexport"
@@ -290,12 +291,27 @@ func (a *moduleGenesisAdapter) PatchGenesis(genesis []byte, opts plugintypes.Gen
 	return a.module.ModifyGenesis(genesis, modifyOpts)
 }
 
+func (a *moduleGenesisAdapter) PatchGenesisFile(inputPath, outputPath string, opts plugintypes.GenesisPatchOptions) (int64, error) {
+	// Check if module supports file-based modification
+	fileModifier, ok := a.module.(network.FileBasedGenesisModifier)
+	if !ok {
+		return 0, fmt.Errorf("plugin does not support file-based genesis modification")
+	}
+
+	// Use file-based modification to bypass gRPC message size limits
+	modifyOpts := network.GenesisOptions{
+		ChainID: opts.ChainID,
+	}
+	return fileModifier.ModifyGenesisFile(inputPath, outputPath, modifyOpts)
+}
+
 func (a *moduleGenesisAdapter) ExportCommandArgs(homeDir string) []string {
 	return a.module.ExportCommand(homeDir)
 }
 
 // Ensure interface compliance
 var _ plugintypes.PluginGenesis = (*moduleGenesisAdapter)(nil)
+var _ plugintypes.FileBasedPluginGenesis = (*moduleGenesisAdapter)(nil)
 
 // moduleInitializerAdapter adapts NetworkModule to plugintypes.PluginInitializer.
 type moduleInitializerAdapter struct {
@@ -685,11 +701,13 @@ func (f *OrchestratorFactory) CreateOrchestrator(networkName string) (provisione
 	// Create infrastructure services for snapshot-based genesis forking
 	snapshotFetcher := snapshot.NewFetcherAdapter(f.dataDir, nil)
 	stateExportSvc := stateexport.NewAdapter(f.dataDir, nil)
+	genesisFetcher := genesis.NewFetcherAdapter(f.dataDir, "", "", false, nil)
 
 	// Create genesis forker with infrastructure for all fork modes
 	genesisForker := provisioner.NewGenesisForker(provisioner.GenesisForkerConfig{
 		DataDir:            f.dataDir,
 		PluginGenesis:      genesisAdapter,
+		GenesisFetcher:     genesisFetcher,
 		SnapshotFetcher:    snapshotFetcher,
 		StateExportService: stateExportSvc,
 		Logger:             f.logger,
