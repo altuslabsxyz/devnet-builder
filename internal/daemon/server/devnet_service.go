@@ -330,8 +330,8 @@ func (s *DevnetService) ApplyDevnet(ctx context.Context, req *v1.ApplyDevnetRequ
 	if req.Annotations != nil {
 		existing.Metadata.Annotations = req.Annotations
 	}
-	existing.Metadata.UpdatedAt = time.Now()
-	existing.Metadata.Generation++
+	// Note: Generation is incremented by the store layer after conflict check passes.
+	// Do not increment here - that would cause the conflict check to always fail.
 
 	err = s.store.UpdateDevnet(ctx, existing)
 	if err != nil {
@@ -385,8 +385,8 @@ func (s *DevnetService) UpdateDevnet(ctx context.Context, req *v1.UpdateDevnetRe
 	if req.Annotations != nil {
 		existing.Metadata.Annotations = req.Annotations
 	}
-	existing.Metadata.UpdatedAt = time.Now()
-	existing.Metadata.Generation++
+	// Note: Generation is incremented by the store layer after conflict check passes.
+	// Do not increment here - that would cause the conflict check to always fail.
 
 	err = s.store.UpdateDevnet(ctx, existing)
 	if err != nil {
