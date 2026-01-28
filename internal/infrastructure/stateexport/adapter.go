@@ -161,6 +161,12 @@ func (a *Adapter) PrepareForExport(ctx context.Context, homeDir string, rpcGenes
 	default:
 	}
 
+	// Validate rpcGenesis is not empty
+	// The export command requires a valid genesis.json to read chain parameters
+	if len(rpcGenesis) == 0 {
+		return fmt.Errorf("rpcGenesis is empty: cannot prepare for export without valid genesis data from RPC")
+	}
+
 	// Ensure config directory exists
 	configDir := filepath.Join(homeDir, "config")
 	if err := os.MkdirAll(configDir, 0755); err != nil {
@@ -173,7 +179,7 @@ func (a *Adapter) PrepareForExport(ctx context.Context, homeDir string, rpcGenes
 	if err := os.WriteFile(genesisPath, rpcGenesis, 0644); err != nil {
 		return fmt.Errorf("failed to write genesis: %w", err)
 	}
-	a.logger.Debug("Wrote RPC genesis to %s", genesisPath)
+	a.logger.Debug("Wrote RPC genesis to %s (%d bytes)", genesisPath, len(rpcGenesis))
 
 	// Ensure data directory exists
 	dataDir := filepath.Join(homeDir, "data")
