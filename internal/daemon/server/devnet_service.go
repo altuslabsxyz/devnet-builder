@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"time"
 
@@ -57,7 +56,7 @@ func (s *DevnetService) CreateDevnet(ctx context.Context, req *v1.CreateDevnetRe
 	// Store it
 	err := s.store.CreateDevnet(ctx, devnet)
 	if err != nil {
-		if errors.Is(err, store.ErrAlreadyExists) {
+		if store.IsAlreadyExists(err) {
 			return nil, status.Errorf(codes.AlreadyExists, "devnet %q already exists", req.Name)
 		}
 		s.logger.Error("failed to create devnet", "name", req.Name, "error", err)
@@ -83,7 +82,7 @@ func (s *DevnetService) GetDevnet(ctx context.Context, req *v1.GetDevnetRequest)
 
 	devnet, err := s.store.GetDevnet(ctx, namespace, req.Name)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "devnet %q not found", req.Name)
 		}
 		s.logger.Error("failed to get devnet", "name", req.Name, "error", err)
@@ -149,7 +148,7 @@ func (s *DevnetService) DeleteDevnet(ctx context.Context, req *v1.DeleteDevnetRe
 
 	err := s.store.DeleteDevnet(ctx, namespace, req.Name)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "devnet %q not found", req.Name)
 		}
 		s.logger.Error("failed to delete devnet", "name", req.Name, "error", err)
@@ -180,7 +179,7 @@ func (s *DevnetService) StartDevnet(ctx context.Context, req *v1.StartDevnetRequ
 
 	devnet, err := s.store.GetDevnet(ctx, namespace, req.Name)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "devnet %q not found", req.Name)
 		}
 		return nil, status.Errorf(codes.Internal, "failed to get devnet: %v", err)
@@ -221,7 +220,7 @@ func (s *DevnetService) StopDevnet(ctx context.Context, req *v1.StopDevnetReques
 
 	devnet, err := s.store.GetDevnet(ctx, namespace, req.Name)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "devnet %q not found", req.Name)
 		}
 		return nil, status.Errorf(codes.Internal, "failed to get devnet: %v", err)
@@ -262,7 +261,7 @@ func (s *DevnetService) ApplyDevnet(ctx context.Context, req *v1.ApplyDevnetRequ
 
 	// Check if devnet exists
 	existing, err := s.store.GetDevnet(ctx, namespace, req.Name)
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
+	if err != nil && !store.IsNotFound(err) {
 		s.logger.Error("failed to get devnet", "namespace", namespace, "name", req.Name, "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to get devnet: %v", err)
 	}
@@ -340,7 +339,7 @@ func (s *DevnetService) UpdateDevnet(ctx context.Context, req *v1.UpdateDevnetRe
 
 	existing, err := s.store.GetDevnet(ctx, namespace, req.Name)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "devnet %q not found in namespace %q", req.Name, namespace)
 		}
 		return nil, status.Errorf(codes.Internal, "failed to get devnet: %v", err)

@@ -3,7 +3,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
@@ -67,7 +66,7 @@ func (s *UpgradeService) CreateUpgrade(ctx context.Context, req *v1.CreateUpgrad
 	// Verify devnet exists
 	_, err := s.store.GetDevnet(ctx, namespace, req.Spec.DevnetRef)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "devnet %q not found", req.Spec.DevnetRef)
 		}
 		s.logger.Error("failed to get devnet", "devnet", req.Spec.DevnetRef, "error", err)
@@ -80,7 +79,7 @@ func (s *UpgradeService) CreateUpgrade(ctx context.Context, req *v1.CreateUpgrad
 	// Store it
 	err = s.store.CreateUpgrade(ctx, upgrade)
 	if err != nil {
-		if errors.Is(err, store.ErrAlreadyExists) {
+		if store.IsAlreadyExists(err) {
 			return nil, status.Errorf(codes.AlreadyExists, "upgrade %q already exists", req.Name)
 		}
 		s.logger.Error("failed to create upgrade", "name", req.Name, "error", err)
@@ -106,7 +105,7 @@ func (s *UpgradeService) GetUpgrade(ctx context.Context, req *v1.GetUpgradeReque
 
 	upgrade, err := s.store.GetUpgrade(ctx, namespace, req.Name)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "upgrade %q not found", req.Name)
 		}
 		s.logger.Error("failed to get upgrade", "name", req.Name, "error", err)
@@ -152,7 +151,7 @@ func (s *UpgradeService) DeleteUpgrade(ctx context.Context, req *v1.DeleteUpgrad
 	// Check if upgrade exists and is in a terminal state
 	upgrade, err := s.store.GetUpgrade(ctx, namespace, req.Name)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "upgrade %q not found", req.Name)
 		}
 		s.logger.Error("failed to get upgrade", "name", req.Name, "error", err)
@@ -190,7 +189,7 @@ func (s *UpgradeService) CancelUpgrade(ctx context.Context, req *v1.CancelUpgrad
 
 	upgrade, err := s.store.GetUpgrade(ctx, namespace, req.Name)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "upgrade %q not found", req.Name)
 		}
 		s.logger.Error("failed to get upgrade", "name", req.Name, "error", err)
@@ -238,7 +237,7 @@ func (s *UpgradeService) RetryUpgrade(ctx context.Context, req *v1.RetryUpgradeR
 
 	upgrade, err := s.store.GetUpgrade(ctx, namespace, req.Name)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if store.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "upgrade %q not found", req.Name)
 		}
 		s.logger.Error("failed to get upgrade", "name", req.Name, "error", err)
