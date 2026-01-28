@@ -188,6 +188,7 @@ func runProvision(ctx context.Context, opts *provisionOptions) error {
 		FullNodes:   int32(opts.fullNodes),
 		Mode:        opts.mode,
 		SdkVersion:  opts.sdkVersion,
+		ForkNetwork: opts.networkType, // ForkNetwork triggers genesis forking (uses same value as NetworkType)
 	}
 
 	// Create devnet via daemon

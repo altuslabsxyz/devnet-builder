@@ -19,6 +19,10 @@ type Manager struct {
 	queues      map[string]*WorkQueue
 	mu          sync.RWMutex
 	logger      *slog.Logger
+
+	// Shutdown coordination
+	stopOnce sync.Once
+	stopped  chan struct{} // Closed when all workers have stopped
 }
 
 // NewManager creates a new controller manager.
@@ -27,6 +31,7 @@ func NewManager() *Manager {
 		controllers: make(map[string]Controller),
 		queues:      make(map[string]*WorkQueue),
 		logger:      slog.Default(),
+		stopped:     make(chan struct{}),
 	}
 }
 
@@ -69,7 +74,7 @@ func (m *Manager) Enqueue(resourceType, key string) {
 }
 
 // Start begins processing all registered controllers.
-// It blocks until the context is cancelled.
+// It blocks until the context is cancelled and all workers have stopped.
 func (m *Manager) Start(ctx context.Context, workersPerController int) {
 	m.mu.RLock()
 	resourceTypes := make([]string, 0, len(m.controllers))
@@ -94,7 +99,7 @@ func (m *Manager) Start(ctx context.Context, workersPerController int) {
 	// Wait for context cancellation
 	<-ctx.Done()
 
-	// Shutdown all queues
+	// Shutdown all queues to unblock workers waiting on Get()
 	m.mu.RLock()
 	for _, queue := range m.queues {
 		queue.ShutDown()
@@ -103,6 +108,26 @@ func (m *Manager) Start(ctx context.Context, workersPerController int) {
 
 	// Wait for all workers to finish
 	wg.Wait()
+
+	// Signal that all workers have stopped
+	m.stopOnce.Do(func() {
+		close(m.stopped)
+	})
+}
+
+// Stop signals the manager to shutdown and waits for all workers to complete.
+// This should be called during graceful shutdown to ensure workers finish
+// before resources (like the database) are closed.
+func (m *Manager) Stop() {
+	// Shutdown all queues to unblock any waiting workers
+	m.mu.RLock()
+	for _, queue := range m.queues {
+		queue.ShutDown()
+	}
+	m.mu.RUnlock()
+
+	// Wait for Start() to complete (all workers stopped)
+	<-m.stopped
 }
 
 // runWorker processes items from the queue for a resource type.

@@ -5,7 +5,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -13,14 +12,13 @@ import (
 )
 
 // WizardOptions holds the collected options from the provision wizard.
+// Note: Only fields that can be transmitted to the daemon via proto are included.
+// ChainID is auto-generated from devnet name, and binary/data dir are daemon-level config.
 type WizardOptions struct {
 	Name        string
 	Network     string
-	ChainID     string
 	Validators  int
 	FullNodes   int
-	BinaryPath  string
-	DataDir     string
 	ForkNetwork string // Network to fork from (e.g., "mainnet", "testnet", ""). Empty means fresh genesis.
 }
 
@@ -121,76 +119,15 @@ func RunProvisionWizard() (*WizardOptions, error) {
 	}
 	opts.FullNodes, _ = strconv.Atoi(fullNodesStr)
 
-	// 5. Chain ID
-	defaultChainID := fmt.Sprintf("%s-devnet", opts.Name)
-	chainIDPrompt := promptui.Prompt{
-		Label:   "Chain ID",
-		Default: defaultChainID,
-	}
-	chainID, err := chainIDPrompt.Run()
-	if err != nil {
-		return nil, handlePromptError(err, "chain ID")
-	}
-	opts.ChainID = strings.TrimSpace(chainID)
-	if opts.ChainID == "" {
-		opts.ChainID = defaultChainID
-	}
-
-	// 6. Binary source
-	binarySourcePrompt := promptui.Select{
-		Label: "Binary source",
-		Items: []string{
-			"Build from source (default)",
-			"Use existing binary",
-		},
-		Templates: &promptui.SelectTemplates{
-			Active:   "▸ {{ . | cyan }}",
-			Inactive: "  {{ . }}",
-			Selected: "✔ Binary: {{ . | green }}",
-		},
-	}
-	binarySourceIdx, _, err := binarySourcePrompt.Run()
-	if err != nil {
-		return nil, handlePromptError(err, "binary source")
-	}
-
-	if binarySourceIdx == 1 {
-		// User wants to provide a binary path
-		binaryPathPrompt := promptui.Prompt{
-			Label:    "Path to binary",
-			Validate: validateFilePath,
-		}
-		binaryPath, err := binaryPathPrompt.Run()
-		if err != nil {
-			return nil, handlePromptError(err, "binary path")
-		}
-		opts.BinaryPath = strings.TrimSpace(binaryPath)
-	}
-
-	// 7. Data directory
-	homeDir, _ := os.UserHomeDir()
-	defaultDataDir := filepath.Join(homeDir, ".devnet-builder")
-	dataDirPrompt := promptui.Prompt{
-		Label:   "Data directory",
-		Default: defaultDataDir,
-	}
-	dataDir, err := dataDirPrompt.Run()
-	if err != nil {
-		return nil, handlePromptError(err, "data directory")
-	}
-	opts.DataDir = strings.TrimSpace(dataDir)
-	if opts.DataDir == "" {
-		opts.DataDir = defaultDataDir
-	}
-
 	// Summary and confirmation
+	// Note: Chain ID is auto-generated from devnet name by the daemon.
+	// Binary is built from source by default. Data dir is daemon-level config.
 	fmt.Println()
 	fmt.Println("─────────────────────────────────")
 	fmt.Println("📋 Configuration Summary")
 	fmt.Println("─────────────────────────────────")
 	fmt.Printf("  Name:       %s\n", opts.Name)
 	fmt.Printf("  Network:    %s\n", opts.Network)
-	fmt.Printf("  Chain ID:   %s\n", opts.ChainID)
 	fmt.Printf("  Validators: %d\n", opts.Validators)
 	fmt.Printf("  Full Nodes: %d\n", opts.FullNodes)
 	if opts.ForkNetwork != "" {
@@ -198,12 +135,7 @@ func RunProvisionWizard() (*WizardOptions, error) {
 	} else {
 		fmt.Printf("  Genesis:    fresh (new chain)\n")
 	}
-	if opts.BinaryPath != "" {
-		fmt.Printf("  Binary:     %s\n", opts.BinaryPath)
-	} else {
-		fmt.Printf("  Binary:     (build from source)\n")
-	}
-	fmt.Printf("  Data Dir:   %s\n", opts.DataDir)
+	fmt.Printf("  Binary:     (build from source)\n")
 	fmt.Println("─────────────────────────────────")
 	fmt.Println()
 

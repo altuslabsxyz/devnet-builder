@@ -300,6 +300,14 @@ func (s *Server) Shutdown() error {
 		s.healthCtrl.Stop()
 	}
 
+	// Stop controller manager and wait for all workers to complete.
+	// This MUST happen before closing the store to prevent "database not open" errors.
+	if s.manager != nil {
+		s.logger.Debug("waiting for controller workers to stop")
+		s.manager.Stop()
+		s.logger.Debug("controller workers stopped")
+	}
+
 	// Graceful gRPC shutdown
 	if s.grpcServer != nil {
 		s.grpcServer.GracefulStop()
@@ -310,7 +318,7 @@ func (s *Server) Shutdown() error {
 		s.listener.Close()
 	}
 
-	// Close store
+	// Close store (safe now that all workers have stopped)
 	if s.store != nil {
 		s.store.Close()
 	}
