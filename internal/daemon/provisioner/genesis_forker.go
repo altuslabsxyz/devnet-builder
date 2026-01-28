@@ -188,32 +188,15 @@ func (f *GenesisForker) forkFromSnapshotInfra(ctx context.Context, opts ports.Fo
 	}
 
 	// First, fetch RPC genesis for chain params
-	// The RPC genesis is required for the export command to read chain parameters
 	rpcURL := opts.Source.RPCURL
 	if rpcURL == "" && f.config.PluginGenesis != nil {
 		rpcURL = f.config.PluginGenesis.GetRPCEndpoint(opts.Source.NetworkType)
 	}
 
-	if rpcURL == "" {
-		return nil, fmt.Errorf("no RPC URL available for network type %q: plugin must implement GetRPCEndpoint() or provide RPCURL in source options", opts.Source.NetworkType)
+	var rpcGenesis []byte
+	if rpcURL != "" && f.config.GenesisFetcher != nil {
+		rpcGenesis, _ = f.config.GenesisFetcher.FetchFromRPC(ctx, rpcURL)
 	}
-
-	if f.config.GenesisFetcher == nil {
-		return nil, fmt.Errorf("genesis fetcher not configured: cannot fetch RPC genesis from %s", rpcURL)
-	}
-
-	f.logger.Debug("fetching RPC genesis for chain params", "rpcURL", rpcURL)
-
-	rpcGenesis, err := f.config.GenesisFetcher.FetchFromRPC(ctx, rpcURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch RPC genesis from %s: %w", rpcURL, err)
-	}
-
-	if len(rpcGenesis) == 0 {
-		return nil, fmt.Errorf("RPC genesis is empty: fetched from %s but received no data", rpcURL)
-	}
-
-	f.logger.Debug("RPC genesis fetched successfully", "size", len(rpcGenesis))
 
 	// Export genesis from snapshot
 	exportOpts := ports.StateExportOptions{
