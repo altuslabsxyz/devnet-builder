@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 )
 
 // Controller defines the interface for resource controllers.
@@ -119,6 +120,13 @@ func (m *Manager) Start(ctx context.Context, workersPerController int) {
 // This should be called during graceful shutdown to ensure workers finish
 // before resources (like the database) are closed.
 func (m *Manager) Stop() {
+	m.StopWithTimeout(0)
+}
+
+// StopWithTimeout signals the manager to shutdown and waits for all workers
+// to complete, with an optional timeout. If timeout is 0, waits indefinitely.
+// Returns true if all workers stopped gracefully, false if timed out.
+func (m *Manager) StopWithTimeout(timeout time.Duration) bool {
 	// Shutdown all queues to unblock any waiting workers
 	m.mu.RLock()
 	for _, queue := range m.queues {
@@ -127,7 +135,20 @@ func (m *Manager) Stop() {
 	m.mu.RUnlock()
 
 	// Wait for Start() to complete (all workers stopped)
-	<-m.stopped
+	if timeout <= 0 {
+		<-m.stopped
+		return true
+	}
+
+	// Wait with timeout
+	select {
+	case <-m.stopped:
+		return true
+	case <-time.After(timeout):
+		m.logger.Warn("shutdown timeout waiting for workers to stop",
+			"timeout", timeout)
+		return false
+	}
 }
 
 // runWorker processes items from the queue for a resource type.
