@@ -35,6 +35,21 @@ type OrchestratorFactory interface {
 	// CreateOrchestrator creates an orchestrator for the given network.
 	// Returns the Orchestrator interface for testability.
 	CreateOrchestrator(network string) (Orchestrator, error)
+
+	// GetNetworkDefaults returns default URLs for a network/plugin.
+	// networkType is the target network (e.g., "mainnet", "testnet").
+	// Returns nil if the network doesn't support defaults.
+	GetNetworkDefaults(pluginName, networkType string) (*NetworkDefaults, error)
+}
+
+// NetworkDefaults contains default URLs from a network plugin.
+type NetworkDefaults struct {
+	// RPCURL is the default RPC endpoint for genesis forking.
+	RPCURL string
+	// SnapshotURL is the default snapshot URL for state downloads.
+	SnapshotURL string
+	// AvailableNetworks lists the network types this plugin supports.
+	AvailableNetworks []string
 }
 
 // DevnetProvisioner implements the Provisioner interface for devnets.
@@ -125,6 +140,29 @@ func (p *DevnetProvisioner) provisionWithOrchestrator(ctx context.Context, devne
 		"name", devnet.Metadata.Name,
 		"network", network)
 
+	// Fetch network defaults from plugin for RPC/Snapshot URLs
+	var networkDefaults *NetworkDefaults
+	forkNetwork := devnet.Spec.ForkNetwork
+	if forkNetwork == "" {
+		forkNetwork = devnet.Spec.NetworkType // Fall back to network type
+	}
+	if forkNetwork != "" {
+		defaults, err := p.orchestratorFactory.GetNetworkDefaults(network, forkNetwork)
+		if err != nil {
+			p.logger.Warn("failed to get network defaults",
+				"plugin", network,
+				"forkNetwork", forkNetwork,
+				"error", err)
+		} else {
+			networkDefaults = defaults
+			p.logger.Debug("fetched network defaults",
+				"plugin", network,
+				"forkNetwork", forkNetwork,
+				"rpcURL", defaults.RPCURL,
+				"snapshotURL", defaults.SnapshotURL)
+		}
+	}
+
 	// Create orchestrator for this network
 	orchestrator, err := p.orchestratorFactory.CreateOrchestrator(network)
 	if err != nil {
@@ -136,8 +174,8 @@ func (p *DevnetProvisioner) provisionWithOrchestrator(ctx context.Context, devne
 		orchestrator.OnProgress(p.onProgress)
 	}
 
-	// Convert devnet spec to provisioning options
-	opts := devnetToProvisionOptions(devnet, p.dataDir)
+	// Convert devnet spec to provisioning options, using plugin defaults when URLs not specified
+	opts := devnetToProvisionOptions(devnet, p.dataDir, networkDefaults)
 
 	// In daemon mode, skip start phase - NodeController will handle starting
 	opts.SkipStart = true
@@ -389,7 +427,8 @@ func (p *DevnetProvisioner) GetStatus(ctx context.Context, devnet *types.Devnet)
 
 // devnetToProvisionOptions converts a Devnet spec to ProvisionOptions for the orchestrator.
 // This maps fields from the Devnet resource to the format expected by the provisioning flow.
-func devnetToProvisionOptions(devnet *types.Devnet, dataDir string) ports.ProvisionOptions {
+// networkDefaults provides plugin defaults when URLs are not explicitly specified.
+func devnetToProvisionOptions(devnet *types.Devnet, dataDir string, networkDefaults *NetworkDefaults) ports.ProvisionOptions {
 	opts := ports.ProvisionOptions{
 		DevnetName:    devnet.Metadata.Name,
 		ChainID:       devnet.Metadata.Name + "-1", // Generate chain ID from devnet name
@@ -409,15 +448,16 @@ func devnetToProvisionOptions(devnet *types.Devnet, dataDir string) ports.Provis
 		opts.BinaryVersion = devnet.Spec.BinarySource.Version
 	}
 
-	// Map Genesis source
-	opts.GenesisSource = mapGenesisSource(devnet)
+	// Map Genesis source, using plugin defaults when URLs not specified
+	opts.GenesisSource = mapGenesisSource(devnet, networkDefaults)
 
 	return opts
 }
 
 // mapGenesisSource determines the genesis source from devnet spec.
-// Priority: GenesisPath (local) > SnapshotURL (snapshot) > default (RPC)
-func mapGenesisSource(devnet *types.Devnet) plugintypes.GenesisSource {
+// Priority: GenesisPath (local) > SnapshotURL (snapshot/spec or default) > RPCURL (spec or default) > fresh genesis
+// networkDefaults provides plugin-defined URLs when not explicitly specified in the spec.
+func mapGenesisSource(devnet *types.Devnet, networkDefaults *NetworkDefaults) plugintypes.GenesisSource {
 	// If explicit genesis path is provided, use local mode
 	if devnet.Spec.GenesisPath != "" {
 		return plugintypes.GenesisSource{
@@ -426,16 +466,36 @@ func mapGenesisSource(devnet *types.Devnet) plugintypes.GenesisSource {
 		}
 	}
 
-	// If snapshot URL is provided, use snapshot mode
-	if devnet.Spec.SnapshotURL != "" {
+	// Determine snapshot URL (from spec or plugin defaults)
+	snapshotURL := devnet.Spec.SnapshotURL
+	if snapshotURL == "" && networkDefaults != nil {
+		snapshotURL = networkDefaults.SnapshotURL
+	}
+
+	// If snapshot URL is available, use snapshot mode
+	if snapshotURL != "" {
 		return plugintypes.GenesisSource{
 			Mode:        plugintypes.GenesisModeSnapshot,
-			SnapshotURL: devnet.Spec.SnapshotURL,
+			SnapshotURL: snapshotURL,
 		}
 	}
 
-	// Default to RPC mode
+	// Determine RPC URL (from spec or plugin defaults)
+	rpcURL := devnet.Spec.RPCURL
+	if rpcURL == "" && networkDefaults != nil {
+		rpcURL = networkDefaults.RPCURL
+	}
+
+	// If RPC URL is available, use RPC mode for genesis forking
+	if rpcURL != "" {
+		return plugintypes.GenesisSource{
+			Mode:   plugintypes.GenesisModeRPC,
+			RPCURL: rpcURL,
+		}
+	}
+
+	// No fork configured - use fresh genesis (empty GenesisSource with no RPCURL)
 	return plugintypes.GenesisSource{
-		Mode: plugintypes.GenesisModeRPC,
+		Mode: plugintypes.GenesisModeFresh,
 	}
 }

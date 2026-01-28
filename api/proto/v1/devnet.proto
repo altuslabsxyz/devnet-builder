@@ -50,6 +50,8 @@ message DevnetSpec {
   string sdk_version = 6;  // Binary version
   string genesis_path = 7;  // Custom genesis file path
   string snapshot_url = 8;  // Chain state snapshot URL
+  string rpc_url = 9;  // RPC endpoint URL for genesis forking
+  string fork_network = 10;  // Network to fork from (e.g., "mainnet", "testnet") - used to fetch plugin defaults
 }
 
 message DevnetStatus {

@@ -14,13 +14,14 @@ import (
 
 // WizardOptions holds the collected options from the provision wizard.
 type WizardOptions struct {
-	Name       string
-	Network    string
-	ChainID    string
-	Validators int
-	FullNodes  int
-	BinaryPath string
-	DataDir    string
+	Name        string
+	Network     string
+	ChainID     string
+	Validators  int
+	FullNodes   int
+	BinaryPath  string
+	DataDir     string
+	ForkNetwork string // Network to fork from (e.g., "mainnet", "testnet", ""). Empty means fresh genesis.
 }
 
 // RunProvisionWizard runs an interactive wizard to collect provision options.
@@ -59,6 +60,42 @@ func RunProvisionWizard() (*WizardOptions, error) {
 		return nil, handlePromptError(err, "network type")
 	}
 	opts.Network = network
+
+	// 2b. Fork from existing network?
+	forkPrompt := promptui.Select{
+		Label: "Genesis configuration",
+		Items: []string{
+			"Fresh genesis (start from scratch)",
+			"Fork from existing network (mainnet/testnet state)",
+		},
+		Templates: &promptui.SelectTemplates{
+			Active:   "▸ {{ . | cyan }}",
+			Inactive: "  {{ . }}",
+			Selected: "✔ Genesis: {{ . | green }}",
+		},
+	}
+	forkIdx, _, err := forkPrompt.Run()
+	if err != nil {
+		return nil, handlePromptError(err, "genesis configuration")
+	}
+
+	if forkIdx == 1 {
+		// User wants to fork from an existing network
+		forkNetworkPrompt := promptui.Select{
+			Label: "Fork from which network",
+			Items: []string{"mainnet", "testnet"},
+			Templates: &promptui.SelectTemplates{
+				Active:   "▸ {{ . | cyan }}",
+				Inactive: "  {{ . }}",
+				Selected: "✔ Fork from: {{ . | green }}",
+			},
+		}
+		_, forkNetwork, err := forkNetworkPrompt.Run()
+		if err != nil {
+			return nil, handlePromptError(err, "fork network")
+		}
+		opts.ForkNetwork = forkNetwork
+	}
 
 	// 3. Number of Validators
 	validatorsPrompt := promptui.Prompt{
@@ -156,6 +193,11 @@ func RunProvisionWizard() (*WizardOptions, error) {
 	fmt.Printf("  Chain ID:   %s\n", opts.ChainID)
 	fmt.Printf("  Validators: %d\n", opts.Validators)
 	fmt.Printf("  Full Nodes: %d\n", opts.FullNodes)
+	if opts.ForkNetwork != "" {
+		fmt.Printf("  Genesis:    fork from %s\n", opts.ForkNetwork)
+	} else {
+		fmt.Printf("  Genesis:    fresh (new chain)\n")
+	}
 	if opts.BinaryPath != "" {
 		fmt.Printf("  Binary:     %s\n", opts.BinaryPath)
 	} else {

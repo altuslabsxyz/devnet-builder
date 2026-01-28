@@ -15,6 +15,8 @@ const (
 	GenesisModeSnapshot GenesisMode = "snapshot"
 	// GenesisModeLocal uses a local genesis file
 	GenesisModeLocal GenesisMode = "local"
+	// GenesisModeFresh generates a fresh genesis (no forking)
+	GenesisModeFresh GenesisMode = "fresh"
 )
 
 // GenesisSource specifies where to get genesis from

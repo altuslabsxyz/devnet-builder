@@ -45,6 +45,13 @@ type DevnetSpec struct {
 	// GenesisPath is an optional path to a custom genesis file.
 	GenesisPath string `json:"genesisPath,omitempty"`
 
+	// RPCURL is the RPC endpoint URL for genesis forking.
+	RPCURL string `json:"rpcUrl,omitempty"`
+
+	// ForkNetwork is the network to fork from (e.g., "mainnet", "testnet").
+	// Used to fetch plugin defaults for RPC/Snapshot URLs.
+	ForkNetwork string `json:"forkNetwork,omitempty"`
+
 	// Ports configures port allocation for nodes.
 	Ports PortConfig `json:"ports,omitempty"`
 

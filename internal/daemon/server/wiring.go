@@ -576,3 +576,18 @@ func (f *OrchestratorFactory) CreateOrchestrator(networkName string) (provisione
 func (f *OrchestratorFactory) ListAvailableNetworks() []string {
 	return network.List()
 }
+
+// GetNetworkDefaults returns default URLs for a network/plugin.
+// Implements provisioner.OrchestratorFactory interface.
+func (f *OrchestratorFactory) GetNetworkDefaults(pluginName, networkType string) (*provisioner.NetworkDefaults, error) {
+	module, err := network.Get(pluginName)
+	if err != nil {
+		return nil, err
+	}
+
+	return &provisioner.NetworkDefaults{
+		RPCURL:            module.RPCEndpoint(networkType),
+		SnapshotURL:       module.SnapshotURL(networkType),
+		AvailableNetworks: module.AvailableNetworks(),
+	}, nil
+}

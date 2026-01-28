@@ -268,6 +268,11 @@ func (f *mockOrchestratorFactory) CreateOrchestrator(network string) (Orchestrat
 	return f.orchestrator, nil
 }
 
+func (f *mockOrchestratorFactory) GetNetworkDefaults(pluginName, networkType string) (*NetworkDefaults, error) {
+	// Mock returns empty defaults - tests don't exercise this path yet
+	return &NetworkDefaults{}, nil
+}
+
 func TestDevnetProvisioner_ProvisionWithNilOrchestratorFactory(t *testing.T) {
 	// Test that existing behavior is preserved when orchestrator factory is nil
 	s := store.NewMemoryStore()
@@ -640,7 +645,7 @@ func TestDevnetToProvisionOptions_BasicConversion(t *testing.T) {
 		},
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data")
+	opts := devnetToProvisionOptions(devnet, "/data", nil)
 
 	if opts.DevnetName != "basic-devnet" {
 		t.Errorf("Expected DevnetName 'basic-devnet', got '%s'", opts.DevnetName)
@@ -674,7 +679,7 @@ func TestDevnetToProvisionOptions_LocalBinarySource(t *testing.T) {
 		},
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data")
+	opts := devnetToProvisionOptions(devnet, "/data", nil)
 
 	if opts.BinaryPath != "/opt/bin/stabbed" {
 		t.Errorf("Expected BinaryPath '/opt/bin/stabbed', got '%s'", opts.BinaryPath)
@@ -698,7 +703,7 @@ func TestDevnetToProvisionOptions_CacheBinarySource(t *testing.T) {
 		},
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data")
+	opts := devnetToProvisionOptions(devnet, "/data", nil)
 
 	if opts.BinaryPath != "" {
 		t.Errorf("Expected empty BinaryPath for cache, got '%s'", opts.BinaryPath)
@@ -719,7 +724,7 @@ func TestDevnetToProvisionOptions_LocalGenesis(t *testing.T) {
 		},
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data")
+	opts := devnetToProvisionOptions(devnet, "/data", nil)
 
 	if opts.GenesisSource.Mode != plugintypes.GenesisModeLocal {
 		t.Errorf("Expected GenesisMode 'local', got '%s'", opts.GenesisSource.Mode)
@@ -740,7 +745,7 @@ func TestDevnetToProvisionOptions_SnapshotGenesis(t *testing.T) {
 		},
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data")
+	opts := devnetToProvisionOptions(devnet, "/data", nil)
 
 	if opts.GenesisSource.Mode != plugintypes.GenesisModeSnapshot {
 		t.Errorf("Expected GenesisMode 'snapshot', got '%s'", opts.GenesisSource.Mode)
@@ -750,8 +755,8 @@ func TestDevnetToProvisionOptions_SnapshotGenesis(t *testing.T) {
 	}
 }
 
-func TestDevnetToProvisionOptions_RPCGenesisDefault(t *testing.T) {
-	// When no genesis path or snapshot URL is provided, default to RPC mode
+func TestDevnetToProvisionOptions_FreshGenesisDefault(t *testing.T) {
+	// When no genesis path, snapshot URL, or RPC URL is provided, use fresh genesis
 	devnet := &types.Devnet{
 		Metadata: types.ResourceMeta{Name: "test"},
 		Spec: types.DevnetSpec{
@@ -761,10 +766,84 @@ func TestDevnetToProvisionOptions_RPCGenesisDefault(t *testing.T) {
 		},
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data")
+	opts := devnetToProvisionOptions(devnet, "/data", nil)
+
+	if opts.GenesisSource.Mode != plugintypes.GenesisModeFresh {
+		t.Errorf("Expected default GenesisMode 'fresh', got '%s'", opts.GenesisSource.Mode)
+	}
+}
+
+func TestDevnetToProvisionOptions_RPCGenesisFromSpec(t *testing.T) {
+	// When RPC URL is provided in spec, use RPC mode
+	devnet := &types.Devnet{
+		Metadata: types.ResourceMeta{Name: "test"},
+		Spec: types.DevnetSpec{
+			Plugin:     "stable",
+			Validators: 1,
+			Mode:       "local",
+			RPCURL:     "https://rpc.example.com",
+		},
+	}
+
+	opts := devnetToProvisionOptions(devnet, "/data", nil)
 
 	if opts.GenesisSource.Mode != plugintypes.GenesisModeRPC {
-		t.Errorf("Expected default GenesisMode 'rpc', got '%s'", opts.GenesisSource.Mode)
+		t.Errorf("Expected GenesisMode 'rpc', got '%s'", opts.GenesisSource.Mode)
+	}
+	if opts.GenesisSource.RPCURL != "https://rpc.example.com" {
+		t.Errorf("Expected RPCURL 'https://rpc.example.com', got '%s'", opts.GenesisSource.RPCURL)
+	}
+}
+
+func TestDevnetToProvisionOptions_RPCGenesisFromDefaults(t *testing.T) {
+	// When RPC URL is provided via network defaults, use RPC mode
+	devnet := &types.Devnet{
+		Metadata: types.ResourceMeta{Name: "test"},
+		Spec: types.DevnetSpec{
+			Plugin:     "stable",
+			Validators: 1,
+			Mode:       "local",
+		},
+	}
+
+	defaults := &NetworkDefaults{
+		RPCURL: "https://default-rpc.example.com",
+	}
+
+	opts := devnetToProvisionOptions(devnet, "/data", defaults)
+
+	if opts.GenesisSource.Mode != plugintypes.GenesisModeRPC {
+		t.Errorf("Expected GenesisMode 'rpc', got '%s'", opts.GenesisSource.Mode)
+	}
+	if opts.GenesisSource.RPCURL != "https://default-rpc.example.com" {
+		t.Errorf("Expected RPCURL from defaults, got '%s'", opts.GenesisSource.RPCURL)
+	}
+}
+
+func TestDevnetToProvisionOptions_SnapshotGenesisFromDefaults(t *testing.T) {
+	// When snapshot URL is provided via network defaults, use snapshot mode
+	devnet := &types.Devnet{
+		Metadata: types.ResourceMeta{Name: "test"},
+		Spec: types.DevnetSpec{
+			Plugin:     "stable",
+			Validators: 1,
+			Mode:       "local",
+		},
+	}
+
+	defaults := &NetworkDefaults{
+		SnapshotURL: "https://default-snapshot.example.com/chain.tar.gz",
+		RPCURL:      "https://default-rpc.example.com",
+	}
+
+	opts := devnetToProvisionOptions(devnet, "/data", defaults)
+
+	// Snapshot takes priority over RPC
+	if opts.GenesisSource.Mode != plugintypes.GenesisModeSnapshot {
+		t.Errorf("Expected GenesisMode 'snapshot', got '%s'", opts.GenesisSource.Mode)
+	}
+	if opts.GenesisSource.SnapshotURL != "https://default-snapshot.example.com/chain.tar.gz" {
+		t.Errorf("Expected SnapshotURL from defaults, got '%s'", opts.GenesisSource.SnapshotURL)
 	}
 }
 
@@ -778,7 +857,7 @@ func TestDevnetToProvisionOptions_ChainIDGeneration(t *testing.T) {
 		},
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data")
+	opts := devnetToProvisionOptions(devnet, "/data", nil)
 
 	// ChainID should be generated from devnet name
 	if opts.ChainID != "my-awesome-devnet-1" {
