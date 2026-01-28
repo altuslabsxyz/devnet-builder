@@ -8,18 +8,21 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // NetworkService implements the gRPC NetworkServiceServer.
 type NetworkService struct {
 	v1.UnimplementedNetworkServiceServer
-	logger *slog.Logger
+	githubFactory GitHubClientFactory
+	logger        *slog.Logger
 }
 
 // NewNetworkService creates a new NetworkService.
-func NewNetworkService() *NetworkService {
+func NewNetworkService(githubFactory GitHubClientFactory) *NetworkService {
 	return &NetworkService{
-		logger: slog.Default(),
+		githubFactory: githubFactory,
+		logger:        slog.Default(),
 	}
 }
 
@@ -117,4 +120,92 @@ func moduleToNetworkInfo(module network.NetworkModule) *v1.NetworkInfo {
 		DockerHomeDir:        module.DockerHomeDir(),
 		DefaultPorts:         pbPorts,
 	}
+}
+
+// ListBinaryVersions returns available binary versions for a network.
+func (s *NetworkService) ListBinaryVersions(ctx context.Context, req *v1.ListBinaryVersionsRequest) (*v1.ListBinaryVersionsResponse, error) {
+	if req.NetworkName == "" {
+		return nil, status.Error(codes.InvalidArgument, "network_name is required")
+	}
+
+	// Get network module
+	module, err := network.Get(req.NetworkName)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "network %q not found: %v", req.NetworkName, err)
+	}
+
+	// Get binary source info
+	binarySource := module.BinarySource()
+	sourceType := string(binarySource.Type)
+
+	// For local binary sources, versions cannot be listed
+	if binarySource.IsLocal() {
+		s.logger.Debug("binary source is local, returning empty version list",
+			"network", req.NetworkName,
+			"localPath", binarySource.LocalPath)
+		return &v1.ListBinaryVersionsResponse{
+			NetworkName:    req.NetworkName,
+			Versions:       nil,
+			DefaultVersion: module.DefaultBinaryVersion(),
+			SourceType:     sourceType,
+		}, nil
+	}
+
+	// For GitHub sources, fetch releases
+	if !binarySource.IsGitHub() {
+		return nil, status.Errorf(codes.Internal, "unsupported binary source type: %s", sourceType)
+	}
+
+	// Defensive check: ensure factory is configured
+	if s.githubFactory == nil {
+		return nil, status.Error(codes.Internal, "github client factory not configured")
+	}
+
+	// Create GitHub client for this network
+	client := s.githubFactory.CreateClient(req.NetworkName, binarySource.Owner, binarySource.Repo)
+
+	// Fetch releases (with cache fallback)
+	releases, fromCache, err := client.FetchReleasesWithCache(ctx)
+	if err != nil {
+		s.logger.Error("failed to fetch releases",
+			"network", req.NetworkName,
+			"owner", binarySource.Owner,
+			"repo", binarySource.Repo,
+			"error", err)
+		return nil, status.Errorf(codes.Internal, "failed to fetch releases: %v", err)
+	}
+
+	if fromCache {
+		s.logger.Debug("using cached release data",
+			"network", req.NetworkName)
+	}
+
+	// Convert to proto messages
+	versions := make([]*v1.BinaryVersionInfo, 0, len(releases))
+	for _, r := range releases {
+		// Skip prereleases unless requested
+		if r.Prerelease && !req.IncludePrerelease {
+			continue
+		}
+
+		versions = append(versions, &v1.BinaryVersionInfo{
+			Tag:         r.TagName,
+			Name:        r.Name,
+			Prerelease:  r.Prerelease,
+			PublishedAt: timestamppb.New(r.PublishedAt),
+			HtmlUrl:     r.HTMLURL,
+		})
+	}
+
+	s.logger.Debug("returning binary versions",
+		"network", req.NetworkName,
+		"count", len(versions),
+		"includePrerelease", req.IncludePrerelease)
+
+	return &v1.ListBinaryVersionsResponse{
+		NetworkName:    req.NetworkName,
+		Versions:       versions,
+		DefaultVersion: module.DefaultBinaryVersion(),
+		SourceType:     sourceType,
+	}, nil
 }

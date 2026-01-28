@@ -214,7 +214,8 @@ func New(config *Config) (*Server, error) {
 	txSvc.SetLogger(logger)
 	v1.RegisterTransactionServiceServer(grpcServer, txSvc)
 
-	networkSvc := NewNetworkService()
+	githubFactory := NewDefaultGitHubClientFactory(config.DataDir, logger)
+	networkSvc := NewNetworkService(githubFactory)
 	networkSvc.SetLogger(logger)
 	v1.RegisterNetworkServiceServer(grpcServer, networkSvc)
 

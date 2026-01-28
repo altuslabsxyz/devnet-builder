@@ -478,6 +478,9 @@ service NetworkService {
   rpc ListNetworks(ListNetworksRequest) returns (ListNetworksResponse);
   // GetNetworkInfo returns detailed information about a specific network module.
   rpc GetNetworkInfo(GetNetworkInfoRequest) returns (GetNetworkInfoResponse);
+  // ListBinaryVersions returns available binary versions for a network.
+  // This fetches releases from the network's binary source (e.g., GitHub).
+  rpc ListBinaryVersions(ListBinaryVersionsRequest) returns (ListBinaryVersionsResponse);
 }
 
 // ListNetworksRequest is the request message for ListNetworks.
@@ -548,4 +551,31 @@ message NetworkPortConfig {
   int32 api = 5;        // REST API port (default: 1317)
   int32 evm_rpc = 6;    // EVM JSON-RPC port (default: 8545)
   int32 evm_socket = 7; // EVM WebSocket port (default: 8546)
+}
+
+// =============================================================================
+// Binary Versions - List available binary versions for a network
+// =============================================================================
+
+// ListBinaryVersionsRequest is the request for ListBinaryVersions.
+message ListBinaryVersionsRequest {
+  string network_name = 1;      // Required: network plugin name (e.g., "stable")
+  bool include_prerelease = 2;  // Optional: include prerelease versions (default: false)
+}
+
+// ListBinaryVersionsResponse is the response for ListBinaryVersions.
+message ListBinaryVersionsResponse {
+  string network_name = 1;                    // Network plugin name
+  repeated BinaryVersionInfo versions = 2;   // Available versions, newest first
+  string default_version = 3;                 // Default version for this network
+  string source_type = 4;                     // Binary source type: "github", "local"
+}
+
+// BinaryVersionInfo describes a single binary version.
+message BinaryVersionInfo {
+  string tag = 1;                              // Version tag (e.g., "v1.0.0")
+  string name = 2;                             // Release name/title
+  bool prerelease = 3;                         // Whether this is a prerelease
+  google.protobuf.Timestamp published_at = 4; // Publication timestamp
+  string html_url = 5;                         // URL to the release page
 }

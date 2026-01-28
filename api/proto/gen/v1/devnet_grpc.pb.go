@@ -1120,8 +1120,9 @@ var UpgradeService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	NetworkService_ListNetworks_FullMethodName   = "/devnetbuilder.v1.NetworkService/ListNetworks"
-	NetworkService_GetNetworkInfo_FullMethodName = "/devnetbuilder.v1.NetworkService/GetNetworkInfo"
+	NetworkService_ListNetworks_FullMethodName       = "/devnetbuilder.v1.NetworkService/ListNetworks"
+	NetworkService_GetNetworkInfo_FullMethodName     = "/devnetbuilder.v1.NetworkService/GetNetworkInfo"
+	NetworkService_ListBinaryVersions_FullMethodName = "/devnetbuilder.v1.NetworkService/ListBinaryVersions"
 )
 
 // NetworkServiceClient is the client API for NetworkService service.
@@ -1134,6 +1135,9 @@ type NetworkServiceClient interface {
 	ListNetworks(ctx context.Context, in *ListNetworksRequest, opts ...grpc.CallOption) (*ListNetworksResponse, error)
 	// GetNetworkInfo returns detailed information about a specific network module.
 	GetNetworkInfo(ctx context.Context, in *GetNetworkInfoRequest, opts ...grpc.CallOption) (*GetNetworkInfoResponse, error)
+	// ListBinaryVersions returns available binary versions for a network.
+	// This fetches releases from the network's binary source (e.g., GitHub).
+	ListBinaryVersions(ctx context.Context, in *ListBinaryVersionsRequest, opts ...grpc.CallOption) (*ListBinaryVersionsResponse, error)
 }
 
 type networkServiceClient struct {
@@ -1164,6 +1168,16 @@ func (c *networkServiceClient) GetNetworkInfo(ctx context.Context, in *GetNetwor
 	return out, nil
 }
 
+func (c *networkServiceClient) ListBinaryVersions(ctx context.Context, in *ListBinaryVersionsRequest, opts ...grpc.CallOption) (*ListBinaryVersionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListBinaryVersionsResponse)
+	err := c.cc.Invoke(ctx, NetworkService_ListBinaryVersions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NetworkServiceServer is the server API for NetworkService service.
 // All implementations must embed UnimplementedNetworkServiceServer
 // for forward compatibility.
@@ -1174,6 +1188,9 @@ type NetworkServiceServer interface {
 	ListNetworks(context.Context, *ListNetworksRequest) (*ListNetworksResponse, error)
 	// GetNetworkInfo returns detailed information about a specific network module.
 	GetNetworkInfo(context.Context, *GetNetworkInfoRequest) (*GetNetworkInfoResponse, error)
+	// ListBinaryVersions returns available binary versions for a network.
+	// This fetches releases from the network's binary source (e.g., GitHub).
+	ListBinaryVersions(context.Context, *ListBinaryVersionsRequest) (*ListBinaryVersionsResponse, error)
 	mustEmbedUnimplementedNetworkServiceServer()
 }
 
@@ -1189,6 +1206,9 @@ func (UnimplementedNetworkServiceServer) ListNetworks(context.Context, *ListNetw
 }
 func (UnimplementedNetworkServiceServer) GetNetworkInfo(context.Context, *GetNetworkInfoRequest) (*GetNetworkInfoResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetNetworkInfo not implemented")
+}
+func (UnimplementedNetworkServiceServer) ListBinaryVersions(context.Context, *ListBinaryVersionsRequest) (*ListBinaryVersionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListBinaryVersions not implemented")
 }
 func (UnimplementedNetworkServiceServer) mustEmbedUnimplementedNetworkServiceServer() {}
 func (UnimplementedNetworkServiceServer) testEmbeddedByValue()                        {}
@@ -1247,6 +1267,24 @@ func _NetworkService_GetNetworkInfo_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NetworkService_ListBinaryVersions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListBinaryVersionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkServiceServer).ListBinaryVersions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkService_ListBinaryVersions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkServiceServer).ListBinaryVersions(ctx, req.(*ListBinaryVersionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NetworkService_ServiceDesc is the grpc.ServiceDesc for NetworkService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1261,6 +1299,10 @@ var NetworkService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetNetworkInfo",
 			Handler:    _NetworkService_GetNetworkInfo_Handler,
+		},
+		{
+			MethodName: "ListBinaryVersions",
+			Handler:    _NetworkService_ListBinaryVersions_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

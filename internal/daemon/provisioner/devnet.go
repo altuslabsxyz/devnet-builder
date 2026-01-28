@@ -172,7 +172,10 @@ func (p *DevnetProvisioner) provisionWithOrchestrator(ctx context.Context, devne
 	}
 
 	// Convert devnet spec to provisioning options, using plugin defaults when URLs not specified
-	opts := devnetToProvisionOptions(devnet, p.dataDir, networkDefaults)
+	opts, err := devnetToProvisionOptions(devnet, p.dataDir, networkDefaults)
+	if err != nil {
+		return nil, err
+	}
 
 	// In daemon mode, skip start phase - NodeController will handle starting
 	opts.SkipStart = true
@@ -425,7 +428,9 @@ func (p *DevnetProvisioner) GetStatus(ctx context.Context, devnet *types.Devnet)
 // devnetToProvisionOptions converts a Devnet spec to ProvisionOptions for the orchestrator.
 // This maps fields from the Devnet resource to the format expected by the provisioning flow.
 // networkDefaults provides plugin defaults when URLs are not explicitly specified.
-func devnetToProvisionOptions(devnet *types.Devnet, dataDir string, networkDefaults *NetworkDefaults) ports.ProvisionOptions {
+//
+// Returns SnapshotVersionRequiredError if snapshot mode is detected but no binary version is set.
+func devnetToProvisionOptions(devnet *types.Devnet, dataDir string, networkDefaults *NetworkDefaults) (ports.ProvisionOptions, error) {
 	// Use spec ChainID if set, otherwise generate from devnet name
 	chainID := devnet.Spec.ChainID
 	if chainID == "" {
@@ -454,7 +459,14 @@ func devnetToProvisionOptions(devnet *types.Devnet, dataDir string, networkDefau
 	// Map Genesis source, using plugin defaults when URLs not specified
 	opts.GenesisSource = mapGenesisSource(devnet, networkDefaults)
 
-	return opts
+	// Validate: snapshot mode requires explicit binary version to prevent schema mismatch panics
+	if opts.GenesisSource.Mode == plugintypes.GenesisModeSnapshot && opts.BinaryVersion == "" {
+		return ports.ProvisionOptions{}, &SnapshotVersionRequiredError{
+			DevnetName: devnet.Metadata.Name,
+		}
+	}
+
+	return opts, nil
 }
 
 // mapGenesisSource determines the genesis source from devnet spec.
