@@ -130,12 +130,12 @@ func followDaemonLogs(ctx context.Context, logPath string, level string) error {
 	if stat.Size() > 8192 {
 		startPos = stat.Size() - 8192
 	}
-	file.Seek(startPos, 0)
+	_, _ = file.Seek(startPos, 0)
 
 	// Skip partial first line if we seeked
 	if startPos > 0 {
 		reader := bufio.NewReader(file)
-		reader.ReadLine() // Discard partial line
+		_, _, _ = reader.ReadLine() // Discard partial line
 	}
 
 	// Read remaining content
@@ -178,7 +178,7 @@ func followDaemonLogs(ctx context.Context, logPath string, level string) error {
 					continue
 				}
 
-				file.Seek(currentPos, 0)
+				_, _ = file.Seek(currentPos, 0)
 				scanner := bufio.NewScanner(file)
 				for scanner.Scan() {
 					line := scanner.Text()
@@ -197,8 +197,8 @@ func followDaemonLogs(ctx context.Context, logPath string, level string) error {
 			if statErr != nil || newStat.Size() < currentPos {
 				// File was rotated or truncated, reset position
 				currentPos = 0
-				watcher.Remove(logPath)
-				watcher.Add(logPath)
+				_ = watcher.Remove(logPath)
+				_ = watcher.Add(logPath)
 			}
 		}
 	}
