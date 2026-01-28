@@ -566,6 +566,10 @@ func TestDevnetProvisioner_ProvisionWithSnapshotURL(t *testing.T) {
 			FullNodes:   0,
 			Mode:        "local",
 			SnapshotURL: "https://snapshots.example.com/mainnet.tar.gz",
+			BinarySource: types.BinarySource{
+				Type:    "cache",
+				Version: "v1.0.0", // Required for snapshot mode
+			},
 		},
 	}
 
@@ -645,7 +649,10 @@ func TestDevnetToProvisionOptions_BasicConversion(t *testing.T) {
 		},
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if opts.DevnetName != "basic-devnet" {
 		t.Errorf("Expected DevnetName 'basic-devnet', got '%s'", opts.DevnetName)
@@ -679,7 +686,10 @@ func TestDevnetToProvisionOptions_LocalBinarySource(t *testing.T) {
 		},
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if opts.BinaryPath != "/opt/bin/stabbed" {
 		t.Errorf("Expected BinaryPath '/opt/bin/stabbed', got '%s'", opts.BinaryPath)
@@ -703,7 +713,10 @@ func TestDevnetToProvisionOptions_CacheBinarySource(t *testing.T) {
 		},
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if opts.BinaryPath != "" {
 		t.Errorf("Expected empty BinaryPath for cache, got '%s'", opts.BinaryPath)
@@ -724,7 +737,10 @@ func TestDevnetToProvisionOptions_LocalGenesis(t *testing.T) {
 		},
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if opts.GenesisSource.Mode != plugintypes.GenesisModeLocal {
 		t.Errorf("Expected GenesisMode 'local', got '%s'", opts.GenesisSource.Mode)
@@ -742,10 +758,17 @@ func TestDevnetToProvisionOptions_SnapshotGenesis(t *testing.T) {
 			Validators:  1,
 			Mode:        "local",
 			SnapshotURL: "https://snapshots.example.com/chain.tar.gz",
+			BinarySource: types.BinarySource{
+				Type:    "cache",
+				Version: "v1.0.0", // Required for snapshot mode
+			},
 		},
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if opts.GenesisSource.Mode != plugintypes.GenesisModeSnapshot {
 		t.Errorf("Expected GenesisMode 'snapshot', got '%s'", opts.GenesisSource.Mode)
@@ -766,7 +789,10 @@ func TestDevnetToProvisionOptions_FreshGenesisDefault(t *testing.T) {
 		},
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if opts.GenesisSource.Mode != plugintypes.GenesisModeFresh {
 		t.Errorf("Expected default GenesisMode 'fresh', got '%s'", opts.GenesisSource.Mode)
@@ -785,7 +811,10 @@ func TestDevnetToProvisionOptions_RPCGenesisFromSpec(t *testing.T) {
 		},
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if opts.GenesisSource.Mode != plugintypes.GenesisModeRPC {
 		t.Errorf("Expected GenesisMode 'rpc', got '%s'", opts.GenesisSource.Mode)
@@ -810,7 +839,10 @@ func TestDevnetToProvisionOptions_RPCGenesisFromDefaults(t *testing.T) {
 		RPCURL: "https://default-rpc.example.com",
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data", defaults)
+	opts, err := devnetToProvisionOptions(devnet, "/data", defaults)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if opts.GenesisSource.Mode != plugintypes.GenesisModeRPC {
 		t.Errorf("Expected GenesisMode 'rpc', got '%s'", opts.GenesisSource.Mode)
@@ -828,6 +860,10 @@ func TestDevnetToProvisionOptions_SnapshotGenesisFromDefaults(t *testing.T) {
 			Plugin:     "stable",
 			Validators: 1,
 			Mode:       "local",
+			BinarySource: types.BinarySource{
+				Type:    "cache",
+				Version: "v1.0.0", // Required for snapshot mode
+			},
 		},
 	}
 
@@ -836,7 +872,10 @@ func TestDevnetToProvisionOptions_SnapshotGenesisFromDefaults(t *testing.T) {
 		RPCURL:      "https://default-rpc.example.com",
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data", defaults)
+	opts, err := devnetToProvisionOptions(devnet, "/data", defaults)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// Snapshot takes priority over RPC
 	if opts.GenesisSource.Mode != plugintypes.GenesisModeSnapshot {
@@ -857,10 +896,74 @@ func TestDevnetToProvisionOptions_ChainIDGeneration(t *testing.T) {
 		},
 	}
 
-	opts := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// ChainID should be generated from devnet name
 	if opts.ChainID != "my-awesome-devnet-1" {
 		t.Errorf("Expected ChainID 'my-awesome-devnet-1', got '%s'", opts.ChainID)
+	}
+}
+
+func TestDevnetToProvisionOptions_SnapshotRequiresVersion(t *testing.T) {
+	// Snapshot mode without explicit binary version should fail
+	devnet := &types.Devnet{
+		Metadata: types.ResourceMeta{Name: "test-snapshot"},
+		Spec: types.DevnetSpec{
+			Plugin:      "stable",
+			Validators:  1,
+			Mode:        "local",
+			SnapshotURL: "https://snapshots.example.com/chain.tar.gz",
+			// No BinarySource.Version set
+		},
+	}
+
+	_, err := devnetToProvisionOptions(devnet, "/data", nil)
+	if err == nil {
+		t.Fatal("Expected SnapshotVersionRequiredError, got nil")
+	}
+
+	var versionErr *SnapshotVersionRequiredError
+	if !errors.As(err, &versionErr) {
+		t.Fatalf("Expected SnapshotVersionRequiredError, got %T: %v", err, err)
+	}
+
+	if versionErr.DevnetName != "test-snapshot" {
+		t.Errorf("Expected DevnetName 'test-snapshot', got '%s'", versionErr.DevnetName)
+	}
+
+	// Verify error message contains helpful guidance
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "dvb network versions") {
+		t.Errorf("Error message should contain 'dvb network versions' guidance, got: %s", errMsg)
+	}
+}
+
+func TestDevnetToProvisionOptions_SnapshotFromDefaultsRequiresVersion(t *testing.T) {
+	// Snapshot mode via network defaults without explicit binary version should fail
+	devnet := &types.Devnet{
+		Metadata: types.ResourceMeta{Name: "test-snapshot-defaults"},
+		Spec: types.DevnetSpec{
+			Plugin:     "stable",
+			Validators: 1,
+			Mode:       "local",
+			// No SnapshotURL in spec, no BinarySource.Version
+		},
+	}
+
+	defaults := &NetworkDefaults{
+		SnapshotURL: "https://default-snapshot.example.com/chain.tar.gz",
+	}
+
+	_, err := devnetToProvisionOptions(devnet, "/data", defaults)
+	if err == nil {
+		t.Fatal("Expected SnapshotVersionRequiredError, got nil")
+	}
+
+	var versionErr *SnapshotVersionRequiredError
+	if !errors.As(err, &versionErr) {
+		t.Fatalf("Expected SnapshotVersionRequiredError, got %T: %v", err, err)
 	}
 }
