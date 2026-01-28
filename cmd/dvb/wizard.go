@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -13,13 +12,14 @@ import (
 
 // WizardOptions holds the collected options from the provision wizard.
 // Note: Only fields that can be transmitted to the daemon via proto are included.
-// ChainID is auto-generated from devnet name, and binary/data dir are daemon-level config.
 type WizardOptions struct {
 	Name        string
 	Network     string
 	Validators  int
 	FullNodes   int
 	ForkNetwork string // Network to fork from (e.g., "mainnet", "testnet", ""). Empty means fresh genesis.
+	Mode        string // Execution mode: "local" or "docker"
+	ChainID     string // Chain ID for the devnet (e.g., "mainnet-1", "mydevnet-1")
 }
 
 // RunProvisionWizard runs an interactive wizard to collect provision options.
@@ -59,6 +59,22 @@ func RunProvisionWizard() (*WizardOptions, error) {
 	}
 	opts.Network = network
 
+	// 2a. Execution mode selection
+	modePrompt := promptui.Select{
+		Label: "Execution mode",
+		Items: []string{"docker", "local"},
+		Templates: &promptui.SelectTemplates{
+			Active:   "▸ {{ . | cyan }}",
+			Inactive: "  {{ . }}",
+			Selected: "✔ Mode: {{ . | green }}",
+		},
+	}
+	_, mode, err := modePrompt.Run()
+	if err != nil {
+		return nil, handlePromptError(err, "execution mode")
+	}
+	opts.Mode = mode
+
 	// 2b. Fork from existing network?
 	forkPrompt := promptui.Select{
 		Label: "Genesis configuration",
@@ -93,6 +109,33 @@ func RunProvisionWizard() (*WizardOptions, error) {
 			return nil, handlePromptError(err, "fork network")
 		}
 		opts.ForkNetwork = forkNetwork
+
+		// Chain ID for forked network - must match source network's chain-id
+		defaultChainID := forkNetwork + "-1"
+		fmt.Printf("  Note: When forking, chain-id should match the source network's chain-id.\n")
+		chainIDPrompt := promptui.Prompt{
+			Label:    "Chain ID",
+			Default:  defaultChainID,
+			Validate: validateNonEmpty,
+		}
+		chainID, err := chainIDPrompt.Run()
+		if err != nil {
+			return nil, handlePromptError(err, "chain ID")
+		}
+		opts.ChainID = strings.TrimSpace(chainID)
+	} else {
+		// Fresh genesis - use devnet name as default chain-id
+		defaultChainID := opts.Name + "-1"
+		chainIDPrompt := promptui.Prompt{
+			Label:    "Chain ID",
+			Default:  defaultChainID,
+			Validate: validateNonEmpty,
+		}
+		chainID, err := chainIDPrompt.Run()
+		if err != nil {
+			return nil, handlePromptError(err, "chain ID")
+		}
+		opts.ChainID = strings.TrimSpace(chainID)
 	}
 
 	// 3. Number of Validators
@@ -120,7 +163,6 @@ func RunProvisionWizard() (*WizardOptions, error) {
 	opts.FullNodes, _ = strconv.Atoi(fullNodesStr)
 
 	// Summary and confirmation
-	// Note: Chain ID is auto-generated from devnet name by the daemon.
 	// Binary is built from source by default. Data dir is daemon-level config.
 	fmt.Println()
 	fmt.Println("─────────────────────────────────")
@@ -128,6 +170,8 @@ func RunProvisionWizard() (*WizardOptions, error) {
 	fmt.Println("─────────────────────────────────")
 	fmt.Printf("  Name:       %s\n", opts.Name)
 	fmt.Printf("  Network:    %s\n", opts.Network)
+	fmt.Printf("  Mode:       %s\n", opts.Mode)
+	fmt.Printf("  Chain ID:   %s\n", opts.ChainID)
 	fmt.Printf("  Validators: %d\n", opts.Validators)
 	fmt.Printf("  Full Nodes: %d\n", opts.FullNodes)
 	if opts.ForkNetwork != "" {
@@ -219,18 +263,6 @@ func validateNonNegativeInt(input string) error {
 	}
 	if n < 0 {
 		return fmt.Errorf("cannot be negative")
-	}
-	return nil
-}
-
-func validateFilePath(input string) error {
-	path := strings.TrimSpace(input)
-	if path == "" {
-		return fmt.Errorf("path cannot be empty")
-	}
-	// Check if file exists
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return fmt.Errorf("file does not exist: %s", path)
 	}
 	return nil
 }

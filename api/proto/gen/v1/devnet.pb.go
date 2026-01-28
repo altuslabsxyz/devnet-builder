@@ -242,6 +242,7 @@ type DevnetSpec struct {
 	SnapshotUrl   string                 `protobuf:"bytes,8,opt,name=snapshot_url,json=snapshotUrl,proto3" json:"snapshot_url,omitempty"`  // Chain state snapshot URL
 	RpcUrl        string                 `protobuf:"bytes,9,opt,name=rpc_url,json=rpcUrl,proto3" json:"rpc_url,omitempty"`                 // RPC endpoint URL for genesis forking
 	ForkNetwork   string                 `protobuf:"bytes,10,opt,name=fork_network,json=forkNetwork,proto3" json:"fork_network,omitempty"` // Network to fork from (e.g., "mainnet", "testnet") - used to fetch plugin defaults
+	ChainId       string                 `protobuf:"bytes,11,opt,name=chain_id,json=chainId,proto3" json:"chain_id,omitempty"`             // Chain ID for the devnet (e.g., "mainnet-1", "mydevnet-1")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -342,6 +343,13 @@ func (x *DevnetSpec) GetRpcUrl() string {
 func (x *DevnetSpec) GetForkNetwork() string {
 	if x != nil {
 		return x.ForkNetwork
+	}
+	return ""
+}
+
+func (x *DevnetSpec) GetChainId() string {
+	if x != nil {
+		return x.ChainId
 	}
 	return ""
 }
@@ -4578,7 +4586,7 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a>\n" +
 	"\x10AnnotationsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbd\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd8\x02\n" +
 	"\n" +
 	"DevnetSpec\x12\x16\n" +
 	"\x06plugin\x18\x01 \x01(\tR\x06plugin\x12!\n" +
@@ -4595,7 +4603,8 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\fsnapshot_url\x18\b \x01(\tR\vsnapshotUrl\x12\x17\n" +
 	"\arpc_url\x18\t \x01(\tR\x06rpcUrl\x12!\n" +
 	"\ffork_network\x18\n" +
-	" \x01(\tR\vforkNetwork\"\xf3\x02\n" +
+	" \x01(\tR\vforkNetwork\x12\x19\n" +
+	"\bchain_id\x18\v \x01(\tR\achainId\"\xf3\x02\n" +
 	"\fDevnetStatus\x12\x14\n" +
 	"\x05phase\x18\x01 \x01(\tR\x05phase\x12\x14\n" +
 	"\x05nodes\x18\x02 \x01(\x05R\x05nodes\x12\x1f\n" +

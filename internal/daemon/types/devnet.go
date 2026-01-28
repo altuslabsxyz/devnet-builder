@@ -52,6 +52,10 @@ type DevnetSpec struct {
 	// Used to fetch plugin defaults for RPC/Snapshot URLs.
 	ForkNetwork string `json:"forkNetwork,omitempty"`
 
+	// ChainID is the chain ID for the devnet.
+	// For forking, should match the source network's chain ID.
+	ChainID string `json:"chainId,omitempty"`
+
 	// Ports configures port allocation for nodes.
 	Ports PortConfig `json:"ports,omitempty"`
 

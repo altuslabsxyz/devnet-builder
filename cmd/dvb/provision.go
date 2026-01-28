@@ -21,6 +21,7 @@ type provisionOptions struct {
 	validators  int
 	fullNodes   int
 	mode        string
+	chainID     string
 	sdkVersion  string
 	interactive bool // Use interactive wizard mode
 	listPlugins bool // List available network plugins
@@ -82,6 +83,8 @@ Examples:
 				opts.validators = wizardOpts.Validators
 				opts.fullNodes = wizardOpts.FullNodes
 				opts.networkType = wizardOpts.ForkNetwork // Map fork network to network type
+				opts.mode = wizardOpts.Mode
+				opts.chainID = wizardOpts.ChainID
 			}
 			return runProvision(cmd.Context(), opts)
 		},
@@ -104,6 +107,7 @@ Examples:
 	cmd.Flags().IntVar(&opts.validators, "validators", 4, "Number of validators")
 	cmd.Flags().IntVar(&opts.fullNodes, "full-nodes", 0, "Number of full nodes")
 	cmd.Flags().StringVar(&opts.mode, "mode", "docker", "Execution mode (docker or local)")
+	cmd.Flags().StringVar(&opts.chainID, "chain-id", "", "Chain ID for the devnet (e.g., mainnet-1, mydevnet-1)")
 
 	return cmd
 }
@@ -178,6 +182,9 @@ func runProvision(ctx context.Context, opts *provisionOptions) error {
 		fmt.Fprintf(os.Stderr, "  Genesis:    fresh (new chain)\n")
 	}
 	fmt.Fprintf(os.Stderr, "  Mode:       %s\n", opts.mode)
+	if opts.chainID != "" {
+		fmt.Fprintf(os.Stderr, "  Chain ID:   %s\n", opts.chainID)
+	}
 	fmt.Fprintf(os.Stderr, "\n")
 
 	// Build devnet spec
@@ -189,6 +196,7 @@ func runProvision(ctx context.Context, opts *provisionOptions) error {
 		Mode:        opts.mode,
 		SdkVersion:  opts.sdkVersion,
 		ForkNetwork: opts.networkType, // ForkNetwork triggers genesis forking (uses same value as NetworkType)
+		ChainId:     opts.chainID,
 	}
 
 	// Create devnet via daemon

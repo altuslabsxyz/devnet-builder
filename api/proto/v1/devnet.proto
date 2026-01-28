@@ -52,6 +52,7 @@ message DevnetSpec {
   string snapshot_url = 8;  // Chain state snapshot URL
   string rpc_url = 9;  // RPC endpoint URL for genesis forking
   string fork_network = 10;  // Network to fork from (e.g., "mainnet", "testnet") - used to fetch plugin defaults
+  string chain_id = 11;  // Chain ID for the devnet (e.g., "mainnet-1", "mydevnet-1")
 }
 
 message DevnetStatus {
