@@ -491,6 +491,18 @@ func (c *GRPCClient) GetNetworkInfo(ctx context.Context, name string) (*v1.Netwo
 	return resp.Network, nil
 }
 
+// ListBinaryVersions returns available binary versions for a network.
+func (c *GRPCClient) ListBinaryVersions(ctx context.Context, networkName string, includePrerelease bool) (*v1.ListBinaryVersionsResponse, error) {
+	resp, err := c.network.ListBinaryVersions(ctx, &v1.ListBinaryVersionsRequest{
+		NetworkName:       networkName,
+		IncludePrerelease: includePrerelease,
+	})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp, nil
+}
+
 // LogEntry represents a single log line from a node.
 type LogEntry struct {
 	Timestamp time.Time

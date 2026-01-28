@@ -67,7 +67,7 @@ Examples:
 
 			// Interactive wizard mode
 			if opts.interactive {
-				wizardOpts, err := RunProvisionWizard()
+				wizardOpts, err := RunProvisionWizard(daemonClient)
 				if err != nil {
 					if err.Error() == "cancelled" {
 						return nil
@@ -85,6 +85,7 @@ Examples:
 				opts.networkType = wizardOpts.ForkNetwork // Map fork network to network type
 				opts.mode = wizardOpts.Mode
 				opts.chainID = wizardOpts.ChainID
+				opts.sdkVersion = wizardOpts.BinaryVersion
 			}
 			return runProvision(cmd.Context(), opts)
 		},

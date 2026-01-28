@@ -198,3 +198,8 @@ func (c *Client) ListNetworks(ctx context.Context) ([]*v1.NetworkSummary, error)
 func (c *Client) GetNetworkInfo(ctx context.Context, name string) (*v1.NetworkInfo, error) {
 	return c.grpc.GetNetworkInfo(ctx, name)
 }
+
+// ListBinaryVersions returns available binary versions for a network.
+func (c *Client) ListBinaryVersions(ctx context.Context, networkName string, includePrerelease bool) (*v1.ListBinaryVersionsResponse, error) {
+	return c.grpc.ListBinaryVersions(ctx, networkName, includePrerelease)
+}

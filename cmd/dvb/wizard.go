@@ -3,28 +3,33 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 
+	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
+	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/manifoldco/promptui"
 )
 
 // WizardOptions holds the collected options from the provision wizard.
 // Note: Only fields that can be transmitted to the daemon via proto are included.
 type WizardOptions struct {
-	Name        string
-	Network     string
-	Validators  int
-	FullNodes   int
-	ForkNetwork string // Network to fork from (e.g., "mainnet", "testnet", ""). Empty means fresh genesis.
-	Mode        string // Execution mode: "local" or "docker"
-	ChainID     string // Chain ID for the devnet (e.g., "mainnet-1", "mydevnet-1")
+	Name          string
+	Network       string
+	Validators    int
+	FullNodes     int
+	ForkNetwork   string // Network to fork from (e.g., "mainnet", "testnet", ""). Empty means fresh genesis.
+	Mode          string // Execution mode: "local" or "docker"
+	ChainID       string // Chain ID for the devnet (e.g., "mainnet-1", "mydevnet-1")
+	BinaryVersion string // Binary version to use (required when forking from snapshot)
 }
 
 // RunProvisionWizard runs an interactive wizard to collect provision options.
+// The client parameter is used to fetch available binary versions from the daemon.
 // Returns nil if the user cancels.
-func RunProvisionWizard() (*WizardOptions, error) {
+func RunProvisionWizard(daemonClient *client.Client) (*WizardOptions, error) {
 	opts := &WizardOptions{}
 
 	fmt.Println()
@@ -110,6 +115,13 @@ func RunProvisionWizard() (*WizardOptions, error) {
 		}
 		opts.ForkNetwork = forkNetwork
 
+		// Binary version selection - required for snapshot mode
+		binaryVersion, err := promptBinaryVersion(daemonClient, opts.Network)
+		if err != nil {
+			return nil, err
+		}
+		opts.BinaryVersion = binaryVersion
+
 		// Chain ID for forked network - must match source network's chain-id
 		defaultChainID := forkNetwork + "-1"
 		fmt.Printf("  Note: When forking, chain-id should match the source network's chain-id.\n")
@@ -176,10 +188,11 @@ func RunProvisionWizard() (*WizardOptions, error) {
 	fmt.Printf("  Full Nodes: %d\n", opts.FullNodes)
 	if opts.ForkNetwork != "" {
 		fmt.Printf("  Genesis:    fork from %s\n", opts.ForkNetwork)
+		fmt.Printf("  Binary:     %s\n", opts.BinaryVersion)
 	} else {
 		fmt.Printf("  Genesis:    fresh (new chain)\n")
+		fmt.Printf("  Binary:     (build from source)\n")
 	}
-	fmt.Printf("  Binary:     (build from source)\n")
 	fmt.Println("─────────────────────────────────")
 	fmt.Println()
 
@@ -234,6 +247,72 @@ func ConfirmDestroy(devnetName string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// promptBinaryVersion prompts the user to select a binary version for the network.
+// It fetches available versions from the daemon and presents them for selection.
+func promptBinaryVersion(daemonClient *client.Client, networkName string) (string, error) {
+	// Try to fetch versions from daemon
+	var versions []*v1.BinaryVersionInfo
+	var defaultVersion string
+
+	if daemonClient != nil {
+		ctx := context.Background()
+		resp, err := daemonClient.ListBinaryVersions(ctx, networkName, false)
+		if err == nil && resp != nil {
+			versions = resp.Versions
+			defaultVersion = resp.DefaultVersion
+		}
+	}
+
+	// Build version items for selection
+	var versionItems []string
+	if len(versions) > 0 {
+		// Use fetched versions
+		for _, v := range versions {
+			versionItems = append(versionItems, v.Tag)
+		}
+	} else {
+		// Fallback: allow manual entry when daemon unavailable
+		fmt.Printf("  Note: Could not fetch available versions from daemon.\n")
+		fmt.Printf("        Run 'dvb network versions %s' to see available versions.\n", networkName)
+		fmt.Printf("        The version must match the chain state schema when forking.\n")
+
+		// Use a reasonable default hint - most networks use semantic versioning
+		versionDefault := defaultVersion
+		if versionDefault == "" {
+			versionDefault = "v1.0.0"
+		}
+
+		versionPrompt := promptui.Prompt{
+			Label:    "Binary version",
+			Default:  versionDefault,
+			Validate: validateNonEmpty,
+		}
+		version, err := versionPrompt.Run()
+		if err != nil {
+			return "", handlePromptError(err, "binary version")
+		}
+		return strings.TrimSpace(version), nil
+	}
+
+	// Select from available versions
+	fmt.Printf("  Note: Binary version must match the chain state schema when forking.\n")
+	versionPrompt := promptui.Select{
+		Label: "Binary version",
+		Items: versionItems,
+		Templates: &promptui.SelectTemplates{
+			Active:   "▸ {{ . | cyan }}",
+			Inactive: "  {{ . }}",
+			Selected: "✔ Binary version: {{ . | green }}",
+		},
+	}
+	_, selectedVersion, err := versionPrompt.Run()
+	if err != nil {
+		return "", handlePromptError(err, "binary version")
+	}
+
+	return selectedVersion, nil
 }
 
 // Validation functions
