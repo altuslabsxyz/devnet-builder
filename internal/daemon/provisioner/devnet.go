@@ -426,9 +426,15 @@ func (p *DevnetProvisioner) GetStatus(ctx context.Context, devnet *types.Devnet)
 // This maps fields from the Devnet resource to the format expected by the provisioning flow.
 // networkDefaults provides plugin defaults when URLs are not explicitly specified.
 func devnetToProvisionOptions(devnet *types.Devnet, dataDir string, networkDefaults *NetworkDefaults) ports.ProvisionOptions {
+	// Use spec ChainID if set, otherwise generate from devnet name
+	chainID := devnet.Spec.ChainID
+	if chainID == "" {
+		chainID = devnet.Metadata.Name + "-1"
+	}
+
 	opts := ports.ProvisionOptions{
 		DevnetName:    devnet.Metadata.Name,
-		ChainID:       devnet.Metadata.Name + "-1", // Generate chain ID from devnet name
+		ChainID:       chainID,
 		Network:       devnet.Spec.Plugin,
 		NumValidators: devnet.Spec.Validators,
 		NumFullNodes:  devnet.Spec.FullNodes,
@@ -474,6 +480,7 @@ func mapGenesisSource(devnet *types.Devnet, networkDefaults *NetworkDefaults) pl
 		return plugintypes.GenesisSource{
 			Mode:        plugintypes.GenesisModeSnapshot,
 			SnapshotURL: snapshotURL,
+			NetworkType: devnet.Spec.ForkNetwork,
 		}
 	}
 
@@ -486,8 +493,9 @@ func mapGenesisSource(devnet *types.Devnet, networkDefaults *NetworkDefaults) pl
 	// If RPC URL is available, use RPC mode for genesis forking
 	if rpcURL != "" {
 		return plugintypes.GenesisSource{
-			Mode:   plugintypes.GenesisModeRPC,
-			RPCURL: rpcURL,
+			Mode:        plugintypes.GenesisModeRPC,
+			RPCURL:      rpcURL,
+			NetworkType: devnet.Spec.ForkNetwork,
 		}
 	}
 
