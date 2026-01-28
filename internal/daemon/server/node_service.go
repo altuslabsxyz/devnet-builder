@@ -11,6 +11,7 @@ import (
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/server/ante"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	"google.golang.org/grpc"
@@ -26,6 +27,7 @@ type NodeService struct {
 	manager *controller.Manager
 	runtime runtime.NodeRuntime
 	logger  *slog.Logger
+	ante    *ante.AnteHandler
 }
 
 // NewNodeService creates a new NodeService.
@@ -38,6 +40,17 @@ func NewNodeService(s store.Store, m *controller.Manager, r runtime.NodeRuntime)
 	}
 }
 
+// NewNodeServiceWithAnte creates a new NodeService with ante handler.
+func NewNodeServiceWithAnte(s store.Store, m *controller.Manager, r runtime.NodeRuntime, anteHandler *ante.AnteHandler) *NodeService {
+	return &NodeService{
+		store:   s,
+		manager: m,
+		runtime: r,
+		logger:  slog.Default(),
+		ante:    anteHandler,
+	}
+}
+
 // SetLogger sets the logger for the service.
 func (s *NodeService) SetLogger(logger *slog.Logger) {
 	s.logger = logger
@@ -45,8 +58,14 @@ func (s *NodeService) SetLogger(logger *slog.Logger) {
 
 // GetNode retrieves a node by devnet name and index.
 func (s *NodeService) GetNode(ctx context.Context, req *v1.GetNodeRequest) (*v1.GetNodeResponse, error) {
-	if req.DevnetName == "" {
-		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
+	if s.ante != nil {
+		if err := s.ante.ValidateGetNode(ctx, req); err != nil {
+			return nil, ante.ToGRPCError(err)
+		}
+	} else {
+		if req.DevnetName == "" {
+			return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
+		}
 	}
 
 	// Use namespace from request, empty string uses default namespace
@@ -101,8 +120,14 @@ func (s *NodeService) ListNodes(ctx context.Context, req *v1.ListNodesRequest) (
 
 // StartNode starts a stopped node.
 func (s *NodeService) StartNode(ctx context.Context, req *v1.StartNodeRequest) (*v1.StartNodeResponse, error) {
-	if req.DevnetName == "" {
-		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
+	if s.ante != nil {
+		if err := s.ante.ValidateStartNode(ctx, req); err != nil {
+			return nil, ante.ToGRPCError(err)
+		}
+	} else {
+		if req.DevnetName == "" {
+			return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
+		}
 	}
 
 	// Use namespace from request, default if empty
@@ -146,8 +171,14 @@ func (s *NodeService) StartNode(ctx context.Context, req *v1.StartNodeRequest) (
 
 // StopNode stops a running node.
 func (s *NodeService) StopNode(ctx context.Context, req *v1.StopNodeRequest) (*v1.StopNodeResponse, error) {
-	if req.DevnetName == "" {
-		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
+	if s.ante != nil {
+		if err := s.ante.ValidateStopNode(ctx, req); err != nil {
+			return nil, ante.ToGRPCError(err)
+		}
+	} else {
+		if req.DevnetName == "" {
+			return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
+		}
 	}
 
 	// Use namespace from request, default if empty
@@ -191,8 +222,14 @@ func (s *NodeService) StopNode(ctx context.Context, req *v1.StopNodeRequest) (*v
 
 // RestartNode restarts a node.
 func (s *NodeService) RestartNode(ctx context.Context, req *v1.RestartNodeRequest) (*v1.RestartNodeResponse, error) {
-	if req.DevnetName == "" {
-		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
+	if s.ante != nil {
+		if err := s.ante.ValidateRestartNode(ctx, req); err != nil {
+			return nil, ante.ToGRPCError(err)
+		}
+	} else {
+		if req.DevnetName == "" {
+			return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
+		}
 	}
 
 	// Use namespace from request, default if empty
@@ -232,8 +269,14 @@ func (s *NodeService) RestartNode(ctx context.Context, req *v1.RestartNodeReques
 
 // GetNodeHealth retrieves the health status of a node.
 func (s *NodeService) GetNodeHealth(ctx context.Context, req *v1.GetNodeHealthRequest) (*v1.GetNodeHealthResponse, error) {
-	if req.DevnetName == "" {
-		return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
+	if s.ante != nil {
+		if err := s.ante.ValidateGetNodeHealth(ctx, req); err != nil {
+			return nil, ante.ToGRPCError(err)
+		}
+	} else {
+		if req.DevnetName == "" {
+			return nil, status.Error(codes.InvalidArgument, "devnet_name is required")
+		}
 	}
 
 	// Use namespace from request, empty string uses default namespace

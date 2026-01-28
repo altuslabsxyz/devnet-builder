@@ -18,6 +18,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/provisioner"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/server/ante"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/upgrader"
 	"google.golang.org/grpc"
@@ -208,16 +209,24 @@ func New(config *Config) (*Server, error) {
 	// Create gRPC server
 	grpcServer := grpc.NewServer()
 
+	// Create network service first (needed by ante handler)
+	githubFactory := NewDefaultGitHubClientFactory(config.DataDir, logger)
+	networkSvc := NewNetworkService(githubFactory)
+	networkSvc.SetLogger(logger)
+
+	// Create ante handler for request validation
+	anteHandler := ante.New(st, networkSvc)
+
 	// Register services
-	devnetSvc := NewDevnetService(st, mgr)
+	devnetSvc := NewDevnetServiceWithAnte(st, mgr, anteHandler)
 	devnetSvc.SetLogger(logger)
 	v1.RegisterDevnetServiceServer(grpcServer, devnetSvc)
 
-	nodeSvc := NewNodeService(st, mgr, nodeRuntime)
+	nodeSvc := NewNodeServiceWithAnte(st, mgr, nodeRuntime, anteHandler)
 	nodeSvc.SetLogger(logger)
 	v1.RegisterNodeServiceServer(grpcServer, nodeSvc)
 
-	upgradeSvc := NewUpgradeService(st, mgr)
+	upgradeSvc := NewUpgradeServiceWithAnte(st, mgr, anteHandler)
 	upgradeSvc.SetLogger(logger)
 	v1.RegisterUpgradeServiceServer(grpcServer, upgradeSvc)
 
@@ -225,9 +234,6 @@ func New(config *Config) (*Server, error) {
 	txSvc.SetLogger(logger)
 	v1.RegisterTransactionServiceServer(grpcServer, txSvc)
 
-	githubFactory := NewDefaultGitHubClientFactory(config.DataDir, logger)
-	networkSvc := NewNetworkService(githubFactory)
-	networkSvc.SetLogger(logger)
 	v1.RegisterNetworkServiceServer(grpcServer, networkSvc)
 
 	return &Server{

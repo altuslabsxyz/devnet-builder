@@ -7,6 +7,7 @@ import (
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/server/ante"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	"google.golang.org/grpc/codes"
@@ -19,6 +20,7 @@ type DevnetService struct {
 	store   store.Store
 	manager *controller.Manager
 	logger  *slog.Logger
+	ante    *ante.AnteHandler
 }
 
 // NewDevnetService creates a new DevnetService.
@@ -30,6 +32,16 @@ func NewDevnetService(s store.Store, m *controller.Manager) *DevnetService {
 	}
 }
 
+// NewDevnetServiceWithAnte creates a new DevnetService with ante handler.
+func NewDevnetServiceWithAnte(s store.Store, m *controller.Manager, anteHandler *ante.AnteHandler) *DevnetService {
+	return &DevnetService{
+		store:   s,
+		manager: m,
+		logger:  slog.Default(),
+		ante:    anteHandler,
+	}
+}
+
 // SetLogger sets the logger for the service.
 func (s *DevnetService) SetLogger(logger *slog.Logger) {
 	s.logger = logger
@@ -37,9 +49,16 @@ func (s *DevnetService) SetLogger(logger *slog.Logger) {
 
 // CreateDevnet creates a new devnet.
 func (s *DevnetService) CreateDevnet(ctx context.Context, req *v1.CreateDevnetRequest) (*v1.CreateDevnetResponse, error) {
-	// Validate request
-	if req.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "name is required")
+	// Use ante handler if available
+	if s.ante != nil {
+		if err := s.ante.ValidateCreateDevnet(ctx, req); err != nil {
+			return nil, ante.ToGRPCError(err)
+		}
+	} else {
+		// Fallback to basic validation (backward compatibility)
+		if req.Name == "" {
+			return nil, status.Error(codes.InvalidArgument, "name is required")
+		}
 	}
 
 	// Use namespace from request, default if empty
@@ -248,8 +267,14 @@ func (s *DevnetService) StopDevnet(ctx context.Context, req *v1.StopDevnetReques
 
 // ApplyDevnet creates or updates a devnet (idempotent).
 func (s *DevnetService) ApplyDevnet(ctx context.Context, req *v1.ApplyDevnetRequest) (*v1.ApplyDevnetResponse, error) {
-	if req.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "name is required")
+	if s.ante != nil {
+		if err := s.ante.ValidateApplyDevnet(ctx, req); err != nil {
+			return nil, ante.ToGRPCError(err)
+		}
+	} else {
+		if req.Name == "" {
+			return nil, status.Error(codes.InvalidArgument, "name is required")
+		}
 	}
 
 	namespace := req.Namespace
@@ -326,8 +351,14 @@ func (s *DevnetService) ApplyDevnet(ctx context.Context, req *v1.ApplyDevnetRequ
 
 // UpdateDevnet updates an existing devnet.
 func (s *DevnetService) UpdateDevnet(ctx context.Context, req *v1.UpdateDevnetRequest) (*v1.UpdateDevnetResponse, error) {
-	if req.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "name is required")
+	if s.ante != nil {
+		if err := s.ante.ValidateUpdateDevnet(ctx, req); err != nil {
+			return nil, ante.ToGRPCError(err)
+		}
+	} else {
+		if req.Name == "" {
+			return nil, status.Error(codes.InvalidArgument, "name is required")
+		}
 	}
 
 	namespace := req.Namespace
