@@ -23,6 +23,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/provisioner"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
 	daemontypes "github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/genesis"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/snapshot"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/stateexport"
@@ -685,11 +686,13 @@ func (f *OrchestratorFactory) CreateOrchestrator(networkName string) (provisione
 	// Create infrastructure services for snapshot-based genesis forking
 	snapshotFetcher := snapshot.NewFetcherAdapter(f.dataDir, nil)
 	stateExportSvc := stateexport.NewAdapter(f.dataDir, nil)
+	genesisFetcher := genesis.NewFetcherAdapter(f.dataDir, "", "", false, nil)
 
 	// Create genesis forker with infrastructure for all fork modes
 	genesisForker := provisioner.NewGenesisForker(provisioner.GenesisForkerConfig{
 		DataDir:            f.dataDir,
 		PluginGenesis:      genesisAdapter,
+		GenesisFetcher:     genesisFetcher,
 		SnapshotFetcher:    snapshotFetcher,
 		StateExportService: stateExportSvc,
 		Logger:             f.logger,
