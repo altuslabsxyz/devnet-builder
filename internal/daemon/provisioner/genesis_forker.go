@@ -179,7 +179,8 @@ func (f *GenesisForker) forkFromSnapshotInfra(ctx context.Context, opts ports.Fo
 
 	f.logger.Info("snapshot downloaded",
 		"path", snapshotPath,
-		"fromCache", fromCache)
+		"fromCache", fromCache,
+		"snapshotURL", snapshotURL)
 
 	// Extract snapshot
 	extractDir := filepath.Join(workDir, "data")

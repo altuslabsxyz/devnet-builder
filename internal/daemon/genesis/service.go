@@ -324,7 +324,8 @@ func (s *GenesisService) forkFromSnapshotInfra(ctx context.Context, module netwo
 
 	s.logger.Info("snapshot downloaded",
 		"path", snapshotPath,
-		"fromCache", fromCache)
+		"fromCache", fromCache,
+		"snapshotURL", snapshotURL)
 
 	// Extract snapshot
 	extractDir := filepath.Join(workDir, "data")
