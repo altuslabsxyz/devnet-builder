@@ -137,6 +137,12 @@ func yamlToProtoSpec(yamlSpec *config.YAMLDevnetSpec) *v1.DevnetSpec {
 		FullNodes:   int32(yamlSpec.FullNodes),
 		Mode:        yamlSpec.Mode,
 		SdkVersion:  yamlSpec.NetworkVersion, // YAML uses "networkVersion", proto uses "sdkVersion"
+
+		// Genesis forking options
+		ForkNetwork: yamlSpec.ForkNetwork,
+		GenesisPath: yamlSpec.GenesisPath,
+		SnapshotUrl: yamlSpec.SnapshotURL,
+		RpcUrl:      yamlSpec.RPCURL,
 	}
 
 	// Set defaults
@@ -181,6 +187,20 @@ func printApplyDryRun(devnet *config.YAMLDevnet) {
 
 	if devnet.Spec.FullNodes > 0 {
 		fmt.Printf("  fullNodes:  %d\n", devnet.Spec.FullNodes)
+	}
+
+	// Show fork configuration if specified
+	if devnet.Spec.ForkNetwork != "" {
+		fmt.Printf("  fork:       %s\n", devnet.Spec.ForkNetwork)
+	}
+	if devnet.Spec.GenesisPath != "" {
+		fmt.Printf("  genesis:    %s\n", devnet.Spec.GenesisPath)
+	}
+	if devnet.Spec.SnapshotURL != "" {
+		fmt.Printf("  snapshot:   %s\n", devnet.Spec.SnapshotURL)
+	}
+	if devnet.Spec.RPCURL != "" {
+		fmt.Printf("  rpc:        %s\n", devnet.Spec.RPCURL)
 	}
 
 	// Show labels if present

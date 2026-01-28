@@ -41,6 +41,12 @@ type YAMLDevnetSpec struct {
 	Resources      *YAMLResources     `yaml:"resources,omitempty"`
 	Nodes          []YAMLNodeOverride `yaml:"nodes,omitempty"`
 	Daemon         *YAMLDaemonConfig  `yaml:"daemon,omitempty"`
+
+	// Genesis forking options
+	ForkNetwork string `yaml:"forkNetwork,omitempty"` // Network to fork from (e.g., "mainnet", "testnet")
+	GenesisPath string `yaml:"genesisPath,omitempty"` // Path to local genesis file
+	SnapshotURL string `yaml:"snapshotURL,omitempty"` // URL to fetch snapshot from
+	RPCURL      string `yaml:"rpcURL,omitempty"`      // RPC endpoint URL for genesis forking
 }
 
 // YAMLResources defines resource limits
