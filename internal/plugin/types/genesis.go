@@ -71,3 +71,17 @@ type PluginGenesis interface {
 	// BinaryName returns the binary name for this network
 	BinaryName() string
 }
+
+// FileBasedPluginGenesis extends PluginGenesis with file-based operations
+// for handling large genesis files that exceed gRPC message size limits.
+type FileBasedPluginGenesis interface {
+	PluginGenesis
+
+	// PatchGenesisFile applies network-specific modifications to a genesis file.
+	// This is used for large genesis files that exceed gRPC message size limits.
+	// inputPath: path to the input genesis file
+	// outputPath: path where the modified genesis should be written
+	// opts: patch options to apply
+	// Returns the size of the output file in bytes, or an error.
+	PatchGenesisFile(inputPath, outputPath string, opts GenesisPatchOptions) (int64, error)
+}

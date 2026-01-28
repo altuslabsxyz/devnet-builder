@@ -80,6 +80,16 @@ func (f *GenesisForker) Fork(ctx context.Context, opts ports.ForkOptions) (*port
 		sourceChainID = ""
 	}
 
+	// Check if genesis is large (>1GB) and requires file-based patching
+	// gRPC has a ~2GB message size limit, so use file-based approach for safety
+	const largeGenesisThreshold = 1 << 30 // 1GB
+	if len(genesis) > largeGenesisThreshold {
+		f.logger.Info("large genesis detected, using file-based patching",
+			"size", len(genesis),
+			"threshold", largeGenesisThreshold)
+		return f.patchLargeGenesis(genesis, sourceChainID, opts)
+	}
+
 	// Validate the fetched genesis
 	if f.config.PluginGenesis != nil {
 		if err := f.config.PluginGenesis.ValidateGenesis(genesis); err != nil {
@@ -103,6 +113,68 @@ func (f *GenesisForker) Fork(ctx context.Context, opts ports.ForkOptions) (*port
 
 	return &ports.ForkResult{
 		Genesis:       patched,
+		SourceChainID: sourceChainID,
+		NewChainID:    opts.PatchOpts.ChainID,
+		SourceMode:    opts.Source.Mode,
+		FetchedAt:     time.Now(),
+	}, nil
+}
+
+// patchLargeGenesis handles patching for genesis files that exceed gRPC message size limits.
+// It writes genesis to a temporary file, uses file-based patching, and reads the result back.
+func (f *GenesisForker) patchLargeGenesis(genesis []byte, sourceChainID string, opts ports.ForkOptions) (*ports.ForkResult, error) {
+	// Check if plugin supports file-based patching
+	fileBasedPlugin, ok := f.config.PluginGenesis.(types.FileBasedPluginGenesis)
+	if !ok {
+		return nil, fmt.Errorf("genesis size (%d bytes) exceeds gRPC limit but plugin does not support file-based patching", len(genesis))
+	}
+
+	// Create temporary directory for file-based operations
+	workDir := filepath.Join(f.config.DataDir, "genesis-work", fmt.Sprintf("patch-%d", time.Now().UnixNano()))
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create work dir for large genesis: %w", err)
+	}
+	defer os.RemoveAll(workDir)
+
+	// Write genesis to input file
+	inputPath := filepath.Join(workDir, "genesis-input.json")
+	if err := os.WriteFile(inputPath, genesis, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write genesis to temp file: %w", err)
+	}
+
+	// Apply generic patches first (chain_id, etc.) by reading and writing
+	patched, err := f.applyPatches(genesis, opts.PatchOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply patches: %w", err)
+	}
+
+	// Write patched genesis for plugin processing
+	patchedInputPath := filepath.Join(workDir, "genesis-patched.json")
+	if err := os.WriteFile(patchedInputPath, patched, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write patched genesis: %w", err)
+	}
+
+	// Use file-based plugin patching
+	outputPath := filepath.Join(workDir, "genesis-output.json")
+	f.logger.Info("applying file-based plugin patches",
+		"inputPath", patchedInputPath,
+		"outputPath", outputPath)
+
+	outputSize, err := fileBasedPlugin.PatchGenesisFile(patchedInputPath, outputPath, opts.PatchOpts)
+	if err != nil {
+		return nil, fmt.Errorf("file-based plugin patch failed: %w", err)
+	}
+
+	f.logger.Info("file-based patching complete", "outputSize", outputSize)
+
+	// Read the result back
+	result, err := os.ReadFile(outputPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read patched genesis: %w", err)
+	}
+
+	return &ports.ForkResult{
+		Genesis:       result,
 		SourceChainID: sourceChainID,
 		NewChainID:    opts.PatchOpts.ChainID,
 		SourceMode:    opts.Source.Mode,
