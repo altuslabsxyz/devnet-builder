@@ -328,8 +328,7 @@ func (s *GenesisService) forkFromSnapshotInfra(ctx context.Context, module netwo
 		"snapshotURL", snapshotURL)
 
 	// Extract snapshot
-	extractDir := filepath.Join(workDir, "data")
-	if err := s.snapshotFetcher.Extract(ctx, snapshotPath, extractDir); err != nil {
+	if err := s.snapshotFetcher.Extract(ctx, snapshotPath, workDir); err != nil {
 		return nil, fmt.Errorf("failed to extract snapshot: %w", err)
 	}
 

@@ -183,8 +183,7 @@ func (f *GenesisForker) forkFromSnapshotInfra(ctx context.Context, opts ports.Fo
 		"snapshotURL", snapshotURL)
 
 	// Extract snapshot
-	extractDir := filepath.Join(workDir, "data")
-	if err := f.config.SnapshotFetcher.Extract(ctx, snapshotPath, extractDir); err != nil {
+	if err := f.config.SnapshotFetcher.Extract(ctx, snapshotPath, workDir); err != nil {
 		return nil, fmt.Errorf("failed to extract snapshot: %w", err)
 	}
 
