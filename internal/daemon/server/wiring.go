@@ -5,11 +5,14 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -24,6 +27,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/snapshot"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/stateexport"
 	plugintypes "github.com/altuslabsxyz/devnet-builder/internal/plugin/types"
+	sdknetwork "github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
 // =============================================================================
@@ -50,48 +54,178 @@ func (a *moduleBuilderAdapter) DefaultGitRepo() string {
 }
 
 func (a *moduleBuilderAdapter) DefaultBuildFlags() map[string]string {
-	// Get build config for default network type
+	// Get build config from plugin - this is the authoritative source for build flags
 	cfg, err := a.module.GetBuildConfig("")
 	if err != nil || cfg == nil {
 		return nil
 	}
-	// Convert tags to flags format if needed
+	// Convert BuildConfig to map format for compatibility
 	flags := make(map[string]string)
 	if len(cfg.Tags) > 0 {
 		flags["tags"] = strings.Join(cfg.Tags, ",")
+	}
+	if len(cfg.LDFlags) > 0 {
+		flags["ldflags"] = strings.Join(cfg.LDFlags, " ")
 	}
 	return flags
 }
 
 func (a *moduleBuilderAdapter) BuildBinary(ctx context.Context, opts plugintypes.BuildOptions) error {
-	// Delegate to go build command with appropriate flags
-	// The binary is compiled from the source directory
 	binaryName := a.module.BinaryName()
-	outputPath := fmt.Sprintf("%s/%s", opts.OutputDir, binaryName)
+	outputPath := filepath.Join(opts.OutputDir, binaryName)
 
-	// Build ldflags for version injection
-	ldflags := fmt.Sprintf("-X main.version=%s -X main.commit=%s", opts.GitRef, opts.GitCommit)
+	// Get build config from plugin - plugins define their own build configuration
+	buildCfg, err := a.module.GetBuildConfig("")
+	if err != nil {
+		if opts.Logger != nil {
+			opts.Logger.Warn("failed to get build config from plugin, using defaults", "error", err)
+		}
+	}
 
+	// Check if Makefile exists - most Cosmos SDK chains use make install
+	makefilePath := filepath.Join(opts.SourceDir, "Makefile")
+	if _, err := os.Stat(makefilePath); err == nil {
+		return a.buildWithMake(ctx, opts, buildCfg, outputPath)
+	}
+
+	// Fallback to direct go build
+	return a.buildWithGo(ctx, opts, buildCfg, outputPath)
+}
+
+func (a *moduleBuilderAdapter) buildWithMake(ctx context.Context, opts plugintypes.BuildOptions, buildCfg *sdknetwork.BuildConfig, outputPath string) error {
+	// Pass VERSION and COMMIT as make variables - most Cosmos SDK Makefiles use these
+	makeArgs := []string{"install"}
+	if opts.GitRef != "" {
+		makeArgs = append(makeArgs, fmt.Sprintf("VERSION=%s", opts.GitRef))
+	}
+	if opts.GitCommit != "" {
+		makeArgs = append(makeArgs, fmt.Sprintf("COMMIT=%s", opts.GitCommit))
+	}
+
+	// Start with base environment
+	env := append(os.Environ(),
+		"GO111MODULE=on",
+		fmt.Sprintf("GOBIN=%s", opts.OutputDir),
+		fmt.Sprintf("VERSION=%s", opts.GitRef),
+		fmt.Sprintf("COMMIT=%s", opts.GitCommit),
+	)
+
+	// Apply environment from plugin's build config
+	if buildCfg != nil {
+		for k, v := range buildCfg.Env {
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
+		}
+	}
+
+	// Ensure CGO_ENABLED is set (default to 1 if not specified by plugin)
+	hasCGO := false
+	for _, e := range env {
+		if strings.HasPrefix(e, "CGO_ENABLED=") {
+			hasCGO = true
+			break
+		}
+	}
+	if !hasCGO {
+		env = append(env, "CGO_ENABLED=1")
+	}
+
+	cmd := exec.CommandContext(ctx, "make", makeArgs...)
+	cmd.Dir = opts.SourceDir
+	cmd.Env = env
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if opts.Logger != nil {
+		opts.Logger.Info("running make install", "dir", opts.SourceDir, "version", opts.GitRef)
+	}
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("make install failed: %w\nstdout: %s\nstderr: %s",
+			err, stdout.String(), stderr.String())
+	}
+
+	// Verify binary was created
+	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+		return fmt.Errorf("binary not found at %s after make install", outputPath)
+	}
+
+	return nil
+}
+
+func (a *moduleBuilderAdapter) buildWithGo(ctx context.Context, opts plugintypes.BuildOptions, buildCfg *sdknetwork.BuildConfig, outputPath string) error {
+	binaryName := a.module.BinaryName()
+
+	// Build ldflags from plugin config + version injection
+	var ldflagParts []string
+
+	// Add plugin-provided ldflags first
+	if buildCfg != nil && len(buildCfg.LDFlags) > 0 {
+		ldflagParts = append(ldflagParts, buildCfg.LDFlags...)
+	}
+
+	// Add standard Cosmos SDK version injection flags
+	// These use the standard cosmos-sdk/version package paths
+	ldflagParts = append(ldflagParts,
+		"-w", "-s",
+		fmt.Sprintf("-X github.com/cosmos/cosmos-sdk/version.Name=%s", binaryName),
+		fmt.Sprintf("-X github.com/cosmos/cosmos-sdk/version.AppName=%s", binaryName),
+		fmt.Sprintf("-X github.com/cosmos/cosmos-sdk/version.Version=%s", opts.GitRef),
+		fmt.Sprintf("-X github.com/cosmos/cosmos-sdk/version.Commit=%s", opts.GitCommit),
+	)
+
+	ldflags := strings.Join(ldflagParts, " ")
 	args := []string{"build", "-o", outputPath, "-ldflags", ldflags}
 
-	// Add build tags if present
-	if tags, ok := opts.Flags["tags"]; ok && tags != "" {
+	// Add build tags from plugin config
+	if buildCfg != nil && len(buildCfg.Tags) > 0 {
+		args = append(args, "-tags", strings.Join(buildCfg.Tags, ","))
+	} else if tags, ok := opts.Flags["tags"]; ok && tags != "" {
+		// Fallback to opts.Flags for backward compatibility
 		args = append(args, "-tags", tags)
 	}
 
 	// Add main package path
 	args = append(args, "./cmd/"+binaryName)
 
-	cmd := exec.CommandContext(ctx, "go", args...)
-	cmd.Dir = opts.SourceDir
+	// Build environment
+	env := append(os.Environ(), "GO111MODULE=on")
 
-	if opts.Logger != nil {
-		opts.Logger.Info("building binary", "binary", binaryName, "output", outputPath)
+	// Apply environment from plugin's build config
+	if buildCfg != nil {
+		for k, v := range buildCfg.Env {
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
+		}
 	}
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("build failed: %w\noutput: %s", err, string(output))
+	// Ensure CGO_ENABLED is set (default to 1 if not specified by plugin)
+	hasCGO := false
+	for _, e := range env {
+		if strings.HasPrefix(e, "CGO_ENABLED=") {
+			hasCGO = true
+			break
+		}
+	}
+	if !hasCGO {
+		env = append(env, "CGO_ENABLED=1")
+	}
+
+	cmd := exec.CommandContext(ctx, "go", args...)
+	cmd.Dir = opts.SourceDir
+	cmd.Env = env
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if opts.Logger != nil {
+		opts.Logger.Info("building binary", "binary", binaryName, "output", outputPath, "ldflags", ldflags)
+	}
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("go build failed: %w\nstdout: %s\nstderr: %s",
+			err, stdout.String(), stderr.String())
 	}
 
 	return nil
