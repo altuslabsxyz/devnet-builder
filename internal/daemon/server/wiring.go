@@ -1,7 +1,7 @@
 // internal/daemon/server/wiring.go
 // Package server provides wiring for the daemon server.
 // This file contains dependency injection for the provisioning system,
-// adapting the pattern from cmd/dvb/wiring.go for daemon context.
+// using NetworkModule from the global registry (populated by loaded plugins).
 package server
 
 import (
@@ -12,124 +12,248 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/builder"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/provisioner"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
-	"github.com/altuslabsxyz/devnet-builder/internal/plugin/cosmos"
+	daemontypes "github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
 	plugintypes "github.com/altuslabsxyz/devnet-builder/internal/plugin/types"
 )
 
 // =============================================================================
-// Network Plugin Registry
+// NetworkModule Adapters
 // =============================================================================
+// These adapters bridge NetworkModule (new interface) to the old plugin types
+// (PluginBuilder, PluginGenesis, PluginInitializer). This allows gradual migration.
 
-// NetworkPlugin bundles all plugin interfaces for a specific network type.
-type NetworkPlugin struct {
-	// Name is the network identifier (e.g., "stable", "cosmos")
-	Name string
-
-	// BinaryName is the chain binary name (e.g., "stabled", "gaiad")
-	BinaryName string
-
-	// DefaultRepo is the default git repository for the binary
-	DefaultRepo string
-
-	// Builder handles binary compilation
-	Builder plugintypes.PluginBuilder
-
-	// Genesis handles genesis operations
-	Genesis plugintypes.PluginGenesis
-
-	// Initializer handles node initialization
-	Initializer plugintypes.PluginInitializer
-
-	// Runtime provides container/process runtime configuration
-	Runtime runtime.PluginRuntime
+// moduleBuilderAdapter adapts NetworkModule to plugintypes.PluginBuilder.
+type moduleBuilderAdapter struct {
+	module network.NetworkModule
 }
 
-// NetworkRegistry maps network names to their plugin configurations.
-type NetworkRegistry struct {
-	networks map[string]*NetworkPlugin
+func (a *moduleBuilderAdapter) BinaryName() string {
+	return a.module.BinaryName()
 }
 
-// NewNetworkRegistry creates a registry with all supported networks.
-func NewNetworkRegistry() *NetworkRegistry {
-	r := &NetworkRegistry{
-		networks: make(map[string]*NetworkPlugin),
+func (a *moduleBuilderAdapter) DefaultGitRepo() string {
+	src := a.module.BinarySource()
+	if src.IsLocal() {
+		return src.LocalPath
+	}
+	return fmt.Sprintf("github.com/%s/%s", src.Owner, src.Repo)
+}
+
+func (a *moduleBuilderAdapter) DefaultBuildFlags() map[string]string {
+	// Get build config for default network type
+	cfg, err := a.module.GetBuildConfig("")
+	if err != nil || cfg == nil {
+		return nil
+	}
+	// Convert tags to flags format if needed
+	flags := make(map[string]string)
+	if len(cfg.Tags) > 0 {
+		flags["tags"] = strings.Join(cfg.Tags, ",")
+	}
+	return flags
+}
+
+func (a *moduleBuilderAdapter) BuildBinary(ctx context.Context, opts plugintypes.BuildOptions) error {
+	// Delegate to go build command with appropriate flags
+	// The binary is compiled from the source directory
+	binaryName := a.module.BinaryName()
+	outputPath := fmt.Sprintf("%s/%s", opts.OutputDir, binaryName)
+
+	// Build ldflags for version injection
+	ldflags := fmt.Sprintf("-X main.version=%s -X main.commit=%s", opts.GitRef, opts.GitCommit)
+
+	args := []string{"build", "-o", outputPath, "-ldflags", ldflags}
+
+	// Add build tags if present
+	if tags, ok := opts.Flags["tags"]; ok && tags != "" {
+		args = append(args, "-tags", tags)
 	}
 
-	// Register supported networks
-	r.registerStable()
-	r.registerCosmos()
+	// Add main package path
+	args = append(args, "./cmd/"+binaryName)
 
-	return r
-}
+	cmd := exec.CommandContext(ctx, "go", args...)
+	cmd.Dir = opts.SourceDir
 
-// Get returns the plugin for a network, or an error if not found.
-func (r *NetworkRegistry) Get(name string) (*NetworkPlugin, error) {
-	plugin, ok := r.networks[name]
-	if !ok {
-		names := make([]string, 0, len(r.networks))
-		for n := range r.networks {
-			names = append(names, n)
-		}
-		return nil, fmt.Errorf("unknown network %q (supported: %v)", name, names)
+	if opts.Logger != nil {
+		opts.Logger.Info("building binary", "binary", binaryName, "output", outputPath)
 	}
-	return plugin, nil
-}
 
-// GetPluginRuntime returns the PluginRuntime for a network.
-func (r *NetworkRegistry) GetPluginRuntime(name string) (runtime.PluginRuntime, error) {
-	plugin, err := r.Get(name)
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("build failed: %w\noutput: %s", err, string(output))
 	}
-	return plugin.Runtime, nil
+
+	return nil
 }
 
-// registerStable registers the Stable network (stablelabs chain).
-func (r *NetworkRegistry) registerStable() {
-	r.networks["stable"] = &NetworkPlugin{
-		Name:        "stable",
-		BinaryName:  "stabled",
-		DefaultRepo: "github.com/stablelabs/stable",
-		Builder:     cosmos.NewCosmosBuilder("stabled", "github.com/stablelabs/stable"),
-		Genesis: cosmos.NewCosmosGenesis("stabled").
-			WithRPCEndpoint("mainnet", "https://rpc.stable.io").
-			WithRPCEndpoint("testnet", "https://rpc-testnet.stable.io"),
-		Initializer: cosmos.NewCosmosInitializer("stabled"),
-		Runtime:     cosmos.NewCosmosRuntime("stabled"),
+func (a *moduleBuilderAdapter) ValidateBinary(ctx context.Context, binaryPath string) error {
+	// Run binary with --version or version flag to validate it works
+	cmd := exec.CommandContext(ctx, binaryPath, "version")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Try --version as alternative
+		cmd = exec.CommandContext(ctx, binaryPath, "--version")
+		output, err = cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("binary validation failed: %w\noutput: %s", err, string(output))
+		}
 	}
+	return nil
 }
 
-// registerCosmos registers the Cosmos Hub network.
-func (r *NetworkRegistry) registerCosmos() {
-	cosmosPlugin := &NetworkPlugin{
-		Name:        "cosmos",
-		BinaryName:  "gaiad",
-		DefaultRepo: "github.com/cosmos/gaia",
-		Builder:     cosmos.NewCosmosBuilder("gaiad", "github.com/cosmos/gaia"),
-		Genesis:     cosmos.NewCosmosGenesis("gaiad"),
-		Initializer: cosmos.NewCosmosInitializer("gaiad"),
-		Runtime:     cosmos.NewCosmosRuntime("gaiad"),
-	}
-	r.networks["cosmos"] = cosmosPlugin
-	r.networks["gaia"] = cosmosPlugin // alias
+// Ensure interface compliance
+var _ plugintypes.PluginBuilder = (*moduleBuilderAdapter)(nil)
+
+// moduleGenesisAdapter adapts NetworkModule to plugintypes.PluginGenesis.
+type moduleGenesisAdapter struct {
+	module network.NetworkModule
 }
+
+func (a *moduleGenesisAdapter) GetRPCEndpoint(networkType string) string {
+	return a.module.RPCEndpoint(networkType)
+}
+
+func (a *moduleGenesisAdapter) GetSnapshotURL(networkType string) string {
+	return a.module.SnapshotURL(networkType)
+}
+
+func (a *moduleGenesisAdapter) BinaryName() string {
+	return a.module.BinaryName()
+}
+
+func (a *moduleGenesisAdapter) ValidateGenesis(genesis []byte) error {
+	// Basic validation: check if genesis is valid JSON with required fields
+	var gen struct {
+		ChainID     string          `json:"chain_id"`
+		GenesisTime string          `json:"genesis_time"`
+		AppState    json.RawMessage `json:"app_state"`
+	}
+	if err := json.Unmarshal(genesis, &gen); err != nil {
+		return fmt.Errorf("invalid genesis JSON: %w", err)
+	}
+	if gen.ChainID == "" {
+		return fmt.Errorf("genesis missing chain_id")
+	}
+	return nil
+}
+
+func (a *moduleGenesisAdapter) PatchGenesis(genesis []byte, opts plugintypes.GenesisPatchOptions) ([]byte, error) {
+	// Apply patches via the module's ModifyGenesis
+	modifyOpts := network.GenesisOptions{
+		ChainID: opts.ChainID,
+	}
+	return a.module.ModifyGenesis(genesis, modifyOpts)
+}
+
+func (a *moduleGenesisAdapter) ExportCommandArgs(homeDir string) []string {
+	return a.module.ExportCommand(homeDir)
+}
+
+// Ensure interface compliance
+var _ plugintypes.PluginGenesis = (*moduleGenesisAdapter)(nil)
+
+// moduleInitializerAdapter adapts NetworkModule to plugintypes.PluginInitializer.
+type moduleInitializerAdapter struct {
+	module network.NetworkModule
+}
+
+func (a *moduleInitializerAdapter) BinaryName() string {
+	return a.module.BinaryName()
+}
+
+func (a *moduleInitializerAdapter) DefaultChainID() string {
+	return a.module.DefaultChainID()
+}
+
+func (a *moduleInitializerAdapter) DefaultMoniker(index int) string {
+	return a.module.DefaultMoniker(index)
+}
+
+func (a *moduleInitializerAdapter) InitCommandArgs(homeDir, moniker, chainID string) []string {
+	cmd := a.module.InitCommand(homeDir, chainID, moniker)
+	// The InitCommand returns full args
+	if len(cmd) > 0 {
+		return cmd
+	}
+	return nil
+}
+
+func (a *moduleInitializerAdapter) ConfigDir(homeDir string) string {
+	return a.module.ConfigDir(homeDir)
+}
+
+func (a *moduleInitializerAdapter) DataDir(homeDir string) string {
+	return a.module.DataDir(homeDir)
+}
+
+func (a *moduleInitializerAdapter) KeyringDir(homeDir string) string {
+	return a.module.KeyringDir(homeDir, "test")
+}
+
+// Ensure interface compliance
+var _ plugintypes.PluginInitializer = (*moduleInitializerAdapter)(nil)
+
+// moduleRuntimeAdapter adapts NetworkModule to runtime.PluginRuntime.
+type moduleRuntimeAdapter struct {
+	module network.NetworkModule
+}
+
+func (a *moduleRuntimeAdapter) StartCommand(node *daemontypes.Node) []string {
+	// Get home directory from node spec
+	homeDir := node.Spec.HomeDir
+	if homeDir == "" {
+		homeDir = a.module.DefaultNodeHome()
+	}
+	return a.module.StartCommand(homeDir)
+}
+
+func (a *moduleRuntimeAdapter) StartEnv(node *daemontypes.Node) map[string]string {
+	// Return empty env map - can be extended per-network if needed
+	return nil
+}
+
+func (a *moduleRuntimeAdapter) StopSignal() syscall.Signal {
+	// SIGTERM is standard for graceful shutdown
+	return syscall.SIGTERM
+}
+
+func (a *moduleRuntimeAdapter) GracePeriod() time.Duration {
+	// 10 seconds is reasonable for Cosmos SDK nodes
+	return 10 * time.Second
+}
+
+func (a *moduleRuntimeAdapter) HealthEndpoint(node *daemontypes.Node) string {
+	// Standard Cosmos SDK health endpoint
+	ports := a.module.DefaultPorts()
+	return fmt.Sprintf("http://localhost:%d/health", ports.RPC)
+}
+
+func (a *moduleRuntimeAdapter) ContainerHomePath() string {
+	return a.module.DockerHomeDir()
+}
+
+// Ensure interface compliance
+var _ runtime.PluginRuntime = (*moduleRuntimeAdapter)(nil)
 
 // =============================================================================
-// Node Initializer Adapter
+// Node Initializer Adapter (ports.NodeInitializer)
 // =============================================================================
 
 // nodeInitializerAdapter implements ports.NodeInitializer and provisioner.BinaryPathUpdater.
-// This adapter bridges the plugin interface to the port interface expected by
+// This adapter bridges the NetworkModule interface to the port interface expected by
 // the orchestrator. It supports deferred binary path injection since the
 // daemon creates the orchestrator before the binary is built.
 type nodeInitializerAdapter struct {
-	plugin     plugintypes.PluginInitializer
-	binaryName string // Binary name (e.g., "stabled", "gaiad")
+	module     network.NetworkModule
 	binaryPath string // Full path to binary (set after build via SetBinaryPath)
 	logger     *slog.Logger
 	mu         sync.RWMutex // Protects binaryPath
@@ -143,11 +267,10 @@ var _ provisioner.BinaryPathUpdater = (*nodeInitializerAdapter)(nil)
 
 // newNodeInitializerAdapter creates an adapter implementing ports.NodeInitializer.
 // The binaryPath is not set at construction time; call SetBinaryPath after build.
-func newNodeInitializerAdapter(plugin plugintypes.PluginInitializer, binaryName string, logger *slog.Logger) *nodeInitializerAdapter {
+func newNodeInitializerAdapter(module network.NetworkModule, logger *slog.Logger) *nodeInitializerAdapter {
 	return &nodeInitializerAdapter{
-		plugin:     plugin,
-		binaryName: binaryName,
-		logger:     logger,
+		module: module,
+		logger: logger,
 	}
 }
 
@@ -176,8 +299,8 @@ func (a *nodeInitializerAdapter) Initialize(ctx context.Context, nodeDir, monike
 		return fmt.Errorf("binary path not set; SetBinaryPath must be called before Initialize")
 	}
 
-	// Get init command args from plugin
-	args := a.plugin.InitCommandArgs(nodeDir, moniker, chainID)
+	// Get init command args from module
+	args := a.module.InitCommand(nodeDir, chainID, moniker)
 
 	// Run the init command
 	cmd := exec.CommandContext(ctx, binaryPath, args...)
@@ -375,44 +498,50 @@ func (a *nodeInitializerAdapter) GetTestMnemonic(validatorIndex int) string {
 // =============================================================================
 
 // OrchestratorFactory creates orchestrators for the daemon.
+// It uses the global network registry to obtain NetworkModules from loaded plugins.
 type OrchestratorFactory struct {
-	registry *NetworkRegistry
-	dataDir  string
-	logger   *slog.Logger
+	dataDir string
+	logger  *slog.Logger
 }
 
 // NewOrchestratorFactory creates a new orchestrator factory.
 func NewOrchestratorFactory(dataDir string, logger *slog.Logger) *OrchestratorFactory {
 	return &OrchestratorFactory{
-		registry: NewNetworkRegistry(),
-		dataDir:  dataDir,
-		logger:   logger,
+		dataDir: dataDir,
+		logger:  logger,
 	}
 }
 
 // GetBuilder implements builder.PluginLoader interface.
 func (f *OrchestratorFactory) GetBuilder(pluginName string) (plugintypes.PluginBuilder, error) {
-	plugin, err := f.registry.Get(pluginName)
+	module, err := network.Get(pluginName)
 	if err != nil {
 		return nil, err
 	}
-	return plugin.Builder, nil
+	return &moduleBuilderAdapter{module: module}, nil
 }
 
 // GetPluginRuntime returns the PluginRuntime for a network.
 func (f *OrchestratorFactory) GetPluginRuntime(pluginName string) (runtime.PluginRuntime, error) {
-	return f.registry.GetPluginRuntime(pluginName)
+	module, err := network.Get(pluginName)
+	if err != nil {
+		return nil, err
+	}
+	return &moduleRuntimeAdapter{module: module}, nil
 }
 
 // CreateOrchestrator creates an Orchestrator for the given network.
 // In daemon mode, the orchestrator is configured to skip the start phase
 // (SkipStart=true in ProvisionOptions), so NodeRuntime is not needed.
 // Returns provisioner.Orchestrator interface for testability.
-func (f *OrchestratorFactory) CreateOrchestrator(network string) (provisioner.Orchestrator, error) {
-	plugin, err := f.registry.Get(network)
+func (f *OrchestratorFactory) CreateOrchestrator(networkName string) (provisioner.Orchestrator, error) {
+	module, err := network.Get(networkName)
 	if err != nil {
 		return nil, err
 	}
+
+	// Create adapters for the old plugin interfaces
+	genesisAdapter := &moduleGenesisAdapter{module: module}
 
 	// Create binary builder
 	binaryBuilder := builder.NewDefaultBuilder(f.dataDir, f, f.logger)
@@ -420,13 +549,12 @@ func (f *OrchestratorFactory) CreateOrchestrator(network string) (provisioner.Or
 	// Create genesis forker
 	genesisForker := provisioner.NewGenesisForker(provisioner.GenesisForkerConfig{
 		DataDir:       f.dataDir,
-		PluginGenesis: plugin.Genesis,
+		PluginGenesis: genesisAdapter,
 		Logger:        f.logger,
 	})
 
 	// Create node initializer adapter
-	// Note: The adapter is a placeholder since actual init uses the built binary path
-	nodeInitializer := newNodeInitializerAdapter(plugin.Initializer, plugin.BinaryName, f.logger)
+	nodeInitializer := newNodeInitializerAdapter(module, f.logger)
 
 	// Assemble orchestrator config
 	// NodeRuntime and HealthChecker are nil since daemon uses SkipStart=true
@@ -442,4 +570,9 @@ func (f *OrchestratorFactory) CreateOrchestrator(network string) (provisioner.Or
 	}
 
 	return provisioner.NewProvisioningOrchestrator(config), nil
+}
+
+// ListAvailableNetworks returns the names of all registered networks.
+func (f *OrchestratorFactory) ListAvailableNetworks() []string {
+	return network.List()
 }

@@ -1,4 +1,5 @@
-package main
+// internal/infrastructure/network/adapter.go
+package network
 
 import (
 	"fmt"
@@ -7,37 +8,36 @@ import (
 	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
-	internalNetwork "github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
 	pkgNetwork "github.com/altuslabsxyz/devnet-builder/pkg/network"
 )
 
-// pluginAdapter adapts pkg/network.Module to internal/network.NetworkModule.
+// PluginAdapter adapts pkg/network.Module to internal/network.NetworkModule.
 // This allows plugins to be registered with the internal network registry.
-type pluginAdapter struct {
+type PluginAdapter struct {
 	module pkgNetwork.Module
 }
 
-// newPluginAdapter creates a new adapter for a plugin module.
-func newPluginAdapter(module pkgNetwork.Module) *pluginAdapter {
-	return &pluginAdapter{module: module}
+// NewPluginAdapter creates a new adapter for a plugin module.
+func NewPluginAdapter(module pkgNetwork.Module) *PluginAdapter {
+	return &PluginAdapter{module: module}
 }
 
 // Verify interface compliance at compile time.
-var _ internalNetwork.NetworkModule = (*pluginAdapter)(nil)
+var _ NetworkModule = (*PluginAdapter)(nil)
 
 // ============================================
 // NetworkIdentity
 // ============================================
 
-func (a *pluginAdapter) Name() string {
+func (a *PluginAdapter) Name() string {
 	return a.module.Name()
 }
 
-func (a *pluginAdapter) DisplayName() string {
+func (a *PluginAdapter) DisplayName() string {
 	return a.module.DisplayName()
 }
 
-func (a *pluginAdapter) Version() string {
+func (a *PluginAdapter) Version() string {
 	return a.module.Version()
 }
 
@@ -45,14 +45,14 @@ func (a *pluginAdapter) Version() string {
 // BinaryProvider
 // ============================================
 
-func (a *pluginAdapter) BinaryName() string {
+func (a *PluginAdapter) BinaryName() string {
 	return a.module.BinaryName()
 }
 
-func (a *pluginAdapter) BinarySource() internalNetwork.BinarySource {
+func (a *PluginAdapter) BinarySource() BinarySource {
 	src := a.module.BinarySource()
-	return internalNetwork.BinarySource{
-		Type:      internalNetwork.BinarySourceType(src.Type),
+	return BinarySource{
+		Type:      BinarySourceType(src.Type),
 		Owner:     src.Owner,
 		Repo:      src.Repo,
 		LocalPath: src.LocalPath,
@@ -60,11 +60,11 @@ func (a *pluginAdapter) BinarySource() internalNetwork.BinarySource {
 	}
 }
 
-func (a *pluginAdapter) DefaultBinaryVersion() string {
+func (a *PluginAdapter) DefaultBinaryVersion() string {
 	return a.module.DefaultBinaryVersion()
 }
 
-func (a *pluginAdapter) GetBuildConfig(networkType string) (*pkgNetwork.BuildConfig, error) {
+func (a *PluginAdapter) GetBuildConfig(networkType string) (*pkgNetwork.BuildConfig, error) {
 	return a.module.GetBuildConfig(networkType)
 }
 
@@ -72,17 +72,17 @@ func (a *pluginAdapter) GetBuildConfig(networkType string) (*pkgNetwork.BuildCon
 // ChainConfig
 // ============================================
 
-func (a *pluginAdapter) Bech32Prefix() string {
+func (a *PluginAdapter) Bech32Prefix() string {
 	return a.module.Bech32Prefix()
 }
 
-func (a *pluginAdapter) BaseDenom() string {
+func (a *PluginAdapter) BaseDenom() string {
 	return a.module.BaseDenom()
 }
 
-func (a *pluginAdapter) GenesisConfig() internalNetwork.GenesisConfig {
+func (a *PluginAdapter) GenesisConfig() GenesisConfig {
 	cfg := a.module.GenesisConfig()
-	return internalNetwork.GenesisConfig{
+	return GenesisConfig{
 		ChainIDPattern:    cfg.ChainIDPattern,
 		EVMChainID:        cfg.EVMChainID,
 		BaseDenom:         cfg.BaseDenom,
@@ -99,7 +99,7 @@ func (a *pluginAdapter) GenesisConfig() internalNetwork.GenesisConfig {
 	}
 }
 
-func (a *pluginAdapter) DefaultChainID() string {
+func (a *PluginAdapter) DefaultChainID() string {
 	return a.module.DefaultChainID()
 }
 
@@ -107,15 +107,15 @@ func (a *pluginAdapter) DefaultChainID() string {
 // DockerConfig
 // ============================================
 
-func (a *pluginAdapter) DockerImage() string {
+func (a *PluginAdapter) DockerImage() string {
 	return a.module.DockerImage()
 }
 
-func (a *pluginAdapter) DockerImageTag(version string) string {
+func (a *PluginAdapter) DockerImageTag(version string) string {
 	return a.module.DockerImageTag(version)
 }
 
-func (a *pluginAdapter) DockerHomeDir() string {
+func (a *PluginAdapter) DockerHomeDir() string {
 	return a.module.DockerHomeDir()
 }
 
@@ -123,19 +123,19 @@ func (a *pluginAdapter) DockerHomeDir() string {
 // CommandBuilder
 // ============================================
 
-func (a *pluginAdapter) InitCommand(homeDir, chainID, moniker string) []string {
+func (a *PluginAdapter) InitCommand(homeDir, chainID, moniker string) []string {
 	return a.module.InitCommand(homeDir, chainID, moniker)
 }
 
-func (a *pluginAdapter) StartCommand(homeDir string) []string {
+func (a *PluginAdapter) StartCommand(homeDir string) []string {
 	return a.module.StartCommand(homeDir)
 }
 
-func (a *pluginAdapter) ExportCommand(homeDir string) []string {
+func (a *PluginAdapter) ExportCommand(homeDir string) []string {
 	return a.module.ExportCommand(homeDir)
 }
 
-func (a *pluginAdapter) DefaultMoniker(index int) string {
+func (a *PluginAdapter) DefaultMoniker(index int) string {
 	// Standard Cosmos SDK naming convention for validators/nodes
 	return fmt.Sprintf("node%d", index)
 }
@@ -144,25 +144,25 @@ func (a *pluginAdapter) DefaultMoniker(index int) string {
 // ProcessConfig
 // ============================================
 
-func (a *pluginAdapter) DefaultNodeHome() string {
+func (a *PluginAdapter) DefaultNodeHome() string {
 	return a.module.DefaultNodeHome()
 }
 
-func (a *pluginAdapter) PIDFileName() string {
+func (a *PluginAdapter) PIDFileName() string {
 	return a.module.PIDFileName()
 }
 
-func (a *pluginAdapter) LogFileName() string {
+func (a *PluginAdapter) LogFileName() string {
 	return a.module.LogFileName()
 }
 
-func (a *pluginAdapter) ProcessPattern() string {
+func (a *PluginAdapter) ProcessPattern() string {
 	return a.module.ProcessPattern()
 }
 
-func (a *pluginAdapter) DefaultPorts() internalNetwork.PortConfig {
+func (a *PluginAdapter) DefaultPorts() PortConfig {
 	ports := a.module.DefaultPorts()
-	return internalNetwork.PortConfig{
+	return PortConfig{
 		RPC:     ports.RPC,
 		P2P:     ports.P2P,
 		GRPC:    ports.GRPC,
@@ -173,17 +173,17 @@ func (a *pluginAdapter) DefaultPorts() internalNetwork.PortConfig {
 	}
 }
 
-func (a *pluginAdapter) ConfigDir(homeDir string) string {
+func (a *PluginAdapter) ConfigDir(homeDir string) string {
 	// Standard Cosmos SDK convention: {homeDir}/config
 	return homeDir + "/config"
 }
 
-func (a *pluginAdapter) DataDir(homeDir string) string {
+func (a *PluginAdapter) DataDir(homeDir string) string {
 	// Standard Cosmos SDK convention: {homeDir}/data
 	return homeDir + "/data"
 }
 
-func (a *pluginAdapter) KeyringDir(homeDir string, backend string) string {
+func (a *PluginAdapter) KeyringDir(homeDir string, backend string) string {
 	// Standard Cosmos SDK convention: {homeDir}/keyring-{backend}
 	return fmt.Sprintf("%s/keyring-%s", homeDir, backend)
 }
@@ -192,7 +192,7 @@ func (a *pluginAdapter) KeyringDir(homeDir string, backend string) string {
 // GenesisModifier
 // ============================================
 
-func (a *pluginAdapter) ModifyGenesis(genesis []byte, opts internalNetwork.GenesisOptions) ([]byte, error) {
+func (a *PluginAdapter) ModifyGenesis(genesis []byte, opts GenesisOptions) ([]byte, error) {
 	// Convert validators from internal to pkg types
 	validators := make([]pkgNetwork.ValidatorInfo, len(opts.Validators))
 	for i, v := range opts.Validators {
@@ -214,7 +214,7 @@ func (a *pluginAdapter) ModifyGenesis(genesis []byte, opts internalNetwork.Genes
 
 // ModifyGenesisFile implements FileBasedGenesisModifier for large genesis files.
 // This bypasses gRPC message size limits by using file paths instead of raw bytes.
-func (a *pluginAdapter) ModifyGenesisFile(inputPath, outputPath string, opts internalNetwork.GenesisOptions) (int64, error) {
+func (a *PluginAdapter) ModifyGenesisFile(inputPath, outputPath string, opts GenesisOptions) (int64, error) {
 	// Check if underlying module supports file-based modification
 	fileModifier, ok := a.module.(pkgNetwork.FileBasedGenesisModifier)
 	if !ok {
@@ -245,7 +245,7 @@ func (a *pluginAdapter) ModifyGenesisFile(inputPath, outputPath string, opts int
 // DevnetGenerator
 // ============================================
 
-func (a *pluginAdapter) NewGenerator(config *internalNetwork.GeneratorConfig, logger log.Logger) (internalNetwork.Generator, error) {
+func (a *PluginAdapter) NewGenerator(config *GeneratorConfig, logger log.Logger) (Generator, error) {
 	// Plugins use GenerateDevnet directly, not the Generator pattern
 	// Return a plugin-based generator adapter
 	return &pluginGeneratorAdapter{
@@ -255,7 +255,7 @@ func (a *pluginAdapter) NewGenerator(config *internalNetwork.GeneratorConfig, lo
 	}, nil
 }
 
-func (a *pluginAdapter) DefaultGeneratorConfig() *internalNetwork.GeneratorConfig {
+func (a *PluginAdapter) DefaultGeneratorConfig() *GeneratorConfig {
 	cfg := a.module.DefaultGeneratorConfig()
 
 	// Parse account balance from JSON string
@@ -276,7 +276,7 @@ func (a *pluginAdapter) DefaultGeneratorConfig() *internalNetwork.GeneratorConfi
 		validatorStake = math.ZeroInt()
 	}
 
-	return &internalNetwork.GeneratorConfig{
+	return &GeneratorConfig{
 		NumValidators:    cfg.NumValidators,
 		NumAccounts:      cfg.NumAccounts,
 		AccountBalance:   accountBalance,
@@ -291,7 +291,7 @@ func (a *pluginAdapter) DefaultGeneratorConfig() *internalNetwork.GeneratorConfi
 // Validator
 // ============================================
 
-func (a *pluginAdapter) Validate() error {
+func (a *PluginAdapter) Validate() error {
 	return a.module.Validate()
 }
 
@@ -299,15 +299,15 @@ func (a *pluginAdapter) Validate() error {
 // SnapshotProvider
 // ============================================
 
-func (a *pluginAdapter) SnapshotURL(networkType string) string {
+func (a *PluginAdapter) SnapshotURL(networkType string) string {
 	return a.module.SnapshotURL(networkType)
 }
 
-func (a *pluginAdapter) RPCEndpoint(networkType string) string {
+func (a *PluginAdapter) RPCEndpoint(networkType string) string {
 	return a.module.RPCEndpoint(networkType)
 }
 
-func (a *pluginAdapter) AvailableNetworks() []string {
+func (a *PluginAdapter) AvailableNetworks() []string {
 	return a.module.AvailableNetworks()
 }
 
@@ -315,7 +315,7 @@ func (a *pluginAdapter) AvailableNetworks() []string {
 // NodeConfigurator
 // ============================================
 
-func (a *pluginAdapter) GetConfigOverrides(nodeIndex int, opts internalNetwork.NodeConfigOptions) ([]byte, []byte, error) {
+func (a *PluginAdapter) GetConfigOverrides(nodeIndex int, opts NodeConfigOptions) ([]byte, []byte, error) {
 	// Convert internal options to pkg options
 	pkgOpts := pkgNetwork.NodeConfigOptions{
 		ChainID:         opts.ChainID,
@@ -343,10 +343,10 @@ func (a *pluginAdapter) GetConfigOverrides(nodeIndex int, opts internalNetwork.N
 // pluginGeneratorAdapter adapts plugin GenerateDevnet to the Generator interface.
 type pluginGeneratorAdapter struct {
 	module     pkgNetwork.Module
-	config     *internalNetwork.GeneratorConfig
+	config     *GeneratorConfig
 	logger     log.Logger
-	validators []internalNetwork.ValidatorInfo
-	accounts   []internalNetwork.AccountInfo
+	validators []ValidatorInfo
+	accounts   []AccountInfo
 }
 
 // Build generates validators, modifies genesis, and saves to node directories.
@@ -368,12 +368,12 @@ func (g *pluginGeneratorAdapter) Build(genesisFile string) error {
 }
 
 // GetValidators returns the generated validators info.
-func (g *pluginGeneratorAdapter) GetValidators() []internalNetwork.ValidatorInfo {
+func (g *pluginGeneratorAdapter) GetValidators() []ValidatorInfo {
 	// Plugin-based generation stores validators externally
 	// For now, return placeholder data based on config
-	validators := make([]internalNetwork.ValidatorInfo, g.config.NumValidators)
+	validators := make([]ValidatorInfo, g.config.NumValidators)
 	for i := 0; i < g.config.NumValidators; i++ {
-		validators[i] = internalNetwork.ValidatorInfo{
+		validators[i] = ValidatorInfo{
 			Moniker: fmt.Sprintf("node%d", i),
 			Tokens:  math.NewInt(100),
 		}
@@ -382,12 +382,12 @@ func (g *pluginGeneratorAdapter) GetValidators() []internalNetwork.ValidatorInfo
 }
 
 // GetAccounts returns the generated accounts info.
-func (g *pluginGeneratorAdapter) GetAccounts() []internalNetwork.AccountInfo {
+func (g *pluginGeneratorAdapter) GetAccounts() []AccountInfo {
 	// Plugin-based generation stores accounts externally
 	// For now, return placeholder data based on config
-	accounts := make([]internalNetwork.AccountInfo, g.config.NumAccounts)
+	accounts := make([]AccountInfo, g.config.NumAccounts)
 	for i := 0; i < g.config.NumAccounts; i++ {
-		accounts[i] = internalNetwork.AccountInfo{
+		accounts[i] = AccountInfo{
 			Name: fmt.Sprintf("account%d", i),
 		}
 	}
@@ -400,7 +400,7 @@ func (g *pluginGeneratorAdapter) GetAccounts() []internalNetwork.AccountInfo {
 
 // AsStateExporter returns a StateExporter if the underlying module implements it.
 // Returns nil if the module does not support state export.
-func (a *pluginAdapter) AsStateExporter() internalNetwork.StateExporter {
+func (a *PluginAdapter) AsStateExporter() StateExporter {
 	exporter, ok := a.module.(pkgNetwork.StateExporter)
 	if !ok {
 		return nil
@@ -414,7 +414,7 @@ type pluginStateExporterAdapter struct {
 }
 
 // ExportCommandWithOptions returns arguments for exporting genesis/state with options.
-func (a *pluginStateExporterAdapter) ExportCommandWithOptions(homeDir string, opts internalNetwork.ExportOptions) []string {
+func (a *pluginStateExporterAdapter) ExportCommandWithOptions(homeDir string, opts ExportOptions) []string {
 	pkgOpts := pkgNetwork.ExportOptions{
 		ForZeroHeight: opts.ForZeroHeight,
 		JailWhitelist: opts.JailWhitelist,
@@ -436,7 +436,7 @@ func (a *pluginStateExporterAdapter) RequiredModules() []string {
 }
 
 // SnapshotFormat returns the expected snapshot archive format.
-func (a *pluginStateExporterAdapter) SnapshotFormat(networkType string) internalNetwork.SnapshotFormat {
+func (a *pluginStateExporterAdapter) SnapshotFormat(networkType string) SnapshotFormat {
 	format := a.module.SnapshotFormat(networkType)
-	return internalNetwork.SnapshotFormat(format)
+	return SnapshotFormat(format)
 }

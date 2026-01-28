@@ -14,13 +14,14 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// GRPCClient wraps the gRPC DevnetServiceClient, NodeServiceClient, UpgradeServiceClient, and TransactionServiceClient.
+// GRPCClient wraps the gRPC DevnetServiceClient, NodeServiceClient, UpgradeServiceClient, TransactionServiceClient, and NetworkServiceClient.
 type GRPCClient struct {
 	conn        *grpc.ClientConn
 	devnet      v1.DevnetServiceClient
 	node        v1.NodeServiceClient
 	upgrade     v1.UpgradeServiceClient
 	transaction v1.TransactionServiceClient
+	network     v1.NetworkServiceClient
 }
 
 // NewGRPCClient creates a new gRPC client connected to the daemon.
@@ -40,6 +41,7 @@ func NewGRPCClient(socketPath string) (*GRPCClient, error) {
 		node:        v1.NewNodeServiceClient(conn),
 		upgrade:     v1.NewUpgradeServiceClient(conn),
 		transaction: v1.NewTransactionServiceClient(conn),
+		network:     v1.NewNetworkServiceClient(conn),
 	}, nil
 }
 
@@ -467,6 +469,26 @@ func (c *GRPCClient) SubmitGovProposal(ctx context.Context, devnet, proposer, pr
 		return nil, wrapGRPCError(err)
 	}
 	return resp.Transaction, nil
+}
+
+// ListNetworks returns all registered network modules.
+func (c *GRPCClient) ListNetworks(ctx context.Context) ([]*v1.NetworkSummary, error) {
+	resp, err := c.network.ListNetworks(ctx, &v1.ListNetworksRequest{})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp.Networks, nil
+}
+
+// GetNetworkInfo returns detailed information about a specific network module.
+func (c *GRPCClient) GetNetworkInfo(ctx context.Context, name string) (*v1.NetworkInfo, error) {
+	resp, err := c.network.GetNetworkInfo(ctx, &v1.GetNetworkInfoRequest{
+		Name: name,
+	})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return resp.Network, nil
 }
 
 // LogEntry represents a single log line from a node.
