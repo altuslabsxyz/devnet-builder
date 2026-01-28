@@ -4,12 +4,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"text/tabwriter"
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+	k8syaml "sigs.k8s.io/yaml"
 )
 
 // provisionOptions holds options for the provision command
@@ -23,8 +25,9 @@ type provisionOptions struct {
 	mode        string
 	chainID     string
 	sdkVersion  string
-	interactive bool // Use interactive wizard mode
-	listPlugins bool // List available network plugins
+	interactive bool   // Use interactive wizard mode
+	listPlugins bool   // List available network plugins
+	output      string // Output format (yaml)
 }
 
 func newProvisionCmd() *cobra.Command {
@@ -58,7 +61,10 @@ Examples:
   dvb provision --name my-devnet --network cosmos --validators 4
 
   # Provision with network type (mainnet/testnet fork)
-  dvb provision --name my-devnet --network-type mainnet`,
+  dvb provision --name my-devnet --network-type mainnet
+
+  # Output spec as YAML (dry-run, does not create devnet)
+  dvb provision --name my-devnet -o yaml`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// List plugins mode
 			if opts.listPlugins {
@@ -87,6 +93,15 @@ Examples:
 				opts.chainID = wizardOpts.ChainID
 				opts.sdkVersion = wizardOpts.BinaryVersion
 			}
+
+			// Output mode - outputs spec without creating devnet
+			if opts.output != "" {
+				if opts.output != "yaml" {
+					return fmt.Errorf("unsupported output format: %q (supported: yaml)", opts.output)
+				}
+				return formatProvisionYAML(os.Stdout, opts)
+			}
+
 			return runProvision(cmd.Context(), opts)
 		},
 	}
@@ -109,6 +124,9 @@ Examples:
 	cmd.Flags().IntVar(&opts.fullNodes, "full-nodes", 0, "Number of full nodes")
 	cmd.Flags().StringVar(&opts.mode, "mode", "docker", "Execution mode (docker or local)")
 	cmd.Flags().StringVar(&opts.chainID, "chain-id", "", "Chain ID for the devnet (e.g., mainnet-1, mydevnet-1)")
+
+	// Output format
+	cmd.Flags().StringVarP(&opts.output, "output", "o", "", "Output format: yaml (outputs spec without creating devnet)")
 
 	return cmd
 }
@@ -221,5 +239,64 @@ func runProvision(ctx context.Context, opts *provisionOptions) error {
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "View status with: dvb describe %s\n", opts.name)
 
+	return nil
+}
+
+// YAMLProvisionOutput represents a provision spec in kubectl-style YAML format
+type YAMLProvisionOutput struct {
+	APIVersion string                      `json:"apiVersion" yaml:"apiVersion"`
+	Kind       string                      `json:"kind" yaml:"kind"`
+	Metadata   YAMLProvisionMetadataOutput `json:"metadata" yaml:"metadata"`
+	Spec       YAMLProvisionSpecOutput     `json:"spec" yaml:"spec"`
+}
+
+// YAMLProvisionMetadataOutput is the metadata section for provision output
+type YAMLProvisionMetadataOutput struct {
+	Name      string `json:"name" yaml:"name"`
+	Namespace string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+}
+
+// YAMLProvisionSpecOutput is the spec section for provision output
+type YAMLProvisionSpecOutput struct {
+	Network        string `json:"network" yaml:"network"`
+	NetworkType    string `json:"networkType,omitempty" yaml:"networkType,omitempty"`
+	NetworkVersion string `json:"networkVersion,omitempty" yaml:"networkVersion,omitempty"`
+	Validators     int    `json:"validators" yaml:"validators"`
+	FullNodes      int    `json:"fullNodes,omitempty" yaml:"fullNodes,omitempty"`
+	Mode           string `json:"mode" yaml:"mode"`
+	ChainID        string `json:"chainId,omitempty" yaml:"chainId,omitempty"`
+	ForkNetwork    string `json:"forkNetwork,omitempty" yaml:"forkNetwork,omitempty"`
+}
+
+// provisionOptionsToYAML converts provision options to YAML output format
+func provisionOptionsToYAML(opts *provisionOptions) *YAMLProvisionOutput {
+	return &YAMLProvisionOutput{
+		APIVersion: "devnet.lagos/v1",
+		Kind:       "Devnet",
+		Metadata: YAMLProvisionMetadataOutput{
+			Name:      opts.name,
+			Namespace: opts.namespace,
+		},
+		Spec: YAMLProvisionSpecOutput{
+			Network:        opts.network,
+			NetworkType:    opts.networkType,
+			NetworkVersion: opts.sdkVersion,
+			Validators:     opts.validators,
+			FullNodes:      opts.fullNodes,
+			Mode:           opts.mode,
+			ChainID:        opts.chainID,
+			ForkNetwork:    opts.networkType, // ForkNetwork uses same value as NetworkType
+		},
+	}
+}
+
+// formatProvisionYAML outputs provision options as YAML
+func formatProvisionYAML(w io.Writer, opts *provisionOptions) error {
+	yamlOutput := provisionOptionsToYAML(opts)
+	out, err := k8syaml.Marshal(yamlOutput)
+	if err != nil {
+		return fmt.Errorf("failed to marshal yaml: %w", err)
+	}
+	fmt.Fprint(w, string(out))
 	return nil
 }
