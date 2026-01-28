@@ -274,8 +274,10 @@ func (s *BinaryBuilderService) executeBuild(ctx context.Context, sourceDir, outp
 		ldflags = append(ldflags, buildConfig.LDFlags...)
 	}
 	// Add version info
-	ldflags = append(ldflags, fmt.Sprintf("-X main.Version=%s", ref))
-	ldflags = append(ldflags, fmt.Sprintf("-X main.Commit=%s", commit))
+	ldflags = append(ldflags,
+		fmt.Sprintf("-X main.Version=%s", ref),
+		fmt.Sprintf("-X main.Commit=%s", commit),
+	)
 	if len(ldflags) > 0 {
 		args = append(args, "-ldflags", strings.Join(ldflags, " "))
 	}

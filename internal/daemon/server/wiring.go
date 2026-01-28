@@ -133,9 +133,9 @@ func (a *moduleGenesisAdapter) BinaryName() string {
 func (a *moduleGenesisAdapter) ValidateGenesis(genesis []byte) error {
 	// Basic validation: check if genesis is valid JSON with required fields
 	var gen struct {
-		ChainID    string `json:"chain_id"`
-		GenesisTime string `json:"genesis_time"`
-		AppState   json.RawMessage `json:"app_state"`
+		ChainID     string          `json:"chain_id"`
+		GenesisTime string          `json:"genesis_time"`
+		AppState    json.RawMessage `json:"app_state"`
 	}
 	if err := json.Unmarshal(genesis, &gen); err != nil {
 		return fmt.Errorf("invalid genesis JSON: %w", err)

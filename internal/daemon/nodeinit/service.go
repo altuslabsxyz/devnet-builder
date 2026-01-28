@@ -394,7 +394,9 @@ func (s *NodeInitService) mergeTomlConfig(configPath string, overrides []byte) e
 
 	// For now, we'll append the overrides with a clear separator.
 	// A proper implementation would parse and merge TOML.
-	merged := append(existing, []byte("\n# --- Module Config Overrides ---\n")...)
+	merged := make([]byte, 0, len(existing)+len(overrides)+50)
+	merged = append(merged, existing...)
+	merged = append(merged, []byte("\n# --- Module Config Overrides ---\n")...)
 	merged = append(merged, overrides...)
 
 	// Write back

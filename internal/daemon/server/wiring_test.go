@@ -26,16 +26,16 @@ import (
 
 // mockNetworkModule implements network.NetworkModule for testing.
 type mockNetworkModule struct {
-	name             string
-	binaryName       string
-	defaultChainID   string
-	defaultNodeHome  string
-	dockerHomeDir    string
-	initCommand      []string
-	startCommand     []string
-	exportCommand    []string
-	rpcEndpoint      string
-	snapshotURL      string
+	name            string
+	binaryName      string
+	defaultChainID  string
+	defaultNodeHome string
+	dockerHomeDir   string
+	initCommand     []string
+	startCommand    []string
+	exportCommand   []string
+	rpcEndpoint     string
+	snapshotURL     string
 }
 
 func newMockModule(name, binaryName string) *mockNetworkModule {
@@ -69,10 +69,10 @@ func (m *mockNetworkModule) GetBuildConfig(networkType string) (*pkgNetwork.Buil
 }
 
 // ChainConfig
-func (m *mockNetworkModule) Bech32Prefix() string             { return m.name[:3] }
-func (m *mockNetworkModule) BaseDenom() string                { return "u" + m.name }
+func (m *mockNetworkModule) Bech32Prefix() string                 { return m.name[:3] }
+func (m *mockNetworkModule) BaseDenom() string                    { return "u" + m.name }
 func (m *mockNetworkModule) GenesisConfig() network.GenesisConfig { return network.GenesisConfig{} }
-func (m *mockNetworkModule) DefaultChainID() string           { return m.defaultChainID }
+func (m *mockNetworkModule) DefaultChainID() string               { return m.defaultChainID }
 
 // DockerConfig
 func (m *mockNetworkModule) DockerImage() string                  { return m.name + "/node" }
@@ -88,13 +88,13 @@ func (m *mockNetworkModule) ExportCommand(homeDir string) []string { return m.ex
 func (m *mockNetworkModule) DefaultMoniker(index int) string       { return "node" }
 
 // ProcessConfig
-func (m *mockNetworkModule) DefaultNodeHome() string       { return m.defaultNodeHome }
-func (m *mockNetworkModule) PIDFileName() string           { return m.binaryName + ".pid" }
-func (m *mockNetworkModule) LogFileName() string           { return m.binaryName + ".log" }
-func (m *mockNetworkModule) ProcessPattern() string        { return m.binaryName }
+func (m *mockNetworkModule) DefaultNodeHome() string          { return m.defaultNodeHome }
+func (m *mockNetworkModule) PIDFileName() string              { return m.binaryName + ".pid" }
+func (m *mockNetworkModule) LogFileName() string              { return m.binaryName + ".log" }
+func (m *mockNetworkModule) ProcessPattern() string           { return m.binaryName }
 func (m *mockNetworkModule) DefaultPorts() network.PortConfig { return network.DefaultPortConfig() }
-func (m *mockNetworkModule) ConfigDir(homeDir string) string   { return homeDir + "/config" }
-func (m *mockNetworkModule) DataDir(homeDir string) string     { return homeDir + "/data" }
+func (m *mockNetworkModule) ConfigDir(homeDir string) string  { return homeDir + "/config" }
+func (m *mockNetworkModule) DataDir(homeDir string) string    { return homeDir + "/data" }
 func (m *mockNetworkModule) KeyringDir(homeDir string, backend string) string {
 	return homeDir + "/keyring-" + backend
 }
