@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/checker"
@@ -39,6 +40,11 @@ type Config struct {
 	// DockerImage is the default Docker image for nodes.
 	DockerImage string
 }
+
+// shutdownTimeout is the maximum time to wait for workers to stop during shutdown.
+// If workers don't stop within this timeout (e.g., blocked on external processes),
+// shutdown proceeds anyway to prevent hanging forever.
+const shutdownTimeout = 30 * time.Second
 
 // DefaultConfig returns default configuration.
 func DefaultConfig() *Config {
@@ -288,6 +294,12 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	}
 
+	// Cancel context BEFORE shutdown to allow workers to exit gracefully.
+	// This is critical: Manager.Start() waits on ctx.Done() before signaling
+	// that workers have stopped. If we don't cancel here, Shutdown() will
+	// deadlock waiting for workers that are waiting for context cancellation.
+	cancel()
+
 	return s.Shutdown()
 }
 
@@ -302,10 +314,16 @@ func (s *Server) Shutdown() error {
 
 	// Stop controller manager and wait for all workers to complete.
 	// This MUST happen before closing the store to prevent "database not open" errors.
+	// Use a timeout to prevent hanging if workers are blocked on external processes
+	// (e.g., a Cosmos SDK binary deadlocked during genesis export).
 	if s.manager != nil {
-		s.logger.Debug("waiting for controller workers to stop")
-		s.manager.Stop()
-		s.logger.Debug("controller workers stopped")
+		s.logger.Debug("waiting for controller workers to stop", "timeout", shutdownTimeout)
+		graceful := s.manager.StopWithTimeout(shutdownTimeout)
+		if graceful {
+			s.logger.Debug("controller workers stopped gracefully")
+		} else {
+			s.logger.Warn("controller workers did not stop within timeout, proceeding with shutdown")
+		}
 	}
 
 	// Graceful gRPC shutdown

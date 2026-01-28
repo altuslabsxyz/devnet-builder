@@ -201,3 +201,67 @@ func TestManager_WorkersPerController(t *testing.T) {
 		t.Errorf("expected at least 1 call, got %d", len(calls))
 	}
 }
+
+func TestManager_StopWithTimeout_Graceful(t *testing.T) {
+	m := NewManager()
+	ctrl := &mockController{}
+	m.Register("devnets", ctrl)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Start manager in background
+	go m.Start(ctx, 1)
+	time.Sleep(10 * time.Millisecond)
+
+	// Cancel context to trigger shutdown
+	cancel()
+
+	// StopWithTimeout should return true (graceful) when workers stop in time
+	graceful := m.StopWithTimeout(time.Second)
+	if !graceful {
+		t.Error("expected graceful shutdown")
+	}
+}
+
+// blockingController blocks during Reconcile until cancelled
+type blockingController struct {
+	started chan struct{} // closed when Reconcile starts
+}
+
+func (c *blockingController) Reconcile(ctx context.Context, key string) error {
+	close(c.started)
+	// Block forever unless context is cancelled
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func TestManager_StopWithTimeout_Timeout(t *testing.T) {
+	m := NewManager()
+	blocking := &blockingController{started: make(chan struct{})}
+	m.Register("devnets", blocking)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Start manager in background
+	go m.Start(ctx, 1)
+	time.Sleep(10 * time.Millisecond)
+
+	// Enqueue an item that will block
+	m.Enqueue("devnets", "blocking-item")
+
+	// Wait for the blocking controller to start processing
+	select {
+	case <-blocking.started:
+		// Good, controller is now blocking
+	case <-time.After(time.Second):
+		t.Fatal("controller did not start")
+	}
+
+	// StopWithTimeout should return false (timeout) since worker is blocked
+	// and context isn't cancelled
+	graceful := m.StopWithTimeout(50 * time.Millisecond)
+	if graceful {
+		t.Error("expected timeout, not graceful shutdown")
+	}
+}
