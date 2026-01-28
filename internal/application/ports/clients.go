@@ -412,7 +412,7 @@ type ExportOptions struct {
 // NewExportOptions creates default export options suitable for devnet.
 func NewExportOptions() *ExportOptions {
 	return &ExportOptions{
-		ForZeroHeight: true,
+		ForZeroHeight: false,
 		JailWhitelist: nil,
 		ModulesToSkip: nil,
 		Height:        0,

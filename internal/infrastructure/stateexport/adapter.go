@@ -254,7 +254,7 @@ func (a *Adapter) defaultValidateGenesis(genesis []byte) error {
 // DefaultExportOptions returns the default export options for devnet.
 func (a *Adapter) DefaultExportOptions() *ports.ExportOptions {
 	return &ports.ExportOptions{
-		ForZeroHeight: true,
+		ForZeroHeight: false,
 		JailWhitelist: nil,
 		ModulesToSkip: nil,
 		Height:        0,
