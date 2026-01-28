@@ -68,6 +68,11 @@ type ChainConfig interface {
 	// GenesisConfig returns the default genesis configuration.
 	// Contains staking, governance, and other chain parameters.
 	GenesisConfig() GenesisConfig
+
+	// DefaultChainID returns the default chain ID for devnets.
+	// Example: "stable-devnet-1", "cosmoshub-devnet-1"
+	// Used when no chain ID is explicitly specified in devnet creation.
+	DefaultChainID() string
 }
 
 // DockerConfig provides Docker-related configuration.
@@ -108,6 +113,13 @@ type CommandBuilder interface {
 	//   - homeDir: Node home directory path
 	// Returns: Command arguments (e.g., ["export", "--home", homeDir])
 	ExportCommand(homeDir string) []string
+
+	// DefaultMoniker returns the default moniker for a node at the given index.
+	// Parameters:
+	//   - index: Node index (0, 1, 2, ...)
+	// Returns: Moniker string (e.g., "validator-0", "node-1")
+	// Used during node initialization when no explicit moniker is provided.
+	DefaultMoniker(index int) string
 }
 
 // ProcessConfig provides process management configuration.
@@ -135,6 +147,28 @@ type ProcessConfig interface {
 	// DefaultPorts returns the default port configuration for this network.
 	// Used for node configuration and health checks.
 	DefaultPorts() PortConfig
+
+	// ConfigDir returns the config directory path for a given node home.
+	// Parameters:
+	//   - homeDir: Node home directory path
+	// Returns: Full path to config directory (e.g., "/home/node/.stabled/config")
+	// Standard Cosmos SDK chains use "{homeDir}/config".
+	ConfigDir(homeDir string) string
+
+	// DataDir returns the data directory path for a given node home.
+	// Parameters:
+	//   - homeDir: Node home directory path
+	// Returns: Full path to data directory (e.g., "/home/node/.stabled/data")
+	// Standard Cosmos SDK chains use "{homeDir}/data".
+	DataDir(homeDir string) string
+
+	// KeyringDir returns the keyring directory path for a given node home and backend.
+	// Parameters:
+	//   - homeDir: Node home directory path
+	//   - backend: Keyring backend type ("test", "file", "os")
+	// Returns: Full path to keyring directory
+	// Example: "/home/node/.stabled/keyring-test" for test backend
+	KeyringDir(homeDir string, backend string) string
 }
 
 // GenesisModifier provides genesis file modification capabilities.

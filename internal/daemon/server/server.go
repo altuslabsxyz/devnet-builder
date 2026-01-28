@@ -54,13 +54,14 @@ func DefaultConfig() *Config {
 
 // Server is the devnetd daemon server.
 type Server struct {
-	config     *Config
-	store      store.Store
-	manager    *controller.Manager
-	healthCtrl *controller.HealthController
-	grpcServer *grpc.Server
-	listener   net.Listener
-	logger     *slog.Logger
+	config        *Config
+	store         store.Store
+	manager       *controller.Manager
+	healthCtrl    *controller.HealthController
+	pluginManager *PluginManager
+	grpcServer    *grpc.Server
+	listener      net.Listener
+	logger        *slog.Logger
 }
 
 // New creates a new server.
@@ -82,10 +83,37 @@ func New(config *Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
+	// Load network plugins from plugin directories
+	// Plugins are discovered from ~/.devnet-builder/plugins/ and registered
+	// with the global network registry so they can be queried via NetworkService
+	pluginMgr := NewPluginManager(PluginManagerConfig{
+		PluginDirs: []string{filepath.Join(config.DataDir, "plugins")},
+		Logger:     logger,
+	})
+
+	result, err := pluginMgr.LoadAndRegister()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load plugins: %w", err)
+	}
+
+	if len(result.Loaded) > 0 {
+		logger.Info("network plugins loaded",
+			"count", len(result.Loaded),
+			"plugins", result.Loaded)
+	}
+	if len(result.Errors) > 0 {
+		for _, e := range result.Errors {
+			logger.Warn("plugin load error",
+				"plugin", e.Name,
+				"error", e.Error)
+		}
+	}
+
 	// Open state store
 	dbPath := filepath.Join(config.DataDir, "devnetd.db")
 	st, err := store.NewBoltStore(dbPath)
 	if err != nil {
+		pluginMgr.Close()
 		return nil, fmt.Errorf("failed to open state store: %w", err)
 	}
 
@@ -174,13 +202,18 @@ func New(config *Config) (*Server, error) {
 	txSvc.SetLogger(logger)
 	v1.RegisterTransactionServiceServer(grpcServer, txSvc)
 
+	networkSvc := NewNetworkService()
+	networkSvc.SetLogger(logger)
+	v1.RegisterNetworkServiceServer(grpcServer, networkSvc)
+
 	return &Server{
-		config:     config,
-		store:      st,
-		manager:    mgr,
-		healthCtrl: healthCtrl,
-		grpcServer: grpcServer,
-		logger:     logger,
+		config:        config,
+		store:         st,
+		manager:       mgr,
+		healthCtrl:    healthCtrl,
+		pluginManager: pluginMgr,
+		grpcServer:    grpcServer,
+		logger:        logger,
 	}, nil
 }
 
@@ -267,6 +300,11 @@ func (s *Server) Shutdown() error {
 	// Close store
 	if s.store != nil {
 		s.store.Close()
+	}
+
+	// Close plugin manager
+	if s.pluginManager != nil {
+		s.pluginManager.Close()
 	}
 
 	// Clean up socket

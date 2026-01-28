@@ -464,3 +464,85 @@ message RetryUpgradeRequest {
 message RetryUpgradeResponse {
   Upgrade upgrade = 1;
 }
+
+// =============================================================================
+// Network - Network module discovery and information
+// =============================================================================
+
+// NetworkService provides operations for discovering available network modules.
+service NetworkService {
+  // ListNetworks returns all registered network modules.
+  rpc ListNetworks(ListNetworksRequest) returns (ListNetworksResponse);
+  // GetNetworkInfo returns detailed information about a specific network module.
+  rpc GetNetworkInfo(GetNetworkInfoRequest) returns (GetNetworkInfoResponse);
+}
+
+// ListNetworksRequest is the request message for ListNetworks.
+message ListNetworksRequest {}
+
+// ListNetworksResponse is the response message for ListNetworks.
+message ListNetworksResponse {
+  repeated NetworkSummary networks = 1;
+}
+
+// NetworkSummary provides a brief overview of a network module.
+message NetworkSummary {
+  string name = 1;                          // Unique identifier (e.g., "stable", "cosmos")
+  string display_name = 2;                  // Human-readable name
+  string version = 3;                       // Module version
+  string binary_name = 4;                   // CLI binary name (e.g., "stabled")
+  repeated string available_networks = 5;   // Supported network types (e.g., ["mainnet", "testnet"])
+  string default_binary_version = 6;        // Default binary version
+}
+
+// GetNetworkInfoRequest is the request message for GetNetworkInfo.
+message GetNetworkInfoRequest {
+  string name = 1;  // Network module name
+}
+
+// GetNetworkInfoResponse is the response message for GetNetworkInfo.
+message GetNetworkInfoResponse {
+  NetworkInfo network = 1;
+}
+
+// NetworkInfo provides detailed information about a network module.
+message NetworkInfo {
+  string name = 1;                          // Unique identifier
+  string display_name = 2;                  // Human-readable name
+  string version = 3;                       // Module version
+  string binary_name = 4;                   // CLI binary name
+  string default_binary_version = 5;        // Default binary version
+  NetworkBinarySource binary_source = 6;    // Binary source configuration
+  string bech32_prefix = 7;                 // Address prefix (e.g., "stable", "cosmos")
+  string base_denom = 8;                    // Base token denom (e.g., "ustable", "uatom")
+  string default_chain_id = 9;              // Default chain ID for devnets
+  map<string, EndpointInfo> endpoints = 10; // Network endpoints by network type
+  string docker_image = 11;                 // Docker image name
+  string docker_home_dir = 12;              // Home directory inside Docker
+  NetworkPortConfig default_ports = 13;     // Default port configuration
+}
+
+// NetworkBinarySource describes how to acquire the network binary.
+message NetworkBinarySource {
+  string type = 1;        // "github" or "local"
+  string owner = 2;       // GitHub owner (if type="github")
+  string repo = 3;        // GitHub repo (if type="github")
+  string local_path = 4;  // Local path (if type="local")
+}
+
+// EndpointInfo contains RPC and snapshot endpoints for a network type.
+message EndpointInfo {
+  string rpc_endpoint = 1;   // RPC endpoint URL
+  string snapshot_url = 2;   // Snapshot download URL
+}
+
+// NetworkPortConfig contains default port configuration for a network.
+message NetworkPortConfig {
+  int32 rpc = 1;        // Tendermint RPC port (default: 26657)
+  int32 p2p = 2;        // P2P port (default: 26656)
+  int32 grpc = 3;       // gRPC port (default: 9090)
+  int32 grpc_web = 4;   // gRPC-Web port (default: 9091)
+  int32 api = 5;        // REST API port (default: 1317)
+  int32 evm_rpc = 6;    // EVM JSON-RPC port (default: 8545)
+  int32 evm_socket = 7; // EVM WebSocket port (default: 8546)
+}

@@ -188,3 +188,13 @@ func (c *Client) SubmitGovProposal(ctx context.Context, devnet, proposer, propos
 func (c *Client) StreamNodeLogs(ctx context.Context, devnetName string, index int, follow bool, since string, tail int, callback func(*LogEntry) error) error {
 	return c.grpc.StreamNodeLogs(ctx, devnetName, index, follow, since, tail, callback)
 }
+
+// ListNetworks returns all registered network modules from the daemon.
+func (c *Client) ListNetworks(ctx context.Context) ([]*v1.NetworkSummary, error) {
+	return c.grpc.ListNetworks(ctx)
+}
+
+// GetNetworkInfo returns detailed information about a specific network module.
+func (c *Client) GetNetworkInfo(ctx context.Context, name string) (*v1.NetworkInfo, error) {
+	return c.grpc.GetNetworkInfo(ctx, name)
+}

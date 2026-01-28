@@ -1118,3 +1118,151 @@ var UpgradeService_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "v1/devnet.proto",
 }
+
+const (
+	NetworkService_ListNetworks_FullMethodName   = "/devnetbuilder.v1.NetworkService/ListNetworks"
+	NetworkService_GetNetworkInfo_FullMethodName = "/devnetbuilder.v1.NetworkService/GetNetworkInfo"
+)
+
+// NetworkServiceClient is the client API for NetworkService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// NetworkService provides operations for discovering available network modules.
+type NetworkServiceClient interface {
+	// ListNetworks returns all registered network modules.
+	ListNetworks(ctx context.Context, in *ListNetworksRequest, opts ...grpc.CallOption) (*ListNetworksResponse, error)
+	// GetNetworkInfo returns detailed information about a specific network module.
+	GetNetworkInfo(ctx context.Context, in *GetNetworkInfoRequest, opts ...grpc.CallOption) (*GetNetworkInfoResponse, error)
+}
+
+type networkServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewNetworkServiceClient(cc grpc.ClientConnInterface) NetworkServiceClient {
+	return &networkServiceClient{cc}
+}
+
+func (c *networkServiceClient) ListNetworks(ctx context.Context, in *ListNetworksRequest, opts ...grpc.CallOption) (*ListNetworksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListNetworksResponse)
+	err := c.cc.Invoke(ctx, NetworkService_ListNetworks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *networkServiceClient) GetNetworkInfo(ctx context.Context, in *GetNetworkInfoRequest, opts ...grpc.CallOption) (*GetNetworkInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetNetworkInfoResponse)
+	err := c.cc.Invoke(ctx, NetworkService_GetNetworkInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// NetworkServiceServer is the server API for NetworkService service.
+// All implementations must embed UnimplementedNetworkServiceServer
+// for forward compatibility.
+//
+// NetworkService provides operations for discovering available network modules.
+type NetworkServiceServer interface {
+	// ListNetworks returns all registered network modules.
+	ListNetworks(context.Context, *ListNetworksRequest) (*ListNetworksResponse, error)
+	// GetNetworkInfo returns detailed information about a specific network module.
+	GetNetworkInfo(context.Context, *GetNetworkInfoRequest) (*GetNetworkInfoResponse, error)
+	mustEmbedUnimplementedNetworkServiceServer()
+}
+
+// UnimplementedNetworkServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedNetworkServiceServer struct{}
+
+func (UnimplementedNetworkServiceServer) ListNetworks(context.Context, *ListNetworksRequest) (*ListNetworksResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListNetworks not implemented")
+}
+func (UnimplementedNetworkServiceServer) GetNetworkInfo(context.Context, *GetNetworkInfoRequest) (*GetNetworkInfoResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetNetworkInfo not implemented")
+}
+func (UnimplementedNetworkServiceServer) mustEmbedUnimplementedNetworkServiceServer() {}
+func (UnimplementedNetworkServiceServer) testEmbeddedByValue()                        {}
+
+// UnsafeNetworkServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to NetworkServiceServer will
+// result in compilation errors.
+type UnsafeNetworkServiceServer interface {
+	mustEmbedUnimplementedNetworkServiceServer()
+}
+
+func RegisterNetworkServiceServer(s grpc.ServiceRegistrar, srv NetworkServiceServer) {
+	// If the following call panics, it indicates UnimplementedNetworkServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&NetworkService_ServiceDesc, srv)
+}
+
+func _NetworkService_ListNetworks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNetworksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkServiceServer).ListNetworks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkService_ListNetworks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkServiceServer).ListNetworks(ctx, req.(*ListNetworksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NetworkService_GetNetworkInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNetworkInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetworkServiceServer).GetNetworkInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NetworkService_GetNetworkInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetworkServiceServer).GetNetworkInfo(ctx, req.(*GetNetworkInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// NetworkService_ServiceDesc is the grpc.ServiceDesc for NetworkService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var NetworkService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "devnetbuilder.v1.NetworkService",
+	HandlerType: (*NetworkServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ListNetworks",
+			Handler:    _NetworkService_ListNetworks_Handler,
+		},
+		{
+			MethodName: "GetNetworkInfo",
+			Handler:    _NetworkService_GetNetworkInfo_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "v1/devnet.proto",
+}
