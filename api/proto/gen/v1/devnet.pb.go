@@ -236,10 +236,12 @@ type DevnetSpec struct {
 	NetworkType   string                 `protobuf:"bytes,2,opt,name=network_type,json=networkType,proto3" json:"network_type,omitempty"` // "cosmos", "evm", "tempo"
 	Validators    int32                  `protobuf:"varint,3,opt,name=validators,proto3" json:"validators,omitempty"`
 	FullNodes     int32                  `protobuf:"varint,4,opt,name=full_nodes,json=fullNodes,proto3" json:"full_nodes,omitempty"`
-	Mode          string                 `protobuf:"bytes,5,opt,name=mode,proto3" json:"mode,omitempty"`                                  // "docker" or "local"
-	SdkVersion    string                 `protobuf:"bytes,6,opt,name=sdk_version,json=sdkVersion,proto3" json:"sdk_version,omitempty"`    // Binary version
-	GenesisPath   string                 `protobuf:"bytes,7,opt,name=genesis_path,json=genesisPath,proto3" json:"genesis_path,omitempty"` // Custom genesis file path
-	SnapshotUrl   string                 `protobuf:"bytes,8,opt,name=snapshot_url,json=snapshotUrl,proto3" json:"snapshot_url,omitempty"` // Chain state snapshot URL
+	Mode          string                 `protobuf:"bytes,5,opt,name=mode,proto3" json:"mode,omitempty"`                                   // "docker" or "local"
+	SdkVersion    string                 `protobuf:"bytes,6,opt,name=sdk_version,json=sdkVersion,proto3" json:"sdk_version,omitempty"`     // Binary version
+	GenesisPath   string                 `protobuf:"bytes,7,opt,name=genesis_path,json=genesisPath,proto3" json:"genesis_path,omitempty"`  // Custom genesis file path
+	SnapshotUrl   string                 `protobuf:"bytes,8,opt,name=snapshot_url,json=snapshotUrl,proto3" json:"snapshot_url,omitempty"`  // Chain state snapshot URL
+	RpcUrl        string                 `protobuf:"bytes,9,opt,name=rpc_url,json=rpcUrl,proto3" json:"rpc_url,omitempty"`                 // RPC endpoint URL for genesis forking
+	ForkNetwork   string                 `protobuf:"bytes,10,opt,name=fork_network,json=forkNetwork,proto3" json:"fork_network,omitempty"` // Network to fork from (e.g., "mainnet", "testnet") - used to fetch plugin defaults
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -326,6 +328,20 @@ func (x *DevnetSpec) GetGenesisPath() string {
 func (x *DevnetSpec) GetSnapshotUrl() string {
 	if x != nil {
 		return x.SnapshotUrl
+	}
+	return ""
+}
+
+func (x *DevnetSpec) GetRpcUrl() string {
+	if x != nil {
+		return x.RpcUrl
+	}
+	return ""
+}
+
+func (x *DevnetSpec) GetForkNetwork() string {
+	if x != nil {
+		return x.ForkNetwork
 	}
 	return ""
 }
@@ -4562,7 +4578,7 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a>\n" +
 	"\x10AnnotationsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x81\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbd\x02\n" +
 	"\n" +
 	"DevnetSpec\x12\x16\n" +
 	"\x06plugin\x18\x01 \x01(\tR\x06plugin\x12!\n" +
@@ -4576,7 +4592,10 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\vsdk_version\x18\x06 \x01(\tR\n" +
 	"sdkVersion\x12!\n" +
 	"\fgenesis_path\x18\a \x01(\tR\vgenesisPath\x12!\n" +
-	"\fsnapshot_url\x18\b \x01(\tR\vsnapshotUrl\"\xf3\x02\n" +
+	"\fsnapshot_url\x18\b \x01(\tR\vsnapshotUrl\x12\x17\n" +
+	"\arpc_url\x18\t \x01(\tR\x06rpcUrl\x12!\n" +
+	"\ffork_network\x18\n" +
+	" \x01(\tR\vforkNetwork\"\xf3\x02\n" +
 	"\fDevnetStatus\x12\x14\n" +
 	"\x05phase\x18\x01 \x01(\tR\x05phase\x12\x14\n" +
 	"\x05nodes\x18\x02 \x01(\x05R\x05nodes\x12\x1f\n" +

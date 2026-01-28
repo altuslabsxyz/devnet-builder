@@ -81,6 +81,7 @@ Examples:
 				opts.network = wizardOpts.Network
 				opts.validators = wizardOpts.Validators
 				opts.fullNodes = wizardOpts.FullNodes
+				opts.networkType = wizardOpts.ForkNetwork // Map fork network to network type
 			}
 			return runProvision(cmd.Context(), opts)
 		},
@@ -170,6 +171,11 @@ func runProvision(ctx context.Context, opts *provisionOptions) error {
 	fmt.Fprintf(os.Stderr, "  Validators: %d\n", opts.validators)
 	if opts.fullNodes > 0 {
 		fmt.Fprintf(os.Stderr, "  Full Nodes: %d\n", opts.fullNodes)
+	}
+	if opts.networkType != "" {
+		fmt.Fprintf(os.Stderr, "  Fork from:  %s\n", opts.networkType)
+	} else {
+		fmt.Fprintf(os.Stderr, "  Genesis:    fresh (new chain)\n")
 	}
 	fmt.Fprintf(os.Stderr, "  Mode:       %s\n", opts.mode)
 	fmt.Fprintf(os.Stderr, "\n")

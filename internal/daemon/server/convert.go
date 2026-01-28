@@ -101,7 +101,9 @@ func specsEqual(a types.DevnetSpec, b *v1.DevnetSpec) bool {
 		a.Mode == b.Mode &&
 		a.BinarySource.Version == b.SdkVersion &&
 		a.GenesisPath == b.GenesisPath &&
-		a.SnapshotURL == b.SnapshotUrl
+		a.SnapshotURL == b.SnapshotUrl &&
+		a.RPCURL == b.RpcUrl &&
+		a.ForkNetwork == b.ForkNetwork
 }
 
 // labelsEqual compares two label maps for equality.
@@ -162,6 +164,8 @@ func specToProto(s *types.DevnetSpec) *v1.DevnetSpec {
 		SdkVersion:  s.BinarySource.Version,
 		GenesisPath: s.GenesisPath,
 		SnapshotUrl: s.SnapshotURL,
+		RpcUrl:      s.RPCURL,
+		ForkNetwork: s.ForkNetwork,
 	}
 }
 
@@ -178,6 +182,8 @@ func specFromProto(pb *v1.DevnetSpec) types.DevnetSpec {
 		Mode:        pb.Mode,
 		GenesisPath: pb.GenesisPath,
 		SnapshotURL: pb.SnapshotUrl,
+		RPCURL:      pb.RpcUrl,
+		ForkNetwork: pb.ForkNetwork,
 		BinarySource: types.BinarySource{
 			Version: pb.SdkVersion,
 		},
