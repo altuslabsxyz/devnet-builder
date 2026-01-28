@@ -140,24 +140,21 @@ func (p *DevnetProvisioner) provisionWithOrchestrator(ctx context.Context, devne
 		"name", devnet.Metadata.Name,
 		"network", network)
 
-	// Fetch network defaults from plugin for RPC/Snapshot URLs
+	// Fetch network defaults from plugin only when forking is explicitly requested.
+	// If ForkNetwork is empty, we use fresh genesis (no forking).
 	var networkDefaults *NetworkDefaults
-	forkNetwork := devnet.Spec.ForkNetwork
-	if forkNetwork == "" {
-		forkNetwork = devnet.Spec.NetworkType // Fall back to network type
-	}
-	if forkNetwork != "" {
-		defaults, err := p.orchestratorFactory.GetNetworkDefaults(network, forkNetwork)
+	if devnet.Spec.ForkNetwork != "" {
+		defaults, err := p.orchestratorFactory.GetNetworkDefaults(network, devnet.Spec.ForkNetwork)
 		if err != nil {
 			p.logger.Warn("failed to get network defaults",
 				"plugin", network,
-				"forkNetwork", forkNetwork,
+				"forkNetwork", devnet.Spec.ForkNetwork,
 				"error", err)
 		} else {
 			networkDefaults = defaults
 			p.logger.Debug("fetched network defaults",
 				"plugin", network,
-				"forkNetwork", forkNetwork,
+				"forkNetwork", devnet.Spec.ForkNetwork,
 				"rpcURL", defaults.RPCURL,
 				"snapshotURL", defaults.SnapshotURL)
 		}
