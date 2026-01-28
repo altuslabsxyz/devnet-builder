@@ -41,14 +41,16 @@ func TestDevnetController_ReconcileNew(t *testing.T) {
 		t.Fatalf("reconcile failed: %v", err)
 	}
 
-	// Check that phase transitioned to Provisioning
+	// Check that phase transitioned to Running (Pending -> Provisioning -> Running in one cycle)
+	// Without a provisioner, reconcilePending continues directly to reconcileProvisioning
+	// which completes immediately (stub behavior)
 	updated, err := s.GetDevnet(context.Background(), "", "test-devnet")
 	if err != nil {
 		t.Fatalf("failed to get devnet: %v", err)
 	}
 
-	if updated.Status.Phase != types.PhaseProvisioning {
-		t.Errorf("expected phase %s, got %s", types.PhaseProvisioning, updated.Status.Phase)
+	if updated.Status.Phase != types.PhaseRunning {
+		t.Errorf("expected phase %s, got %s", types.PhaseRunning, updated.Status.Phase)
 	}
 }
 
@@ -279,41 +281,46 @@ func TestDevnetController_ReconcilePending_SetsConditions(t *testing.T) {
 		t.Fatalf("failed to get devnet: %v", err)
 	}
 
-	// Check that Progressing condition is set to True
+	// With the fix, reconcilePending continues directly to reconcileProvisioning,
+	// so we end up with final conditions (not intermediate ones).
+	// Progressing should be False (complete), Ready should be True.
+
+	// Check that Progressing condition is set to False (provisioning complete)
 	progressing := types.GetCondition(updated.Status.Conditions, types.ConditionTypeProgressing)
 	if progressing == nil {
 		t.Fatal("expected Progressing condition to be set")
 	}
-	if progressing.Status != types.ConditionTrue {
-		t.Errorf("expected Progressing status %s, got %s", types.ConditionTrue, progressing.Status)
+	if progressing.Status != types.ConditionFalse {
+		t.Errorf("expected Progressing status %s, got %s", types.ConditionFalse, progressing.Status)
 	}
-	if progressing.Reason != types.ReasonProvisioning {
-		t.Errorf("expected Progressing reason %s, got %s", types.ReasonProvisioning, progressing.Reason)
+	if progressing.Reason != "ProvisioningComplete" {
+		t.Errorf("expected Progressing reason %s, got %s", "ProvisioningComplete", progressing.Reason)
 	}
 
-	// Check that Ready condition is set to False
+	// Check that Ready condition is set to True
 	ready := types.GetCondition(updated.Status.Conditions, types.ConditionTypeReady)
 	if ready == nil {
 		t.Fatal("expected Ready condition to be set")
 	}
-	if ready.Status != types.ConditionFalse {
-		t.Errorf("expected Ready status %s, got %s", types.ConditionFalse, ready.Status)
+	if ready.Status != types.ConditionTrue {
+		t.Errorf("expected Ready status %s, got %s", types.ConditionTrue, ready.Status)
 	}
-	if ready.Reason != types.ReasonNodesNotReady {
-		t.Errorf("expected Ready reason %s, got %s", types.ReasonNodesNotReady, ready.Reason)
-	}
-
-	// Check that an event was added
-	if len(updated.Status.Events) == 0 {
-		t.Fatal("expected at least one event to be added")
+	if ready.Reason != types.ReasonAllNodesReady {
+		t.Errorf("expected Ready reason %s, got %s", types.ReasonAllNodesReady, ready.Reason)
 	}
 
+	// Check that events were added (should have both provisioning start and complete events)
+	if len(updated.Status.Events) < 2 {
+		t.Fatalf("expected at least 2 events, got %d", len(updated.Status.Events))
+	}
+
+	// Last event should be ProvisioningComplete
 	lastEvent := updated.Status.Events[len(updated.Status.Events)-1]
 	if lastEvent.Type != types.EventTypeNormal {
 		t.Errorf("expected event type %s, got %s", types.EventTypeNormal, lastEvent.Type)
 	}
-	if lastEvent.Reason != types.ReasonProvisioning {
-		t.Errorf("expected event reason %s, got %s", types.ReasonProvisioning, lastEvent.Reason)
+	if lastEvent.Reason != "ProvisioningComplete" {
+		t.Errorf("expected event reason %s, got %s", "ProvisioningComplete", lastEvent.Reason)
 	}
 }
 

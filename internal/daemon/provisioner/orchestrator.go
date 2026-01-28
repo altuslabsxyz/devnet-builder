@@ -190,6 +190,14 @@ func (o *ProvisioningOrchestrator) setError(err error) {
 
 // Execute runs the full provisioning flow
 func (o *ProvisioningOrchestrator) Execute(ctx context.Context, opts ports.ProvisionOptions) (*ports.ProvisionResult, error) {
+	o.logger.Info("orchestrator starting provisioning",
+		"devnet", opts.DevnetName,
+		"chainID", opts.ChainID,
+		"network", opts.Network,
+		"validators", opts.NumValidators,
+		"fullnodes", opts.NumFullNodes,
+	)
+
 	// Check for context cancellation before starting
 	if err := ctx.Err(); err != nil {
 		o.setError(fmt.Errorf("context cancelled: %w", err))
@@ -308,6 +316,12 @@ func (o *ProvisioningOrchestrator) Execute(ctx context.Context, opts ports.Provi
 		DataDir:        opts.DataDir,
 	}
 
+	o.logger.Info("orchestrator provisioning complete",
+		"devnet", opts.DevnetName,
+		"binaryPath", binaryPath,
+		"nodeCount", result.NodeCount,
+	)
+
 	return result, nil
 }
 
@@ -397,6 +411,11 @@ func (o *ProvisioningOrchestrator) executeInitPhase(ctx context.Context, opts po
 			return nil, fmt.Errorf("context cancelled during initialization: %w", err)
 		}
 
+		o.logger.Info("initializing validator",
+			"index", i+1,
+			"total", opts.NumValidators,
+		)
+
 		node, err := o.initializeNode(ctx, opts, binaryPath, i, "validator")
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize validator %d: %w", i, err)
@@ -409,6 +428,11 @@ func (o *ProvisioningOrchestrator) executeInitPhase(ctx context.Context, opts po
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("context cancelled during initialization: %w", err)
 		}
+
+		o.logger.Info("initializing fullnode",
+			"index", i+1,
+			"total", opts.NumFullNodes,
+		)
 
 		nodeIndex := opts.NumValidators + i
 		node, err := o.initializeNode(ctx, opts, binaryPath, nodeIndex, "fullnode")
