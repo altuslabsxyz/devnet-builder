@@ -291,12 +291,27 @@ func (a *moduleGenesisAdapter) PatchGenesis(genesis []byte, opts plugintypes.Gen
 	return a.module.ModifyGenesis(genesis, modifyOpts)
 }
 
+func (a *moduleGenesisAdapter) PatchGenesisFile(inputPath, outputPath string, opts plugintypes.GenesisPatchOptions) (int64, error) {
+	// Check if module supports file-based modification
+	fileModifier, ok := a.module.(network.FileBasedGenesisModifier)
+	if !ok {
+		return 0, fmt.Errorf("plugin does not support file-based genesis modification")
+	}
+
+	// Use file-based modification to bypass gRPC message size limits
+	modifyOpts := network.GenesisOptions{
+		ChainID: opts.ChainID,
+	}
+	return fileModifier.ModifyGenesisFile(inputPath, outputPath, modifyOpts)
+}
+
 func (a *moduleGenesisAdapter) ExportCommandArgs(homeDir string) []string {
 	return a.module.ExportCommand(homeDir)
 }
 
 // Ensure interface compliance
 var _ plugintypes.PluginGenesis = (*moduleGenesisAdapter)(nil)
+var _ plugintypes.FileBasedPluginGenesis = (*moduleGenesisAdapter)(nil)
 
 // moduleInitializerAdapter adapts NetworkModule to plugintypes.PluginInitializer.
 type moduleInitializerAdapter struct {
