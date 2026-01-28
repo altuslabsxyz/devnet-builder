@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -62,11 +63,17 @@ type Server struct {
 	grpcServer    *grpc.Server
 	listener      net.Listener
 	logger        *slog.Logger
+	logFile       *os.File // Log file handle for cleanup
 }
 
 // New creates a new server.
 func New(config *Config) (*Server, error) {
-	// Set up logger
+	// Ensure data directory exists first (needed for log file)
+	if err := os.MkdirAll(config.DataDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create data directory: %w", err)
+	}
+
+	// Set up logger - write to both stdout and log file for debugging
 	level := slog.LevelInfo
 	switch config.LogLevel {
 	case "debug":
@@ -76,12 +83,17 @@ func New(config *Config) (*Server, error) {
 	case "error":
 		level = slog.LevelError
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
 
-	// Ensure data directory exists
-	if err := os.MkdirAll(config.DataDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create data directory: %w", err)
+	// Create log file for persistent logging (used by 'dvb daemon logs')
+	logFilePath := filepath.Join(config.DataDir, "daemon.log")
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open daemon log file: %w", err)
 	}
+
+	// Write logs to both stdout and file
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
+	logger := slog.New(slog.NewTextHandler(multiWriter, &slog.HandlerOptions{Level: level}))
 
 	// Load network plugins from plugin directories
 	// Plugins are discovered from ~/.devnet-builder/plugins/ and registered
@@ -214,6 +226,7 @@ func New(config *Config) (*Server, error) {
 		pluginManager: pluginMgr,
 		grpcServer:    grpcServer,
 		logger:        logger,
+		logFile:       logFile,
 	}, nil
 }
 
@@ -305,6 +318,11 @@ func (s *Server) Shutdown() error {
 	// Close plugin manager
 	if s.pluginManager != nil {
 		s.pluginManager.Close()
+	}
+
+	// Close log file
+	if s.logFile != nil {
+		s.logFile.Close()
 	}
 
 	// Clean up socket
