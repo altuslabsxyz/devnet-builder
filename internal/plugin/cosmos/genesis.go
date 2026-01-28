@@ -184,7 +184,6 @@ func (g *CosmosGenesis) ExportCommandArgs(homeDir string) []string {
 	return []string{
 		"export",
 		"--home", homeDir,
-		"--for-zero-height",
 	}
 }
 

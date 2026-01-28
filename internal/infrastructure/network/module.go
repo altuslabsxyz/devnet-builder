@@ -404,7 +404,7 @@ type StateExporter interface {
 	// ExportCommandWithOptions returns arguments for exporting genesis/state
 	// with the given export options.
 	// Parameters: homeDir, opts
-	// Returns: e.g., ["export", "--home", "/path", "--for-zero-height"]
+	// Returns: e.g., ["export", "--home", "/path"]
 	ExportCommandWithOptions(homeDir string, opts ExportOptions) []string
 
 	// ValidateExportedGenesis validates the exported genesis for this network.

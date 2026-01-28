@@ -109,8 +109,7 @@ func (a *Adapter) ExportFromSnapshot(ctx context.Context, opts ports.StateExport
 	}
 
 	// Step 3: Run export command
-	a.logger.Info("Exporting genesis from snapshot...")
-	a.logger.Debug("Running: %s %v", opts.BinaryPath, cmdArgs)
+	a.logger.Info("Exporting genesis from snapshot...", "Running: %s %v", opts.BinaryPath, cmdArgs)
 
 	cmd := exec.CommandContext(ctx, opts.BinaryPath, cmdArgs...)
 	output, err := cmd.CombinedOutput()
