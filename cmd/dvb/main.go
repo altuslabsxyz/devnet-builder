@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -158,6 +159,7 @@ func newDaemonCmd() *cobra.Command {
 				}
 			},
 		},
+		newDaemonLogsCmd(),
 	)
 
 	return cmd
@@ -497,11 +499,24 @@ recent events, and node details. Similar to kubectl describe.`,
 				nodes = nil
 			}
 
+			// Check plugin availability for troubleshooting
+			var pluginAvailable bool
+			var registeredNetworks []*v1.NetworkSummary
+			if devnet.Spec != nil && devnet.Spec.Plugin != "" {
+				registeredNetworks, _ = daemonClient.ListNetworks(cmd.Context())
+				for _, n := range registeredNetworks {
+					if n.Name == devnet.Spec.Plugin {
+						pluginAvailable = true
+						break
+					}
+				}
+			}
+
 			if outputFormat == "yaml" {
 				return printDescribeYAML(devnet, nodes)
 			}
 
-			formatDescribeOutput(os.Stdout, devnet, nodes)
+			formatDescribeOutput(os.Stdout, devnet, nodes, pluginAvailable, registeredNetworks)
 			return nil
 		},
 	}
@@ -511,7 +526,7 @@ recent events, and node details. Similar to kubectl describe.`,
 	return cmd
 }
 
-func formatDescribeOutput(w io.Writer, d *v1.Devnet, nodes []*v1.Node) {
+func formatDescribeOutput(w io.Writer, d *v1.Devnet, nodes []*v1.Node, pluginAvailable bool, registeredNetworks []*v1.NetworkSummary) {
 	if d == nil {
 		fmt.Fprintf(w, "No devnet data available\n")
 		return
@@ -626,6 +641,50 @@ func formatDescribeOutput(w io.Writer, d *v1.Devnet, nodes []*v1.Node) {
 				age = time.Since(e.Timestamp.AsTime()).Round(time.Second).String()
 			}
 			fmt.Fprintf(w, "  %-8s %-20s %-20s %s\n", eventType, e.Reason, age, e.Message)
+		}
+	}
+
+	// Troubleshooting section - show when provisioning is stuck or failed
+	if phase == "Provisioning" || phase == "Degraded" || phase == "Pending" {
+		fmt.Fprintf(w, "\n")
+		color.New(color.FgYellow).Fprintf(w, "Troubleshooting:\n")
+
+		// Check if plugin is available
+		if d.Spec.Plugin != "" && !pluginAvailable {
+			color.New(color.FgRed).Fprintf(w, "  ⚠ Plugin '%s' not found!\n", d.Spec.Plugin)
+			fmt.Fprintf(w, "    The network plugin is not registered with the daemon.\n")
+			fmt.Fprintf(w, "    \n")
+			fmt.Fprintf(w, "    To fix this:\n")
+			fmt.Fprintf(w, "      1. Install the plugin: dvb plugin install %s\n", d.Spec.Plugin)
+			fmt.Fprintf(w, "      2. Restart the daemon: pkill devnetd && devnetd &\n")
+			fmt.Fprintf(w, "      3. Delete and recreate the devnet\n")
+			fmt.Fprintf(w, "    \n")
+			if len(registeredNetworks) > 0 {
+				fmt.Fprintf(w, "    Available plugins: ")
+				names := make([]string, len(registeredNetworks))
+				for i, n := range registeredNetworks {
+					names[i] = n.Name
+				}
+				fmt.Fprintf(w, "%s\n", strings.Join(names, ", "))
+			} else {
+				fmt.Fprintf(w, "    No plugins currently installed.\n")
+			}
+		} else if phase == "Provisioning" {
+			// Plugin exists but provisioning is stuck
+			fmt.Fprintf(w, "  Provisioning appears to be in progress or stuck.\n")
+			fmt.Fprintf(w, "    \n")
+			fmt.Fprintf(w, "    Debug steps:\n")
+			fmt.Fprintf(w, "      1. Check daemon logs: dvb daemon logs -f\n")
+			fmt.Fprintf(w, "      2. Check daemon status: dvb daemon status\n")
+			fmt.Fprintf(w, "      3. If stuck, try: dvb delete %s && dvb provision -i\n", d.Metadata.Name)
+		} else if phase == "Degraded" {
+			// Provisioning failed
+			fmt.Fprintf(w, "  Provisioning has failed.\n")
+			fmt.Fprintf(w, "    \n")
+			fmt.Fprintf(w, "    Debug steps:\n")
+			fmt.Fprintf(w, "      1. Check daemon logs for errors: dvb daemon logs --level error\n")
+			fmt.Fprintf(w, "      2. Check the conditions above for specific failure reasons\n")
+			fmt.Fprintf(w, "      3. Fix the issue and recreate: dvb delete %s && dvb provision -i\n", d.Metadata.Name)
 		}
 	}
 }

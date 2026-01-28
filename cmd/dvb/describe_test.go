@@ -54,7 +54,8 @@ func TestFormatDescribeOutput(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	formatDescribeOutput(&buf, devnet, nil)
+	// Pass plugin available=true and empty networks list to avoid troubleshooting output
+	formatDescribeOutput(&buf, devnet, nil, true, nil)
 	output := buf.String()
 
 	// Check key sections exist
