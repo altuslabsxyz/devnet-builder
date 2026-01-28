@@ -78,7 +78,7 @@ func (b *DefaultBuilder) Build(ctx context.Context, spec BuildSpec) (*BuildResul
 	defer os.RemoveAll(tempDir) // Clean up on any exit
 
 	// Clone repository (shallow clone with depth=1 for speed)
-	b.logger.Debug("cloning repository", "repo", repoURL, "dest", tempDir)
+	b.logger.Info("cloning repository", "repo", repoURL)
 	if err := b.git.Clone(ctx, CloneOptions{
 		Repo:    repoURL,
 		DestDir: tempDir,
@@ -86,6 +86,7 @@ func (b *DefaultBuilder) Build(ctx context.Context, spec BuildSpec) (*BuildResul
 	}); err != nil {
 		return nil, fmt.Errorf("failed to clone repository: %w", err)
 	}
+	b.logger.Info("repository cloned successfully")
 
 	// Fetch and checkout the specified ref
 	gitRef := spec.GitRef
@@ -97,7 +98,7 @@ func (b *DefaultBuilder) Build(ctx context.Context, spec BuildSpec) (*BuildResul
 		b.logger.Debug("using default git ref", "ref", gitRef)
 	}
 
-	b.logger.Debug("checking out ref", "ref", gitRef)
+	b.logger.Info("checking out ref", "ref", gitRef)
 	resolvedCommit, err := b.git.Checkout(ctx, CheckoutOptions{
 		RepoDir: tempDir,
 		Ref:     gitRef,
@@ -105,7 +106,7 @@ func (b *DefaultBuilder) Build(ctx context.Context, spec BuildSpec) (*BuildResul
 	if err != nil {
 		return nil, fmt.Errorf("failed to checkout ref %q: %w", gitRef, err)
 	}
-	b.logger.Debug("resolved commit", "commit", resolvedCommit)
+	b.logger.Info("resolved commit", "ref", gitRef, "commit", resolvedCommit)
 
 	// Check cache with resolved commit (unless NoCache is set)
 	cacheKey := b.cache.CacheKey(spec, resolvedCommit)
@@ -136,7 +137,7 @@ func (b *DefaultBuilder) Build(ctx context.Context, spec BuildSpec) (*BuildResul
 	mergedFlags := mergeBuildFlags(pluginBuilder.DefaultBuildFlags(), spec.BuildFlags)
 
 	// Build the binary
-	b.logger.Info("building binary", "outputDir", outputDir)
+	b.logger.Info("compiling binary (this may take a few minutes)", "outputDir", outputDir)
 	buildOpts := plugintypes.BuildOptions{
 		SourceDir: tempDir,
 		OutputDir: outputDir,
@@ -156,7 +157,7 @@ func (b *DefaultBuilder) Build(ctx context.Context, spec BuildSpec) (*BuildResul
 	binaryPath := filepath.Join(outputDir, binaryName)
 
 	// Validate the built binary
-	b.logger.Debug("validating binary", "path", binaryPath)
+	b.logger.Info("validating binary", "path", binaryPath)
 	if err := pluginBuilder.ValidateBinary(ctx, binaryPath); err != nil {
 		return nil, fmt.Errorf("binary validation failed: %w", err)
 	}

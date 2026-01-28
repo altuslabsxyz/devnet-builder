@@ -100,7 +100,9 @@ func (c *DevnetController) Reconcile(ctx context.Context, key string) error {
 }
 
 // reconcilePending handles devnets in Pending phase.
-// Transition: Pending -> Provisioning
+// Transition: Pending -> Provisioning -> Running (or Degraded on failure)
+// Note: This method continues directly to reconcileProvisioning to avoid
+// requiring a store watcher or manual re-enqueue after phase transition.
 func (c *DevnetController) reconcilePending(ctx context.Context, devnet *types.Devnet) error {
 	c.logger.Info("starting provisioning", "name", devnet.Metadata.Name)
 
@@ -134,7 +136,15 @@ func (c *DevnetController) reconcilePending(ctx context.Context, devnet *types.D
 	devnet.Status.Message = "Starting provisioning"
 	devnet.Metadata.UpdatedAt = time.Now()
 
-	return c.store.UpdateDevnet(ctx, devnet)
+	// Save the phase transition
+	if err := c.store.UpdateDevnet(ctx, devnet); err != nil {
+		return fmt.Errorf("failed to update devnet phase: %w", err)
+	}
+
+	// Continue directly to provisioning to avoid requiring re-enqueue.
+	// Without a store watcher, returning here would leave the devnet stuck
+	// in Provisioning phase with no subsequent reconcile triggered.
+	return c.reconcileProvisioning(ctx, devnet)
 }
 
 // reconcileProvisioning handles devnets in Provisioning phase.
