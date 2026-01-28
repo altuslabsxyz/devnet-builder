@@ -40,23 +40,27 @@ type Config struct {
 	EnableDocker bool
 	// DockerImage is the default Docker image for nodes.
 	DockerImage string
+	// ShutdownTimeout is the graceful shutdown timeout.
+	ShutdownTimeout time.Duration
+	// HealthCheckTimeout is the RPC health check timeout.
+	HealthCheckTimeout time.Duration
+	// GitHubToken is the GitHub API token.
+	GitHubToken string
 }
-
-// shutdownTimeout is the maximum time to wait for workers to stop during shutdown.
-// If workers don't stop within this timeout (e.g., blocked on external processes),
-// shutdown proceeds anyway to prevent hanging forever.
-const shutdownTimeout = 30 * time.Second
 
 // DefaultConfig returns default configuration.
 func DefaultConfig() *Config {
 	home, _ := os.UserHomeDir()
 	dataDir := filepath.Join(home, ".devnet-builder")
 	return &Config{
-		SocketPath: filepath.Join(dataDir, "devnetd.sock"),
-		DataDir:    dataDir,
-		Foreground: false,
-		Workers:    2,
-		LogLevel:   "info",
+		SocketPath:         filepath.Join(dataDir, "devnetd.sock"),
+		DataDir:            dataDir,
+		Foreground:         false,
+		Workers:            2,
+		LogLevel:           "info",
+		ShutdownTimeout:    30 * time.Second,
+		HealthCheckTimeout: 5 * time.Second,
+		GitHubToken:        "",
 	}
 }
 
@@ -176,7 +180,8 @@ func New(config *Config) (*Server, error) {
 
 	// Create health checker
 	healthChecker := checker.NewRPCHealthChecker(checker.Config{
-		Logger: logger,
+		Logger:  logger,
+		Timeout: config.HealthCheckTimeout,
 	})
 
 	// Create and register health controller
@@ -324,8 +329,8 @@ func (s *Server) Shutdown() error {
 	// Use a timeout to prevent hanging if workers are blocked on external processes
 	// (e.g., a Cosmos SDK binary deadlocked during genesis export).
 	if s.manager != nil {
-		s.logger.Debug("waiting for controller workers to stop", "timeout", shutdownTimeout)
-		graceful := s.manager.StopWithTimeout(shutdownTimeout)
+		s.logger.Debug("waiting for controller workers to stop", "timeout", s.config.ShutdownTimeout)
+		graceful := s.manager.StopWithTimeout(s.config.ShutdownTimeout)
 		if graceful {
 			s.logger.Debug("controller workers stopped gracefully")
 		} else {
