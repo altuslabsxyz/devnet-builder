@@ -967,3 +967,58 @@ func TestDevnetToProvisionOptions_SnapshotFromDefaultsRequiresVersion(t *testing
 		t.Fatalf("Expected SnapshotVersionRequiredError, got %T: %v", err, err)
 	}
 }
+
+func TestDevnetToProvisionOptions_EmptyTypeWithVersionSet(t *testing.T) {
+	// This tests the wizard flow where SdkVersion is set via proto but BinarySource.Type is empty.
+	// This happens because the proto API has a flat sdk_version field that maps to BinarySource.Version
+	// without a corresponding Type field. The fix ensures BinaryVersion is propagated correctly.
+	devnet := &types.Devnet{
+		Metadata: types.ResourceMeta{Name: "wizard-test"},
+		Spec: types.DevnetSpec{
+			Plugin:      "stable",
+			Validators:  1,
+			Mode:        "local",
+			SnapshotURL: "https://snapshots.example.com/chain.tar.gz",
+			BinarySource: types.BinarySource{
+				// Type is empty (default) - simulates proto→domain conversion
+				Version: "v1.2.0", // Version IS set from wizard via proto SdkVersion
+			},
+		},
+	}
+
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	if err != nil {
+		t.Fatalf("Expected success with empty Type but Version set, got error: %v", err)
+	}
+
+	// BinaryVersion should be propagated even when Type is empty
+	if opts.BinaryVersion != "v1.2.0" {
+		t.Errorf("Expected BinaryVersion 'v1.2.0', got '%s'", opts.BinaryVersion)
+	}
+}
+
+func TestDevnetToProvisionOptions_EmptyTypeWithoutVersion(t *testing.T) {
+	// Empty Type and empty Version should still fail for snapshot mode
+	devnet := &types.Devnet{
+		Metadata: types.ResourceMeta{Name: "no-version-test"},
+		Spec: types.DevnetSpec{
+			Plugin:       "stable",
+			Validators:   1,
+			Mode:         "local",
+			SnapshotURL:  "https://snapshots.example.com/chain.tar.gz",
+			BinarySource: types.BinarySource{
+				// Both Type and Version are empty
+			},
+		},
+	}
+
+	_, err := devnetToProvisionOptions(devnet, "/data", nil)
+	if err == nil {
+		t.Fatal("Expected SnapshotVersionRequiredError for empty Type and Version")
+	}
+
+	var versionErr *SnapshotVersionRequiredError
+	if !errors.As(err, &versionErr) {
+		t.Fatalf("Expected SnapshotVersionRequiredError, got %T: %v", err, err)
+	}
+}
