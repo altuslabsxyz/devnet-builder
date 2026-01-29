@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
-	"github.com/altuslabsxyz/devnet-builder/internal/dvbcontext"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -87,10 +86,12 @@ Examples:
 				nodeArg = args[1]
 			}
 
-			_, devnetName, err := dvbcontext.Resolve(explicitDevnet, "", currentContext)
+			_, devnetName, err := resolveWithSuggestions(explicitDevnet, "")
 			if err != nil {
 				return err
 			}
+
+			printContextHeader(explicitDevnet, currentContext)
 
 			opts.devnet = devnetName
 			opts.node = nodeArg
