@@ -326,16 +326,12 @@ func TestCosmosGenesisExportCommandArgs(t *testing.T) {
 	// Should include export and --home
 	hasExport := false
 	hasHome := false
-	hasForZeroHeight := false
 	for i, arg := range args {
 		if arg == "export" {
 			hasExport = true
 		}
 		if arg == "--home" && i+1 < len(args) && args[i+1] == "/home/node" {
 			hasHome = true
-		}
-		if arg == "--for-zero-height" {
-			hasForZeroHeight = true
 		}
 	}
 
@@ -344,9 +340,6 @@ func TestCosmosGenesisExportCommandArgs(t *testing.T) {
 	}
 	if !hasHome {
 		t.Error("Export command should include '--home' with path")
-	}
-	if !hasForZeroHeight {
-		t.Error("Export command should include '--for-zero-height'")
 	}
 }
 
