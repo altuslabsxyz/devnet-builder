@@ -12,6 +12,7 @@ import (
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
+	"github.com/altuslabsxyz/devnet-builder/internal/dvbcontext"
 	"github.com/altuslabsxyz/devnet-builder/internal/version"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -19,8 +20,9 @@ import (
 )
 
 var (
-	standalone   bool
-	daemonClient *client.Client
+	standalone     bool
+	daemonClient   *client.Client
+	currentContext *dvbcontext.Context
 )
 
 func main() {
@@ -43,10 +45,11 @@ func main() {
 			c, err := client.New()
 			if err == nil {
 				daemonClient = c
-				return nil
 			}
 
-			// Daemon not running - fall back to standalone
+			// Load context (ignore errors, context is optional)
+			currentContext, _ = dvbcontext.Load()
+
 			return nil
 		},
 		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
@@ -64,6 +67,7 @@ func main() {
 	rootCmd.AddCommand(
 		newVersionCmd(),
 		newDaemonCmd(),
+		newUseCmd(),
 		newApplyCmd(),
 		newGetCmd(),
 		newDeleteCmd(),
@@ -266,15 +270,23 @@ func newStartCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "start [devnet]",
 		Short: "Start a stopped devnet",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
+			var explicitDevnet string
+			if len(args) > 0 {
+				explicitDevnet = args[0]
+			}
+
+			ns, name, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			if err != nil {
+				return err
+			}
 
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			devnet, err := daemonClient.StartDevnet(cmd.Context(), namespace, name)
+			devnet, err := daemonClient.StartDevnet(cmd.Context(), ns, name)
 			if err != nil {
 				return err
 			}
@@ -297,15 +309,23 @@ func newStopCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "stop [devnet]",
 		Short: "Stop a running devnet",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
+			var explicitDevnet string
+			if len(args) > 0 {
+				explicitDevnet = args[0]
+			}
+
+			ns, name, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			if err != nil {
+				return err
+			}
 
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			devnet, err := daemonClient.StopDevnet(cmd.Context(), namespace, name)
+			devnet, err := daemonClient.StopDevnet(cmd.Context(), ns, name)
 			if err != nil {
 				return err
 			}
@@ -362,12 +382,20 @@ Examples:
 			}
 			devnetsDir := filepath.Join(baseDataDir, "devnets")
 
-			// If no name provided, list available devnets
-			if len(args) == 0 {
-				return listDevnetsForDestroy(devnetsDir)
+			// Resolve devnet from args or context
+			var explicitDevnet string
+			if len(args) > 0 {
+				explicitDevnet = args[0]
 			}
 
-			name := args[0]
+			ns, name, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			if err != nil {
+				// If no devnet specified and no context, list available devnets
+				if explicitDevnet == "" {
+					return listDevnetsForDestroy(devnetsDir)
+				}
+				return err
+			}
 
 			// Try daemon first if available
 			if daemonClient != nil && !standalone {
@@ -380,7 +408,7 @@ Examples:
 					}
 				}
 
-				err := daemonClient.DeleteDevnet(cmd.Context(), namespace, name)
+				err := daemonClient.DeleteDevnet(cmd.Context(), ns, name)
 				if err != nil {
 					return err
 				}
@@ -476,24 +504,32 @@ func newDescribeCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "describe <devnet>",
+		Use:   "describe [devnet]",
 		Short: "Show detailed devnet information",
 		Long: `Show detailed information about a devnet including status conditions,
 recent events, and node details. Similar to kubectl describe.`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
+			var explicitDevnet string
+			if len(args) > 0 {
+				explicitDevnet = args[0]
+			}
+
+			ns, name, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			if err != nil {
+				return err
+			}
 
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			devnet, err := daemonClient.GetDevnet(cmd.Context(), namespace, name)
+			devnet, err := daemonClient.GetDevnet(cmd.Context(), ns, name)
 			if err != nil {
 				return err
 			}
 
-			nodes, err := daemonClient.ListNodes(cmd.Context(), namespace, name)
+			nodes, err := daemonClient.ListNodes(cmd.Context(), ns, name)
 			if err != nil {
 				// Don't fail if nodes can't be listed
 				nodes = nil
