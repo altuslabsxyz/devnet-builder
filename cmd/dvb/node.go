@@ -15,7 +15,6 @@ import (
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/provisioner"
-	"github.com/altuslabsxyz/devnet-builder/internal/dvbcontext"
 	"github.com/altuslabsxyz/devnet-builder/internal/plugin/cosmos"
 	"github.com/altuslabsxyz/devnet-builder/internal/plugin/types"
 	"github.com/fatih/color"
@@ -107,11 +106,16 @@ Examples:
 				explicitDevnet = args[0]
 			}
 
-			ns, devnetName, err := dvbcontext.Resolve(explicitDevnet, opts.namespace, currentContext)
+			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, opts.namespace)
 			if err != nil {
 				return err
 			}
 			opts.namespace = ns
+
+			// Print context header (skip for watch mode as it clears screen)
+			if !opts.watch {
+				printContextHeader(explicitDevnet, currentContext)
+			}
 
 			if opts.watch {
 				return runNodeListWatch(cmd.Context(), devnetName, opts)
@@ -364,7 +368,7 @@ Examples:
 				indexArg = args[1]
 			}
 
-			ns, devnetName, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
 				return err
 			}
@@ -435,7 +439,7 @@ Examples:
 				indexArg = args[1]
 			}
 
-			_, devnetName, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			_, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
 				return err
 			}
@@ -500,7 +504,7 @@ Examples:
 				indexArg = args[1]
 			}
 
-			_, devnetName, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			_, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
 				return err
 			}
@@ -584,7 +588,7 @@ Examples:
 				indexArg = args[1]
 			}
 
-			ns, devnetName, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
 				return err
 			}
@@ -643,7 +647,7 @@ Examples:
 				indexArg = args[1]
 			}
 
-			ns, devnetName, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
 				return err
 			}
@@ -702,7 +706,7 @@ Examples:
 				indexArg = args[1]
 			}
 
-			ns, devnetName, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
 				return err
 			}
@@ -805,7 +809,7 @@ Examples:
 				return fmt.Errorf("missing node index")
 			}
 
-			_, devnetName, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			_, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
 				return err
 			}

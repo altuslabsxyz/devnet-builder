@@ -2,6 +2,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -23,7 +24,73 @@ var (
 	standalone     bool
 	daemonClient   *client.Client
 	currentContext *dvbcontext.Context
+	dimColor       = color.New(color.Faint)
 )
+
+// printContextHeader prints the current context being used.
+// explicit: the devnet specified via args/flags (empty if using context)
+// ctx: the loaded context (may be nil)
+func printContextHeader(explicit string, ctx *dvbcontext.Context) {
+	// Print nothing if both explicit and context are empty
+	if explicit == "" && ctx == nil {
+		return
+	}
+
+	var usingDevnet string
+	var contextDevnet string
+	var usingNamespace string
+	var contextNamespace string
+
+	// Determine what we're using
+	if explicit != "" {
+		usingDevnet = explicit
+	}
+	if ctx != nil {
+		contextDevnet = ctx.Devnet
+		contextNamespace = ctx.Namespace
+		if usingDevnet == "" {
+			usingDevnet = ctx.Devnet
+			usingNamespace = ctx.Namespace
+		}
+	}
+
+	// Nothing to show if we still don't have a devnet
+	if usingDevnet == "" {
+		return
+	}
+
+	// Build the display string
+	var display string
+	if usingNamespace != "" && usingNamespace != "default" {
+		display = fmt.Sprintf("%s/%s", usingNamespace, usingDevnet)
+	} else {
+		display = usingDevnet
+	}
+
+	// Check if explicit differs from context
+	if explicit != "" && ctx != nil && explicit != contextDevnet {
+		var contextDisplay string
+		if contextNamespace != "" && contextNamespace != "default" {
+			contextDisplay = fmt.Sprintf("%s/%s", contextNamespace, contextDevnet)
+		} else {
+			contextDisplay = contextDevnet
+		}
+		dimColor.Printf("Using: %s (context: %s)\n", display, contextDisplay)
+	} else {
+		dimColor.Printf("Using: %s\n", display)
+	}
+}
+
+// resolveWithSuggestions wraps dvbcontext.Resolve and enhances the error with
+// suggestions when the daemon client is available.
+func resolveWithSuggestions(explicitDevnet, explicitNamespace string) (namespace, devnet string, err error) {
+	namespace, devnet, err = dvbcontext.Resolve(explicitDevnet, explicitNamespace, currentContext)
+	if errors.Is(err, dvbcontext.ErrNoDevnet) && daemonClient != nil {
+		suggestion := dvbcontext.SuggestUsage(daemonClient)
+		return "", "", dvbcontext.NewNoDevnetError(suggestion)
+	}
+	return namespace, devnet, err
+}
 
 func main() {
 	rootCmd := &cobra.Command{
@@ -68,6 +135,7 @@ func main() {
 		newVersionCmd(),
 		newDaemonCmd(),
 		newUseCmd(),
+		newStatusCmd(),
 		newApplyCmd(),
 		newGetCmd(),
 		newDeleteCmd(),
@@ -272,19 +340,21 @@ func newStartCmd() *cobra.Command {
 		Short: "Start a stopped devnet",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if daemonClient == nil {
+				return fmt.Errorf("daemon not running - start with: devnetd")
+			}
+
 			var explicitDevnet string
 			if len(args) > 0 {
 				explicitDevnet = args[0]
 			}
 
-			ns, name, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			ns, name, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
 				return err
 			}
 
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
-			}
+			printContextHeader(explicitDevnet, currentContext)
 
 			devnet, err := daemonClient.StartDevnet(cmd.Context(), ns, name)
 			if err != nil {
@@ -311,19 +381,21 @@ func newStopCmd() *cobra.Command {
 		Short: "Stop a running devnet",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if daemonClient == nil {
+				return fmt.Errorf("daemon not running - start with: devnetd")
+			}
+
 			var explicitDevnet string
 			if len(args) > 0 {
 				explicitDevnet = args[0]
 			}
 
-			ns, name, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			ns, name, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
 				return err
 			}
 
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
-			}
+			printContextHeader(explicitDevnet, currentContext)
 
 			devnet, err := daemonClient.StopDevnet(cmd.Context(), ns, name)
 			if err != nil {
@@ -390,8 +462,14 @@ Examples:
 
 			ns, name, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
 			if err != nil {
-				// If no devnet specified and no context, list available devnets
+				// If no devnet specified and no context, show available devnets
 				if explicitDevnet == "" {
+					// If daemon is available, use smart suggestions
+					if daemonClient != nil {
+						suggestion := dvbcontext.SuggestUsage(daemonClient)
+						return dvbcontext.NewNoDevnetError(suggestion)
+					}
+					// Fall back to listing from filesystem
 					return listDevnetsForDestroy(devnetsDir)
 				}
 				return err
@@ -510,18 +588,18 @@ func newDescribeCmd() *cobra.Command {
 recent events, and node details. Similar to kubectl describe.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if daemonClient == nil {
+				return fmt.Errorf("daemon not running - start with: devnetd")
+			}
+
 			var explicitDevnet string
 			if len(args) > 0 {
 				explicitDevnet = args[0]
 			}
 
-			ns, name, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			ns, name, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
 				return err
-			}
-
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
 			devnet, err := daemonClient.GetDevnet(cmd.Context(), ns, name)
@@ -552,6 +630,7 @@ recent events, and node details. Similar to kubectl describe.`,
 				return printDescribeYAML(devnet, nodes)
 			}
 
+			printContextHeader(explicitDevnet, currentContext)
 			formatDescribeOutput(os.Stdout, devnet, nodes, pluginAvailable, registeredNetworks)
 			return nil
 		},

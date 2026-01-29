@@ -117,3 +117,38 @@ func TestResolve(t *testing.T) {
 		})
 	}
 }
+
+func TestNoDevnetError(t *testing.T) {
+	t.Run("error message without suggestion", func(t *testing.T) {
+		err := NewNoDevnetError("")
+		msg := err.Error()
+		expected := "no devnet specified and no context set. Run 'dvb use <devnet>' to set context"
+		if msg != expected {
+			t.Errorf("NoDevnetError.Error() = %q, want %q", msg, expected)
+		}
+	})
+
+	t.Run("error message with suggestion", func(t *testing.T) {
+		suggestion := "Found 1 devnet: my-devnet\n\nRun: dvb use my-devnet"
+		err := NewNoDevnetError(suggestion)
+		msg := err.Error()
+		expected := "no devnet specified and no context set\n\n" + suggestion
+		if msg != expected {
+			t.Errorf("NoDevnetError.Error() = %q, want %q", msg, expected)
+		}
+	})
+
+	t.Run("errors.Is compatibility with ErrNoDevnet", func(t *testing.T) {
+		err := NewNoDevnetError("some suggestion")
+		if !errors.Is(err, ErrNoDevnet) {
+			t.Errorf("errors.Is(NoDevnetError, ErrNoDevnet) = false, want true")
+		}
+	})
+
+	t.Run("errors.Is with nil target returns false", func(t *testing.T) {
+		err := NewNoDevnetError("some suggestion")
+		if errors.Is(err, nil) {
+			t.Errorf("errors.Is(NoDevnetError, nil) = true, want false")
+		}
+	})
+}
