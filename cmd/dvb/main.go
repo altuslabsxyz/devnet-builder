@@ -676,7 +676,20 @@ func formatDescribeOutput(w io.Writer, d *v1.Devnet, nodes []*v1.Node, pluginAva
 			if e.Timestamp != nil {
 				age = time.Since(e.Timestamp.AsTime()).Round(time.Second).String()
 			}
-			fmt.Fprintf(w, "  %-8s %-20s %-20s %s\n", eventType, e.Reason, age, e.Message)
+			// Truncate and clean message for readability
+			msg := e.Message
+			// Replace newlines and multiple spaces with single space
+			msg = strings.ReplaceAll(msg, "\n", " ")
+			msg = strings.ReplaceAll(msg, "\r", " ")
+			// Collapse multiple spaces
+			for strings.Contains(msg, "  ") {
+				msg = strings.ReplaceAll(msg, "  ", " ")
+			}
+			// Truncate to reasonable length
+			if len(msg) > 120 {
+				msg = msg[:117] + "..."
+			}
+			fmt.Fprintf(w, "  %-8s %-20s %-20s %s\n", eventType, e.Reason, age, msg)
 		}
 	}
 
