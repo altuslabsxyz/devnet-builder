@@ -445,3 +445,48 @@ func splitWords(s string) []string {
 	}
 	return words
 }
+
+// =============================================================================
+// ensureOverwriteFlag Tests
+// =============================================================================
+
+func TestEnsureOverwriteFlag(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []string
+		expected []string
+	}{
+		{
+			name:     "adds flag when missing",
+			input:    []string{"init", "validator0", "--chain-id", "test-1", "--home", "/tmp/node"},
+			expected: []string{"init", "validator0", "--chain-id", "test-1", "--home", "/tmp/node", "--overwrite"},
+		},
+		{
+			name:     "does not duplicate --overwrite",
+			input:    []string{"init", "validator0", "--chain-id", "test-1", "--home", "/tmp/node", "--overwrite"},
+			expected: []string{"init", "validator0", "--chain-id", "test-1", "--home", "/tmp/node", "--overwrite"},
+		},
+		{
+			name:     "does not duplicate -o short form",
+			input:    []string{"init", "validator0", "--chain-id", "test-1", "-o", "--home", "/tmp/node"},
+			expected: []string{"init", "validator0", "--chain-id", "test-1", "-o", "--home", "/tmp/node"},
+		},
+		{
+			name:     "handles empty args",
+			input:    []string{},
+			expected: []string{"--overwrite"},
+		},
+		{
+			name:     "handles nil args",
+			input:    nil,
+			expected: []string{"--overwrite"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ensureOverwriteFlag(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}

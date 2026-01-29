@@ -417,6 +417,20 @@ var _ ports.NodeInitializer = (*nodeInitializerAdapter)(nil)
 // Ensure nodeInitializerAdapter implements provisioner.BinaryPathUpdater
 var _ provisioner.BinaryPathUpdater = (*nodeInitializerAdapter)(nil)
 
+// ensureOverwriteFlag ensures the --overwrite flag is present in init command args.
+// This is a defensive measure to handle cases where plugins don't include the flag,
+// which causes init to fail when genesis.json already exists (e.g., from a previous
+// provisioning attempt or leftover state).
+func ensureOverwriteFlag(args []string) []string {
+	for _, arg := range args {
+		// -o is the standard Cosmos SDK short form for --overwrite in init commands
+		if arg == "--overwrite" || arg == "-o" {
+			return args // Already has the flag
+		}
+	}
+	return append(args, "--overwrite")
+}
+
 // newNodeInitializerAdapter creates an adapter implementing ports.NodeInitializer.
 // The binaryPath is not set at construction time; call SetBinaryPath after build.
 func newNodeInitializerAdapter(module network.NetworkModule, logger *slog.Logger) *nodeInitializerAdapter {
@@ -453,6 +467,10 @@ func (a *nodeInitializerAdapter) Initialize(ctx context.Context, nodeDir, monike
 
 	// Get init command args from module
 	args := a.module.InitCommand(nodeDir, chainID, moniker)
+
+	// Ensure --overwrite flag is present to handle existing genesis.json files
+	// This is critical for re-provisioning devnets or when leftover state exists
+	args = ensureOverwriteFlag(args)
 
 	// Run the init command
 	cmd := exec.CommandContext(ctx, binaryPath, args...)
