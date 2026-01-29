@@ -15,6 +15,7 @@ import (
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/provisioner"
+	"github.com/altuslabsxyz/devnet-builder/internal/dvbcontext"
 	"github.com/altuslabsxyz/devnet-builder/internal/plugin/cosmos"
 	"github.com/altuslabsxyz/devnet-builder/internal/plugin/types"
 	"github.com/fatih/color"
@@ -70,32 +71,47 @@ func newNodeListCmd() *cobra.Command {
 	opts := &nodeListOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "list <devnet-name>",
+		Use:   "list [devnet-name]",
 		Short: "List nodes in a devnet",
 		Long: `List nodes in a devnet with their status.
+
+With context set (dvb use <devnet>), the devnet argument is optional.
 
 Use -w/--watch to continuously monitor node status in real-time.
 Press Ctrl+C to stop watching.
 
 Examples:
-  # List all nodes in a devnet
+  # List nodes using context
+  dvb use my-devnet
+  dvb node list
+
+  # List all nodes in a devnet (explicit)
   dvb node list my-devnet
 
   # Watch node status in real-time (updates every 2 seconds)
-  dvb node list my-devnet -w
+  dvb node list -w
 
   # Watch with custom interval (5 seconds)
-  dvb node list my-devnet -w --interval 5
+  dvb node list -w --interval 5
 
   # Wide output with additional details
-  dvb node list my-devnet --wide`,
-		Args: cobra.ExactArgs(1),
+  dvb node list --wide`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			devnetName := args[0]
+			var explicitDevnet string
+			if len(args) > 0 {
+				explicitDevnet = args[0]
+			}
+
+			ns, devnetName, err := dvbcontext.Resolve(explicitDevnet, opts.namespace, currentContext)
+			if err != nil {
+				return err
+			}
+			opts.namespace = ns
 
 			if opts.watch {
 				return runNodeListWatch(cmd.Context(), devnetName, opts)
@@ -318,21 +334,47 @@ func newNodeGetCmd() *cobra.Command {
 	var namespace string
 
 	cmd := &cobra.Command{
-		Use:   "get <devnet-name> <index>",
+		Use:   "get [devnet-name] <index>",
 		Short: "Get details of a specific node",
-		Args:  cobra.ExactArgs(2),
+		Long: `Get details of a specific node.
+
+With context set (dvb use <devnet>), only the index is required.
+
+Examples:
+  # Get node details using context
+  dvb use my-devnet
+  dvb node get 0
+
+  # Get node details (explicit devnet)
+  dvb node get my-devnet 0`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			devnetName := args[0]
-			index, err := parseNodeIndex(args[1])
+			var explicitDevnet string
+			var indexArg string
+
+			if len(args) == 1 {
+				// Just index, use context for devnet
+				indexArg = args[0]
+			} else {
+				explicitDevnet = args[0]
+				indexArg = args[1]
+			}
+
+			ns, devnetName, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
 			if err != nil {
 				return err
 			}
 
-			node, err := daemonClient.GetNode(cmd.Context(), namespace, devnetName, index)
+			index, err := parseNodeIndex(indexArg)
+			if err != nil {
+				return err
+			}
+
+			node, err := daemonClient.GetNode(cmd.Context(), ns, devnetName, index)
 			if err != nil {
 				return err
 			}
@@ -348,10 +390,14 @@ func newNodeGetCmd() *cobra.Command {
 }
 
 func newNodeHealthCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "health <devnet-name> <index>",
+	var namespace string
+
+	cmd := &cobra.Command{
+		Use:   "health [devnet-name] <index>",
 		Short: "Get health status of a node",
 		Long: `Display the health status of a specific node.
+
+With context set (dvb use <devnet>), only the index is required.
 
 Shows whether the node is healthy, unhealthy, stopped, or in a transitional state.
 This is useful for monitoring node status and diagnosing issues.
@@ -364,19 +410,37 @@ Health status values:
   - Unknown:       Health cannot be determined
 
 Examples:
-  # Check health of node 0
+  # Check health using context
+  dvb use my-devnet
+  dvb node health 0
+
+  # Check health of node 0 (explicit devnet)
   dvb node health my-devnet 0
 
   # Check health of node 1
   dvb node health my-devnet 1`,
-		Args: cobra.ExactArgs(2),
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			devnetName := args[0]
-			index, err := parseNodeIndex(args[1])
+			var explicitDevnet string
+			var indexArg string
+
+			if len(args) == 1 {
+				indexArg = args[0]
+			} else {
+				explicitDevnet = args[0]
+				indexArg = args[1]
+			}
+
+			_, devnetName, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			if err != nil {
+				return err
+			}
+
+			index, err := parseNodeIndex(indexArg)
 			if err != nil {
 				return err
 			}
@@ -391,31 +455,57 @@ Examples:
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+
+	return cmd
 }
 
 func newNodePortsCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "ports <devnet-name> <index>",
+	var namespace string
+
+	cmd := &cobra.Command{
+		Use:   "ports [devnet-name] <index>",
 		Short: "Show port mappings for a node",
 		Long: `Display the port mappings for a specific node.
+
+With context set (dvb use <devnet>), only the index is required.
 
 Each node in a devnet has its ports offset by index * 100 to avoid conflicts.
 This command shows both container ports and their mapped host ports.
 
 Examples:
+  # Show ports using context
+  dvb use my-devnet
+  dvb node ports 0
+
   # Show ports for node 0 (host ports: 26656, 26657, 1317, 9090)
   dvb node ports my-devnet 0
 
   # Show ports for node 1 (host ports: 26756, 26757, 1417, 9190)
   dvb node ports my-devnet 1`,
-		Args: cobra.ExactArgs(2),
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			devnetName := args[0]
-			index, err := parseNodeIndex(args[1])
+			var explicitDevnet string
+			var indexArg string
+
+			if len(args) == 1 {
+				indexArg = args[0]
+			} else {
+				explicitDevnet = args[0]
+				indexArg = args[1]
+			}
+
+			_, devnetName, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			if err != nil {
+				return err
+			}
+
+			index, err := parseNodeIndex(indexArg)
 			if err != nil {
 				return err
 			}
@@ -455,27 +545,56 @@ Examples:
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+
+	return cmd
 }
 
 func newNodeStartCmd() *cobra.Command {
 	var namespace string
 
 	cmd := &cobra.Command{
-		Use:   "start <devnet-name> <index>",
+		Use:   "start [devnet-name] <index>",
 		Short: "Start a node",
-		Args:  cobra.ExactArgs(2),
+		Long: `Start a stopped node.
+
+With context set (dvb use <devnet>), only the index is required.
+
+Examples:
+  # Start node using context
+  dvb use my-devnet
+  dvb node start 0
+
+  # Start node (explicit devnet)
+  dvb node start my-devnet 0`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			devnetName := args[0]
-			index, err := parseNodeIndex(args[1])
+			var explicitDevnet string
+			var indexArg string
+
+			if len(args) == 1 {
+				indexArg = args[0]
+			} else {
+				explicitDevnet = args[0]
+				indexArg = args[1]
+			}
+
+			ns, devnetName, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
 			if err != nil {
 				return err
 			}
 
-			node, err := daemonClient.StartNode(cmd.Context(), namespace, devnetName, index)
+			index, err := parseNodeIndex(indexArg)
+			if err != nil {
+				return err
+			}
+
+			node, err := daemonClient.StartNode(cmd.Context(), ns, devnetName, index)
 			if err != nil {
 				return err
 			}
@@ -495,21 +614,46 @@ func newNodeStopCmd() *cobra.Command {
 	var namespace string
 
 	cmd := &cobra.Command{
-		Use:   "stop <devnet-name> <index>",
+		Use:   "stop [devnet-name] <index>",
 		Short: "Stop a node",
-		Args:  cobra.ExactArgs(2),
+		Long: `Stop a running node.
+
+With context set (dvb use <devnet>), only the index is required.
+
+Examples:
+  # Stop node using context
+  dvb use my-devnet
+  dvb node stop 0
+
+  # Stop node (explicit devnet)
+  dvb node stop my-devnet 0`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			devnetName := args[0]
-			index, err := parseNodeIndex(args[1])
+			var explicitDevnet string
+			var indexArg string
+
+			if len(args) == 1 {
+				indexArg = args[0]
+			} else {
+				explicitDevnet = args[0]
+				indexArg = args[1]
+			}
+
+			ns, devnetName, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
 			if err != nil {
 				return err
 			}
 
-			node, err := daemonClient.StopNode(cmd.Context(), namespace, devnetName, index)
+			index, err := parseNodeIndex(indexArg)
+			if err != nil {
+				return err
+			}
+
+			node, err := daemonClient.StopNode(cmd.Context(), ns, devnetName, index)
 			if err != nil {
 				return err
 			}
@@ -529,21 +673,46 @@ func newNodeRestartCmd() *cobra.Command {
 	var namespace string
 
 	cmd := &cobra.Command{
-		Use:   "restart <devnet-name> <index>",
+		Use:   "restart [devnet-name] <index>",
 		Short: "Restart a node",
-		Args:  cobra.ExactArgs(2),
+		Long: `Restart a node (stop then start).
+
+With context set (dvb use <devnet>), only the index is required.
+
+Examples:
+  # Restart node using context
+  dvb use my-devnet
+  dvb node restart 0
+
+  # Restart node (explicit devnet)
+  dvb node restart my-devnet 0`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			devnetName := args[0]
-			index, err := parseNodeIndex(args[1])
+			var explicitDevnet string
+			var indexArg string
+
+			if len(args) == 1 {
+				indexArg = args[0]
+			} else {
+				explicitDevnet = args[0]
+				indexArg = args[1]
+			}
+
+			ns, devnetName, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
 			if err != nil {
 				return err
 			}
 
-			node, err := daemonClient.RestartNode(cmd.Context(), namespace, devnetName, index)
+			index, err := parseNodeIndex(indexArg)
+			if err != nil {
+				return err
+			}
+
+			node, err := daemonClient.RestartNode(cmd.Context(), ns, devnetName, index)
 			if err != nil {
 				return err
 			}
@@ -562,11 +731,14 @@ func newNodeRestartCmd() *cobra.Command {
 
 func newNodeExecCmd() *cobra.Command {
 	var timeout int
+	var namespace string
 
 	cmd := &cobra.Command{
-		Use:   "exec <devnet-name> <index> -- <command> [args...]",
+		Use:   "exec [devnet-name] <index> -- <command> [args...]",
 		Short: "Execute a command in a running node container",
 		Long: `Execute a command inside a running node container.
+
+With context set (dvb use <devnet>), only the index is required.
 
 This command allows you to run arbitrary commands inside a node's container,
 useful for debugging, inspecting state, or running ad-hoc operations.
@@ -574,40 +746,73 @@ useful for debugging, inspecting state, or running ad-hoc operations.
 The node must be in Running phase for exec to work.
 
 Examples:
-  # Check the chain binary version
+  # Execute using context
+  dvb use my-devnet
+  dvb node exec 0 -- stabled version
+
+  # Check the chain binary version (explicit devnet)
   dvb node exec my-devnet 0 -- stabled version
 
   # List files in the home directory
-  dvb node exec my-devnet 0 -- ls -la /home/.stable
+  dvb node exec 0 -- ls -la /home/.stable
 
   # Query the node status via RPC
-  dvb node exec my-devnet 0 -- curl -s localhost:26657/status
+  dvb node exec 0 -- curl -s localhost:26657/status
 
   # Run a command with a longer timeout
-  dvb node exec my-devnet 0 --timeout 60 -- stabled query bank balances cosmos1...`,
-		Args: cobra.MinimumNArgs(3),
+  dvb node exec 0 --timeout 60 -- stabled query bank balances cosmos1...`,
+		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			devnetName := args[0]
-			index, err := parseNodeIndex(args[1])
-			if err != nil {
-				return err
-			}
-
-			// Find the -- separator and get command args after it
-			command := args[2:]
+			// Find the -- separator position
+			dashDashPos := -1
 			for i, arg := range args {
 				if arg == "--" {
-					command = args[i+1:]
+					dashDashPos = i
 					break
 				}
 			}
 
+			var explicitDevnet string
+			var indexArg string
+			var command []string
+
+			if dashDashPos == -1 {
+				// No -- found, treat all args after index as command
+				// This shouldn't happen with proper usage but handle it
+				return fmt.Errorf("no command specified after --")
+			}
+
+			// Args before -- are: [devnet] <index>
+			// Args after -- are: <command> [args...]
+			beforeDash := args[:dashDashPos]
+			command = args[dashDashPos+1:]
+
 			if len(command) == 0 {
 				return fmt.Errorf("no command specified after --")
+			}
+
+			if len(beforeDash) == 1 {
+				// Just index, use context for devnet
+				indexArg = beforeDash[0]
+			} else if len(beforeDash) >= 2 {
+				explicitDevnet = beforeDash[0]
+				indexArg = beforeDash[1]
+			} else {
+				return fmt.Errorf("missing node index")
+			}
+
+			_, devnetName, err := dvbcontext.Resolve(explicitDevnet, namespace, currentContext)
+			if err != nil {
+				return err
+			}
+
+			index, err := parseNodeIndex(indexArg)
+			if err != nil {
+				return err
 			}
 
 			result, err := daemonClient.ExecInNode(cmd.Context(), devnetName, index, command, timeout)
@@ -635,6 +840,7 @@ Examples:
 	}
 
 	cmd.Flags().IntVar(&timeout, "timeout", 30, "Command timeout in seconds")
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
 
 	return cmd
 }

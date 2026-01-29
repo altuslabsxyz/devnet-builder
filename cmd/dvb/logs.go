@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
+	"github.com/altuslabsxyz/devnet-builder/internal/dvbcontext"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -31,37 +32,68 @@ func newLogsCmd() *cobra.Command {
 	opts := &logsOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "logs <devnet> [node]",
+		Use:   "logs [devnet] <node>",
 		Short: "View logs from devnet nodes",
 		Long: `View logs from one or more nodes in a devnet.
 
-If only a devnet name is provided, shows merged logs from all nodes.
-If a node name is also provided, shows logs only from that node.
+With context set (dvb use <devnet>):
+  dvb logs <node>           - Show logs from a specific node in context devnet
+
+Without context or explicit devnet:
+  dvb logs <devnet> <node>  - Show logs from a specific node
+  dvb logs <devnet>         - Show merged logs from all nodes (no context)
 
 In daemon mode, streams logs from the daemon.
 In standalone mode, reads log files from the data directory.
 
 Examples:
-  # Show all logs from a devnet
+  # Set context and view logs from node 0
+  dvb use my-devnet
+  dvb logs 0
+
+  # Show logs from a specific node (explicit devnet)
+  dvb logs my-devnet 0
+
+  # Show all logs from a devnet (no context set)
   dvb logs my-devnet
 
-  # Show logs from a specific node
-  dvb logs my-devnet validator-0
-
   # Follow logs in real-time
-  dvb logs my-devnet -f
+  dvb logs 0 -f
 
   # Show last 100 lines
-  dvb logs my-devnet --tail 100
+  dvb logs 0 --tail 100
 
   # Show logs with timestamps
-  dvb logs my-devnet --timestamps`,
+  dvb logs 0 --timestamps`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.devnet = args[0]
-			if len(args) > 1 {
-				opts.node = args[1]
+			var explicitDevnet, nodeArg string
+
+			if len(args) == 1 {
+				// Determine if single arg is a node identifier or devnet name.
+				// Node identifiers are: numeric (0, 1, 2) or "validator-N" pattern
+				if looksLikeNodeIdentifier(args[0]) {
+					// Treat as node - requires context
+					if currentContext == nil {
+						return fmt.Errorf("no devnet specified. Either:\n  - Provide devnet: dvb logs <devnet> %s\n  - Set context: dvb use <devnet>", args[0])
+					}
+					nodeArg = args[0]
+				} else {
+					// Treat as devnet name (show all nodes)
+					explicitDevnet = args[0]
+				}
+			} else if len(args) == 2 {
+				explicitDevnet = args[0]
+				nodeArg = args[1]
 			}
+
+			_, devnetName, err := dvbcontext.Resolve(explicitDevnet, "", currentContext)
+			if err != nil {
+				return err
+			}
+
+			opts.devnet = devnetName
+			opts.node = nodeArg
 			return runLogs(cmd.Context(), opts)
 		},
 	}
@@ -359,6 +391,20 @@ func tailLines(file *os.File, n int) ([]string, error) {
 	_, _ = file.Seek(0, io.SeekEnd)
 
 	return lines, nil
+}
+
+// looksLikeNodeIdentifier returns true if the string looks like a node identifier.
+// Node identifiers are: pure numeric (0, 1, 2) or "validator-N" / "node-N" patterns.
+func looksLikeNodeIdentifier(s string) bool {
+	// Pure numeric
+	if _, err := parseNodeIndex(s); err == nil {
+		return true
+	}
+	// Common node name patterns
+	if strings.HasPrefix(s, "validator-") || strings.HasPrefix(s, "node-") || strings.HasPrefix(s, "full-") {
+		return true
+	}
+	return false
 }
 
 // streamLogsFromDaemon streams logs from the daemon for a specific node.
