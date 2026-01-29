@@ -37,4 +37,3 @@ func Resolve(explicitDevnet, explicitNamespace string, ctx *Context) (namespace,
 
 	return namespace, devnet, nil
 }
-
