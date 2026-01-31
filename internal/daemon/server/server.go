@@ -89,8 +89,8 @@ type Server struct {
 	healthCtrl    *controller.HealthController
 	pluginManager *PluginManager
 	grpcServer    *grpc.Server
-	listener      net.Listener   // Unix socket listener
-	tcpListener   net.Listener   // TCP/TLS listener (optional)
+	listener      net.Listener // Unix socket listener
+	tcpListener   net.Listener // TCP/TLS listener (optional)
 	logger        *slog.Logger
 	logFile       *os.File // Log file handle for cleanup
 }
