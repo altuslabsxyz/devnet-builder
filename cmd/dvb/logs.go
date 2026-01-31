@@ -28,21 +28,21 @@ type logsOptions struct {
 	timestamp bool
 }
 
-func newLogsCmd() *cobra.Command {
+func newNodeLogsCmd() *cobra.Command {
 	opts := &logsOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "logs [devnet] [node]",
-		Short: "View logs from devnet nodes",
-		Long: `View logs from one or more nodes in a devnet.
+		Use:   "logs [devnet] [index]",
+		Short: "View logs from a node",
+		Long: `View logs from a node in a devnet.
 
 With context set (dvb use <devnet>):
-  dvb logs                  - Interactive picker to select node (if multiple)
-  dvb logs <node>           - Show logs from a specific node in context devnet
+  dvb node logs             - Interactive picker to select node
+  dvb node logs <index>     - Show logs from a specific node
 
 Without context or explicit devnet:
-  dvb logs <devnet> <node>  - Show logs from a specific node
-  dvb logs <devnet>         - Show merged logs from all nodes (no context)
+  dvb node logs <devnet> <index>  - Show logs from a specific node
+  dvb node logs <devnet>          - Show merged logs from all nodes
 
 In daemon mode, streams logs from the daemon.
 In standalone mode, reads log files from the data directory.
@@ -50,26 +50,23 @@ In standalone mode, reads log files from the data directory.
 Examples:
   # Set context and use interactive picker
   dvb use my-devnet
-  dvb logs
+  dvb node logs
 
   # Set context and view logs from node 0
   dvb use my-devnet
-  dvb logs 0
+  dvb node logs 0
 
   # Show logs from a specific node (explicit devnet)
-  dvb logs my-devnet 0
-
-  # Show all logs from a devnet (no context set)
-  dvb logs my-devnet
+  dvb node logs my-devnet 0
 
   # Follow logs in real-time
-  dvb logs 0 -f
+  dvb node logs -f
 
   # Show last 100 lines
-  dvb logs 0 --tail 100
+  dvb node logs --tail 100
 
   # Show logs with timestamps
-  dvb logs 0 --timestamps`,
+  dvb node logs --timestamps`,
 		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var explicitDevnet, nodeArg string
@@ -77,7 +74,7 @@ Examples:
 			if len(args) == 0 {
 				// No args - requires context and will use picker
 				if currentContext == nil {
-					return fmt.Errorf("no devnet specified. Either:\n  - Provide devnet: dvb logs <devnet> [node]\n  - Set context: dvb use <devnet>")
+					return fmt.Errorf("no devnet specified. Either:\n  - Provide devnet: dvb node logs <devnet> [index]\n  - Set context: dvb use <devnet>")
 				}
 				// nodeArg stays empty, will be picked later
 			} else if len(args) == 1 {
@@ -86,7 +83,7 @@ Examples:
 				if looksLikeNodeIdentifier(args[0]) {
 					// Treat as node - requires context
 					if currentContext == nil {
-						return fmt.Errorf("no devnet specified. Either:\n  - Provide devnet: dvb logs <devnet> %s\n  - Set context: dvb use <devnet>", args[0])
+						return fmt.Errorf("no devnet specified. Either:\n  - Provide devnet: dvb node logs <devnet> %s\n  - Set context: dvb use <devnet>", args[0])
 					}
 					nodeArg = args[0]
 				} else {

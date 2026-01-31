@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -78,6 +79,16 @@ func (m *mockNodeInitializer) Initialize(ctx context.Context, nodeDir, moniker, 
 		moniker string
 		chainID string
 	}{nodeDir, moniker, chainID})
+
+	// Create config directory like the real initializer does
+	// This is needed because the orchestrator writes genesis to config/genesis.json
+	if m.initializeErr == nil {
+		configDir := filepath.Join(nodeDir, "config")
+		if err := os.MkdirAll(configDir, 0755); err != nil {
+			return err
+		}
+	}
+
 	return m.initializeErr
 }
 

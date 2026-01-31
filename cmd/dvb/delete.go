@@ -21,56 +21,47 @@ func newDeleteCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "delete [resource] [name]",
-		Short: "Delete devnet resources",
-		Long: `Delete devnet resources by name or from a YAML file.
+		Use:   "delete [devnet]",
+		Short: "Delete a devnet",
+		Long: `Delete a devnet by name or from a YAML file.
 
 In daemon mode, the daemon handles resource cleanup.
 In standalone mode, removes devnet data from the filesystem.
 
 Examples:
+  # Delete current context devnet
+  dvb delete
+
   # Delete a devnet by name
-  dvb delete devnet my-devnet
+  dvb delete my-devnet
 
   # Delete a devnet in a specific namespace
-  dvb delete devnet my-devnet -n production
+  dvb delete my-devnet -n production
 
   # Delete devnets defined in a YAML file
   dvb delete -f devnet.yaml
 
   # Delete without confirmation
-  dvb delete devnet my-devnet --force
+  dvb delete my-devnet --force
 
   # Preview what would be deleted
   dvb delete -f devnet.yaml --dry-run
 
   # Delete in standalone mode with custom data directory
-  dvb delete devnet my-devnet --data-dir /path/to/data`,
-		Args: cobra.MinimumNArgs(0),
+  dvb delete my-devnet --data-dir /path/to/data`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// If -f is provided, delete from file
 			if filePath != "" {
 				return runDeleteFromFile(cmd, namespace, filePath, force, dryRun, dataDir)
 			}
 
-			// Otherwise expect resource type and optionally name
-			if len(args) < 1 {
-				return fmt.Errorf("requires resource type and name, or use -f <file>")
+			// Devnet name is optional - can be resolved from context
+			var explicitName string
+			if len(args) > 0 {
+				explicitName = args[0]
 			}
-
-			resourceType := args[0]
-
-			switch resourceType {
-			case "devnet", "devnets", "dn":
-				// Name is optional - can be resolved from context
-				var explicitName string
-				if len(args) >= 2 {
-					explicitName = args[1]
-				}
-				return runDeleteDevnet(cmd, namespace, explicitName, force, dryRun, dataDir)
-			default:
-				return fmt.Errorf("unknown resource type: %s", resourceType)
-			}
+			return runDeleteDevnet(cmd, namespace, explicitName, force, dryRun, dataDir)
 		},
 	}
 

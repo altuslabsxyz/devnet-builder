@@ -28,20 +28,28 @@ func newNodeCmd() *cobra.Command {
 		Short: "Manage individual nodes",
 		Long: `Manage individual nodes within a devnet.
 
-Subcommands allow you to list, start, stop, and restart specific nodes.
+Subcommands allow you to list, start, stop, restart nodes and view logs.
+When context is set (dvb use <devnet>), most commands support interactive
+node selection if no index is provided.
 
 Examples:
-  # List nodes in a devnet
-  dvb node list my-devnet
+  # Set context first
+  dvb use my-devnet
 
-  # Stop node 1
-  dvb node stop my-devnet 1
+  # List nodes
+  dvb node list
 
-  # Start node 1
-  dvb node start my-devnet 1
+  # View logs (interactive picker if multiple nodes)
+  dvb node logs
 
-  # Restart node 0
-  dvb node restart my-devnet 0`,
+  # Start/stop/restart with picker
+  dvb node start
+  dvb node stop
+  dvb node restart
+
+  # Or specify index explicitly
+  dvb node logs 0
+  dvb node start 1`,
 	}
 
 	cmd.AddCommand(
@@ -49,6 +57,7 @@ Examples:
 		newNodeGetCmd(),
 		newNodeHealthCmd(),
 		newNodePortsCmd(),
+		newNodeLogsCmd(),
 		newNodeStartCmd(),
 		newNodeStopCmd(),
 		newNodeRestartCmd(),

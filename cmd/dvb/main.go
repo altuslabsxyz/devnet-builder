@@ -208,7 +208,6 @@ func main() {
 		newGovCmd(),
 		newGenesisCmd(),
 		newProvisionCmd(),
-		newLogsCmd(),
 		newConfigCmd(),
 		newPingCmd(),
 		newWhoAmICmd(),
