@@ -259,6 +259,14 @@ func (r *integrationNodeRuntime) Cleanup(ctx context.Context) error {
 	return nil
 }
 
+func (r *integrationNodeRuntime) ExecInNode(ctx context.Context, nodeID string, command []string, timeout time.Duration) (*runtime.ExecResult, error) {
+	return &runtime.ExecResult{
+		ExitCode: 0,
+		Stdout:   "mock exec output",
+		Stderr:   "",
+	}, nil
+}
+
 // =============================================================================
 // Integration Tests
 // =============================================================================
@@ -340,6 +348,7 @@ func TestProvisioningOrchestrator_FullIntegration(t *testing.T) {
 			PhaseForking,
 			PhaseInitializing,
 			PhaseStarting,
+			PhaseHealthChecking,
 			PhaseRunning,
 		}
 		assert.Equal(t, expectedPhases, phases)
@@ -377,6 +386,39 @@ func TestProvisioningOrchestrator_FullIntegration(t *testing.T) {
 		// Check fullnode directory
 		fullnodeDir := filepath.Join(nodesDir, "integration-test-devnet-fullnode-3")
 		assert.DirExists(t, fullnodeDir)
+	})
+
+	// Verify forked genesis was distributed to all nodes (critical fix validation)
+	t.Run("ForkedGenesisDistributedToNodes", func(t *testing.T) {
+		nodesDir := filepath.Join(dataDir, "nodes")
+
+		// Read the main genesis to compare
+		mainGenesis, err := os.ReadFile(filepath.Join(dataDir, "genesis.json"))
+		require.NoError(t, err)
+		require.NotEmpty(t, mainGenesis)
+
+		// Check all validator nodes have the full forked genesis (not placeholder)
+		for i := 0; i < 3; i++ {
+			nodeDir := filepath.Join(nodesDir, fmt.Sprintf("integration-test-devnet-validator-%d", i))
+			nodeGenesis, err := os.ReadFile(filepath.Join(nodeDir, "config", "genesis.json"))
+			require.NoError(t, err, "Node %d genesis should be readable", i)
+
+			// The node genesis should match the main forked genesis exactly
+			assert.Equal(t, mainGenesis, nodeGenesis,
+				"Node %d genesis should match the forked genesis, not be a placeholder", i)
+
+			// Should contain the full chain_id and app_state (not just placeholder)
+			assert.Contains(t, string(nodeGenesis), `"chain_id": "integration-chain-1"`)
+			assert.Contains(t, string(nodeGenesis), `"app_state"`,
+				"Node %d genesis should have full app_state, not placeholder", i)
+		}
+
+		// Check fullnode has the full forked genesis too
+		fullnodeDir := filepath.Join(nodesDir, "integration-test-devnet-fullnode-3")
+		fullnodeGenesis, err := os.ReadFile(filepath.Join(fullnodeDir, "config", "genesis.json"))
+		require.NoError(t, err)
+		assert.Equal(t, mainGenesis, fullnodeGenesis,
+			"Fullnode genesis should match the forked genesis")
 	})
 
 	// Verify nodes were started
