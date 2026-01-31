@@ -25,6 +25,11 @@ var (
 	daemonClient   *client.Client
 	currentContext *dvbcontext.Context
 	dimColor       = color.New(color.Faint)
+
+	// Remote connection flags
+	flagServer string
+	flagAPIKey string
+	flagLocal  bool
 )
 
 // printContextHeader prints the current context being used.
@@ -108,10 +113,57 @@ func main() {
 				return nil
 			}
 
-			// Try to connect to daemon
-			c, err := client.New()
-			if err == nil {
+			// Connection precedence:
+			// 1. --local flag -> use Unix socket
+			// 2. --server flag -> use specified remote
+			// 3. ~/.dvb/config.yaml server -> use configured remote
+			// 4. Default -> try local Unix socket
+
+			var c *client.Client
+			var err error
+
+			if flagLocal {
+				// Force local Unix socket connection
+				c, err = client.New()
+				if err == nil {
+					daemonClient = c
+				}
+			} else if flagServer != "" {
+				// Use --server flag
+				apiKey := flagAPIKey
+				if apiKey == "" {
+					// Try to get API key from config if not provided via flag
+					cfg, cfgErr := client.LoadConfig()
+					if cfgErr == nil && cfg.APIKey != "" {
+						apiKey = cfg.APIKey
+					}
+				}
+				c, err = client.NewRemoteClient(flagServer, apiKey)
+				if err != nil {
+					return fmt.Errorf("failed to connect to remote server: %w", err)
+				}
 				daemonClient = c
+			} else {
+				// Check config file for remote server
+				cfg, cfgErr := client.LoadConfig()
+				if cfgErr == nil && cfg.Server != "" {
+					// Use configured remote server
+					apiKey := flagAPIKey
+					if apiKey == "" {
+						apiKey = cfg.APIKey
+					}
+					c, err = client.NewRemoteClient(cfg.Server, apiKey)
+					if err != nil {
+						return fmt.Errorf("failed to connect to remote server: %w", err)
+					}
+					daemonClient = c
+				} else {
+					// Default: try local Unix socket
+					c, err = client.New()
+					if err == nil {
+						daemonClient = c
+					}
+				}
 			}
 
 			// Load context (ignore errors, context is optional)
@@ -129,6 +181,9 @@ func main() {
 
 	// Global flags
 	rootCmd.PersistentFlags().BoolVar(&standalone, "standalone", false, "Force standalone mode (don't connect to daemon)")
+	rootCmd.PersistentFlags().StringVar(&flagServer, "server", "", "Remote devnetd server address (e.g., devnetd.example.com:9000)")
+	rootCmd.PersistentFlags().StringVar(&flagAPIKey, "api-key", "", "API key for remote server authentication")
+	rootCmd.PersistentFlags().BoolVar(&flagLocal, "local", false, "Force local Unix socket connection (ignore config)")
 
 	// Add commands
 	rootCmd.AddCommand(
@@ -154,6 +209,9 @@ func main() {
 		newGenesisCmd(),
 		newProvisionCmd(),
 		newLogsCmd(),
+		newConfigCmd(),
+		newPingCmd(),
+		newWhoAmICmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

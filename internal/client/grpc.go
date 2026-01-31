@@ -3,6 +3,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"time"
@@ -10,11 +11,13 @@ import (
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
-// GRPCClient wraps the gRPC DevnetServiceClient, NodeServiceClient, UpgradeServiceClient, TransactionServiceClient, and NetworkServiceClient.
+// GRPCClient wraps the gRPC DevnetServiceClient, NodeServiceClient, UpgradeServiceClient, TransactionServiceClient, NetworkServiceClient, and AuthServiceClient.
 type GRPCClient struct {
 	conn        *grpc.ClientConn
 	devnet      v1.DevnetServiceClient
@@ -22,9 +25,10 @@ type GRPCClient struct {
 	upgrade     v1.UpgradeServiceClient
 	transaction v1.TransactionServiceClient
 	network     v1.NetworkServiceClient
+	auth        v1.AuthServiceClient
 }
 
-// NewGRPCClient creates a new gRPC client connected to the daemon.
+// NewGRPCClient creates a new gRPC client connected to the daemon via Unix socket.
 func NewGRPCClient(socketPath string) (*GRPCClient, error) {
 	// Connect via Unix socket
 	target := "unix://" + socketPath
@@ -42,7 +46,64 @@ func NewGRPCClient(socketPath string) (*GRPCClient, error) {
 		upgrade:     v1.NewUpgradeServiceClient(conn),
 		transaction: v1.NewTransactionServiceClient(conn),
 		network:     v1.NewNetworkServiceClient(conn),
+		auth:        v1.NewAuthServiceClient(conn),
 	}, nil
+}
+
+// NewRemoteGRPCClient creates a new gRPC client connected to a remote server via TLS.
+// The apiKey is added to gRPC metadata as "authorization: Bearer <apiKey>" on each call.
+func NewRemoteGRPCClient(server, apiKey string) (*GRPCClient, error) {
+	// Configure TLS with system CA pool
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+	creds := credentials.NewTLS(tlsConfig)
+
+	// Build dial options
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(creds),
+	}
+
+	// Add API key interceptor if provided
+	if apiKey != "" {
+		opts = append(opts,
+			grpc.WithUnaryInterceptor(apiKeyUnaryInterceptor(apiKey)),
+			grpc.WithStreamInterceptor(apiKeyStreamInterceptor(apiKey)),
+		)
+	}
+
+	conn, err := grpc.NewClient(server, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to remote server %s: %w", server, err)
+	}
+
+	return &GRPCClient{
+		conn:        conn,
+		devnet:      v1.NewDevnetServiceClient(conn),
+		node:        v1.NewNodeServiceClient(conn),
+		upgrade:     v1.NewUpgradeServiceClient(conn),
+		transaction: v1.NewTransactionServiceClient(conn),
+		network:     v1.NewNetworkServiceClient(conn),
+		auth:        v1.NewAuthServiceClient(conn),
+	}, nil
+}
+
+// apiKeyUnaryInterceptor returns a gRPC unary client interceptor that adds
+// the API key to the authorization header.
+func apiKeyUnaryInterceptor(apiKey string) grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+apiKey)
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+}
+
+// apiKeyStreamInterceptor returns a gRPC stream client interceptor that adds
+// the API key to the authorization header.
+func apiKeyStreamInterceptor(apiKey string) grpc.StreamClientInterceptor {
+	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+apiKey)
+		return streamer(ctx, desc, cc, method, opts...)
+	}
 }
 
 // Close closes the gRPC connection.
@@ -551,6 +612,40 @@ func (c *GRPCClient) StreamNodeLogs(ctx context.Context, devnetName string, inde
 			return err
 		}
 	}
+}
+
+// PingResponse contains the response from a Ping call.
+type PingResponse struct {
+	ServerVersion string
+}
+
+// Ping tests connectivity to the server.
+func (c *GRPCClient) Ping(ctx context.Context) (*PingResponse, error) {
+	resp, err := c.auth.Ping(ctx, &v1.PingRequest{})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return &PingResponse{
+		ServerVersion: resp.ServerVersion,
+	}, nil
+}
+
+// WhoAmIResponse contains the response from a WhoAmI call.
+type WhoAmIResponse struct {
+	Name       string
+	Namespaces []string
+}
+
+// WhoAmI returns information about the authenticated user.
+func (c *GRPCClient) WhoAmI(ctx context.Context) (*WhoAmIResponse, error) {
+	resp, err := c.auth.WhoAmI(ctx, &v1.WhoAmIRequest{})
+	if err != nil {
+		return nil, wrapGRPCError(err)
+	}
+	return &WhoAmIResponse{
+		Name:       resp.Name,
+		Namespaces: resp.Namespaces,
+	}, nil
 }
 
 // wrapGRPCError converts gRPC errors to user-friendly messages.

@@ -11,6 +11,7 @@ import (
 // Priority: defaults < config file < environment variables < CLI flags
 type Config struct {
 	Server   ServerConfig   `toml:"server"`
+	Auth     AuthConfig     `toml:"auth"`
 	Docker   DockerConfig   `toml:"docker"`
 	GitHub   GitHubConfig   `toml:"github"`
 	Timeouts TimeoutConfig  `toml:"timeouts"`
@@ -25,6 +26,17 @@ type ServerConfig struct {
 	LogLevel   string `toml:"log_level"`
 	Workers    int    `toml:"workers"`
 	Foreground bool   `toml:"foreground"`
+
+	// Remote listener settings (optional - enables remote access)
+	Listen  string `toml:"listen"`   // TCP address (e.g., "0.0.0.0:9000"), empty = local only
+	TLSCert string `toml:"tls_cert"` // Path to TLS certificate file
+	TLSKey  string `toml:"tls_key"`  // Path to TLS private key file
+}
+
+// AuthConfig holds authentication settings.
+type AuthConfig struct {
+	Enabled  bool   `toml:"enabled"`   // Enable API key authentication for remote connections
+	KeysFile string `toml:"keys_file"` // Path to API keys file
 }
 
 // DockerConfig holds Docker runtime settings.
@@ -77,6 +89,10 @@ func DefaultConfig() *Config {
 			LogLevel:   "info",
 			Workers:    2,
 			Foreground: true,
+		},
+		Auth: AuthConfig{
+			Enabled:  true, // Auth enabled by default when Listen is set
+			KeysFile: filepath.Join(dataDir, "api-keys.yaml"),
 		},
 		Docker: DockerConfig{
 			Enabled: false,

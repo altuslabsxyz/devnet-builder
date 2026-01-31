@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -29,6 +30,28 @@ func Validate(cfg *Config) error {
 	// Validate workers
 	if cfg.Server.Workers < 1 {
 		errs = append(errs, "workers must be at least 1")
+	}
+
+	// Validate TLS settings: if Listen is set, TLS cert and key are required
+	if cfg.Server.Listen != "" {
+		if cfg.Server.TLSCert == "" {
+			errs = append(errs, "tls_cert is required when listen is set")
+		}
+		if cfg.Server.TLSKey == "" {
+			errs = append(errs, "tls_key is required when listen is set")
+		}
+		// Validate certificate file exists
+		if cfg.Server.TLSCert != "" {
+			if _, err := os.Stat(cfg.Server.TLSCert); os.IsNotExist(err) {
+				errs = append(errs, fmt.Sprintf("tls_cert file not found: %s", cfg.Server.TLSCert))
+			}
+		}
+		// Validate key file exists
+		if cfg.Server.TLSKey != "" {
+			if _, err := os.Stat(cfg.Server.TLSKey); os.IsNotExist(err) {
+				errs = append(errs, fmt.Sprintf("tls_key file not found: %s", cfg.Server.TLSKey))
+			}
+		}
 	}
 
 	// Validate timeouts

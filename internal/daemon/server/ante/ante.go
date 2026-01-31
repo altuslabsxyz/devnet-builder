@@ -9,8 +9,9 @@ import (
 )
 
 // AnteHandler validates requests before they reach service logic.
-// It chains three validation layers: field → spec → reference.
+// It chains four validation layers: authz → field → spec → reference.
 type AnteHandler struct {
+	authz     *AuthzValidator
 	field     FieldValidator
 	spec      SpecValidator
 	reference ReferenceValidator
@@ -19,6 +20,7 @@ type AnteHandler struct {
 // New creates an AnteHandler with all validation layers.
 func New(store Store, networkSvc NetworkService) *AnteHandler {
 	return &AnteHandler{
+		authz:     NewAuthzValidator(),
 		field:     NewFieldValidator(),
 		spec:      NewSpecValidator(),
 		reference: NewReferenceValidator(store, networkSvc),
@@ -27,6 +29,11 @@ func New(store Store, networkSvc NetworkService) *AnteHandler {
 
 // ValidateCreateDevnet validates a CreateDevnetRequest through all layers.
 func (h *AnteHandler) ValidateCreateDevnet(ctx context.Context, req *v1.CreateDevnetRequest) error {
+	// Authorization check first
+	if err := h.authz.ValidateNamespaceAccess(ctx, req.Namespace); err != nil {
+		return err
+	}
+
 	if err := h.field.ValidateCreateDevnetRequest(ctx, req); err != nil {
 		return err
 	}
@@ -48,6 +55,11 @@ func (h *AnteHandler) ValidateCreateDevnet(ctx context.Context, req *v1.CreateDe
 
 // ValidateApplyDevnet validates an ApplyDevnetRequest through all layers.
 func (h *AnteHandler) ValidateApplyDevnet(ctx context.Context, req *v1.ApplyDevnetRequest) error {
+	// Authorization check first
+	if err := h.authz.ValidateNamespaceAccess(ctx, req.Namespace); err != nil {
+		return err
+	}
+
 	if err := h.field.ValidateApplyDevnetRequest(ctx, req); err != nil {
 		return err
 	}
@@ -69,6 +81,11 @@ func (h *AnteHandler) ValidateApplyDevnet(ctx context.Context, req *v1.ApplyDevn
 
 // ValidateUpdateDevnet validates an UpdateDevnetRequest through all layers.
 func (h *AnteHandler) ValidateUpdateDevnet(ctx context.Context, req *v1.UpdateDevnetRequest) error {
+	// Authorization check first
+	if err := h.authz.ValidateNamespaceAccess(ctx, req.Namespace); err != nil {
+		return err
+	}
+
 	if err := h.field.ValidateUpdateDevnetRequest(ctx, req); err != nil {
 		return err
 	}
@@ -84,6 +101,11 @@ func (h *AnteHandler) ValidateUpdateDevnet(ctx context.Context, req *v1.UpdateDe
 
 // ValidateCreateUpgrade validates a CreateUpgradeRequest through all layers.
 func (h *AnteHandler) ValidateCreateUpgrade(ctx context.Context, req *v1.CreateUpgradeRequest) error {
+	// Authorization check first
+	if err := h.authz.ValidateNamespaceAccess(ctx, req.Namespace); err != nil {
+		return err
+	}
+
 	if err := h.field.ValidateCreateUpgradeRequest(ctx, req); err != nil {
 		return err
 	}
@@ -105,6 +127,11 @@ func (h *AnteHandler) ValidateCreateUpgrade(ctx context.Context, req *v1.CreateU
 
 // ValidateStartNode validates a StartNodeRequest.
 func (h *AnteHandler) ValidateStartNode(ctx context.Context, req *v1.StartNodeRequest) error {
+	// Authorization check first
+	if err := h.authz.ValidateNamespaceAccess(ctx, req.Namespace); err != nil {
+		return err
+	}
+
 	if err := h.field.ValidateStartNodeRequest(ctx, req); err != nil {
 		return err
 	}
@@ -118,6 +145,11 @@ func (h *AnteHandler) ValidateStartNode(ctx context.Context, req *v1.StartNodeRe
 
 // ValidateStopNode validates a StopNodeRequest.
 func (h *AnteHandler) ValidateStopNode(ctx context.Context, req *v1.StopNodeRequest) error {
+	// Authorization check first
+	if err := h.authz.ValidateNamespaceAccess(ctx, req.Namespace); err != nil {
+		return err
+	}
+
 	if err := h.field.ValidateStopNodeRequest(ctx, req); err != nil {
 		return err
 	}
@@ -131,6 +163,11 @@ func (h *AnteHandler) ValidateStopNode(ctx context.Context, req *v1.StopNodeRequ
 
 // ValidateRestartNode validates a RestartNodeRequest.
 func (h *AnteHandler) ValidateRestartNode(ctx context.Context, req *v1.RestartNodeRequest) error {
+	// Authorization check first
+	if err := h.authz.ValidateNamespaceAccess(ctx, req.Namespace); err != nil {
+		return err
+	}
+
 	if err := h.field.ValidateRestartNodeRequest(ctx, req); err != nil {
 		return err
 	}
@@ -144,6 +181,10 @@ func (h *AnteHandler) ValidateRestartNode(ctx context.Context, req *v1.RestartNo
 
 // ValidateGetNode validates a GetNodeRequest.
 func (h *AnteHandler) ValidateGetNode(ctx context.Context, req *v1.GetNodeRequest) error {
+	// Authorization check first
+	if err := h.authz.ValidateNamespaceAccess(ctx, req.Namespace); err != nil {
+		return err
+	}
 	return h.field.ValidateGetNodeRequest(ctx, req)
 }
 

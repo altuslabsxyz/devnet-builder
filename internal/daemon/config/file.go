@@ -5,6 +5,7 @@ package config
 // All fields are pointers to distinguish "not set" from "set to zero/false".
 type FileConfig struct {
 	Server   FileServerConfig   `toml:"server"`
+	Auth     FileAuthConfig     `toml:"auth"`
 	Docker   FileDockerConfig   `toml:"docker"`
 	GitHub   FileGitHubConfig   `toml:"github"`
 	Timeouts FileTimeoutConfig  `toml:"timeouts"`
@@ -19,6 +20,17 @@ type FileServerConfig struct {
 	LogLevel   *string `toml:"log_level"`
 	Workers    *int    `toml:"workers"`
 	Foreground *bool   `toml:"foreground"`
+
+	// Remote listener settings
+	Listen  *string `toml:"listen"`
+	TLSCert *string `toml:"tls_cert"`
+	TLSKey  *string `toml:"tls_key"`
+}
+
+// FileAuthConfig is the TOML representation of AuthConfig.
+type FileAuthConfig struct {
+	Enabled  *bool   `toml:"enabled"`
+	KeysFile *string `toml:"keys_file"`
 }
 
 // FileDockerConfig is the TOML representation of DockerConfig.
@@ -64,6 +76,8 @@ func (f *FileConfig) IsEmpty() bool {
 		f.Server.LogLevel == nil &&
 		f.Server.Workers == nil &&
 		f.Server.Foreground == nil &&
+		f.Auth.Enabled == nil &&
+		f.Auth.KeysFile == nil &&
 		f.Docker.Enabled == nil &&
 		f.Docker.Image == nil &&
 		f.GitHub.Token == nil &&
