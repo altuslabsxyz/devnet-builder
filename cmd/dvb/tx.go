@@ -31,28 +31,48 @@ func newTxCmd() *cobra.Command {
 
 func newTxSubmitCmd() *cobra.Command {
 	var (
-		txType  string
-		signer  string
-		payload string
+		namespace string
+		devnet    string
+		txType    string
+		signer    string
+		payload   string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "submit [devnet]",
 		Short: "Submit a transaction",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			devnet := args[0]
-
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
+
+			// Get explicit devnet from args or flag
+			explicitDevnet := devnet
+			if len(args) > 0 {
+				explicitDevnet = args[0]
+			}
+
+			// Resolve devnet from context if not provided
+			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
+			if err != nil {
+				return err
+			}
+
+			printContextHeader(explicitDevnet, currentContext)
 
 			var payloadBytes []byte
 			if payload != "" {
 				payloadBytes = []byte(payload)
 			}
 
-			tx, err := daemonClient.SubmitTransaction(cmd.Context(), devnet, txType, signer, payloadBytes)
+			// Use namespace-qualified devnet name
+			devnetRef := devnetName
+			if ns != "" && ns != "default" {
+				devnetRef = ns + "/" + devnetName
+			}
+
+			tx, err := daemonClient.SubmitTransaction(cmd.Context(), devnetRef, txType, signer, payloadBytes)
 			if err != nil {
 				return err
 			}
@@ -66,6 +86,8 @@ func newTxSubmitCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+	cmd.Flags().StringVar(&devnet, "devnet", "", "Name of the devnet")
 	cmd.Flags().StringVar(&txType, "type", "", "Transaction type (required)")
 	cmd.Flags().StringVar(&signer, "signer", "", "Transaction signer (required)")
 	cmd.Flags().StringVar(&payload, "payload", "", "JSON payload")
@@ -77,24 +99,44 @@ func newTxSubmitCmd() *cobra.Command {
 
 func newTxListCmd() *cobra.Command {
 	var (
-		txType string
-		phase  string
-		limit  int
+		namespace string
+		devnet    string
+		txType    string
+		phase     string
+		limit     int
 	)
 
 	cmd := &cobra.Command{
 		Use:     "list [devnet]",
 		Short:   "List transactions for a devnet",
 		Aliases: []string{"ls"},
-		Args:    cobra.ExactArgs(1),
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			devnet := args[0]
-
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			txs, err := daemonClient.ListTransactions(cmd.Context(), devnet, txType, phase, limit)
+			// Get explicit devnet from args or flag
+			explicitDevnet := devnet
+			if len(args) > 0 {
+				explicitDevnet = args[0]
+			}
+
+			// Resolve devnet from context if not provided
+			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
+			if err != nil {
+				return err
+			}
+
+			printContextHeader(explicitDevnet, currentContext)
+
+			// Use namespace-qualified devnet name
+			devnetRef := devnetName
+			if ns != "" && ns != "default" {
+				devnetRef = ns + "/" + devnetName
+			}
+
+			txs, err := daemonClient.ListTransactions(cmd.Context(), devnetRef, txType, phase, limit)
 			if err != nil {
 				return err
 			}
@@ -120,6 +162,8 @@ func newTxListCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+	cmd.Flags().StringVar(&devnet, "devnet", "", "Name of the devnet")
 	cmd.Flags().StringVar(&txType, "type", "", "Filter by transaction type")
 	cmd.Flags().StringVar(&phase, "phase", "", "Filter by phase")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Max transactions to return")
@@ -191,6 +235,8 @@ func newGovCmd() *cobra.Command {
 
 func newGovVoteCmd() *cobra.Command {
 	var (
+		namespace  string
+		devnet     string
 		proposalID uint64
 		voter      string
 		option     string
@@ -199,15 +245,33 @@ func newGovVoteCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "vote [devnet]",
 		Short: "Submit a governance vote",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			devnet := args[0]
-
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			tx, err := daemonClient.SubmitGovVote(cmd.Context(), devnet, proposalID, voter, option)
+			// Get explicit devnet from args or flag
+			explicitDevnet := devnet
+			if len(args) > 0 {
+				explicitDevnet = args[0]
+			}
+
+			// Resolve devnet from context if not provided
+			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
+			if err != nil {
+				return err
+			}
+
+			printContextHeader(explicitDevnet, currentContext)
+
+			// Use namespace-qualified devnet name
+			devnetRef := devnetName
+			if ns != "" && ns != "default" {
+				devnetRef = ns + "/" + devnetName
+			}
+
+			tx, err := daemonClient.SubmitGovVote(cmd.Context(), devnetRef, proposalID, voter, option)
 			if err != nil {
 				return err
 			}
@@ -222,6 +286,8 @@ func newGovVoteCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+	cmd.Flags().StringVar(&devnet, "devnet", "", "Name of the devnet")
 	cmd.Flags().Uint64Var(&proposalID, "proposal", 0, "Proposal ID (required)")
 	cmd.Flags().StringVar(&voter, "voter", "", "Voter address (required)")
 	cmd.Flags().StringVar(&option, "option", "", "Vote option: yes, no, abstain, veto (required)")
@@ -234,6 +300,8 @@ func newGovVoteCmd() *cobra.Command {
 
 func newGovProposeCmd() *cobra.Command {
 	var (
+		namespace    string
+		devnet       string
 		proposer     string
 		proposalType string
 		title        string
@@ -244,24 +312,41 @@ func newGovProposeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "propose [devnet]",
 		Short: "Submit a governance proposal",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			devnet := args[0]
-
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
+			// Get explicit devnet from args or flag
+			explicitDevnet := devnet
+			if len(args) > 0 {
+				explicitDevnet = args[0]
+			}
+
+			// Resolve devnet from context if not provided
+			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
+			if err != nil {
+				return err
+			}
+
+			printContextHeader(explicitDevnet, currentContext)
+
 			var content []byte
 			if contentFile != "" {
-				var err error
 				content, err = os.ReadFile(contentFile)
 				if err != nil {
 					return fmt.Errorf("failed to read content file: %w", err)
 				}
 			}
 
-			tx, err := daemonClient.SubmitGovProposal(cmd.Context(), devnet, proposer, proposalType, title, description, content)
+			// Use namespace-qualified devnet name
+			devnetRef := devnetName
+			if ns != "" && ns != "default" {
+				devnetRef = ns + "/" + devnetName
+			}
+
+			tx, err := daemonClient.SubmitGovProposal(cmd.Context(), devnetRef, proposer, proposalType, title, description, content)
 			if err != nil {
 				return err
 			}
@@ -276,6 +361,8 @@ func newGovProposeCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+	cmd.Flags().StringVar(&devnet, "devnet", "", "Name of the devnet")
 	cmd.Flags().StringVar(&proposer, "proposer", "", "Proposer address (required)")
 	cmd.Flags().StringVar(&proposalType, "type", "text", "Proposal type")
 	cmd.Flags().StringVar(&title, "title", "", "Proposal title (required)")
