@@ -442,6 +442,27 @@ func (o *ProvisioningOrchestrator) executeInitPhase(ctx context.Context, opts po
 		nodes = append(nodes, node)
 	}
 
+	// Write forked genesis to all node config directories
+	// This is critical: the chain init command creates a placeholder genesis,
+	// but we need to overwrite it with the actual forked genesis from the fork phase.
+	if forkResult != nil && len(forkResult.Genesis) > 0 {
+		o.logger.Info("distributing forked genesis to nodes",
+			"nodeCount", len(nodes),
+			"genesisSize", len(forkResult.Genesis),
+		)
+
+		for _, node := range nodes {
+			genesisPath := filepath.Join(node.Spec.HomeDir, "config", "genesis.json")
+			if err := os.WriteFile(genesisPath, forkResult.Genesis, 0644); err != nil {
+				return nil, fmt.Errorf("failed to write genesis to node %s: %w", node.Metadata.Name, err)
+			}
+			o.logger.Debug("genesis written to node",
+				"node", node.Metadata.Name,
+				"path", genesisPath,
+			)
+		}
+	}
+
 	o.logger.Info("init phase completed",
 		"nodeCount", len(nodes),
 	)
