@@ -26,6 +26,15 @@ const (
 	EnvDockerImage        = "DEVNETD_DOCKER_IMAGE"
 	EnvShutdownTimeout    = "DEVNETD_SHUTDOWN_TIMEOUT"
 	EnvHealthCheckTimeout = "DEVNETD_HEALTH_CHECK_TIMEOUT"
+
+	// Remote listener environment variables
+	EnvListen  = "DEVNETD_LISTEN"
+	EnvTLSCert = "DEVNETD_TLS_CERT"
+	EnvTLSKey  = "DEVNETD_TLS_KEY"
+
+	// Authentication environment variables
+	EnvAuthEnabled  = "DEVNETD_AUTH_ENABLED"
+	EnvAuthKeysFile = "DEVNETD_AUTH_KEYS_FILE"
 )
 
 // Loader loads configuration from file, environment, and applies defaults.
@@ -114,6 +123,23 @@ func mergeFileConfig(cfg *Config, file *FileConfig) {
 	}
 	if file.Server.Foreground != nil {
 		cfg.Server.Foreground = *file.Server.Foreground
+	}
+	if file.Server.Listen != nil {
+		cfg.Server.Listen = *file.Server.Listen
+	}
+	if file.Server.TLSCert != nil {
+		cfg.Server.TLSCert = *file.Server.TLSCert
+	}
+	if file.Server.TLSKey != nil {
+		cfg.Server.TLSKey = *file.Server.TLSKey
+	}
+
+	// Auth
+	if file.Auth.Enabled != nil {
+		cfg.Auth.Enabled = *file.Auth.Enabled
+	}
+	if file.Auth.KeysFile != nil {
+		cfg.Auth.KeysFile = *file.Auth.KeysFile
 	}
 
 	// Docker
@@ -216,5 +242,24 @@ func applyEnvVars(cfg *Config) {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.Timeouts.HealthCheck = d
 		}
+	}
+
+	// Remote listener
+	if v := os.Getenv(EnvListen); v != "" {
+		cfg.Server.Listen = v
+	}
+	if v := os.Getenv(EnvTLSCert); v != "" {
+		cfg.Server.TLSCert = v
+	}
+	if v := os.Getenv(EnvTLSKey); v != "" {
+		cfg.Server.TLSKey = v
+	}
+
+	// Authentication
+	if v := os.Getenv(EnvAuthEnabled); v != "" {
+		cfg.Auth.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv(EnvAuthKeysFile); v != "" {
+		cfg.Auth.KeysFile = v
 	}
 }

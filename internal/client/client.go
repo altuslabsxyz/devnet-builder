@@ -10,8 +10,10 @@ import (
 
 // Client provides access to the devnetd daemon.
 type Client struct {
-	socketPath string
+	socketPath string // Unix socket path (for local connections)
+	server     string // Remote server address (for remote connections)
 	grpc       *GRPCClient
+	isRemote   bool // true if connected to a remote server
 }
 
 // New creates a new client connected to the daemon.
@@ -33,7 +35,49 @@ func NewWithSocket(socketPath string) (*Client, error) {
 	return &Client{
 		socketPath: socketPath,
 		grpc:       grpcClient,
+		isRemote:   false,
 	}, nil
+}
+
+// NewRemote creates a client connected to a remote devnetd server via TLS.
+// Alias for NewRemoteClient.
+func NewRemote(server, apiKey string) (*Client, error) {
+	return NewRemoteClient(server, apiKey)
+}
+
+// NewRemoteClient creates a client connected to a remote devnetd server via TLS.
+// The server should be in the format "host:port" (e.g., "devnetd.example.com:9000").
+// The apiKey is used for authentication with the remote server.
+func NewRemoteClient(server, apiKey string) (*Client, error) {
+	if server == "" {
+		return nil, fmt.Errorf("server address is required for remote connection")
+	}
+
+	grpcClient, err := NewRemoteGRPCClient(server, apiKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Client{
+		server:   server,
+		grpc:     grpcClient,
+		isRemote: true,
+	}, nil
+}
+
+// IsRemote returns true if this client is connected to a remote server.
+func (c *Client) IsRemote() bool {
+	return c.isRemote
+}
+
+// Server returns the remote server address, or empty string for local connections.
+func (c *Client) Server() string {
+	return c.server
+}
+
+// SocketPath returns the Unix socket path, or empty string for remote connections.
+func (c *Client) SocketPath() string {
+	return c.socketPath
 }
 
 // Close closes the client connection.
@@ -202,4 +246,14 @@ func (c *Client) GetNetworkInfo(ctx context.Context, name string) (*v1.NetworkIn
 // ListBinaryVersions returns available binary versions for a network.
 func (c *Client) ListBinaryVersions(ctx context.Context, networkName string, includePrerelease bool) (*v1.ListBinaryVersionsResponse, error) {
 	return c.grpc.ListBinaryVersions(ctx, networkName, includePrerelease)
+}
+
+// Ping tests connectivity to the server.
+func (c *Client) Ping(ctx context.Context) (*PingResponse, error) {
+	return c.grpc.Ping(ctx)
+}
+
+// WhoAmI returns information about the authenticated user.
+func (c *Client) WhoAmI(ctx context.Context) (*WhoAmIResponse, error) {
+	return c.grpc.WhoAmI(ctx)
 }

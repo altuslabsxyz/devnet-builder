@@ -579,3 +579,32 @@ message BinaryVersionInfo {
   google.protobuf.Timestamp published_at = 4; // Publication timestamp
   string html_url = 5;                         // URL to the release page
 }
+
+// =============================================================================
+// Auth - Authentication service for remote access
+// =============================================================================
+
+// AuthService provides authentication and identity operations.
+service AuthService {
+  // Ping verifies connectivity and authentication to the server.
+  rpc Ping(PingRequest) returns (PingResponse);
+  // WhoAmI returns information about the authenticated user.
+  rpc WhoAmI(WhoAmIRequest) returns (WhoAmIResponse);
+}
+
+// PingRequest is the request for Ping.
+message PingRequest {}
+
+// PingResponse is the response for Ping.
+message PingResponse {
+  string server_version = 1;  // Server version string
+}
+
+// WhoAmIRequest is the request for WhoAmI.
+message WhoAmIRequest {}
+
+// WhoAmIResponse is the response for WhoAmI.
+message WhoAmIResponse {
+  string name = 1;                // User name from API key
+  repeated string namespaces = 2; // Allowed namespaces (["*"] = all)
+}
