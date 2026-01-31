@@ -153,7 +153,6 @@ func main() {
 		newGovCmd(),
 		newGenesisCmd(),
 		newProvisionCmd(),
-		newLogsCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
