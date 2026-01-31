@@ -53,17 +53,21 @@ Examples:
 				return runDeleteFromFile(cmd, namespace, filePath, force, dryRun, dataDir)
 			}
 
-			// Otherwise expect resource type and name
-			if len(args) < 2 {
+			// Otherwise expect resource type and optionally name
+			if len(args) < 1 {
 				return fmt.Errorf("requires resource type and name, or use -f <file>")
 			}
 
 			resourceType := args[0]
-			name := args[1]
 
 			switch resourceType {
 			case "devnet", "devnets", "dn":
-				return runDeleteDevnet(cmd, namespace, name, force, dryRun, dataDir)
+				// Name is optional - can be resolved from context
+				var explicitName string
+				if len(args) >= 2 {
+					explicitName = args[1]
+				}
+				return runDeleteDevnet(cmd, namespace, explicitName, force, dryRun, dataDir)
 			default:
 				return fmt.Errorf("unknown resource type: %s", resourceType)
 			}
@@ -158,17 +162,25 @@ func runDeleteFromFile(cmd *cobra.Command, namespace, filePath string, force, dr
 }
 
 // runDeleteDevnet deletes a single devnet by name
-func runDeleteDevnet(cmd *cobra.Command, namespace, name string, force, dryRun bool, dataDir string) error {
+func runDeleteDevnet(cmd *cobra.Command, namespace, explicitName string, force, dryRun bool, dataDir string) error {
+	// Resolve devnet from context if not provided
+	ns, name, err := resolveWithSuggestions(explicitName, namespace)
+	if err != nil {
+		return err
+	}
+
+	printContextHeader(explicitName, currentContext)
+
 	// Preview mode
 	if dryRun {
-		fmt.Printf("Would delete devnet/%s (namespace: %s)\n", name, namespace)
+		fmt.Printf("Would delete devnet/%s (namespace: %s)\n", name, ns)
 		fmt.Println("\nRun without --dry-run to delete.")
 		return nil
 	}
 
 	// Confirm if not forced
 	if !force {
-		fmt.Printf("Are you sure you want to delete devnet %q (namespace: %s)? [y/N] ", name, namespace)
+		fmt.Printf("Are you sure you want to delete devnet %q (namespace: %s)? [y/N] ", name, ns)
 		var response string
 		if _, err := fmt.Scanln(&response); err != nil || (response != "y" && response != "Y") {
 			fmt.Println("Cancelled")
@@ -178,11 +190,11 @@ func runDeleteDevnet(cmd *cobra.Command, namespace, name string, force, dryRun b
 
 	// Try daemon first if available and not in standalone mode
 	if daemonClient != nil && !standalone {
-		err := daemonClient.DeleteDevnet(cmd.Context(), namespace, name)
+		err := daemonClient.DeleteDevnet(cmd.Context(), ns, name)
 		if err != nil {
 			return err
 		}
-		color.Green("devnet/%s deleted (namespace: %s)", name, namespace)
+		color.Green("devnet/%s deleted (namespace: %s)", name, ns)
 		return nil
 	}
 

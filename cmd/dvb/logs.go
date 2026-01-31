@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
+	"github.com/altuslabsxyz/devnet-builder/internal/dvbcontext"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -31,11 +32,12 @@ func newLogsCmd() *cobra.Command {
 	opts := &logsOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "logs [devnet] <node>",
+		Use:   "logs [devnet] [node]",
 		Short: "View logs from devnet nodes",
 		Long: `View logs from one or more nodes in a devnet.
 
 With context set (dvb use <devnet>):
+  dvb logs                  - Interactive picker to select node (if multiple)
   dvb logs <node>           - Show logs from a specific node in context devnet
 
 Without context or explicit devnet:
@@ -46,6 +48,10 @@ In daemon mode, streams logs from the daemon.
 In standalone mode, reads log files from the data directory.
 
 Examples:
+  # Set context and use interactive picker
+  dvb use my-devnet
+  dvb logs
+
   # Set context and view logs from node 0
   dvb use my-devnet
   dvb logs 0
@@ -64,11 +70,17 @@ Examples:
 
   # Show logs with timestamps
   dvb logs 0 --timestamps`,
-		Args: cobra.RangeArgs(1, 2),
+		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var explicitDevnet, nodeArg string
 
-			if len(args) == 1 {
+			if len(args) == 0 {
+				// No args - requires context and will use picker
+				if currentContext == nil {
+					return fmt.Errorf("no devnet specified. Either:\n  - Provide devnet: dvb logs <devnet> [node]\n  - Set context: dvb use <devnet>")
+				}
+				// nodeArg stays empty, will be picked later
+			} else if len(args) == 1 {
 				// Determine if single arg is a node identifier or devnet name.
 				// Node identifiers are: numeric (0, 1, 2) or "validator-N" pattern
 				if looksLikeNodeIdentifier(args[0]) {
@@ -86,9 +98,18 @@ Examples:
 				nodeArg = args[1]
 			}
 
-			_, devnetName, err := resolveWithSuggestions(explicitDevnet, "")
+			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, "")
 			if err != nil {
 				return err
+			}
+
+			// If context is set and no node specified, use picker
+			if currentContext != nil && nodeArg == "" && daemonClient != nil {
+				index, err := dvbcontext.PickNode(daemonClient, ns, devnetName)
+				if err != nil {
+					return fmt.Errorf("failed to pick node: %w", err)
+				}
+				nodeArg = fmt.Sprintf("%d", index)
 			}
 
 			printContextHeader(explicitDevnet, currentContext)

@@ -54,15 +54,26 @@ func newUpgradeCreateCmd() *cobra.Command {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			if devnet == "" {
-				return fmt.Errorf("--devnet is required")
+			// Resolve devnet from context if not provided
+			ns, devnetName, err := resolveWithSuggestions(devnet, namespace)
+			if err != nil {
+				return err
 			}
+
 			if upgradeName == "" {
 				return fmt.Errorf("--upgrade-name is required")
 			}
 
+			printContextHeader(devnet, currentContext)
+
+			// Use namespace-qualified devnet name
+			devnetRef := devnetName
+			if ns != "" && ns != "default" {
+				devnetRef = ns + "/" + devnetName
+			}
+
 			spec := &v1.UpgradeSpec{
-				DevnetRef:    devnet,
+				DevnetRef:    devnetRef,
 				UpgradeName:  upgradeName,
 				TargetHeight: targetHeight,
 				AutoVote:     autoVote,
@@ -74,7 +85,7 @@ func newUpgradeCreateCmd() *cobra.Command {
 				},
 			}
 
-			upgrade, err := daemonClient.CreateUpgrade(cmd.Context(), namespace, name, spec)
+			upgrade, err := daemonClient.CreateUpgrade(cmd.Context(), ns, name, spec)
 			if err != nil {
 				return err
 			}
@@ -92,7 +103,7 @@ func newUpgradeCreateCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
-	cmd.Flags().StringVar(&devnet, "devnet", "", "Name of the devnet to upgrade (required)")
+	cmd.Flags().StringVar(&devnet, "devnet", "", "Name of the devnet to upgrade")
 	cmd.Flags().StringVar(&upgradeName, "upgrade-name", "", "Name for the on-chain upgrade proposal (required)")
 	cmd.Flags().Int64Var(&targetHeight, "target-height", 0, "Target block height for upgrade (0 = auto-calculate)")
 	cmd.Flags().StringVar(&binaryType, "binary-type", "cache", "Binary source type (cache, path, docker)")
@@ -101,7 +112,6 @@ func newUpgradeCreateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&autoVote, "auto-vote", true, "Automatically vote yes on the upgrade proposal")
 	cmd.Flags().BoolVar(&withExport, "with-export", false, "Export state before and after upgrade")
 
-	cmd.MarkFlagRequired("devnet")
 	cmd.MarkFlagRequired("upgrade-name")
 
 	return cmd
