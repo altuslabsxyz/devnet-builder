@@ -255,7 +255,6 @@ func newVersionCmd() *cobra.Command {
 	return cmd
 }
 
-
 func newListCmd() *cobra.Command {
 	var namespace string
 
