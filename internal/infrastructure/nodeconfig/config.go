@@ -56,29 +56,42 @@ func (e *ConfigEditor) SetPersistentPeers(peers string) error {
 }
 
 // SetPorts configures all port-related settings based on node index.
+// Deprecated: Use SetPortsWithHost instead for loopback subnet support.
 func (e *ConfigEditor) SetPorts(nodeIndex int) error {
+	return e.SetPortsWithHost(nodeIndex, "")
+}
+
+// SetPortsWithHost configures all port-related settings with a specific host IP.
+// If host is empty, it defaults to "0.0.0.0" for backward compatibility.
+// For loopback subnet mode, pass the node's assigned IP (e.g., "127.0.42.1").
+func (e *ConfigEditor) SetPortsWithHost(nodeIndex int, host string) error {
 	ports := GetPortConfigForNode(nodeIndex)
+
+	// Default to 0.0.0.0 for backward compatibility
+	if host == "" {
+		host = "0.0.0.0"
+	}
 
 	// config.toml settings
 	configPath := e.ConfigPath()
 
 	// P2P laddr - in [p2p] section
-	if err := e.setP2PLaddr(configPath, ports.P2P); err != nil {
+	if err := e.setP2PLaddrWithHost(configPath, ports.P2P, host); err != nil {
 		return fmt.Errorf("failed to set p2p laddr: %w", err)
 	}
 
 	// RPC laddr - in [rpc] section
-	if err := e.setRPCLaddr(configPath, ports.RPC); err != nil {
+	if err := e.setRPCLaddrWithHost(configPath, ports.RPC, host); err != nil {
 		return fmt.Errorf("failed to set rpc laddr: %w", err)
 	}
 
-	// Proxy app
-	if err := e.setConfigValue(configPath, "proxy_app", fmt.Sprintf("tcp://127.0.0.1:%d", ports.Proxy)); err != nil {
+	// Proxy app - uses the node's IP for ABCI connections
+	if err := e.setConfigValue(configPath, "proxy_app", fmt.Sprintf("tcp://%s:%d", host, ports.Proxy)); err != nil {
 		return fmt.Errorf("failed to set proxy_app: %w", err)
 	}
 
-	// pprof
-	if err := e.setConfigValue(configPath, "pprof_laddr", fmt.Sprintf("localhost:%d", ports.PProf)); err != nil {
+	// pprof - bind to node's IP
+	if err := e.setConfigValue(configPath, "pprof_laddr", fmt.Sprintf("%s:%d", host, ports.PProf)); err != nil {
 		return fmt.Errorf("failed to set pprof_laddr: %w", err)
 	}
 
@@ -86,22 +99,22 @@ func (e *ConfigEditor) SetPorts(nodeIndex int) error {
 	appPath := e.AppConfigPath()
 
 	// gRPC address
-	if err := e.setGRPCAddress(appPath, ports.GRPC); err != nil {
+	if err := e.setGRPCAddressWithHost(appPath, ports.GRPC, host); err != nil {
 		return fmt.Errorf("failed to set grpc address: %w", err)
 	}
 
 	// API address
-	if err := e.setAPIAddress(appPath, ports.API); err != nil {
+	if err := e.setAPIAddressWithHost(appPath, ports.API, host); err != nil {
 		return fmt.Errorf("failed to set api address: %w", err)
 	}
 
 	// EVM JSON-RPC address
-	if err := e.setEVMRPCAddress(appPath, ports.EVMRPC); err != nil {
+	if err := e.setEVMRPCAddressWithHost(appPath, ports.EVMRPC, host); err != nil {
 		return fmt.Errorf("failed to set evm rpc address: %w", err)
 	}
 
 	// EVM WebSocket address
-	if err := e.setEVMWSAddress(appPath, ports.EVMWS); err != nil {
+	if err := e.setEVMWSAddressWithHost(appPath, ports.EVMWS, host); err != nil {
 		return fmt.Errorf("failed to set evm ws address: %w", err)
 	}
 
@@ -254,7 +267,13 @@ func (e *ConfigEditor) setConfigValue(filePath, key, value string) error {
 }
 
 // setP2PLaddr sets the P2P laddr specifically in the [p2p] section.
+// Deprecated: Use setP2PLaddrWithHost instead.
 func (e *ConfigEditor) setP2PLaddr(filePath string, port int) error {
+	return e.setP2PLaddrWithHost(filePath, port, "0.0.0.0")
+}
+
+// setP2PLaddrWithHost sets the P2P laddr specifically in the [p2p] section with a specific host.
+func (e *ConfigEditor) setP2PLaddrWithHost(filePath string, port int, host string) error {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
@@ -272,7 +291,7 @@ func (e *ConfigEditor) setP2PLaddr(filePath string, port int) error {
 			inP2PSection = false
 		}
 		if inP2PSection && strings.HasPrefix(trimmed, "laddr") {
-			lines[i] = fmt.Sprintf(`laddr = "tcp://0.0.0.0:%d"`, port)
+			lines[i] = fmt.Sprintf(`laddr = "tcp://%s:%d"`, host, port)
 			break
 		}
 	}
@@ -281,7 +300,13 @@ func (e *ConfigEditor) setP2PLaddr(filePath string, port int) error {
 }
 
 // setRPCLaddr sets the RPC laddr specifically in the [rpc] section.
+// Deprecated: Use setRPCLaddrWithHost instead.
 func (e *ConfigEditor) setRPCLaddr(filePath string, port int) error {
+	return e.setRPCLaddrWithHost(filePath, port, "0.0.0.0")
+}
+
+// setRPCLaddrWithHost sets the RPC laddr specifically in the [rpc] section with a specific host.
+func (e *ConfigEditor) setRPCLaddrWithHost(filePath string, port int, host string) error {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
@@ -300,7 +325,7 @@ func (e *ConfigEditor) setRPCLaddr(filePath string, port int) error {
 			inRPCSection = false
 		}
 		if inRPCSection && strings.HasPrefix(trimmed, "laddr") {
-			lines[i] = fmt.Sprintf(`laddr = "tcp://0.0.0.0:%d"`, port)
+			lines[i] = fmt.Sprintf(`laddr = "tcp://%s:%d"`, host, port)
 			break
 		}
 	}
@@ -309,23 +334,47 @@ func (e *ConfigEditor) setRPCLaddr(filePath string, port int) error {
 }
 
 // setGRPCAddress sets the gRPC address in app.toml.
+// Deprecated: Use setGRPCAddressWithHost instead.
 func (e *ConfigEditor) setGRPCAddress(filePath string, port int) error {
-	return e.setSectionValue(filePath, "grpc", "address", fmt.Sprintf("0.0.0.0:%d", port))
+	return e.setGRPCAddressWithHost(filePath, port, "0.0.0.0")
+}
+
+// setGRPCAddressWithHost sets the gRPC address in app.toml with a specific host.
+func (e *ConfigEditor) setGRPCAddressWithHost(filePath string, port int, host string) error {
+	return e.setSectionValue(filePath, "grpc", "address", fmt.Sprintf("%s:%d", host, port))
 }
 
 // setAPIAddress sets the API address in app.toml.
+// Deprecated: Use setAPIAddressWithHost instead.
 func (e *ConfigEditor) setAPIAddress(filePath string, port int) error {
-	return e.setSectionValue(filePath, "api", "address", fmt.Sprintf("tcp://0.0.0.0:%d", port))
+	return e.setAPIAddressWithHost(filePath, port, "0.0.0.0")
+}
+
+// setAPIAddressWithHost sets the API address in app.toml with a specific host.
+func (e *ConfigEditor) setAPIAddressWithHost(filePath string, port int, host string) error {
+	return e.setSectionValue(filePath, "api", "address", fmt.Sprintf("tcp://%s:%d", host, port))
 }
 
 // setEVMRPCAddress sets the EVM JSON-RPC address in app.toml.
+// Deprecated: Use setEVMRPCAddressWithHost instead.
 func (e *ConfigEditor) setEVMRPCAddress(filePath string, port int) error {
-	return e.setSectionValue(filePath, "json-rpc", "address", fmt.Sprintf("0.0.0.0:%d", port))
+	return e.setEVMRPCAddressWithHost(filePath, port, "0.0.0.0")
+}
+
+// setEVMRPCAddressWithHost sets the EVM JSON-RPC address in app.toml with a specific host.
+func (e *ConfigEditor) setEVMRPCAddressWithHost(filePath string, port int, host string) error {
+	return e.setSectionValue(filePath, "json-rpc", "address", fmt.Sprintf("%s:%d", host, port))
 }
 
 // setEVMWSAddress sets the EVM WebSocket address in app.toml.
+// Deprecated: Use setEVMWSAddressWithHost instead.
 func (e *ConfigEditor) setEVMWSAddress(filePath string, port int) error {
-	return e.setSectionValue(filePath, "json-rpc", "ws-address", fmt.Sprintf("0.0.0.0:%d", port))
+	return e.setEVMWSAddressWithHost(filePath, port, "0.0.0.0")
+}
+
+// setEVMWSAddressWithHost sets the EVM WebSocket address in app.toml with a specific host.
+func (e *ConfigEditor) setEVMWSAddressWithHost(filePath string, port int, host string) error {
+	return e.setSectionValue(filePath, "json-rpc", "ws-address", fmt.Sprintf("%s:%d", host, port))
 }
 
 // setSectionValue sets a value within a specific TOML section.
@@ -387,11 +436,19 @@ func (e *ConfigEditor) setAppConfigBool(filePath, section, key string, value boo
 }
 
 // ConfigureNode applies all necessary configuration for a node.
+// Deprecated: Use ConfigureNodeWithHost instead for loopback subnet support.
 func ConfigureNode(nodeDir string, nodeIndex int, peers string, isNode0 bool, logger *output.Logger) error {
+	return ConfigureNodeWithHost(nodeDir, nodeIndex, peers, isNode0, "", logger)
+}
+
+// ConfigureNodeWithHost applies all necessary configuration for a node with a specific host IP.
+// If host is empty, it defaults to "0.0.0.0" for backward compatibility.
+// For loopback subnet mode, pass the node's assigned IP (e.g., "127.0.42.1").
+func ConfigureNodeWithHost(nodeDir string, nodeIndex int, peers string, isNode0 bool, host string, logger *output.Logger) error {
 	editor := NewConfigEditor(nodeDir, logger)
 
-	// Set ports based on index
-	if err := editor.SetPorts(nodeIndex); err != nil {
+	// Set ports based on index with specific host
+	if err := editor.SetPortsWithHost(nodeIndex, host); err != nil {
 		return fmt.Errorf("failed to set ports: %w", err)
 	}
 

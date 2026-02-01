@@ -690,6 +690,9 @@ func formatDescribeOutput(w io.Writer, d *v1.Devnet, nodes []*v1.Node, pluginAva
 	if d.Status.CurrentHeight > 0 {
 		fmt.Fprintf(w, "  Height:       %d\n", d.Status.CurrentHeight)
 	}
+	if d.Status.Subnet > 0 {
+		fmt.Fprintf(w, "  Subnet:       127.0.%d.0/24\n", d.Status.Subnet)
+	}
 	if d.Status.SdkVersion != "" {
 		fmt.Fprintf(w, "  SDK Version:  %s\n", d.Status.SdkVersion)
 	}
@@ -714,31 +717,74 @@ func formatDescribeOutput(w io.Writer, d *v1.Devnet, nodes []*v1.Node, pluginAva
 
 	// Nodes section
 	if len(nodes) > 0 {
-		fmt.Fprintf(w, "\nNodes:\n")
-		fmt.Fprintf(w, "  %-6s %-10s %-10s %-10s %-8s %s\n", "INDEX", "ROLE", "PHASE", "HEIGHT", "RESTARTS", "MESSAGE")
+		// Check if any node has an IP address
+		hasAddresses := false
 		for _, n := range nodes {
-			phase := n.Status.Phase
-			switch phase {
-			case "Running":
-				phase = color.GreenString(phase)
-			case "Pending", "Starting":
-				phase = color.YellowString(phase)
-			case "Crashed":
-				phase = color.RedString(phase)
+			if n.Spec != nil && n.Spec.Address != "" {
+				hasAddresses = true
+				break
 			}
-			msg := n.Status.Message
-			if len(msg) > 30 {
-				msg = msg[:27] + "..."
-			}
-			fmt.Fprintf(w, "  %-6d %-10s %-10s %-10d %-8d %s\n",
-				n.Metadata.Index,
-				n.Spec.Role,
-				phase,
-				n.Status.BlockHeight,
-				n.Status.RestartCount,
-				msg,
-			)
 		}
+
+		fmt.Fprintf(w, "\nNodes:\n")
+		if hasAddresses {
+			fmt.Fprintf(w, "  %-6s %-10s %-14s %-18s %-10s\n", "INDEX", "PHASE", "IP", "RPC", "HEIGHT")
+		} else {
+			fmt.Fprintf(w, "  %-6s %-10s %-10s %-10s %-8s %s\n", "INDEX", "ROLE", "PHASE", "HEIGHT", "RESTARTS", "MESSAGE")
+		}
+		for _, n := range nodes {
+			nodePhase := n.Status.Phase
+			switch nodePhase {
+			case "Running":
+				nodePhase = color.GreenString(nodePhase)
+			case "Pending", "Starting":
+				nodePhase = color.YellowString(nodePhase)
+			case "Crashed":
+				nodePhase = color.RedString(nodePhase)
+			}
+			if hasAddresses {
+				addr := n.Spec.Address
+				if addr == "" {
+					addr = "-"
+				}
+				rpc := "-"
+				if addr != "-" {
+					rpc = fmt.Sprintf("%s:26657", addr)
+				}
+				fmt.Fprintf(w, "  %-6d %-10s %-14s %-18s %-10d\n",
+					n.Metadata.Index,
+					nodePhase,
+					addr,
+					rpc,
+					n.Status.BlockHeight,
+				)
+			} else {
+				msg := n.Status.Message
+				if len(msg) > 30 {
+					msg = msg[:27] + "..."
+				}
+				fmt.Fprintf(w, "  %-6d %-10s %-10s %-10d %-8d %s\n",
+					n.Metadata.Index,
+					n.Spec.Role,
+					nodePhase,
+					n.Status.BlockHeight,
+					n.Status.RestartCount,
+					msg,
+				)
+			}
+		}
+	}
+
+	// Endpoints section - show connection info when we have addresses
+	if len(nodes) > 0 && nodes[0].Spec != nil && nodes[0].Spec.Address != "" {
+		firstNodeAddr := nodes[0].Spec.Address
+		fmt.Fprintf(w, "\nEndpoints:\n")
+		fmt.Fprintf(w, "  RPC:  http://%s:26657\n", firstNodeAddr)
+		fmt.Fprintf(w, "  REST: http://%s:1317\n", firstNodeAddr)
+		fmt.Fprintf(w, "  gRPC: %s:9090\n", firstNodeAddr)
+
+		fmt.Fprintf(w, "\nConnect with CLI:\n")
+		fmt.Fprintf(w, "  %s status --node tcp://%s:26657\n", getBinaryNameFromPlugin(d.Spec.Plugin), firstNodeAddr)
 	}
 
 	// Events section
@@ -827,4 +873,19 @@ func printDescribeYAML(d *v1.Devnet, nodes []*v1.Node) error {
 	}
 	fmt.Println(string(out))
 	return nil
+}
+
+// getBinaryNameFromPlugin returns the CLI binary name for a given plugin.
+// Falls back to "gaiad" if plugin is unknown.
+func getBinaryNameFromPlugin(plugin string) string {
+	switch plugin {
+	case "stable":
+		return "stabled"
+	case "cosmos", "gaia":
+		return "gaiad"
+	case "osmosis":
+		return "osmosisd"
+	default:
+		return "gaiad"
+	}
 }

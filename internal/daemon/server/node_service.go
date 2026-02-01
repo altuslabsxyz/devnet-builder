@@ -579,6 +579,7 @@ func NodeToProto(n *types.Node) *v1.Node {
 			BinaryPath:   n.Spec.BinaryPath,
 			HomeDir:      n.Spec.HomeDir,
 			DesiredPhase: n.Spec.Desired,
+			Address:      n.Spec.Address,
 		},
 		Status: &v1.NodeStatus{
 			Phase:        n.Status.Phase,
@@ -619,6 +620,7 @@ func NodeFromProto(pb *v1.Node) *types.Node {
 		n.Spec.BinaryPath = pb.Spec.BinaryPath
 		n.Spec.HomeDir = pb.Spec.HomeDir
 		n.Spec.Desired = pb.Spec.DesiredPhase
+		n.Spec.Address = pb.Spec.Address
 	}
 
 	if pb.Status != nil {

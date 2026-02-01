@@ -20,6 +20,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/server/ante"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/subnet"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/upgrader"
 	"google.golang.org/grpc"
 )
@@ -66,15 +67,16 @@ func DefaultConfig() *Config {
 
 // Server is the devnetd daemon server.
 type Server struct {
-	config        *Config
-	store         store.Store
-	manager       *controller.Manager
-	healthCtrl    *controller.HealthController
-	pluginManager *PluginManager
-	grpcServer    *grpc.Server
-	listener      net.Listener
-	logger        *slog.Logger
-	logFile       *os.File // Log file handle for cleanup
+	config          *Config
+	store           store.Store
+	manager         *controller.Manager
+	healthCtrl      *controller.HealthController
+	pluginManager   *PluginManager
+	subnetAllocator *subnet.Allocator
+	grpcServer      *grpc.Server
+	listener        net.Listener
+	logger          *slog.Logger
+	logFile         *os.File // Log file handle for cleanup
 }
 
 // New creates a new server.
@@ -140,6 +142,16 @@ func New(config *Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to open state store: %w", err)
 	}
 
+	// Initialize subnet allocator for loopback network aliasing
+	subnetAllocatorPath := filepath.Join(config.DataDir, "subnets.json")
+	subnetAlloc, err := subnet.LoadOrCreate(subnetAllocatorPath)
+	if err != nil {
+		st.Close()
+		pluginMgr.Close()
+		return nil, fmt.Errorf("failed to initialize subnet allocator: %w", err)
+	}
+	logger.Info("subnet allocator initialized", "path", subnetAllocatorPath)
+
 	// Create controller manager
 	mgr := controller.NewManager()
 	mgr.SetLogger(logger)
@@ -147,12 +159,14 @@ func New(config *Config) (*Server, error) {
 	// Create orchestrator factory for full provisioning flow (build, fork, init)
 	orchFactory := NewOrchestratorFactory(config.DataDir, logger)
 
-	// Create devnet provisioner with orchestrator factory
+	// Create devnet provisioner with orchestrator factory and subnet allocator
 	// The factory enables full provisioning (build, fork, init) before creating Node resources
+	// The subnet allocator assigns unique loopback subnets to each devnet
 	devnetProv := provisioner.NewDevnetProvisioner(st, provisioner.Config{
 		DataDir:             config.DataDir,
 		Logger:              logger,
 		OrchestratorFactory: orchFactory,
+		SubnetAllocator:     subnetAlloc,
 	})
 
 	// Register controllers
@@ -218,7 +232,7 @@ func New(config *Config) (*Server, error) {
 	anteHandler := ante.New(st, networkSvc)
 
 	// Register services
-	devnetSvc := NewDevnetServiceWithAnte(st, mgr, anteHandler)
+	devnetSvc := NewDevnetServiceWithAnte(st, mgr, anteHandler, subnetAlloc)
 	devnetSvc.SetLogger(logger)
 	v1.RegisterDevnetServiceServer(grpcServer, devnetSvc)
 
@@ -237,14 +251,15 @@ func New(config *Config) (*Server, error) {
 	v1.RegisterNetworkServiceServer(grpcServer, networkSvc)
 
 	return &Server{
-		config:        config,
-		store:         st,
-		manager:       mgr,
-		healthCtrl:    healthCtrl,
-		pluginManager: pluginMgr,
-		grpcServer:    grpcServer,
-		logger:        logger,
-		logFile:       logFile,
+		config:          config,
+		store:           st,
+		manager:         mgr,
+		healthCtrl:      healthCtrl,
+		pluginManager:   pluginMgr,
+		subnetAllocator: subnetAlloc,
+		grpcServer:      grpcServer,
+		logger:          logger,
+		logFile:         logFile,
 	}, nil
 }
 

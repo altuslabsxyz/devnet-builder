@@ -249,7 +249,7 @@ func printNodeTable(nodes []*v1.Node, wide bool) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
 	if wide {
-		fmt.Fprintln(w, "INDEX\tHEALTH\tROLE\tPHASE\tCONTAINER\tRPC PORT\tRESTARTS\tMESSAGE")
+		fmt.Fprintln(w, "INDEX\tHEALTH\tROLE\tPHASE\tCONTAINER\tRPC ENDPOINT\tRESTARTS\tMESSAGE")
 	} else {
 		fmt.Fprintln(w, "INDEX\tHEALTH\tROLE\tPHASE\tCONTAINER\tRESTARTS")
 	}
@@ -266,8 +266,15 @@ func printNodeTable(nodes []*v1.Node, wide bool) {
 		healthIcon := getHealthIcon(n.Status.Phase)
 
 		if wide {
-			// Calculate RPC port (26657 + index * 100)
-			rpcPort := 26657 + int(n.Metadata.Index)*100
+			// Determine RPC endpoint: use node's Address if set (loopback subnet mode)
+			// or fall back to legacy port offset calculation
+			var rpcEndpoint string
+			if n.Spec.Address != "" {
+				rpcEndpoint = fmt.Sprintf("%s:26657", n.Spec.Address)
+			} else {
+				rpcPort := 26657 + int(n.Metadata.Index)*100
+				rpcEndpoint = fmt.Sprintf("localhost:%d", rpcPort)
+			}
 			message := n.Status.Message
 			if len(message) > 30 {
 				message = message[:27] + "..."
@@ -276,13 +283,13 @@ func printNodeTable(nodes []*v1.Node, wide bool) {
 				message = "-"
 			}
 
-			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%d\t%d\t%s\n",
+			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n",
 				n.Metadata.Index,
 				healthIcon,
 				n.Spec.Role,
 				n.Status.Phase,
 				containerID,
-				rpcPort,
+				rpcEndpoint,
 				n.Status.RestartCount,
 				message,
 			)
@@ -1199,6 +1206,11 @@ func printNodeStatus(n *v1.Node) {
 	fmt.Printf("Index:      %d\n", n.Metadata.Index)
 	fmt.Printf("Role:       %s\n", n.Spec.Role)
 
+	// Show IP address if available
+	if n.Spec.Address != "" {
+		fmt.Printf("Address:    %s\n", n.Spec.Address)
+	}
+
 	if n.Spec.DesiredPhase != "" {
 		fmt.Printf("Desired:    %s\n", n.Spec.DesiredPhase)
 	}
@@ -1225,13 +1237,22 @@ func printNodeStatus(n *v1.Node) {
 		fmt.Printf("Message:    %s\n", n.Status.Message)
 	}
 
-	// Show port mappings (deterministic based on index)
-	offset := int(n.Metadata.Index) * 100
-	fmt.Printf("\nPorts:\n")
-	fmt.Printf("  RPC:      localhost:%d\n", 26657+offset)
-	fmt.Printf("  REST:     localhost:%d\n", 1317+offset)
-	fmt.Printf("  gRPC:     localhost:%d\n", 9090+offset)
-	fmt.Printf("  P2P:      localhost:%d\n", 26656+offset)
+	// Show endpoints based on whether we have an IP address
+	fmt.Printf("\nEndpoints:\n")
+	if n.Spec.Address != "" {
+		addr := n.Spec.Address
+		fmt.Printf("  RPC:      http://%s:26657\n", addr)
+		fmt.Printf("  REST:     http://%s:1317\n", addr)
+		fmt.Printf("  gRPC:     %s:9090\n", addr)
+		fmt.Printf("  P2P:      %s:26656\n", addr)
+	} else {
+		// Fallback to port-offset based display for legacy/docker mode
+		offset := int(n.Metadata.Index) * 100
+		fmt.Printf("  RPC:      http://localhost:%d\n", 26657+offset)
+		fmt.Printf("  REST:     http://localhost:%d\n", 1317+offset)
+		fmt.Printf("  gRPC:     localhost:%d\n", 9090+offset)
+		fmt.Printf("  P2P:      localhost:%d\n", 26656+offset)
+	}
 }
 
 func printHealthStatus(devnetName string, index int, health *client.NodeHealth) {
