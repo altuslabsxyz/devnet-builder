@@ -577,6 +577,13 @@ type ProvisionLogEntry struct {
 	Level     string // "info", "warn", "error"
 	Message   string
 	Phase     string
+	// Progress fields for detailed step tracking
+	StepName        string // "Downloading snapshot", "Extracting...", etc.
+	StepStatus      string // "running", "completed", "failed"
+	ProgressCurrent int64  // Bytes downloaded, etc. (0 if indeterminate)
+	ProgressTotal   int64  // Total bytes (0 if unknown)
+	ProgressUnit    string // "bytes", "files", "" for indeterminate
+	StepDetail      string // "from cache", etc.
 }
 
 // StreamNodeLogs streams logs from a node, calling the callback for each log entry.
@@ -649,9 +656,15 @@ func (c *GRPCClient) StreamProvisionLogs(ctx context.Context, namespace, name st
 		}
 
 		entry := &ProvisionLogEntry{
-			Level:   resp.Level,
-			Message: resp.Message,
-			Phase:   resp.Phase,
+			Level:           resp.Level,
+			Message:         resp.Message,
+			Phase:           resp.Phase,
+			StepName:        resp.StepName,
+			StepStatus:      resp.StepStatus,
+			ProgressCurrent: resp.ProgressCurrent,
+			ProgressTotal:   resp.ProgressTotal,
+			ProgressUnit:    resp.ProgressUnit,
+			StepDetail:      resp.StepDetail,
 		}
 		if resp.Timestamp != nil {
 			entry.Timestamp = resp.Timestamp.AsTime()

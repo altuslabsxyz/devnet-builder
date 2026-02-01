@@ -13,6 +13,13 @@ type ProvisionLogEntry struct {
 	Level     string    // "info", "warn", "error"
 	Message   string
 	Phase     string
+	// Progress fields for detailed step tracking
+	StepName        string // "Downloading snapshot", "Extracting...", etc.
+	StepStatus      string // "running", "completed", "failed"
+	ProgressCurrent int64  // Bytes downloaded, etc. (0 if indeterminate)
+	ProgressTotal   int64  // Total bytes (0 if unknown)
+	ProgressUnit    string // "bytes", "files", "" for indeterminate
+	StepDetail      string // "from cache", etc.
 }
 
 // logSubscriberBufferSize is the buffer size for log subscriber channels.
@@ -116,4 +123,10 @@ func (c *DevnetController) broadcastLog(namespace, name string, entry *Provision
 			// Channel buffer full, skip this subscriber
 		}
 	}
+}
+
+// BroadcastProvisionLog broadcasts a log entry to all subscribers for a devnet.
+// This is the public API for components to emit provision logs.
+func (c *DevnetController) BroadcastProvisionLog(namespace, name string, entry *ProvisionLogEntry) {
+	c.broadcastLog(namespace, name, entry)
 }

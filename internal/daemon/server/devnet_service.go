@@ -538,10 +538,16 @@ func (s *DevnetService) StreamProvisionLogs(
 				return nil
 			}
 			resp := &v1.StreamProvisionLogsResponse{
-				Timestamp: timestamppb.New(entry.Timestamp),
-				Level:     entry.Level,
-				Message:   entry.Message,
-				Phase:     entry.Phase,
+				Timestamp:       timestamppb.New(entry.Timestamp),
+				Level:           entry.Level,
+				Message:         entry.Message,
+				Phase:           entry.Phase,
+				StepName:        entry.StepName,
+				StepStatus:      entry.StepStatus,
+				ProgressCurrent: entry.ProgressCurrent,
+				ProgressTotal:   entry.ProgressTotal,
+				ProgressUnit:    entry.ProgressUnit,
+				StepDetail:      entry.StepDetail,
 			}
 			if err := stream.Send(resp); err != nil {
 				return err
