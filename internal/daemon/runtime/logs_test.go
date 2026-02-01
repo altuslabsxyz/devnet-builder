@@ -2,6 +2,7 @@
 package runtime
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,7 +82,7 @@ func TestLogManagerRead(t *testing.T) {
 	writer.Close()
 
 	// Read last 2 lines
-	reader, err := lm.GetReader(logPath, LogOptions{Lines: 2})
+	reader, err := lm.GetReader(context.Background(), logPath, LogOptions{Lines: 2})
 	if err != nil {
 		t.Fatalf("GetReader failed: %v", err)
 	}
