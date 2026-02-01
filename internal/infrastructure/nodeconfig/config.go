@@ -56,6 +56,7 @@ func (e *ConfigEditor) SetPersistentPeers(peers string) error {
 }
 
 // SetPorts configures all port-related settings based on node index.
+//
 // Deprecated: Use SetPortsWithHost instead for loopback subnet support.
 func (e *ConfigEditor) SetPorts(nodeIndex int) error {
 	return e.SetPortsWithHost(nodeIndex, "")
@@ -267,6 +268,7 @@ func (e *ConfigEditor) setConfigValue(filePath, key, value string) error {
 }
 
 // setP2PLaddr sets the P2P laddr specifically in the [p2p] section.
+//
 // Deprecated: Use setP2PLaddrWithHost instead.
 func (e *ConfigEditor) setP2PLaddr(filePath string, port int) error {
 	return e.setP2PLaddrWithHost(filePath, port, "0.0.0.0")
@@ -300,6 +302,7 @@ func (e *ConfigEditor) setP2PLaddrWithHost(filePath string, port int, host strin
 }
 
 // setRPCLaddr sets the RPC laddr specifically in the [rpc] section.
+//
 // Deprecated: Use setRPCLaddrWithHost instead.
 func (e *ConfigEditor) setRPCLaddr(filePath string, port int) error {
 	return e.setRPCLaddrWithHost(filePath, port, "0.0.0.0")
