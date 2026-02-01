@@ -42,6 +42,10 @@ var Handshake = hcplugin.HandshakeConfig{
 	MagicCookieValue: "network_module_v1",
 }
 
+// maxGRPCMessageSize is the maximum message size for gRPC communication.
+// Genesis files can be large (100MB+), so we set this to 256MB.
+const maxGRPCMessageSize = 256 * 1024 * 1024 // 256MB
+
 // Serve starts the plugin server with the given network module implementation.
 // This function blocks and should be called from main().
 //
@@ -56,7 +60,14 @@ func Serve(module network.Module) {
 		Plugins: map[string]hcplugin.Plugin{
 			"network": &NetworkModulePlugin{Impl: module},
 		},
-		GRPCServer: hcplugin.DefaultGRPCServer,
+		GRPCServer: func(opts []grpc.ServerOption) *grpc.Server {
+			// Add message size options for large genesis files
+			opts = append(opts,
+				grpc.MaxRecvMsgSize(maxGRPCMessageSize),
+				grpc.MaxSendMsgSize(maxGRPCMessageSize),
+			)
+			return grpc.NewServer(opts...)
+		},
 	})
 }
 
