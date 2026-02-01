@@ -4775,6 +4775,178 @@ func (x *BinaryVersionInfo) GetHtmlUrl() string {
 	return ""
 }
 
+// PingRequest is the request for Ping.
+type PingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PingRequest) Reset() {
+	*x = PingRequest{}
+	mi := &file_v1_devnet_proto_msgTypes[75]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PingRequest) ProtoMessage() {}
+
+func (x *PingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[75]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PingRequest.ProtoReflect.Descriptor instead.
+func (*PingRequest) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{75}
+}
+
+// PingResponse is the response for Ping.
+type PingResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerVersion string                 `protobuf:"bytes,1,opt,name=server_version,json=serverVersion,proto3" json:"server_version,omitempty"` // Server version string
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PingResponse) Reset() {
+	*x = PingResponse{}
+	mi := &file_v1_devnet_proto_msgTypes[76]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PingResponse) ProtoMessage() {}
+
+func (x *PingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[76]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PingResponse.ProtoReflect.Descriptor instead.
+func (*PingResponse) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{76}
+}
+
+func (x *PingResponse) GetServerVersion() string {
+	if x != nil {
+		return x.ServerVersion
+	}
+	return ""
+}
+
+// WhoAmIRequest is the request for WhoAmI.
+type WhoAmIRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WhoAmIRequest) Reset() {
+	*x = WhoAmIRequest{}
+	mi := &file_v1_devnet_proto_msgTypes[77]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WhoAmIRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WhoAmIRequest) ProtoMessage() {}
+
+func (x *WhoAmIRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[77]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WhoAmIRequest.ProtoReflect.Descriptor instead.
+func (*WhoAmIRequest) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{77}
+}
+
+// WhoAmIResponse is the response for WhoAmI.
+type WhoAmIResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`             // User name from API key
+	Namespaces    []string               `protobuf:"bytes,2,rep,name=namespaces,proto3" json:"namespaces,omitempty"` // Allowed namespaces (["*"] = all)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WhoAmIResponse) Reset() {
+	*x = WhoAmIResponse{}
+	mi := &file_v1_devnet_proto_msgTypes[78]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WhoAmIResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WhoAmIResponse) ProtoMessage() {}
+
+func (x *WhoAmIResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_devnet_proto_msgTypes[78]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WhoAmIResponse.ProtoReflect.Descriptor instead.
+func (*WhoAmIResponse) Descriptor() ([]byte, []int) {
+	return file_v1_devnet_proto_rawDescGZIP(), []int{78}
+}
+
+func (x *WhoAmIResponse) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *WhoAmIResponse) GetNamespaces() []string {
+	if x != nil {
+		return x.Namespaces
+	}
+	return nil
+}
+
 var File_v1_devnet_proto protoreflect.FileDescriptor
 
 const file_v1_devnet_proto_rawDesc = "" +
@@ -5180,7 +5352,16 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"prerelease\x18\x03 \x01(\bR\n" +
 	"prerelease\x12=\n" +
 	"\fpublished_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vpublishedAt\x12\x19\n" +
-	"\bhtml_url\x18\x05 \x01(\tR\ahtmlUrl*\x9b\x01\n" +
+	"\bhtml_url\x18\x05 \x01(\tR\ahtmlUrl\"\r\n" +
+	"\vPingRequest\"5\n" +
+	"\fPingResponse\x12%\n" +
+	"\x0eserver_version\x18\x01 \x01(\tR\rserverVersion\"\x0f\n" +
+	"\rWhoAmIRequest\"D\n" +
+	"\x0eWhoAmIResponse\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
+	"\n" +
+	"namespaces\x18\x02 \x03(\tR\n" +
+	"namespaces*\x9b\x01\n" +
 	"\x11NodeRestartPolicy\x12#\n" +
 	"\x1fNODE_RESTART_POLICY_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19NODE_RESTART_POLICY_NEVER\x10\x01\x12\"\n" +
@@ -5218,7 +5399,10 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\x0eNetworkService\x12]\n" +
 	"\fListNetworks\x12%.devnetbuilder.v1.ListNetworksRequest\x1a&.devnetbuilder.v1.ListNetworksResponse\x12c\n" +
 	"\x0eGetNetworkInfo\x12'.devnetbuilder.v1.GetNetworkInfoRequest\x1a(.devnetbuilder.v1.GetNetworkInfoResponse\x12o\n" +
-	"\x12ListBinaryVersions\x12+.devnetbuilder.v1.ListBinaryVersionsRequest\x1a,.devnetbuilder.v1.ListBinaryVersionsResponseB\xcd\x01\n" +
+	"\x12ListBinaryVersions\x12+.devnetbuilder.v1.ListBinaryVersionsRequest\x1a,.devnetbuilder.v1.ListBinaryVersionsResponse2\xa1\x01\n" +
+	"\vAuthService\x12E\n" +
+	"\x04Ping\x12\x1d.devnetbuilder.v1.PingRequest\x1a\x1e.devnetbuilder.v1.PingResponse\x12K\n" +
+	"\x06WhoAmI\x12\x1f.devnetbuilder.v1.WhoAmIRequest\x1a .devnetbuilder.v1.WhoAmIResponseB\xcd\x01\n" +
 	"\x14com.devnetbuilder.v1B\vDevnetProtoP\x01ZGgithub.com/altuslabsxyz/devnet-builder/api/proto/gen/v1;devnetbuilderv1\xa2\x02\x03DXX\xaa\x02\x10Devnetbuilder.V1\xca\x02\x10Devnetbuilder\\V1\xe2\x02\x1cDevnetbuilder\\V1\\GPBMetadata\xea\x02\x11Devnetbuilder::V1b\x06proto3"
 
 var (
@@ -5234,7 +5418,7 @@ func file_v1_devnet_proto_rawDescGZIP() []byte {
 }
 
 var file_v1_devnet_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_v1_devnet_proto_msgTypes = make([]protoimpl.MessageInfo, 83)
+var file_v1_devnet_proto_msgTypes = make([]protoimpl.MessageInfo, 87)
 var file_v1_devnet_proto_goTypes = []any{
 	(NodeRestartPolicy)(0),             // 0: devnetbuilder.v1.NodeRestartPolicy
 	(*Devnet)(nil),                     // 1: devnetbuilder.v1.Devnet
@@ -5312,65 +5496,69 @@ var file_v1_devnet_proto_goTypes = []any{
 	(*ListBinaryVersionsRequest)(nil),  // 73: devnetbuilder.v1.ListBinaryVersionsRequest
 	(*ListBinaryVersionsResponse)(nil), // 74: devnetbuilder.v1.ListBinaryVersionsResponse
 	(*BinaryVersionInfo)(nil),          // 75: devnetbuilder.v1.BinaryVersionInfo
-	nil,                                // 76: devnetbuilder.v1.DevnetMetadata.LabelsEntry
-	nil,                                // 77: devnetbuilder.v1.DevnetMetadata.AnnotationsEntry
-	nil,                                // 78: devnetbuilder.v1.CreateDevnetRequest.LabelsEntry
-	nil,                                // 79: devnetbuilder.v1.ApplyDevnetRequest.LabelsEntry
-	nil,                                // 80: devnetbuilder.v1.ApplyDevnetRequest.AnnotationsEntry
-	nil,                                // 81: devnetbuilder.v1.UpdateDevnetRequest.LabelsEntry
-	nil,                                // 82: devnetbuilder.v1.UpdateDevnetRequest.AnnotationsEntry
-	nil,                                // 83: devnetbuilder.v1.NetworkInfo.EndpointsEntry
-	(*timestamppb.Timestamp)(nil),      // 84: google.protobuf.Timestamp
+	(*PingRequest)(nil),                // 76: devnetbuilder.v1.PingRequest
+	(*PingResponse)(nil),               // 77: devnetbuilder.v1.PingResponse
+	(*WhoAmIRequest)(nil),              // 78: devnetbuilder.v1.WhoAmIRequest
+	(*WhoAmIResponse)(nil),             // 79: devnetbuilder.v1.WhoAmIResponse
+	nil,                                // 80: devnetbuilder.v1.DevnetMetadata.LabelsEntry
+	nil,                                // 81: devnetbuilder.v1.DevnetMetadata.AnnotationsEntry
+	nil,                                // 82: devnetbuilder.v1.CreateDevnetRequest.LabelsEntry
+	nil,                                // 83: devnetbuilder.v1.ApplyDevnetRequest.LabelsEntry
+	nil,                                // 84: devnetbuilder.v1.ApplyDevnetRequest.AnnotationsEntry
+	nil,                                // 85: devnetbuilder.v1.UpdateDevnetRequest.LabelsEntry
+	nil,                                // 86: devnetbuilder.v1.UpdateDevnetRequest.AnnotationsEntry
+	nil,                                // 87: devnetbuilder.v1.NetworkInfo.EndpointsEntry
+	(*timestamppb.Timestamp)(nil),      // 88: google.protobuf.Timestamp
 }
 var file_v1_devnet_proto_depIdxs = []int32{
 	2,  // 0: devnetbuilder.v1.Devnet.metadata:type_name -> devnetbuilder.v1.DevnetMetadata
 	3,  // 1: devnetbuilder.v1.Devnet.spec:type_name -> devnetbuilder.v1.DevnetSpec
 	4,  // 2: devnetbuilder.v1.Devnet.status:type_name -> devnetbuilder.v1.DevnetStatus
-	84, // 3: devnetbuilder.v1.DevnetMetadata.created_at:type_name -> google.protobuf.Timestamp
-	84, // 4: devnetbuilder.v1.DevnetMetadata.updated_at:type_name -> google.protobuf.Timestamp
-	76, // 5: devnetbuilder.v1.DevnetMetadata.labels:type_name -> devnetbuilder.v1.DevnetMetadata.LabelsEntry
-	77, // 6: devnetbuilder.v1.DevnetMetadata.annotations:type_name -> devnetbuilder.v1.DevnetMetadata.AnnotationsEntry
-	84, // 7: devnetbuilder.v1.DevnetStatus.last_health_check:type_name -> google.protobuf.Timestamp
+	88, // 3: devnetbuilder.v1.DevnetMetadata.created_at:type_name -> google.protobuf.Timestamp
+	88, // 4: devnetbuilder.v1.DevnetMetadata.updated_at:type_name -> google.protobuf.Timestamp
+	80, // 5: devnetbuilder.v1.DevnetMetadata.labels:type_name -> devnetbuilder.v1.DevnetMetadata.LabelsEntry
+	81, // 6: devnetbuilder.v1.DevnetMetadata.annotations:type_name -> devnetbuilder.v1.DevnetMetadata.AnnotationsEntry
+	88, // 7: devnetbuilder.v1.DevnetStatus.last_health_check:type_name -> google.protobuf.Timestamp
 	5,  // 8: devnetbuilder.v1.DevnetStatus.conditions:type_name -> devnetbuilder.v1.Condition
 	6,  // 9: devnetbuilder.v1.DevnetStatus.events:type_name -> devnetbuilder.v1.Event
-	84, // 10: devnetbuilder.v1.Condition.last_transition_time:type_name -> google.protobuf.Timestamp
-	84, // 11: devnetbuilder.v1.Event.timestamp:type_name -> google.protobuf.Timestamp
+	88, // 10: devnetbuilder.v1.Condition.last_transition_time:type_name -> google.protobuf.Timestamp
+	88, // 11: devnetbuilder.v1.Event.timestamp:type_name -> google.protobuf.Timestamp
 	3,  // 12: devnetbuilder.v1.CreateDevnetRequest.spec:type_name -> devnetbuilder.v1.DevnetSpec
-	78, // 13: devnetbuilder.v1.CreateDevnetRequest.labels:type_name -> devnetbuilder.v1.CreateDevnetRequest.LabelsEntry
+	82, // 13: devnetbuilder.v1.CreateDevnetRequest.labels:type_name -> devnetbuilder.v1.CreateDevnetRequest.LabelsEntry
 	1,  // 14: devnetbuilder.v1.CreateDevnetResponse.devnet:type_name -> devnetbuilder.v1.Devnet
 	1,  // 15: devnetbuilder.v1.GetDevnetResponse.devnet:type_name -> devnetbuilder.v1.Devnet
 	1,  // 16: devnetbuilder.v1.ListDevnetsResponse.devnets:type_name -> devnetbuilder.v1.Devnet
 	1,  // 17: devnetbuilder.v1.StartDevnetResponse.devnet:type_name -> devnetbuilder.v1.Devnet
 	1,  // 18: devnetbuilder.v1.StopDevnetResponse.devnet:type_name -> devnetbuilder.v1.Devnet
 	3,  // 19: devnetbuilder.v1.ApplyDevnetRequest.spec:type_name -> devnetbuilder.v1.DevnetSpec
-	79, // 20: devnetbuilder.v1.ApplyDevnetRequest.labels:type_name -> devnetbuilder.v1.ApplyDevnetRequest.LabelsEntry
-	80, // 21: devnetbuilder.v1.ApplyDevnetRequest.annotations:type_name -> devnetbuilder.v1.ApplyDevnetRequest.AnnotationsEntry
+	83, // 20: devnetbuilder.v1.ApplyDevnetRequest.labels:type_name -> devnetbuilder.v1.ApplyDevnetRequest.LabelsEntry
+	84, // 21: devnetbuilder.v1.ApplyDevnetRequest.annotations:type_name -> devnetbuilder.v1.ApplyDevnetRequest.AnnotationsEntry
 	1,  // 22: devnetbuilder.v1.ApplyDevnetResponse.devnet:type_name -> devnetbuilder.v1.Devnet
 	3,  // 23: devnetbuilder.v1.UpdateDevnetRequest.spec:type_name -> devnetbuilder.v1.DevnetSpec
-	81, // 24: devnetbuilder.v1.UpdateDevnetRequest.labels:type_name -> devnetbuilder.v1.UpdateDevnetRequest.LabelsEntry
-	82, // 25: devnetbuilder.v1.UpdateDevnetRequest.annotations:type_name -> devnetbuilder.v1.UpdateDevnetRequest.AnnotationsEntry
+	85, // 24: devnetbuilder.v1.UpdateDevnetRequest.labels:type_name -> devnetbuilder.v1.UpdateDevnetRequest.LabelsEntry
+	86, // 25: devnetbuilder.v1.UpdateDevnetRequest.annotations:type_name -> devnetbuilder.v1.UpdateDevnetRequest.AnnotationsEntry
 	1,  // 26: devnetbuilder.v1.UpdateDevnetResponse.devnet:type_name -> devnetbuilder.v1.Devnet
 	24, // 27: devnetbuilder.v1.Node.metadata:type_name -> devnetbuilder.v1.NodeMetadata
 	25, // 28: devnetbuilder.v1.Node.spec:type_name -> devnetbuilder.v1.NodeSpec
 	26, // 29: devnetbuilder.v1.Node.status:type_name -> devnetbuilder.v1.NodeStatus
-	84, // 30: devnetbuilder.v1.NodeMetadata.created_at:type_name -> google.protobuf.Timestamp
-	84, // 31: devnetbuilder.v1.NodeMetadata.updated_at:type_name -> google.protobuf.Timestamp
+	88, // 30: devnetbuilder.v1.NodeMetadata.created_at:type_name -> google.protobuf.Timestamp
+	88, // 31: devnetbuilder.v1.NodeMetadata.updated_at:type_name -> google.protobuf.Timestamp
 	0,  // 32: devnetbuilder.v1.NodeSpec.restart_policy:type_name -> devnetbuilder.v1.NodeRestartPolicy
 	27, // 33: devnetbuilder.v1.NodeStatus.health:type_name -> devnetbuilder.v1.NodeHealth
-	84, // 34: devnetbuilder.v1.NodeHealth.last_check:type_name -> google.protobuf.Timestamp
+	88, // 34: devnetbuilder.v1.NodeHealth.last_check:type_name -> google.protobuf.Timestamp
 	23, // 35: devnetbuilder.v1.StartNodeResponse.node:type_name -> devnetbuilder.v1.Node
 	23, // 36: devnetbuilder.v1.StopNodeResponse.node:type_name -> devnetbuilder.v1.Node
 	23, // 37: devnetbuilder.v1.RestartNodeResponse.node:type_name -> devnetbuilder.v1.Node
 	23, // 38: devnetbuilder.v1.GetNodeResponse.node:type_name -> devnetbuilder.v1.Node
 	23, // 39: devnetbuilder.v1.ListNodesResponse.nodes:type_name -> devnetbuilder.v1.Node
 	27, // 40: devnetbuilder.v1.GetNodeHealthResponse.health:type_name -> devnetbuilder.v1.NodeHealth
-	84, // 41: devnetbuilder.v1.StreamNodeLogsResponse.timestamp:type_name -> google.protobuf.Timestamp
+	88, // 41: devnetbuilder.v1.StreamNodeLogsResponse.timestamp:type_name -> google.protobuf.Timestamp
 	44, // 42: devnetbuilder.v1.GetNodePortsResponse.ports:type_name -> devnetbuilder.v1.PortMapping
 	48, // 43: devnetbuilder.v1.Upgrade.metadata:type_name -> devnetbuilder.v1.UpgradeMetadata
 	49, // 44: devnetbuilder.v1.Upgrade.spec:type_name -> devnetbuilder.v1.UpgradeSpec
 	51, // 45: devnetbuilder.v1.Upgrade.status:type_name -> devnetbuilder.v1.UpgradeStatus
-	84, // 46: devnetbuilder.v1.UpgradeMetadata.created_at:type_name -> google.protobuf.Timestamp
-	84, // 47: devnetbuilder.v1.UpgradeMetadata.updated_at:type_name -> google.protobuf.Timestamp
+	88, // 46: devnetbuilder.v1.UpgradeMetadata.created_at:type_name -> google.protobuf.Timestamp
+	88, // 47: devnetbuilder.v1.UpgradeMetadata.updated_at:type_name -> google.protobuf.Timestamp
 	50, // 48: devnetbuilder.v1.UpgradeSpec.new_binary:type_name -> devnetbuilder.v1.BinarySource
 	49, // 49: devnetbuilder.v1.CreateUpgradeRequest.spec:type_name -> devnetbuilder.v1.UpgradeSpec
 	47, // 50: devnetbuilder.v1.CreateUpgradeResponse.upgrade:type_name -> devnetbuilder.v1.Upgrade
@@ -5381,10 +5569,10 @@ var file_v1_devnet_proto_depIdxs = []int32{
 	66, // 55: devnetbuilder.v1.ListNetworksResponse.networks:type_name -> devnetbuilder.v1.NetworkSummary
 	69, // 56: devnetbuilder.v1.GetNetworkInfoResponse.network:type_name -> devnetbuilder.v1.NetworkInfo
 	70, // 57: devnetbuilder.v1.NetworkInfo.binary_source:type_name -> devnetbuilder.v1.NetworkBinarySource
-	83, // 58: devnetbuilder.v1.NetworkInfo.endpoints:type_name -> devnetbuilder.v1.NetworkInfo.EndpointsEntry
+	87, // 58: devnetbuilder.v1.NetworkInfo.endpoints:type_name -> devnetbuilder.v1.NetworkInfo.EndpointsEntry
 	72, // 59: devnetbuilder.v1.NetworkInfo.default_ports:type_name -> devnetbuilder.v1.NetworkPortConfig
 	75, // 60: devnetbuilder.v1.ListBinaryVersionsResponse.versions:type_name -> devnetbuilder.v1.BinaryVersionInfo
-	84, // 61: devnetbuilder.v1.BinaryVersionInfo.published_at:type_name -> google.protobuf.Timestamp
+	88, // 61: devnetbuilder.v1.BinaryVersionInfo.published_at:type_name -> google.protobuf.Timestamp
 	71, // 62: devnetbuilder.v1.NetworkInfo.EndpointsEntry.value:type_name -> devnetbuilder.v1.EndpointInfo
 	7,  // 63: devnetbuilder.v1.DevnetService.CreateDevnet:input_type -> devnetbuilder.v1.CreateDevnetRequest
 	9,  // 64: devnetbuilder.v1.DevnetService.GetDevnet:input_type -> devnetbuilder.v1.GetDevnetRequest
@@ -5412,34 +5600,38 @@ var file_v1_devnet_proto_depIdxs = []int32{
 	64, // 86: devnetbuilder.v1.NetworkService.ListNetworks:input_type -> devnetbuilder.v1.ListNetworksRequest
 	67, // 87: devnetbuilder.v1.NetworkService.GetNetworkInfo:input_type -> devnetbuilder.v1.GetNetworkInfoRequest
 	73, // 88: devnetbuilder.v1.NetworkService.ListBinaryVersions:input_type -> devnetbuilder.v1.ListBinaryVersionsRequest
-	8,  // 89: devnetbuilder.v1.DevnetService.CreateDevnet:output_type -> devnetbuilder.v1.CreateDevnetResponse
-	10, // 90: devnetbuilder.v1.DevnetService.GetDevnet:output_type -> devnetbuilder.v1.GetDevnetResponse
-	12, // 91: devnetbuilder.v1.DevnetService.ListDevnets:output_type -> devnetbuilder.v1.ListDevnetsResponse
-	14, // 92: devnetbuilder.v1.DevnetService.DeleteDevnet:output_type -> devnetbuilder.v1.DeleteDevnetResponse
-	16, // 93: devnetbuilder.v1.DevnetService.StartDevnet:output_type -> devnetbuilder.v1.StartDevnetResponse
-	18, // 94: devnetbuilder.v1.DevnetService.StopDevnet:output_type -> devnetbuilder.v1.StopDevnetResponse
-	20, // 95: devnetbuilder.v1.DevnetService.ApplyDevnet:output_type -> devnetbuilder.v1.ApplyDevnetResponse
-	22, // 96: devnetbuilder.v1.DevnetService.UpdateDevnet:output_type -> devnetbuilder.v1.UpdateDevnetResponse
-	29, // 97: devnetbuilder.v1.NodeService.StartNode:output_type -> devnetbuilder.v1.StartNodeResponse
-	31, // 98: devnetbuilder.v1.NodeService.StopNode:output_type -> devnetbuilder.v1.StopNodeResponse
-	33, // 99: devnetbuilder.v1.NodeService.RestartNode:output_type -> devnetbuilder.v1.RestartNodeResponse
-	35, // 100: devnetbuilder.v1.NodeService.GetNode:output_type -> devnetbuilder.v1.GetNodeResponse
-	37, // 101: devnetbuilder.v1.NodeService.ListNodes:output_type -> devnetbuilder.v1.ListNodesResponse
-	39, // 102: devnetbuilder.v1.NodeService.GetNodeHealth:output_type -> devnetbuilder.v1.GetNodeHealthResponse
-	41, // 103: devnetbuilder.v1.NodeService.StreamNodeLogs:output_type -> devnetbuilder.v1.StreamNodeLogsResponse
-	46, // 104: devnetbuilder.v1.NodeService.GetNodePorts:output_type -> devnetbuilder.v1.GetNodePortsResponse
-	43, // 105: devnetbuilder.v1.NodeService.ExecInNode:output_type -> devnetbuilder.v1.ExecInNodeResponse
-	53, // 106: devnetbuilder.v1.UpgradeService.CreateUpgrade:output_type -> devnetbuilder.v1.CreateUpgradeResponse
-	55, // 107: devnetbuilder.v1.UpgradeService.GetUpgrade:output_type -> devnetbuilder.v1.GetUpgradeResponse
-	57, // 108: devnetbuilder.v1.UpgradeService.ListUpgrades:output_type -> devnetbuilder.v1.ListUpgradesResponse
-	59, // 109: devnetbuilder.v1.UpgradeService.DeleteUpgrade:output_type -> devnetbuilder.v1.DeleteUpgradeResponse
-	61, // 110: devnetbuilder.v1.UpgradeService.CancelUpgrade:output_type -> devnetbuilder.v1.CancelUpgradeResponse
-	63, // 111: devnetbuilder.v1.UpgradeService.RetryUpgrade:output_type -> devnetbuilder.v1.RetryUpgradeResponse
-	65, // 112: devnetbuilder.v1.NetworkService.ListNetworks:output_type -> devnetbuilder.v1.ListNetworksResponse
-	68, // 113: devnetbuilder.v1.NetworkService.GetNetworkInfo:output_type -> devnetbuilder.v1.GetNetworkInfoResponse
-	74, // 114: devnetbuilder.v1.NetworkService.ListBinaryVersions:output_type -> devnetbuilder.v1.ListBinaryVersionsResponse
-	89, // [89:115] is the sub-list for method output_type
-	63, // [63:89] is the sub-list for method input_type
+	76, // 89: devnetbuilder.v1.AuthService.Ping:input_type -> devnetbuilder.v1.PingRequest
+	78, // 90: devnetbuilder.v1.AuthService.WhoAmI:input_type -> devnetbuilder.v1.WhoAmIRequest
+	8,  // 91: devnetbuilder.v1.DevnetService.CreateDevnet:output_type -> devnetbuilder.v1.CreateDevnetResponse
+	10, // 92: devnetbuilder.v1.DevnetService.GetDevnet:output_type -> devnetbuilder.v1.GetDevnetResponse
+	12, // 93: devnetbuilder.v1.DevnetService.ListDevnets:output_type -> devnetbuilder.v1.ListDevnetsResponse
+	14, // 94: devnetbuilder.v1.DevnetService.DeleteDevnet:output_type -> devnetbuilder.v1.DeleteDevnetResponse
+	16, // 95: devnetbuilder.v1.DevnetService.StartDevnet:output_type -> devnetbuilder.v1.StartDevnetResponse
+	18, // 96: devnetbuilder.v1.DevnetService.StopDevnet:output_type -> devnetbuilder.v1.StopDevnetResponse
+	20, // 97: devnetbuilder.v1.DevnetService.ApplyDevnet:output_type -> devnetbuilder.v1.ApplyDevnetResponse
+	22, // 98: devnetbuilder.v1.DevnetService.UpdateDevnet:output_type -> devnetbuilder.v1.UpdateDevnetResponse
+	29, // 99: devnetbuilder.v1.NodeService.StartNode:output_type -> devnetbuilder.v1.StartNodeResponse
+	31, // 100: devnetbuilder.v1.NodeService.StopNode:output_type -> devnetbuilder.v1.StopNodeResponse
+	33, // 101: devnetbuilder.v1.NodeService.RestartNode:output_type -> devnetbuilder.v1.RestartNodeResponse
+	35, // 102: devnetbuilder.v1.NodeService.GetNode:output_type -> devnetbuilder.v1.GetNodeResponse
+	37, // 103: devnetbuilder.v1.NodeService.ListNodes:output_type -> devnetbuilder.v1.ListNodesResponse
+	39, // 104: devnetbuilder.v1.NodeService.GetNodeHealth:output_type -> devnetbuilder.v1.GetNodeHealthResponse
+	41, // 105: devnetbuilder.v1.NodeService.StreamNodeLogs:output_type -> devnetbuilder.v1.StreamNodeLogsResponse
+	46, // 106: devnetbuilder.v1.NodeService.GetNodePorts:output_type -> devnetbuilder.v1.GetNodePortsResponse
+	43, // 107: devnetbuilder.v1.NodeService.ExecInNode:output_type -> devnetbuilder.v1.ExecInNodeResponse
+	53, // 108: devnetbuilder.v1.UpgradeService.CreateUpgrade:output_type -> devnetbuilder.v1.CreateUpgradeResponse
+	55, // 109: devnetbuilder.v1.UpgradeService.GetUpgrade:output_type -> devnetbuilder.v1.GetUpgradeResponse
+	57, // 110: devnetbuilder.v1.UpgradeService.ListUpgrades:output_type -> devnetbuilder.v1.ListUpgradesResponse
+	59, // 111: devnetbuilder.v1.UpgradeService.DeleteUpgrade:output_type -> devnetbuilder.v1.DeleteUpgradeResponse
+	61, // 112: devnetbuilder.v1.UpgradeService.CancelUpgrade:output_type -> devnetbuilder.v1.CancelUpgradeResponse
+	63, // 113: devnetbuilder.v1.UpgradeService.RetryUpgrade:output_type -> devnetbuilder.v1.RetryUpgradeResponse
+	65, // 114: devnetbuilder.v1.NetworkService.ListNetworks:output_type -> devnetbuilder.v1.ListNetworksResponse
+	68, // 115: devnetbuilder.v1.NetworkService.GetNetworkInfo:output_type -> devnetbuilder.v1.GetNetworkInfoResponse
+	74, // 116: devnetbuilder.v1.NetworkService.ListBinaryVersions:output_type -> devnetbuilder.v1.ListBinaryVersionsResponse
+	77, // 117: devnetbuilder.v1.AuthService.Ping:output_type -> devnetbuilder.v1.PingResponse
+	79, // 118: devnetbuilder.v1.AuthService.WhoAmI:output_type -> devnetbuilder.v1.WhoAmIResponse
+	91, // [91:119] is the sub-list for method output_type
+	63, // [63:91] is the sub-list for method input_type
 	63, // [63:63] is the sub-list for extension type_name
 	63, // [63:63] is the sub-list for extension extendee
 	0,  // [0:63] is the sub-list for field type_name
@@ -5456,9 +5648,9 @@ func file_v1_devnet_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_devnet_proto_rawDesc), len(file_v1_devnet_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   83,
+			NumMessages:   87,
 			NumExtensions: 0,
-			NumServices:   4,
+			NumServices:   5,
 		},
 		GoTypes:           file_v1_devnet_proto_goTypes,
 		DependencyIndexes: file_v1_devnet_proto_depIdxs,

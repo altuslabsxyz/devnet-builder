@@ -22,6 +22,11 @@ var (
 	flagForeground  bool
 	flagDocker      bool
 	flagDockerImage string
+
+	// Remote listener flags
+	flagListen  string
+	flagTLSCert string
+	flagTLSKey  string
 )
 
 func main() {
@@ -48,9 +53,15 @@ func main() {
 	rootCmd.Flags().BoolVar(&flagDocker, "docker", false, "Enable Docker container runtime")
 	rootCmd.Flags().StringVar(&flagDockerImage, "docker-image", "", fmt.Sprintf("Default Docker image (default: %s)", defaults.Docker.Image))
 
+	// Remote listener flags
+	rootCmd.Flags().StringVar(&flagListen, "listen", "", "TCP address for remote access (e.g., 0.0.0.0:9000)")
+	rootCmd.Flags().StringVar(&flagTLSCert, "tls-cert", "", "Path to TLS certificate file (required when --listen is set)")
+	rootCmd.Flags().StringVar(&flagTLSKey, "tls-key", "", "Path to TLS private key file (required when --listen is set)")
+
 	// Add subcommands
 	rootCmd.AddCommand(version.NewCmd("devnet-builder", "devnetd"))
 	rootCmd.AddCommand(newConfigCmd())
+	rootCmd.AddCommand(newKeysCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -92,6 +103,11 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		ShutdownTimeout:    cfg.Timeouts.Shutdown,
 		HealthCheckTimeout: cfg.Timeouts.HealthCheck,
 		GitHubToken:        cfg.GitHub.Token,
+		Listen:             cfg.Server.Listen,
+		TLSCert:            cfg.Server.TLSCert,
+		TLSKey:             cfg.Server.TLSKey,
+		AuthEnabled:        cfg.Auth.Enabled,
+		AuthKeysFile:       cfg.Auth.KeysFile,
 	}
 
 	// Set GitHub token in environment for github_factory.go to pick up
@@ -128,5 +144,14 @@ func applyFlagOverrides(cmd *cobra.Command, cfg *config.Config) {
 	}
 	if cmd.Flags().Changed("docker-image") {
 		cfg.Docker.Image = flagDockerImage
+	}
+	if cmd.Flags().Changed("listen") {
+		cfg.Server.Listen = flagListen
+	}
+	if cmd.Flags().Changed("tls-cert") {
+		cfg.Server.TLSCert = flagTLSCert
+	}
+	if cmd.Flags().Changed("tls-key") {
+		cfg.Server.TLSKey = flagTLSKey
 	}
 }

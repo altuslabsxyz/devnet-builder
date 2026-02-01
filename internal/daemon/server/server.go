@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
+	"github.com/altuslabsxyz/devnet-builder/internal/auth"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/checker"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/provisioner"
@@ -47,6 +49,21 @@ type Config struct {
 	HealthCheckTimeout time.Duration
 	// GitHubToken is the GitHub API token.
 	GitHubToken string
+
+	// Remote listener settings (optional - enables remote access)
+	// Listen is the TCP address to listen on (e.g., "0.0.0.0:9000").
+	// Empty means local-only mode (Unix socket only).
+	Listen string
+	// TLSCert is the path to the TLS certificate file.
+	TLSCert string
+	// TLSKey is the path to the TLS private key file.
+	TLSKey string
+
+	// Authentication settings
+	// AuthEnabled enables API key authentication for remote connections.
+	AuthEnabled bool
+	// AuthKeysFile is the path to the API keys file.
+	AuthKeysFile string
 }
 
 // DefaultConfig returns default configuration.
@@ -74,7 +91,8 @@ type Server struct {
 	pluginManager   *PluginManager
 	subnetAllocator *subnet.Allocator
 	grpcServer      *grpc.Server
-	listener        net.Listener
+	listener        net.Listener // Unix socket listener
+	tcpListener     net.Listener // TCP/TLS listener (optional)
 	logger          *slog.Logger
 	logFile         *os.File // Log file handle for cleanup
 }
@@ -220,8 +238,31 @@ func New(config *Config) (*Server, error) {
 	txCtrl.SetLogger(logger)
 	mgr.Register("transactions", txCtrl)
 
-	// Create gRPC server
-	grpcServer := grpc.NewServer()
+	// Create gRPC server with optional auth interceptors for remote mode
+	var grpcServer *grpc.Server
+	if config.Listen != "" && config.AuthEnabled {
+		// Load API key store for authentication.
+		// NOTE: Keys are loaded once at startup. After creating or revoking keys
+		// with `devnetd keys create/revoke`, the server must be restarted for
+		// changes to take effect. Consider implementing hot-reload in the future.
+		keysFile := config.AuthKeysFile
+		if keysFile == "" {
+			keysFile = filepath.Join(config.DataDir, "api-keys.yaml")
+		}
+		keyStore := auth.NewFileKeyStore(keysFile)
+		if err := keyStore.Load(); err != nil {
+			logger.Warn("failed to load API keys, starting with empty key store", "error", err)
+		}
+
+		// Create gRPC server with auth interceptors
+		grpcServer = grpc.NewServer(
+			grpc.ChainUnaryInterceptor(auth.NewAuthInterceptor(keyStore, IsLocalConnection)),
+			grpc.ChainStreamInterceptor(auth.NewStreamAuthInterceptor(keyStore, IsLocalConnection)),
+		)
+		logger.Info("authentication enabled for remote connections")
+	} else {
+		grpcServer = grpc.NewServer()
+	}
 
 	// Create network service first (needed by ante handler)
 	githubFactory := NewDefaultGitHubClientFactory(config.DataDir, logger)
@@ -250,6 +291,10 @@ func New(config *Config) (*Server, error) {
 
 	v1.RegisterNetworkServiceServer(grpcServer, networkSvc)
 
+	// Register auth service for ping/whoami
+	authSvc := NewAuthService()
+	v1.RegisterAuthServiceServer(grpcServer, authSvc)
+
 	return &Server{
 		config:          config,
 		store:           st,
@@ -268,12 +313,22 @@ func (s *Server) Run(ctx context.Context) error {
 	// Remove stale socket
 	os.Remove(s.config.SocketPath)
 
-	// Create listener
+	// Create Unix socket listener (always available for local access)
 	listener, err := net.Listen("unix", s.config.SocketPath)
 	if err != nil {
-		return fmt.Errorf("failed to listen: %w", err)
+		return fmt.Errorf("failed to listen on unix socket: %w", err)
 	}
 	s.listener = listener
+
+	// Create TCP/TLS listener if configured (for remote access)
+	if s.config.Listen != "" {
+		tcpListener, err := s.createTLSListener()
+		if err != nil {
+			s.listener.Close()
+			return fmt.Errorf("failed to create TCP/TLS listener: %w", err)
+		}
+		s.tcpListener = tcpListener
+	}
 
 	// Write PID file
 	pidPath := filepath.Join(s.config.DataDir, "devnetd.pid")
@@ -282,11 +337,16 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 	defer os.Remove(pidPath)
 
-	s.logger.Info("devnetd started",
+	logAttrs := []any{
 		"socket", s.config.SocketPath,
 		"dataDir", s.config.DataDir,
 		"pid", os.Getpid(),
-		"workers", s.config.Workers)
+		"workers", s.config.Workers,
+	}
+	if s.config.Listen != "" {
+		logAttrs = append(logAttrs, "listen", s.config.Listen)
+	}
+	s.logger.Info("devnetd started", logAttrs...)
 
 	// Create cancellable context
 	ctx, cancel := context.WithCancel(ctx)
@@ -302,11 +362,18 @@ func (s *Server) Run(ctx context.Context) error {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	// Start gRPC server in background
-	errCh := make(chan error, 1)
+	// Start gRPC server on Unix socket in background
+	errCh := make(chan error, 2) // Buffer for both listeners
 	go func() {
 		errCh <- s.grpcServer.Serve(listener)
 	}()
+
+	// Start gRPC server on TCP/TLS listener if configured
+	if s.tcpListener != nil {
+		go func() {
+			errCh <- s.grpcServer.Serve(s.tcpListener)
+		}()
+	}
 
 	// Wait for shutdown
 	select {
@@ -358,9 +425,12 @@ func (s *Server) Shutdown() error {
 		s.grpcServer.GracefulStop()
 	}
 
-	// Close listener
+	// Close listeners
 	if s.listener != nil {
 		s.listener.Close()
+	}
+	if s.tcpListener != nil {
+		s.tcpListener.Close()
 	}
 
 	// Close store (safe now that all workers have stopped)
@@ -383,4 +453,30 @@ func (s *Server) Shutdown() error {
 
 	s.logger.Info("devnetd stopped")
 	return nil
+}
+
+// createTLSListener creates a TCP listener with TLS configured.
+// NOTE: TLS certificates are loaded once at startup. For certificate rotation,
+// the server must be restarted. For production deployments requiring zero-downtime
+// rotation, consider using tls.Config.GetCertificate callback or a reverse proxy.
+func (s *Server) createTLSListener() (net.Listener, error) {
+	// Load TLS certificate and key
+	cert, err := tls.LoadX509KeyPair(s.config.TLSCert, s.config.TLSKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load TLS credentials: %w", err)
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	// Create TCP listener with TLS
+	listener, err := tls.Listen("tcp", s.config.Listen, tlsConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen on %s: %w", s.config.Listen, err)
+	}
+
+	s.logger.Info("TCP/TLS listener started", "address", s.config.Listen)
+	return listener, nil
 }
