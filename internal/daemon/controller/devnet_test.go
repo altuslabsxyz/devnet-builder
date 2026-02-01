@@ -711,3 +711,126 @@ func TestDevnetController_ClassifyProvisioningError(t *testing.T) {
 		})
 	}
 }
+
+// mockProvisioner creates nodes in the store when Provision is called.
+type mockNodeCreatingProvisioner struct {
+	store store.Store
+}
+
+func (m *mockNodeCreatingProvisioner) Provision(ctx context.Context, devnet *types.Devnet) error {
+	// Create nodes like the real provisioner does
+	namespace := devnet.Metadata.Namespace
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+	for i := 0; i < devnet.Spec.Validators; i++ {
+		node := &types.Node{
+			Metadata: types.ResourceMeta{
+				Name:      fmt.Sprintf("%s-node-%d", devnet.Metadata.Name, i),
+				Namespace: namespace,
+				CreatedAt: time.Now(),
+			},
+			Spec: types.NodeSpec{
+				DevnetRef: devnet.Metadata.Name,
+				Index:     i,
+				Role:      "validator",
+				Desired:   types.NodePhaseRunning,
+			},
+			Status: types.NodeStatus{
+				Phase:   types.NodePhasePending,
+				Message: "Node created, awaiting start",
+			},
+		}
+		if err := m.store.CreateNode(ctx, node); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *mockNodeCreatingProvisioner) Deprovision(ctx context.Context, devnet *types.Devnet) error {
+	return nil
+}
+
+func (m *mockNodeCreatingProvisioner) Start(ctx context.Context, devnet *types.Devnet) error {
+	return nil
+}
+
+func (m *mockNodeCreatingProvisioner) Stop(ctx context.Context, devnet *types.Devnet) error {
+	return nil
+}
+
+func (m *mockNodeCreatingProvisioner) GetStatus(ctx context.Context, devnet *types.Devnet) (*types.DevnetStatus, error) {
+	return &types.DevnetStatus{Phase: types.PhaseRunning}, nil
+}
+
+func TestDevnetController_ReconcileProvisioning_EnqueuesNodes(t *testing.T) {
+	s := store.NewMemoryStore()
+	mgr := NewManager()
+
+	// Register a dummy node controller so we can check the queue
+	dummyNodeCtrl := &dummyController{}
+	mgr.Register("nodes", dummyNodeCtrl)
+
+	// Create a mock provisioner that creates nodes
+	prov := &mockNodeCreatingProvisioner{store: s}
+
+	ctrl := NewDevnetController(s, prov)
+	ctrl.SetManager(mgr)
+
+	// Create a devnet in Provisioning phase
+	devnet := &types.Devnet{
+		Metadata: types.ResourceMeta{
+			Name:      "test-devnet",
+			Namespace: types.DefaultNamespace,
+			CreatedAt: time.Now(),
+		},
+		Spec: types.DevnetSpec{
+			Plugin:     "stable",
+			Validators: 3,
+			Mode:       "local",
+		},
+		Status: types.DevnetStatus{
+			Phase: types.PhaseProvisioning,
+		},
+	}
+
+	err := s.CreateDevnet(context.Background(), devnet)
+	if err != nil {
+		t.Fatalf("failed to create devnet: %v", err)
+	}
+
+	// Reconcile - should provision nodes and enqueue them
+	err = ctrl.Reconcile(context.Background(), "default/test-devnet")
+	if err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+
+	// Verify nodes were created
+	nodes, err := s.ListNodes(context.Background(), types.DefaultNamespace, "test-devnet")
+	if err != nil {
+		t.Fatalf("failed to list nodes: %v", err)
+	}
+	if len(nodes) != 3 {
+		t.Errorf("expected 3 nodes, got %d", len(nodes))
+	}
+
+	// Verify nodes were enqueued
+	queue := mgr.GetQueue("nodes")
+	if queue == nil {
+		t.Fatal("nodes queue not found")
+	}
+
+	// The queue should have 3 items (one for each node)
+	queueLen := queue.Len()
+	if queueLen != 3 {
+		t.Errorf("expected 3 items in queue, got %d", queueLen)
+	}
+}
+
+// dummyController is a minimal controller implementation for testing
+type dummyController struct{}
+
+func (d *dummyController) Reconcile(ctx context.Context, key string) error {
+	return nil
+}

@@ -56,6 +56,7 @@ type ProgressProvisioner interface {
 type DevnetController struct {
 	store       store.Store
 	provisioner Provisioner
+	manager     *Manager
 	logger      *slog.Logger
 
 	// logSubscribers holds log subscriber wrappers, keyed by devnet name.
@@ -76,6 +77,13 @@ func NewDevnetController(s store.Store, p Provisioner) *DevnetController {
 // SetLogger sets the logger for the controller.
 func (c *DevnetController) SetLogger(logger *slog.Logger) {
 	c.logger = logger
+}
+
+// SetManager sets the controller manager for enqueueing nodes.
+// This allows the DevnetController to trigger node reconciliation
+// after provisioning creates nodes.
+func (c *DevnetController) SetManager(mgr *Manager) {
+	c.manager = mgr
 }
 
 // Reconcile processes a single devnet by key (format: "namespace/name" or just "name").
@@ -265,6 +273,30 @@ func (c *DevnetController) reconcileProvisioning(ctx context.Context, devnet *ty
 	c.logger.Info("provisioning complete",
 		"name", devnet.Metadata.Name,
 		"nodes", devnet.Status.Nodes)
+
+	// Enqueue all created nodes for reconciliation by the NodeController.
+	// Without this, nodes remain in Pending phase with no process started.
+	if c.manager != nil {
+		namespace := devnet.Metadata.Namespace
+		if namespace == "" {
+			namespace = types.DefaultNamespace
+		}
+		nodes, err := c.store.ListNodes(ctx, namespace, devnet.Metadata.Name)
+		if err != nil {
+			c.logger.Warn("failed to list nodes for enqueueing",
+				"name", devnet.Metadata.Name,
+				"error", err)
+		} else {
+			for _, node := range nodes {
+				key := NodeKeyWithNamespace(namespace, node.Spec.DevnetRef, node.Spec.Index)
+				c.manager.Enqueue("nodes", key)
+				c.logger.Debug("enqueued node for reconciliation",
+					"devnet", devnet.Metadata.Name,
+					"nodeIndex", node.Spec.Index,
+					"key", key)
+			}
+		}
+	}
 
 	return c.store.UpdateDevnet(ctx, devnet)
 }

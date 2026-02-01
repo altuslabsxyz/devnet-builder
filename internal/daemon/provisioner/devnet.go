@@ -271,6 +271,10 @@ func (p *DevnetProvisioner) createNodeResources(ctx context.Context, devnet *typ
 // createNodeSpec creates a Node spec for the given devnet and index.
 // builtBinaryPath is the path to the binary built by orchestrator (takes precedence if set).
 // allocatedSubnet is the subnet for IP address assignment (0 means no subnet allocation).
+//
+// IMPORTANT: The HomeDir path format MUST match the orchestrator's initializeNode() path format:
+// {dataDir}/nodes/{devnetName}-{role}-{index}
+// This ensures the node runtime starts with the same directory that was initialized.
 func (p *DevnetProvisioner) createNodeSpec(devnet *types.Devnet, index int, role, devnetDataDir, builtBinaryPath string, allocatedSubnet uint8) *types.Node {
 	// Determine binary path - built path takes precedence
 	binaryPath := builtBinaryPath
@@ -297,6 +301,9 @@ func (p *DevnetProvisioner) createNodeSpec(devnet *types.Devnet, index int, role
 		nodeAddress = subnet.NodeIP(allocatedSubnet, index)
 	}
 
+	// Generate moniker matching orchestrator's format: {devnetName}-{role}-{index}
+	moniker := fmt.Sprintf("%s-%s-%d", devnet.Metadata.Name, role, index)
+
 	return &types.Node{
 		Metadata: types.ResourceMeta{
 			Name:      fmt.Sprintf("%s-node-%d", devnet.Metadata.Name, index),
@@ -309,7 +316,7 @@ func (p *DevnetProvisioner) createNodeSpec(devnet *types.Devnet, index int, role
 			Index:      index,
 			Role:       role,
 			BinaryPath: binaryPath,
-			HomeDir:    filepath.Join(devnetDataDir, fmt.Sprintf("node-%d", index)),
+			HomeDir:    filepath.Join(devnetDataDir, "nodes", moniker),
 			Address:    nodeAddress,
 			Desired:    types.NodePhaseRunning,
 		},

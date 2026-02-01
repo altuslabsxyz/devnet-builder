@@ -3,13 +3,17 @@ package runtime
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/nxadm/tail"
 )
 
 // LogConfig configures log management
@@ -69,8 +73,15 @@ func (lm *LogManager) GetWriter(nodeID string, logPath string) (io.WriteCloser, 
 	return w, nil
 }
 
-// GetReader returns a reader for a node's logs
-func (lm *LogManager) GetReader(logPath string, opts LogOptions) (io.ReadCloser, error) {
+// GetReader returns a reader for a node's logs.
+// If opts.Follow is true, it uses nxadm/tail to follow the file for new content.
+func (lm *LogManager) GetReader(ctx context.Context, logPath string, opts LogOptions) (io.ReadCloser, error) {
+	// If follow mode, use tail package
+	if opts.Follow {
+		return lm.followFile(ctx, logPath, opts.Lines)
+	}
+
+	// Non-follow mode: return static content
 	if opts.Lines > 0 {
 		return lm.tailFile(logPath, opts.Lines)
 	}
@@ -81,6 +92,105 @@ func (lm *LogManager) GetReader(logPath string, opts LogOptions) (io.ReadCloser,
 	}
 
 	return f, nil
+}
+
+// followFile uses nxadm/tail to follow a log file for new content.
+func (lm *LogManager) followFile(ctx context.Context, logPath string, lines int) (io.ReadCloser, error) {
+	// Determine where to start reading
+	location := &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd}
+	if lines > 0 {
+		// Start from end and show last N lines
+		location = nil // Let tail calculate from end
+	}
+
+	cfg := tail.Config{
+		Follow:    true,
+		ReOpen:    true, // Handle log rotation
+		MustExist: true,
+		Location:  location,
+		Logger:    log.New(io.Discard, "", 0), // Suppress tail's internal logging
+	}
+
+	t, err := tail.TailFile(logPath, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to tail file: %w", err)
+	}
+
+	return newTailReader(ctx, t, lines), nil
+}
+
+// tailReader wraps tail.Tail to implement io.ReadCloser.
+type tailReader struct {
+	ctx    context.Context
+	t      *tail.Tail
+	buf    []byte
+	lines  int
+	lineCh <-chan *tail.Line
+	done   chan struct{}
+	closed bool
+	mu     sync.Mutex
+}
+
+func newTailReader(ctx context.Context, t *tail.Tail, lines int) *tailReader {
+	return &tailReader{
+		ctx:    ctx,
+		t:      t,
+		lines:  lines,
+		lineCh: t.Lines,
+		done:   make(chan struct{}),
+	}
+}
+
+func (tr *tailReader) Read(p []byte) (int, error) {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+
+	if tr.closed {
+		return 0, io.EOF
+	}
+
+	// If we have buffered data, return it first
+	if len(tr.buf) > 0 {
+		n := copy(p, tr.buf)
+		tr.buf = tr.buf[n:]
+		return n, nil
+	}
+
+	// Wait for new line from tail
+	select {
+	case <-tr.ctx.Done():
+		return 0, tr.ctx.Err()
+	case <-tr.done:
+		return 0, io.EOF
+	case line, ok := <-tr.lineCh:
+		if !ok {
+			return 0, io.EOF
+		}
+		if line.Err != nil {
+			return 0, line.Err
+		}
+		// Add newline to match original file format
+		data := line.Text + "\n"
+		n := copy(p, data)
+		if n < len(data) {
+			tr.buf = []byte(data[n:])
+		}
+		return n, nil
+	}
+}
+
+func (tr *tailReader) Close() error {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+
+	if tr.closed {
+		return nil
+	}
+	tr.closed = true
+	close(tr.done)
+	err := tr.t.Stop()
+	tr.t.Cleanup()
+	return err
 }
 
 // tailFile returns the last N lines of a file

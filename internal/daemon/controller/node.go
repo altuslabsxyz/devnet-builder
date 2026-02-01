@@ -120,6 +120,8 @@ func (c *NodeController) Reconcile(ctx context.Context, key string) error {
 
 // reconcilePending handles nodes in Pending phase.
 // Transitions to Starting if desired state is Running.
+// Note: This method continues directly to reconcileStarting to avoid
+// requiring a store watcher or manual re-enqueue after phase transition.
 func (c *NodeController) reconcilePending(ctx context.Context, node *types.Node) error {
 	// If desired is Running (or not explicitly Stopped), start the node
 	if node.Spec.Desired == "" || node.Spec.Desired == types.NodePhaseRunning {
@@ -130,7 +132,15 @@ func (c *NodeController) reconcilePending(ctx context.Context, node *types.Node)
 		node.Status.Phase = types.NodePhaseStarting
 		node.Status.Message = "Starting node"
 
-		return c.store.UpdateNode(ctx, node)
+		// Save the phase transition
+		if err := c.store.UpdateNode(ctx, node); err != nil {
+			return fmt.Errorf("failed to update node phase: %w", err)
+		}
+
+		// Continue directly to starting to avoid requiring re-enqueue.
+		// Without a store watcher, returning here would leave the node stuck
+		// in Starting phase with no subsequent reconcile triggered.
+		return c.reconcileStarting(ctx, node)
 	}
 
 	// Desired is Stopped, transition directly to Stopped

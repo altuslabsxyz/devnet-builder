@@ -192,7 +192,7 @@ func (pr *ProcessRuntime) GetNodeStatus(ctx context.Context, nodeID string) (*No
 // GetLogs returns logs for a node
 func (pr *ProcessRuntime) GetLogs(ctx context.Context, nodeID string, opts LogOptions) (io.ReadCloser, error) {
 	logPath := filepath.Join(pr.config.DataDir, "logs", nodeID+".log")
-	return pr.logManager.GetReader(logPath, opts)
+	return pr.logManager.GetReader(ctx, logPath, opts)
 }
 
 // Cleanup cleans up all resources
