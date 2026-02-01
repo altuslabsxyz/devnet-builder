@@ -192,7 +192,7 @@ func New(config *Config) (*Server, error) {
 	devnetCtrl.SetLogger(logger)
 	mgr.Register("devnets", devnetCtrl)
 
-	// Create node runtime (Docker or nil)
+	// Create node runtime (Docker or Process-based for local mode)
 	var nodeRuntime runtime.NodeRuntime
 	if config.EnableDocker {
 		dockerRuntime, err := runtime.NewDockerRuntime(runtime.DockerConfig{
@@ -204,6 +204,13 @@ func New(config *Config) (*Server, error) {
 		}
 		nodeRuntime = dockerRuntime
 		logger.Info("docker runtime enabled", "image", config.DockerImage)
+	} else {
+		// Use process-based runtime for local mode
+		nodeRuntime = runtime.NewProcessRuntime(runtime.ProcessRuntimeConfig{
+			DataDir: config.DataDir,
+			Logger:  logger,
+		})
+		logger.Info("process runtime enabled for local mode")
 	}
 
 	nodeCtrl := controller.NewNodeController(st, nodeRuntime)
