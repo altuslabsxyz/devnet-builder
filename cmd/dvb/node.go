@@ -403,6 +403,8 @@ Examples:
 				return err
 			}
 
+			printContextHeader(explicitDevnet, currentContext)
+
 			var index int
 			if indexArg == "" {
 				// Use picker
@@ -495,6 +497,8 @@ Examples:
 				return err
 			}
 
+			printContextHeader(explicitDevnet, currentContext)
+
 			var index int
 			if indexArg == "" {
 				index, err = dvbcontext.PickNode(daemonClient, ns, devnetName)
@@ -579,6 +583,8 @@ Examples:
 			if err != nil {
 				return err
 			}
+
+			printContextHeader(explicitDevnet, currentContext)
 
 			var index int
 			if indexArg == "" {
@@ -684,6 +690,8 @@ Examples:
 				return err
 			}
 
+			printContextHeader(explicitDevnet, currentContext)
+
 			var index int
 			if indexArg == "" {
 				index, err = dvbcontext.PickNode(daemonClient, ns, devnetName)
@@ -763,6 +771,8 @@ Examples:
 				return err
 			}
 
+			printContextHeader(explicitDevnet, currentContext)
+
 			var index int
 			if indexArg == "" {
 				index, err = dvbcontext.PickNode(daemonClient, ns, devnetName)
@@ -841,6 +851,8 @@ Examples:
 			if err != nil {
 				return err
 			}
+
+			printContextHeader(explicitDevnet, currentContext)
 
 			var index int
 			if indexArg == "" {
@@ -961,6 +973,8 @@ Examples:
 			if err != nil {
 				return err
 			}
+
+			printContextHeader(explicitDevnet, currentContext)
 
 			var index int
 			if indexArg == "" {
