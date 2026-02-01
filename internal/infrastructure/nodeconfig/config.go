@@ -443,6 +443,7 @@ func (e *ConfigEditor) setAppConfigBool(filePath, section, key string, value boo
 }
 
 // ConfigureNode applies all necessary configuration for a node.
+//
 // Deprecated: Use ConfigureNodeWithHost instead for loopback subnet support.
 func ConfigureNode(nodeDir string, nodeIndex int, peers string, isNode0 bool, logger *output.Logger) error {
 	return ConfigureNodeWithHost(nodeDir, nodeIndex, peers, isNode0, "", logger)
