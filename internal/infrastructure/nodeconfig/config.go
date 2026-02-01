@@ -337,6 +337,7 @@ func (e *ConfigEditor) setRPCLaddrWithHost(filePath string, port int, host strin
 }
 
 // setGRPCAddress sets the gRPC address in app.toml.
+//
 // Deprecated: Use setGRPCAddressWithHost instead.
 func (e *ConfigEditor) setGRPCAddress(filePath string, port int) error {
 	return e.setGRPCAddressWithHost(filePath, port, "0.0.0.0")
@@ -348,6 +349,7 @@ func (e *ConfigEditor) setGRPCAddressWithHost(filePath string, port int, host st
 }
 
 // setAPIAddress sets the API address in app.toml.
+//
 // Deprecated: Use setAPIAddressWithHost instead.
 func (e *ConfigEditor) setAPIAddress(filePath string, port int) error {
 	return e.setAPIAddressWithHost(filePath, port, "0.0.0.0")
@@ -359,6 +361,7 @@ func (e *ConfigEditor) setAPIAddressWithHost(filePath string, port int, host str
 }
 
 // setEVMRPCAddress sets the EVM JSON-RPC address in app.toml.
+//
 // Deprecated: Use setEVMRPCAddressWithHost instead.
 func (e *ConfigEditor) setEVMRPCAddress(filePath string, port int) error {
 	return e.setEVMRPCAddressWithHost(filePath, port, "0.0.0.0")
@@ -370,6 +373,7 @@ func (e *ConfigEditor) setEVMRPCAddressWithHost(filePath string, port int, host 
 }
 
 // setEVMWSAddress sets the EVM WebSocket address in app.toml.
+//
 // Deprecated: Use setEVMWSAddressWithHost instead.
 func (e *ConfigEditor) setEVMWSAddress(filePath string, port int) error {
 	return e.setEVMWSAddressWithHost(filePath, port, "0.0.0.0")
