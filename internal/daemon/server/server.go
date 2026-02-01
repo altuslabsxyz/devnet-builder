@@ -227,7 +227,10 @@ func New(config *Config) (*Server, error) {
 	// Create gRPC server with optional auth interceptors for remote mode
 	var grpcServer *grpc.Server
 	if config.Listen != "" && config.AuthEnabled {
-		// Load API key store for authentication
+		// Load API key store for authentication.
+		// NOTE: Keys are loaded once at startup. After creating or revoking keys
+		// with `devnetd keys create/revoke`, the server must be restarted for
+		// changes to take effect. Consider implementing hot-reload in the future.
 		keysFile := config.AuthKeysFile
 		if keysFile == "" {
 			keysFile = filepath.Join(config.DataDir, "api-keys.yaml")
@@ -438,6 +441,9 @@ func (s *Server) Shutdown() error {
 }
 
 // createTLSListener creates a TCP listener with TLS configured.
+// NOTE: TLS certificates are loaded once at startup. For certificate rotation,
+// the server must be restarted. For production deployments requiring zero-downtime
+// rotation, consider using tls.Config.GetCertificate callback or a reverse proxy.
 func (s *Server) createTLSListener() (net.Listener, error) {
 	// Load TLS certificate and key
 	cert, err := tls.LoadX509KeyPair(s.config.TLSCert, s.config.TLSKey)

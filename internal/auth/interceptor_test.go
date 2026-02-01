@@ -162,7 +162,8 @@ func TestNewAuthInterceptor_RemoteWithInvalidKeyFormat(t *testing.T) {
 	st, ok := status.FromError(err)
 	require.True(t, ok)
 	assert.Equal(t, codes.Unauthenticated, st.Code())
-	assert.Contains(t, st.Message(), "invalid API key format")
+	// Use generic error message to prevent timing attacks
+	assert.Equal(t, "authentication failed", st.Message())
 }
 
 func TestNewAuthInterceptor_RemoteWithUnknownKey(t *testing.T) {
@@ -183,7 +184,8 @@ func TestNewAuthInterceptor_RemoteWithUnknownKey(t *testing.T) {
 	st, ok := status.FromError(err)
 	require.True(t, ok)
 	assert.Equal(t, codes.Unauthenticated, st.Code())
-	assert.Contains(t, st.Message(), "invalid API key")
+	// Use generic error message to prevent timing attacks
+	assert.Equal(t, "authentication failed", st.Message())
 }
 
 func TestNewAuthInterceptor_NilIsLocalFunc(t *testing.T) {
@@ -310,4 +312,57 @@ func TestNewStreamAuthInterceptor_RemoteWithoutAuth(t *testing.T) {
 	st, ok := status.FromError(err)
 	require.True(t, ok)
 	assert.Equal(t, codes.Unauthenticated, st.Code())
+}
+
+// TestAuthErrorMessagesAreIdentical verifies that all key-related auth failures
+// return the SAME error message to prevent timing attacks.
+// An attacker should not be able to distinguish between:
+// - Invalid key format
+// - Unknown key
+// - Any other key validation failure
+func TestAuthErrorMessagesAreIdentical(t *testing.T) {
+	store := newMockKeyStore()
+	// Add a valid key so we can compare errors
+	store.addKey("devnet_0123456789abcdef0123456789abcdef", "alice", []string{"*"})
+	isLocal := func(ctx context.Context) bool { return false }
+	interceptor := NewAuthInterceptor(store, isLocal)
+
+	// Collect error messages for different failure scenarios
+	var errorMessages []string
+
+	// Case 1: Invalid key format (not devnet_ prefix)
+	md := metadata.New(map[string]string{
+		AuthorizationHeader: "Bearer invalid_key_format_123",
+	})
+	ctx := metadata.NewIncomingContext(context.Background(), md)
+	_, err := interceptor(ctx, nil, &grpc.UnaryServerInfo{}, mockHandler)
+	require.Error(t, err)
+	st, _ := status.FromError(err)
+	errorMessages = append(errorMessages, st.Message())
+
+	// Case 2: Valid format but unknown key
+	md = metadata.New(map[string]string{
+		AuthorizationHeader: "Bearer devnet_ffffffffffffffffffffffffffffffff",
+	})
+	ctx = metadata.NewIncomingContext(context.Background(), md)
+	_, err = interceptor(ctx, nil, &grpc.UnaryServerInfo{}, mockHandler)
+	require.Error(t, err)
+	st, _ = status.FromError(err)
+	errorMessages = append(errorMessages, st.Message())
+
+	// Case 3: Too short key (wrong length)
+	md = metadata.New(map[string]string{
+		AuthorizationHeader: "Bearer devnet_tooshort",
+	})
+	ctx = metadata.NewIncomingContext(context.Background(), md)
+	_, err = interceptor(ctx, nil, &grpc.UnaryServerInfo{}, mockHandler)
+	require.Error(t, err)
+	st, _ = status.FromError(err)
+	errorMessages = append(errorMessages, st.Message())
+
+	// All error messages MUST be identical to prevent timing attacks
+	expected := "authentication failed"
+	for i, msg := range errorMessages {
+		assert.Equal(t, expected, msg, "Case %d: error message should be generic", i+1)
+	}
 }

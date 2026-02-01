@@ -171,3 +171,58 @@ func TestClientConfig_PartialConfig(t *testing.T) {
 	assert.Empty(t, cfg.APIKey)
 	assert.Empty(t, cfg.Namespace)
 }
+
+// TestCheckConfigFilePermissions_SecurePermissions verifies no warning for 0600.
+func TestCheckConfigFilePermissions_SecurePermissions(t *testing.T) {
+	origHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", origHome)
+
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+
+	configDir := filepath.Join(tmpDir, ".dvb")
+	err := os.MkdirAll(configDir, 0755)
+	require.NoError(t, err)
+
+	configPath := filepath.Join(configDir, "config.yaml")
+	err = os.WriteFile(configPath, []byte("api_key: secret"), 0600)
+	require.NoError(t, err)
+
+	warning := CheckConfigFilePermissions()
+	assert.Empty(t, warning, "secure permissions should not produce a warning")
+}
+
+// TestCheckConfigFilePermissions_InsecurePermissions verifies warning for world-readable file.
+func TestCheckConfigFilePermissions_InsecurePermissions(t *testing.T) {
+	origHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", origHome)
+
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+
+	configDir := filepath.Join(tmpDir, ".dvb")
+	err := os.MkdirAll(configDir, 0755)
+	require.NoError(t, err)
+
+	configPath := filepath.Join(configDir, "config.yaml")
+	// Write with insecure permissions (world-readable)
+	err = os.WriteFile(configPath, []byte("api_key: secret"), 0644)
+	require.NoError(t, err)
+
+	warning := CheckConfigFilePermissions()
+	assert.NotEmpty(t, warning, "insecure permissions should produce a warning")
+	assert.Contains(t, warning, "insecure permissions")
+	assert.Contains(t, warning, "644") // should mention the actual permissions
+}
+
+// TestCheckConfigFilePermissions_MissingFile verifies no warning when file doesn't exist.
+func TestCheckConfigFilePermissions_MissingFile(t *testing.T) {
+	origHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", origHome)
+
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+
+	warning := CheckConfigFilePermissions()
+	assert.Empty(t, warning, "missing file should not produce a warning")
+}

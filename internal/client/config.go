@@ -117,3 +117,30 @@ func (c *ClientConfig) Set(key, value string) error {
 func (c *ClientConfig) IsRemote() bool {
 	return c.Server != ""
 }
+
+// CheckConfigFilePermissions checks if the config file has secure permissions.
+// Returns a warning message if the file has insecure permissions (not 0600),
+// or an empty string if permissions are secure or the file doesn't exist.
+// SECURITY: Config file contains API keys and should only be readable by owner.
+func CheckConfigFilePermissions() string {
+	path, err := configFilePath()
+	if err != nil {
+		return ""
+	}
+
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		// File doesn't exist, no warning needed
+		return ""
+	}
+	if err != nil {
+		return ""
+	}
+
+	perm := info.Mode().Perm()
+	if perm != 0600 {
+		return fmt.Sprintf("warning: %s has insecure permissions %04o, should be 0600", path, perm)
+	}
+
+	return ""
+}

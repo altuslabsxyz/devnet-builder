@@ -190,5 +190,9 @@ func (h *AnteHandler) ValidateGetNode(ctx context.Context, req *v1.GetNodeReques
 
 // ValidateGetNodeHealth validates a GetNodeHealthRequest.
 func (h *AnteHandler) ValidateGetNodeHealth(ctx context.Context, req *v1.GetNodeHealthRequest) error {
+	// Authorization check first
+	if err := h.authz.ValidateNamespaceAccess(ctx, req.Namespace); err != nil {
+		return err
+	}
 	return h.field.ValidateGetNodeHealthRequest(ctx, req)
 }

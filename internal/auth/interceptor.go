@@ -28,6 +28,10 @@ type IsLocalConnFunc func(ctx context.Context) bool
 // - Requires a valid API key in the "authorization" metadata header for remote connections
 // - Extracts user info from the API key and injects it into the context
 // - Returns codes.Unauthenticated if authentication fails
+//
+// SECURITY NOTE: This interceptor does not implement rate limiting. For production
+// deployments, rate limiting should be handled at the network layer (e.g., via a
+// reverse proxy like nginx or envoy) to protect against brute-force attacks.
 func NewAuthInterceptor(keyStore KeyStore, isLocalConn IsLocalConnFunc) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		// Check if this is a local connection
@@ -103,15 +107,16 @@ func authenticateRequest(ctx context.Context, keyStore KeyStore) (*UserInfo, err
 		return nil, status.Error(codes.Unauthenticated, "empty authorization token")
 	}
 
-	// Validate key format
+	// Validate key format and look up the key.
+	// SECURITY: Use identical error messages for all key-related failures
+	// to prevent timing attacks that could leak information about key structure.
 	if !IsValidKeyFormat(token) {
-		return nil, status.Error(codes.Unauthenticated, "invalid API key format")
+		return nil, status.Error(codes.Unauthenticated, "authentication failed")
 	}
 
-	// Look up the key
 	apiKey, ok := keyStore.Get(token)
 	if !ok {
-		return nil, status.Error(codes.Unauthenticated, "invalid API key")
+		return nil, status.Error(codes.Unauthenticated, "authentication failed")
 	}
 
 	// Create user info from API key
