@@ -317,7 +317,10 @@ func ConfirmUpdate(name string, current *v1.Devnet, proposed *v1.DevnetSpec) (bo
 	for {
 		fmt.Print("[U]pdate  [V]iew changes  [C]ancel: ")
 		var input string
-		fmt.Scanln(&input)
+		if _, err := fmt.Scanln(&input); err != nil {
+			// EOF or other read error - treat as cancel
+			return false, nil
+		}
 		input = strings.TrimSpace(strings.ToLower(input))
 
 		switch input {
