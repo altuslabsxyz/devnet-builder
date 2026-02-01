@@ -263,3 +263,58 @@ func TestLogEntry_Stderr(t *testing.T) {
 	assert.Equal(t, "stderr", entry.Stream)
 	assert.Equal(t, "Warning: low disk space", entry.Message)
 }
+
+// =============================================================================
+// ProvisionLogEntry Tests
+// =============================================================================
+
+func TestProvisionLogEntry_Fields(t *testing.T) {
+	now := time.Now()
+	entry := ProvisionLogEntry{
+		Timestamp: now,
+		Level:     "info",
+		Message:   "Starting container creation",
+		Phase:     "creating_containers",
+	}
+
+	assert.Equal(t, now, entry.Timestamp)
+	assert.Equal(t, "info", entry.Level)
+	assert.Equal(t, "Starting container creation", entry.Message)
+	assert.Equal(t, "creating_containers", entry.Phase)
+}
+
+func TestProvisionLogEntry_ErrorLevel(t *testing.T) {
+	entry := ProvisionLogEntry{
+		Level:   "error",
+		Message: "Failed to create container",
+		Phase:   "creating_containers",
+	}
+
+	assert.Equal(t, "error", entry.Level)
+	assert.Equal(t, "Failed to create container", entry.Message)
+	assert.Equal(t, "creating_containers", entry.Phase)
+}
+
+func TestProvisionLogEntry_WarnLevel(t *testing.T) {
+	entry := ProvisionLogEntry{
+		Level:   "warn",
+		Message: "Retrying operation",
+		Phase:   "starting_nodes",
+	}
+
+	assert.Equal(t, "warn", entry.Level)
+	assert.Equal(t, "Retrying operation", entry.Message)
+	assert.Equal(t, "starting_nodes", entry.Phase)
+}
+
+func TestProvisionLogEntry_EmptyPhase(t *testing.T) {
+	// Phase may be empty for general logs
+	entry := ProvisionLogEntry{
+		Level:   "info",
+		Message: "Provisioning started",
+		Phase:   "",
+	}
+
+	assert.Equal(t, "info", entry.Level)
+	assert.Empty(t, entry.Phase)
+}

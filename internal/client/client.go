@@ -233,6 +233,12 @@ func (c *Client) StreamNodeLogs(ctx context.Context, devnetName string, index in
 	return c.grpc.StreamNodeLogs(ctx, devnetName, index, follow, since, tail, callback)
 }
 
+// StreamProvisionLogs streams provisioner log entries for a devnet.
+// The callback is called for each log entry received.
+func (c *Client) StreamProvisionLogs(ctx context.Context, namespace, name string, callback func(*ProvisionLogEntry) error) error {
+	return c.grpc.StreamProvisionLogs(ctx, namespace, name, callback)
+}
+
 // ListNetworks returns all registered network modules from the daemon.
 func (c *Client) ListNetworks(ctx context.Context) ([]*v1.NetworkSummary, error) {
 	return c.grpc.ListNetworks(ctx)

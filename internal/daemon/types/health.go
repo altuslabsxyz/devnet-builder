@@ -54,6 +54,16 @@ const (
 	ReasonBinaryNotFound      = "BinaryNotFound"
 	ReasonContainerFailed     = "ContainerFailed"
 	ReasonNetworkError        = "NetworkError"
+
+	// Provisioning step reasons (granular events)
+	ReasonBinaryBuilding   = "BinaryBuilding"
+	ReasonBinaryBuilt      = "BinaryBuilt"
+	ReasonGenesisFork      = "GenesisFork"
+	ReasonGenesisForked    = "GenesisForked"
+	ReasonNodesConfiguring = "NodesConfiguring"
+	ReasonNodesConfigured  = "NodesConfigured"
+	ReasonNodeReady        = "NodeReady"
+	ReasonProvisionFailed  = "ProvisioningFailed"
 )
 
 // RestartPolicy defines how crashed nodes should be restarted.

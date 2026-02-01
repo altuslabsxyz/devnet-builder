@@ -7,8 +7,10 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
+	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -40,6 +42,8 @@ type provisionOptions struct {
 	file          string // YAML config file path
 	dryRun        bool   // Preview changes without applying
 	listPlugins   bool   // List available network plugins
+	noWait        bool   // Return immediately without waiting for provisioning
+	verbose       bool   // Stream detailed provisioner logs
 }
 
 func newProvisionCmd() *cobra.Command {
@@ -123,9 +127,14 @@ Examples:
 	cmd.Flags().IntVar(&opts.fullNodes, "full-nodes", 0, "Number of full nodes")
 	cmd.Flags().StringVar(&opts.mode, "mode", "docker", "Execution mode (docker or local)")
 
+	// Wait behavior flags
+	cmd.Flags().BoolVar(&opts.noWait, "no-wait", false, "Return immediately without waiting for provisioning to complete")
+	cmd.Flags().BoolVarP(&opts.verbose, "verbose", "v", false, "Stream detailed provisioner logs")
+
 	// Mark flags as mutually exclusive
 	cmd.MarkFlagsMutuallyExclusive("file", "name")
 	cmd.MarkFlagsMutuallyExclusive("dry-run", "list-plugins")
+	cmd.MarkFlagsMutuallyExclusive("no-wait", "verbose")
 
 	return cmd
 }
@@ -179,7 +188,7 @@ func runInteractiveMode(ctx context.Context, opts *provisionOptions) error {
 	}
 
 	// Handle upsert logic with wizard confirmation
-	return executeUpsert(ctx, namespace, wizardOpts.Name, spec, nil, nil, opts.dryRun, false)
+	return executeUpsert(ctx, namespace, wizardOpts.Name, spec, nil, nil, opts.dryRun, false, opts.noWait, opts.verbose)
 }
 
 // runFlagMode handles flag-based provisioning
@@ -225,7 +234,7 @@ func runFlagMode(ctx context.Context, opts *provisionOptions) error {
 	}
 
 	// Handle upsert logic with confirmation prompt
-	return executeUpsert(ctx, namespace, opts.name, spec, nil, nil, opts.dryRun, false)
+	return executeUpsert(ctx, namespace, opts.name, spec, nil, nil, opts.dryRun, false, opts.noWait, opts.verbose)
 }
 
 // runFileMode handles file-based provisioning
@@ -256,7 +265,7 @@ func runFileMode(ctx context.Context, opts *provisionOptions) error {
 	}
 
 	// File mode updates silently (declarative intent)
-	return executeUpsert(ctx, namespace, proto.Metadata.Name, proto.Spec, proto.Metadata.Labels, proto.Metadata.Annotations, opts.dryRun, true)
+	return executeUpsert(ctx, namespace, proto.Metadata.Name, proto.Spec, proto.Metadata.Labels, proto.Metadata.Annotations, opts.dryRun, true, opts.noWait, opts.verbose)
 }
 
 // CheckDevnetExists checks if a devnet exists via the daemon
@@ -278,7 +287,7 @@ func CheckDevnetExists(ctx context.Context, namespace, name string) (bool, *v1.D
 }
 
 // executeUpsert handles the create/update logic with appropriate confirmation
-func executeUpsert(ctx context.Context, namespace, name string, spec *v1.DevnetSpec, labels, annotations map[string]string, dryRun, silentUpdate bool) error {
+func executeUpsert(ctx context.Context, namespace, name string, spec *v1.DevnetSpec, labels, annotations map[string]string, dryRun, silentUpdate, noWait, verbose bool) error {
 	// Check if devnet exists
 	exists, currentDevnet, err := CheckDevnetExists(ctx, namespace, name)
 	if err != nil {
@@ -304,9 +313,9 @@ func executeUpsert(ctx context.Context, namespace, name string, spec *v1.DevnetS
 
 	// Execute create or update
 	if exists {
-		return executeUpdate(ctx, namespace, name, spec, labels, annotations)
+		return executeUpdate(ctx, namespace, name, spec, labels, annotations, noWait, verbose)
 	}
-	return executeCreate(ctx, namespace, name, spec, labels)
+	return executeCreate(ctx, namespace, name, spec, labels, noWait, verbose)
 }
 
 // ConfirmUpdate prompts the user to confirm an update operation.
@@ -441,7 +450,7 @@ func PrintDryRun(namespace, name string, spec *v1.DevnetSpec, exists bool, curre
 }
 
 // executeCreate creates a new devnet
-func executeCreate(ctx context.Context, namespace, name string, spec *v1.DevnetSpec, labels map[string]string) error {
+func executeCreate(ctx context.Context, namespace, name string, spec *v1.DevnetSpec, labels map[string]string, noWait, verbose bool) error {
 	// Print provisioning info
 	fmt.Fprintf(os.Stderr, "Provisioning devnet via daemon...\n")
 	fmt.Fprintf(os.Stderr, "  Name:       %s\n", name)
@@ -466,6 +475,33 @@ func executeCreate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 		return err
 	}
 
+	// Handle wait behavior based on flags
+	if noWait {
+		// Return immediately without waiting
+		fmt.Fprintf(os.Stderr, "\n")
+		color.Green("Devnet %q provisioning started", devnet.Metadata.Name)
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "  Namespace:    %s\n", devnet.Metadata.Namespace)
+		fmt.Fprintf(os.Stderr, "  Phase:        %s\n", devnet.Status.Phase)
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "Provisioning in background. Check status with: dvb describe %s\n", name)
+		return nil
+	}
+
+	if verbose {
+		// Stream detailed provisioner logs
+		if err := streamProvisionLogs(ctx, namespace, name); err != nil {
+			// Log streaming failed, but the devnet was created
+			fmt.Fprintf(os.Stderr, "Warning: failed to stream logs: %v\n", err)
+		}
+	} else {
+		// Poll for status (default behavior)
+		if err := pollProvisionStatus(ctx, namespace, name); err != nil {
+			// Polling failed, but the devnet was created
+			fmt.Fprintf(os.Stderr, "Warning: failed to poll status: %v\n", err)
+		}
+	}
+
 	// Print success
 	fmt.Fprintf(os.Stderr, "\n")
 	color.Green("Devnet %q created", devnet.Metadata.Name)
@@ -484,7 +520,7 @@ func executeCreate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 }
 
 // executeUpdate updates an existing devnet
-func executeUpdate(ctx context.Context, namespace, name string, spec *v1.DevnetSpec, labels, annotations map[string]string) error {
+func executeUpdate(ctx context.Context, namespace, name string, spec *v1.DevnetSpec, labels, annotations map[string]string, noWait, verbose bool) error {
 	fmt.Fprintf(os.Stderr, "Updating devnet %q...\n", name)
 
 	// Use ApplyDevnet for updates (idempotent)
@@ -492,6 +528,35 @@ func executeUpdate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 	if err != nil {
 		color.Red("Update failed: %v", err)
 		return err
+	}
+
+	// Handle wait behavior based on flags
+	if noWait {
+		// Return immediately without waiting
+		fmt.Fprintf(os.Stderr, "\n")
+		switch resp.Action {
+		case "unchanged":
+			color.Yellow("Devnet %q unchanged (already at desired state)", name)
+		default:
+			color.Green("Devnet %q update started", name)
+		}
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "Update in background. Check status with: dvb describe %s\n", name)
+		return nil
+	}
+
+	if verbose {
+		// Stream detailed provisioner logs
+		if err := streamProvisionLogs(ctx, namespace, name); err != nil {
+			// Log streaming failed, but the devnet was updated
+			fmt.Fprintf(os.Stderr, "Warning: failed to stream logs: %v\n", err)
+		}
+	} else {
+		// Poll for status (default behavior)
+		if err := pollProvisionStatus(ctx, namespace, name); err != nil {
+			// Polling failed, but the devnet was updated
+			fmt.Fprintf(os.Stderr, "Warning: failed to poll status: %v\n", err)
+		}
 	}
 
 	// Print success based on action
@@ -578,4 +643,106 @@ func formatProvisionYAML(w io.Writer, namespace, name string, spec *v1.DevnetSpe
 	}
 	fmt.Fprint(w, string(out))
 	return nil
+}
+
+// streamProvisionLogs streams detailed provisioner logs from the daemon.
+// It prints each log entry with a [provisioner] prefix until the stream ends.
+func streamProvisionLogs(ctx context.Context, namespace, name string) error {
+	return streamProvisionLogsWithClient(ctx, namespace, name, daemonClient)
+}
+
+// provisionLogStreamer is an interface for streaming provision logs, used for testing.
+type provisionLogStreamer interface {
+	StreamProvisionLogs(ctx context.Context, namespace, name string, callback func(*client.ProvisionLogEntry) error) error
+}
+
+// streamProvisionLogsWithClient is the testable implementation of streamProvisionLogs.
+func streamProvisionLogsWithClient(ctx context.Context, namespace, name string, c provisionLogStreamer) error {
+	if c == nil {
+		return fmt.Errorf("daemon client not available")
+	}
+
+	return c.StreamProvisionLogs(ctx, namespace, name, func(entry *client.ProvisionLogEntry) error {
+		// Print log entry with provisioner prefix
+		printProvisionLog(entry)
+		return nil
+	})
+}
+
+// printProvisionLog prints a provision log entry to stderr with appropriate formatting.
+func printProvisionLog(entry *client.ProvisionLogEntry) {
+	if entry == nil {
+		return
+	}
+
+	// Format: [provisioner] message
+	prefix := "[provisioner]"
+	switch entry.Level {
+	case "error":
+		fmt.Fprintf(os.Stderr, "%s %s\n", color.RedString(prefix), entry.Message)
+	case "warn":
+		fmt.Fprintf(os.Stderr, "%s %s\n", color.YellowString(prefix), entry.Message)
+	default:
+		fmt.Fprintf(os.Stderr, "%s %s\n", color.CyanString(prefix), entry.Message)
+	}
+}
+
+// devnetGetter is an interface for getting devnet status, used for testing.
+type devnetGetter interface {
+	GetDevnet(ctx context.Context, namespace, name string) (*v1.Devnet, error)
+}
+
+// pollProvisionStatus polls the daemon for provisioning status updates.
+// It prints new events as they occur and returns when the devnet reaches a terminal state.
+func pollProvisionStatus(ctx context.Context, namespace, name string) error {
+	return pollProvisionStatusWithClient(ctx, namespace, name, daemonClient, 1*time.Second)
+}
+
+// pollProvisionStatusWithClient is the testable implementation of pollProvisionStatus.
+func pollProvisionStatusWithClient(ctx context.Context, namespace, name string, client devnetGetter, pollInterval time.Duration) error {
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	seenEvents := make(map[string]bool)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			devnet, err := client.GetDevnet(ctx, namespace, name)
+			if err != nil {
+				return err
+			}
+
+			// Print new events
+			if devnet.Status != nil {
+				for _, event := range devnet.Status.Events {
+					eventKey := event.Reason + event.Message
+					if !seenEvents[eventKey] {
+						seenEvents[eventKey] = true
+						printEvent(event)
+					}
+				}
+
+				// Check terminal states
+				switch devnet.Status.Phase {
+				case "Running":
+					return nil
+				case "Degraded":
+					return fmt.Errorf("provisioning failed: %s", devnet.Status.Message)
+				}
+			}
+		}
+	}
+}
+
+// printEvent prints an event to stderr with appropriate formatting.
+// Normal events are printed with a checkmark, warnings with a warning indicator.
+func printEvent(event *v1.Event) {
+	if event.Type == "Warning" {
+		color.New(color.FgYellow).Fprintf(os.Stderr, "! %s\n", event.Message)
+	} else {
+		color.New(color.FgGreen).Fprintf(os.Stderr, "\u2713 %s\n", event.Message)
+	}
 }
