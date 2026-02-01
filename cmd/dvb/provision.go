@@ -12,6 +12,9 @@ import (
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
+	"github.com/altuslabsxyz/devnet-builder/internal/tui"
+	"github.com/altuslabsxyz/devnet-builder/internal/tui/views"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	k8syaml "sigs.k8s.io/yaml"
@@ -488,6 +491,12 @@ func executeCreate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 		return nil
 	}
 
+	if tui.IsInteractive() && !verbose {
+		// Use TUI for interactive terminals (unless verbose mode is explicitly requested)
+		// TUI handles its own success/error display, so return after it completes
+		return runProvisionTUI(ctx, daemonClient, namespace, name, spec.Plugin)
+	}
+
 	if verbose {
 		// Stream detailed provisioner logs
 		if err := streamProvisionLogs(ctx, namespace, name); err != nil {
@@ -495,7 +504,7 @@ func executeCreate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 			fmt.Fprintf(os.Stderr, "Warning: failed to stream logs: %v\n", err)
 		}
 	} else {
-		// Poll for status (default behavior)
+		// Poll for status (default behavior for non-interactive)
 		if err := pollProvisionStatus(ctx, namespace, name); err != nil {
 			// Polling failed, but the devnet was created
 			fmt.Fprintf(os.Stderr, "Warning: failed to poll status: %v\n", err)
@@ -545,6 +554,18 @@ func executeUpdate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 		return nil
 	}
 
+	// Get the network plugin name for TUI
+	network := ""
+	if resp.Devnet != nil && resp.Devnet.Spec != nil {
+		network = resp.Devnet.Spec.Plugin
+	}
+
+	if tui.IsInteractive() && !verbose {
+		// Use TUI for interactive terminals (unless verbose mode is explicitly requested)
+		// TUI handles its own success/error display, so return after it completes
+		return runProvisionTUI(ctx, daemonClient, namespace, name, network)
+	}
+
 	if verbose {
 		// Stream detailed provisioner logs
 		if err := streamProvisionLogs(ctx, namespace, name); err != nil {
@@ -552,7 +573,7 @@ func executeUpdate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 			fmt.Fprintf(os.Stderr, "Warning: failed to stream logs: %v\n", err)
 		}
 	} else {
-		// Poll for status (default behavior)
+		// Poll for status (default behavior for non-interactive)
 		if err := pollProvisionStatus(ctx, namespace, name); err != nil {
 			// Polling failed, but the devnet was updated
 			fmt.Fprintf(os.Stderr, "Warning: failed to poll status: %v\n", err)
@@ -669,13 +690,57 @@ func streamProvisionLogsWithClient(ctx context.Context, namespace, name string, 
 	})
 }
 
+// runProvisionTUI runs the provision command with the bubbletea TUI.
+// It creates a ProvisionModel, starts the tea.Program, and streams logs in a background goroutine.
+func runProvisionTUI(ctx context.Context, c *client.Client, namespace, devnetName, network string) error {
+	model := views.NewProvisionModel(devnetName, network)
+
+	// Create program
+	p := tea.NewProgram(model)
+
+	// Start log streaming in background
+	go func() {
+		err := c.StreamProvisionLogs(ctx, namespace, devnetName, func(entry *client.ProvisionLogEntry) error {
+			p.Send(views.StepProgressMsg{
+				StepName:   entry.StepName,
+				StepStatus: entry.StepStatus,
+				Current:    entry.ProgressCurrent,
+				Total:      entry.ProgressTotal,
+				Unit:       entry.ProgressUnit,
+				Detail:     entry.StepDetail,
+			})
+			return nil
+		})
+		if err != nil {
+			p.Send(views.ProvisionErrorMsg{Error: err})
+		} else {
+			p.Send(views.ProvisionCompleteMsg{})
+		}
+	}()
+
+	// Run TUI
+	finalModel, err := p.Run()
+	if err != nil {
+		return err
+	}
+
+	pm := finalModel.(views.ProvisionModel)
+	return pm.GetError()
+}
+
 // printProvisionLog prints a provision log entry to stderr with appropriate formatting.
 func printProvisionLog(entry *client.ProvisionLogEntry) {
 	if entry == nil {
 		return
 	}
 
-	// Format: [provisioner] message
+	// Handle progress updates (sub-steps)
+	if entry.StepName != "" {
+		printProgressStep(entry)
+		return
+	}
+
+	// Regular log entry (existing code)
 	prefix := "[provisioner]"
 	switch entry.Level {
 	case "error":
@@ -685,6 +750,54 @@ func printProvisionLog(entry *client.ProvisionLogEntry) {
 	default:
 		fmt.Fprintf(os.Stderr, "%s %s\n", color.CyanString(prefix), entry.Message)
 	}
+}
+
+// printProgressStep prints a progress sub-step with appropriate formatting.
+func printProgressStep(entry *client.ProvisionLogEntry) {
+	switch entry.StepStatus {
+	case "running":
+		if entry.ProgressTotal > 0 && entry.ProgressUnit == "bytes" {
+			// Byte-based progress with percentage
+			pct := float64(entry.ProgressCurrent) / float64(entry.ProgressTotal) * 100
+			currentMB := float64(entry.ProgressCurrent) / (1024 * 1024)
+			totalMB := float64(entry.ProgressTotal) / (1024 * 1024)
+			fmt.Fprintf(os.Stderr, "\r  %s %s... %.0f%% (%.1f/%.1f MB)    ",
+				color.CyanString("→"),
+				entry.StepName,
+				pct, currentMB, totalMB)
+		} else if entry.StepDetail != "" {
+			fmt.Fprintf(os.Stderr, "\r  %s %s... (%s)    ",
+				color.CyanString("→"),
+				entry.StepName,
+				entry.StepDetail)
+		} else {
+			fmt.Fprintf(os.Stderr, "\r  %s %s...    ",
+				color.CyanString("→"),
+				entry.StepName)
+		}
+	case "completed":
+		clearLine()
+		if entry.StepDetail != "" {
+			fmt.Fprintf(os.Stderr, "  %s %s (%s)\n",
+				color.GreenString("✓"),
+				entry.StepName,
+				entry.StepDetail)
+		} else {
+			fmt.Fprintf(os.Stderr, "  %s %s\n",
+				color.GreenString("✓"),
+				entry.StepName)
+		}
+	case "failed":
+		clearLine()
+		fmt.Fprintf(os.Stderr, "  %s %s\n",
+			color.RedString("✗"),
+			entry.StepName)
+	}
+}
+
+// clearLine clears the current terminal line for progress updates.
+func clearLine() {
+	fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 80))
 }
 
 // devnetGetter is an interface for getting devnet status, used for testing.

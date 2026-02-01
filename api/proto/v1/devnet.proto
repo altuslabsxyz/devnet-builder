@@ -180,6 +180,13 @@ message StreamProvisionLogsResponse {
   string level = 2;      // "info", "warn", "error"
   string message = 3;    // Log line
   string phase = 4;      // Current phase when log was emitted
+  // Progress fields for detailed step tracking
+  string step_name = 5;      // "Downloading snapshot", "Extracting...", etc.
+  string step_status = 6;    // "running", "completed", "failed"
+  int64 progress_current = 7; // Bytes downloaded, etc. (0 if indeterminate)
+  int64 progress_total = 8;   // Total bytes (0 if unknown)
+  string progress_unit = 9;   // "bytes", "files", "" for indeterminate
+  string step_detail = 10;    // "from cache", etc.
 }
 
 // =============================================================================
