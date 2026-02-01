@@ -11,8 +11,10 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/subnet"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // DevnetService implements the gRPC DevnetServiceServer.
@@ -498,4 +500,52 @@ func trimSpace(s string) string {
 // isSpace returns true if c is a whitespace character.
 func isSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
+}
+
+// StreamProvisionLogs streams provisioning logs for a devnet.
+func (s *DevnetService) StreamProvisionLogs(
+	req *v1.StreamProvisionLogsRequest,
+	stream grpc.ServerStreamingServer[v1.StreamProvisionLogsResponse],
+) error {
+	name := req.GetName()
+	if name == "" {
+		return status.Error(codes.InvalidArgument, "name is required")
+	}
+
+	namespace := req.GetNamespace()
+	if namespace == "" {
+		namespace = types.DefaultNamespace
+	}
+
+	if s.manager == nil {
+		return status.Error(codes.Unavailable, "log streaming not available")
+	}
+
+	// Subscribe to log channel
+	ch := s.manager.SubscribeProvisionLogs(namespace, name)
+	if ch == nil {
+		return status.Error(codes.Unavailable, "log streaming not available")
+	}
+	defer s.manager.UnsubscribeProvisionLogs(namespace, name, ch)
+
+	for {
+		select {
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		case entry, ok := <-ch:
+			if !ok {
+				// Channel closed, provisioning complete
+				return nil
+			}
+			resp := &v1.StreamProvisionLogsResponse{
+				Timestamp: timestamppb.New(entry.Timestamp),
+				Level:     entry.Level,
+				Message:   entry.Message,
+				Phase:     entry.Phase,
+			}
+			if err := stream.Send(resp); err != nil {
+				return err
+			}
+		}
+	}
 }

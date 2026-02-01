@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
@@ -40,11 +41,27 @@ type Provisioner interface {
 	GetStatus(ctx context.Context, devnet *types.Devnet) (*types.DevnetStatus, error)
 }
 
+// ProgressProvisioner extends Provisioner with progress reporting capabilities.
+// If a provisioner implements this interface, the controller will wire up
+// progress callbacks to emit granular provisioning events.
+type ProgressProvisioner interface {
+	Provisioner
+
+	// SetProgressCallback sets the callback for provisioning progress updates.
+	// The callback receives the phase name and a message.
+	SetProgressCallback(callback func(phase, message string))
+}
+
 // DevnetController reconciles Devnet resources.
 type DevnetController struct {
 	store       store.Store
 	provisioner Provisioner
 	logger      *slog.Logger
+
+	// logSubscribers holds log subscriber wrappers, keyed by devnet name.
+	// Each subscriber has a channel for log entries and a done signal for safe cleanup.
+	logSubscribers map[string][]*logSubscriber
+	logMu          sync.RWMutex
 }
 
 // NewDevnetController creates a new DevnetController.
@@ -153,6 +170,13 @@ func (c *DevnetController) reconcileProvisioning(ctx context.Context, devnet *ty
 
 	// If we have a provisioner, use it
 	if c.provisioner != nil {
+		// Wire up progress callback if the provisioner supports it
+		if progressProv, ok := c.provisioner.(ProgressProvisioner); ok {
+			progressProv.SetProgressCallback(func(phase, message string) {
+				c.handleProvisioningProgress(ctx, devnet, phase, message)
+			})
+		}
+
 		err := c.provisioner.Provision(ctx, devnet)
 		if err != nil {
 			c.logger.Error("provisioning failed", "name", devnet.Metadata.Name, "error", err)
@@ -178,7 +202,7 @@ func (c *DevnetController) reconcileProvisioning(ctx context.Context, devnet *ty
 				message,
 			)
 
-			// Add warning event
+			// Add warning event with the classified reason
 			devnet.Status.Events = append(devnet.Status.Events, types.NewEvent(
 				types.EventTypeWarning,
 				reason,
@@ -263,8 +287,100 @@ func (c *DevnetController) classifyProvisioningError(err error) (reason, message
 	case strings.Contains(errStr, "network") || strings.Contains(errStr, "connection"):
 		return types.ReasonNetworkError, fmt.Sprintf("Network error: %v", err)
 	default:
-		return "ProvisioningFailed", fmt.Sprintf("Provisioning failed: %v", err)
+		return types.ReasonProvisionFailed, fmt.Sprintf("Provisioning failed: %v", err)
 	}
+}
+
+// handleProvisioningProgress processes provisioning phase updates and emits events.
+// This is called by the provisioner's progress callback during provisioning.
+// It maps orchestrator phases to granular events for the devnet status.
+func (c *DevnetController) handleProvisioningProgress(ctx context.Context, devnet *types.Devnet, phase, message string) {
+	var eventReason string
+	var eventMessage string
+
+	// Map orchestrator phases to event reasons
+	switch phase {
+	case "Building":
+		eventReason = types.ReasonBinaryBuilding
+		eventMessage = "Building binary from source"
+	case "Forking":
+		eventReason = types.ReasonGenesisFork
+		eventMessage = "Forking genesis from source"
+	case "Initializing":
+		eventReason = types.ReasonNodesConfiguring
+		eventMessage = "Configuring node directories"
+	case "Starting":
+		eventReason = types.ReasonNodesConfigured
+		eventMessage = "Node configuration complete, starting nodes"
+	case "HealthChecking":
+		// Don't emit a separate event for health checking, it's part of starting
+		return
+	case "Running":
+		// Running phase is handled in reconcileProvisioning completion
+		return
+	case "Failed":
+		// Failed phase is handled in reconcileProvisioning error handling
+		return
+	default:
+		// Unknown phase, log but don't emit event
+		c.logger.Debug("unknown provisioning phase", "phase", phase, "message", message)
+		return
+	}
+
+	// Use message from callback if provided, otherwise use default
+	if message != "" {
+		eventMessage = message
+	}
+
+	// Add the event to the devnet status
+	devnet.Status.Events = append(devnet.Status.Events, types.NewEvent(
+		types.EventTypeNormal,
+		eventReason,
+		eventMessage,
+		"devnet-controller",
+	))
+
+	// Update status message
+	devnet.Status.Message = eventMessage
+
+	// Broadcast log entry for subscribers
+	c.broadcastLog(devnet.Metadata.Namespace, devnet.Metadata.Name, &ProvisionLogEntry{
+		Timestamp: time.Now(),
+		Level:     "info",
+		Message:   eventMessage,
+		Phase:     phase,
+	})
+
+	c.logger.Debug("provisioning progress",
+		"name", devnet.Metadata.Name,
+		"phase", phase,
+		"reason", eventReason,
+		"message", eventMessage)
+
+	// Save updated status to store (best effort, don't fail on error)
+	if err := c.store.UpdateDevnet(ctx, devnet); err != nil {
+		c.logger.Warn("failed to save provisioning progress",
+			"name", devnet.Metadata.Name,
+			"error", err)
+	}
+}
+
+// emitNodeReadyEvent emits a NodeReady event when a node becomes ready.
+// This is a helper for emitting per-node ready events during provisioning.
+func (c *DevnetController) emitNodeReadyEvent(devnet *types.Devnet, nodeIndex int) {
+	devnet.Status.Events = append(devnet.Status.Events, types.NewEvent(
+		types.EventTypeNormal,
+		types.ReasonNodeReady,
+		fmt.Sprintf("Node %d is ready", nodeIndex),
+		"devnet-controller",
+	))
+
+	c.broadcastLog(devnet.Metadata.Namespace, devnet.Metadata.Name, &ProvisionLogEntry{
+		Timestamp: time.Now(),
+		Level:     "info",
+		Message:   fmt.Sprintf("Node %d is ready", nodeIndex),
+		Phase:     "NodeReady",
+	})
 }
 
 // reconcileRunning handles devnets in Running phase.

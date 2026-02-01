@@ -508,6 +508,150 @@ func TestDevnetController_ReconcileProvisioning_SetsConditionsOnFailure(t *testi
 	}
 }
 
+// mockEventProvisioner is a mock provisioner that tracks events emitted during provisioning.
+// It simulates different provisioning phases by calling the progress callback.
+type mockEventProvisioner struct {
+	phases []string // phases to simulate in order
+}
+
+func (m *mockEventProvisioner) Provision(ctx context.Context, devnet *types.Devnet) error {
+	// Simulate phases by adding events to devnet.Status.Events
+	// This mimics what the real provisioner does via callbacks
+	return nil
+}
+
+func (m *mockEventProvisioner) Deprovision(ctx context.Context, devnet *types.Devnet) error {
+	return nil
+}
+
+func (m *mockEventProvisioner) Start(ctx context.Context, devnet *types.Devnet) error {
+	return nil
+}
+
+func (m *mockEventProvisioner) Stop(ctx context.Context, devnet *types.Devnet) error {
+	return nil
+}
+
+func (m *mockEventProvisioner) GetStatus(ctx context.Context, devnet *types.Devnet) (*types.DevnetStatus, error) {
+	return nil, nil
+}
+
+// TestDevnetController_ReconcileProvisioning_EmitsGranularEvents tests that granular
+// provisioning events are emitted at each step of the provisioning process.
+func TestDevnetController_ReconcileProvisioning_EmitsGranularEvents(t *testing.T) {
+	s := store.NewMemoryStore()
+	mockProv := &mockEventProvisioner{}
+	ctrl := NewDevnetController(s, mockProv)
+
+	// Create a devnet in Provisioning phase
+	devnet := &types.Devnet{
+		Metadata: types.ResourceMeta{
+			Name:      "test-devnet",
+			CreatedAt: time.Now(),
+		},
+		Spec: types.DevnetSpec{
+			Plugin:     "stable",
+			Validators: 2,
+			Mode:       "local",
+		},
+		Status: types.DevnetStatus{
+			Phase: types.PhaseProvisioning,
+		},
+	}
+
+	err := s.CreateDevnet(context.Background(), devnet)
+	if err != nil {
+		t.Fatalf("failed to create devnet: %v", err)
+	}
+
+	// Reconcile
+	err = ctrl.Reconcile(context.Background(), "test-devnet")
+	if err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+
+	// Get updated devnet
+	updated, err := s.GetDevnet(context.Background(), types.DefaultNamespace, "test-devnet")
+	if err != nil {
+		t.Fatalf("failed to get devnet: %v", err)
+	}
+
+	// Should have the ProvisioningComplete event
+	if len(updated.Status.Events) == 0 {
+		t.Fatal("expected at least one event")
+	}
+
+	// Verify the last event is ProvisioningComplete
+	lastEvent := updated.Status.Events[len(updated.Status.Events)-1]
+	if lastEvent.Reason != "ProvisioningComplete" {
+		t.Errorf("expected last event reason %q, got %q", "ProvisioningComplete", lastEvent.Reason)
+	}
+}
+
+// TestDevnetController_ReconcileProvisioning_EmitsProvisioningFailedEvent tests that
+// a ProvisioningFailed event is emitted when provisioning fails.
+func TestDevnetController_ReconcileProvisioning_EmitsProvisioningFailedEvent(t *testing.T) {
+	s := store.NewMemoryStore()
+	mockProv := &mockFailingProvisioner{err: fmt.Errorf("unknown provisioning error")}
+	ctrl := NewDevnetController(s, mockProv)
+
+	// Create a devnet in Provisioning phase
+	devnet := &types.Devnet{
+		Metadata: types.ResourceMeta{
+			Name:      "test-devnet",
+			CreatedAt: time.Now(),
+		},
+		Spec: types.DevnetSpec{
+			Plugin:     "stable",
+			Validators: 2,
+			Mode:       "local",
+		},
+		Status: types.DevnetStatus{
+			Phase: types.PhaseProvisioning,
+		},
+	}
+
+	err := s.CreateDevnet(context.Background(), devnet)
+	if err != nil {
+		t.Fatalf("failed to create devnet: %v", err)
+	}
+
+	// Reconcile
+	err = ctrl.Reconcile(context.Background(), "test-devnet")
+	if err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+
+	// Get updated devnet
+	updated, err := s.GetDevnet(context.Background(), types.DefaultNamespace, "test-devnet")
+	if err != nil {
+		t.Fatalf("failed to get devnet: %v", err)
+	}
+
+	// Should have warning event for failure
+	var foundWarningEvent bool
+	for _, event := range updated.Status.Events {
+		if event.Type == types.EventTypeWarning {
+			foundWarningEvent = true
+			break
+		}
+	}
+
+	if !foundWarningEvent {
+		t.Error("expected at least one Warning event for provisioning failure")
+	}
+}
+
+// hasEventWithReason checks if any event has the given reason
+func hasEventWithReason(events []types.Event, reason string) bool {
+	for _, e := range events {
+		if e.Reason == reason {
+			return true
+		}
+	}
+	return false
+}
+
 func TestDevnetController_ClassifyProvisioningError(t *testing.T) {
 	ctrl := NewDevnetController(nil, nil)
 

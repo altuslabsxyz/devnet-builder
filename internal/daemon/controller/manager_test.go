@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 )
 
 // mockController is a test controller that tracks reconcile calls
@@ -263,5 +265,95 @@ func TestManager_StopWithTimeout_Timeout(t *testing.T) {
 	graceful := m.StopWithTimeout(50 * time.Millisecond)
 	if graceful {
 		t.Error("expected timeout, not graceful shutdown")
+	}
+}
+
+func TestManager_SubscribeProvisionLogs_NoDevnetController(t *testing.T) {
+	m := NewManager()
+
+	// No devnets controller registered
+	ch := m.SubscribeProvisionLogs("default", "test-devnet")
+	if ch != nil {
+		t.Error("expected nil channel when no devnets controller is registered")
+	}
+}
+
+func TestManager_SubscribeProvisionLogs_WrongControllerType(t *testing.T) {
+	m := NewManager()
+
+	// Register a mock controller (not DevnetController)
+	ctrl := &mockController{}
+	m.Register("devnets", ctrl)
+
+	ch := m.SubscribeProvisionLogs("default", "test-devnet")
+	if ch != nil {
+		t.Error("expected nil channel when wrong controller type is registered")
+	}
+}
+
+func TestManager_SubscribeProvisionLogs_Success(t *testing.T) {
+	m := NewManager()
+	s := store.NewMemoryStore()
+	devnetCtrl := NewDevnetController(s, nil)
+	m.Register("devnets", devnetCtrl)
+
+	ch := m.SubscribeProvisionLogs("default", "test-devnet")
+	if ch == nil {
+		t.Fatal("expected non-nil channel")
+	}
+
+	// Clean up
+	m.UnsubscribeProvisionLogs("default", "test-devnet", ch)
+}
+
+func TestManager_UnsubscribeProvisionLogs_NoController(t *testing.T) {
+	m := NewManager()
+
+	// Should not panic when no controller is registered
+	m.UnsubscribeProvisionLogs("default", "test-devnet", nil)
+}
+
+func TestManager_UnsubscribeProvisionLogs_WrongControllerType(t *testing.T) {
+	m := NewManager()
+
+	ctrl := &mockController{}
+	m.Register("devnets", ctrl)
+
+	// Should not panic when wrong controller type
+	m.UnsubscribeProvisionLogs("default", "test-devnet", nil)
+}
+
+func TestManager_SubscribeProvisionLogs_ReceivesLogs(t *testing.T) {
+	m := NewManager()
+	s := store.NewMemoryStore()
+	devnetCtrl := NewDevnetController(s, nil)
+	m.Register("devnets", devnetCtrl)
+
+	ch := m.SubscribeProvisionLogs("default", "test-devnet")
+	if ch == nil {
+		t.Fatal("expected non-nil channel")
+	}
+	defer m.UnsubscribeProvisionLogs("default", "test-devnet", ch)
+
+	// Broadcast a log entry via the controller
+	entry := &ProvisionLogEntry{
+		Timestamp: time.Now(),
+		Level:     "info",
+		Message:   "test message",
+		Phase:     "testing",
+	}
+	devnetCtrl.broadcastLog("default", "test-devnet", entry)
+
+	// Should receive the log entry
+	select {
+	case received := <-ch:
+		if received.Message != "test message" {
+			t.Errorf("expected message 'test message', got %q", received.Message)
+		}
+		if received.Phase != "testing" {
+			t.Errorf("expected phase 'testing', got %q", received.Phase)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for log entry")
 	}
 }

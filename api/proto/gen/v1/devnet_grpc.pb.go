@@ -22,14 +22,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DevnetService_CreateDevnet_FullMethodName = "/devnetbuilder.v1.DevnetService/CreateDevnet"
-	DevnetService_GetDevnet_FullMethodName    = "/devnetbuilder.v1.DevnetService/GetDevnet"
-	DevnetService_ListDevnets_FullMethodName  = "/devnetbuilder.v1.DevnetService/ListDevnets"
-	DevnetService_DeleteDevnet_FullMethodName = "/devnetbuilder.v1.DevnetService/DeleteDevnet"
-	DevnetService_StartDevnet_FullMethodName  = "/devnetbuilder.v1.DevnetService/StartDevnet"
-	DevnetService_StopDevnet_FullMethodName   = "/devnetbuilder.v1.DevnetService/StopDevnet"
-	DevnetService_ApplyDevnet_FullMethodName  = "/devnetbuilder.v1.DevnetService/ApplyDevnet"
-	DevnetService_UpdateDevnet_FullMethodName = "/devnetbuilder.v1.DevnetService/UpdateDevnet"
+	DevnetService_CreateDevnet_FullMethodName        = "/devnetbuilder.v1.DevnetService/CreateDevnet"
+	DevnetService_GetDevnet_FullMethodName           = "/devnetbuilder.v1.DevnetService/GetDevnet"
+	DevnetService_ListDevnets_FullMethodName         = "/devnetbuilder.v1.DevnetService/ListDevnets"
+	DevnetService_DeleteDevnet_FullMethodName        = "/devnetbuilder.v1.DevnetService/DeleteDevnet"
+	DevnetService_StartDevnet_FullMethodName         = "/devnetbuilder.v1.DevnetService/StartDevnet"
+	DevnetService_StopDevnet_FullMethodName          = "/devnetbuilder.v1.DevnetService/StopDevnet"
+	DevnetService_ApplyDevnet_FullMethodName         = "/devnetbuilder.v1.DevnetService/ApplyDevnet"
+	DevnetService_UpdateDevnet_FullMethodName        = "/devnetbuilder.v1.DevnetService/UpdateDevnet"
+	DevnetService_StreamProvisionLogs_FullMethodName = "/devnetbuilder.v1.DevnetService/StreamProvisionLogs"
 )
 
 // DevnetServiceClient is the client API for DevnetService service.
@@ -49,6 +50,8 @@ type DevnetServiceClient interface {
 	ApplyDevnet(ctx context.Context, in *ApplyDevnetRequest, opts ...grpc.CallOption) (*ApplyDevnetResponse, error)
 	// Update modifies an existing devnet
 	UpdateDevnet(ctx context.Context, in *UpdateDevnetRequest, opts ...grpc.CallOption) (*UpdateDevnetResponse, error)
+	// StreamProvisionLogs streams provisioning logs for a devnet
+	StreamProvisionLogs(ctx context.Context, in *StreamProvisionLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamProvisionLogsResponse], error)
 }
 
 type devnetServiceClient struct {
@@ -139,6 +142,25 @@ func (c *devnetServiceClient) UpdateDevnet(ctx context.Context, in *UpdateDevnet
 	return out, nil
 }
 
+func (c *devnetServiceClient) StreamProvisionLogs(ctx context.Context, in *StreamProvisionLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamProvisionLogsResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &DevnetService_ServiceDesc.Streams[0], DevnetService_StreamProvisionLogs_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamProvisionLogsRequest, StreamProvisionLogsResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DevnetService_StreamProvisionLogsClient = grpc.ServerStreamingClient[StreamProvisionLogsResponse]
+
 // DevnetServiceServer is the server API for DevnetService service.
 // All implementations must embed UnimplementedDevnetServiceServer
 // for forward compatibility.
@@ -156,6 +178,8 @@ type DevnetServiceServer interface {
 	ApplyDevnet(context.Context, *ApplyDevnetRequest) (*ApplyDevnetResponse, error)
 	// Update modifies an existing devnet
 	UpdateDevnet(context.Context, *UpdateDevnetRequest) (*UpdateDevnetResponse, error)
+	// StreamProvisionLogs streams provisioning logs for a devnet
+	StreamProvisionLogs(*StreamProvisionLogsRequest, grpc.ServerStreamingServer[StreamProvisionLogsResponse]) error
 	mustEmbedUnimplementedDevnetServiceServer()
 }
 
@@ -189,6 +213,9 @@ func (UnimplementedDevnetServiceServer) ApplyDevnet(context.Context, *ApplyDevne
 }
 func (UnimplementedDevnetServiceServer) UpdateDevnet(context.Context, *UpdateDevnetRequest) (*UpdateDevnetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateDevnet not implemented")
+}
+func (UnimplementedDevnetServiceServer) StreamProvisionLogs(*StreamProvisionLogsRequest, grpc.ServerStreamingServer[StreamProvisionLogsResponse]) error {
+	return status.Error(codes.Unimplemented, "method StreamProvisionLogs not implemented")
 }
 func (UnimplementedDevnetServiceServer) mustEmbedUnimplementedDevnetServiceServer() {}
 func (UnimplementedDevnetServiceServer) testEmbeddedByValue()                       {}
@@ -355,6 +382,17 @@ func _DevnetService_UpdateDevnet_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DevnetService_StreamProvisionLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StreamProvisionLogsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(DevnetServiceServer).StreamProvisionLogs(m, &grpc.GenericServerStream[StreamProvisionLogsRequest, StreamProvisionLogsResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DevnetService_StreamProvisionLogsServer = grpc.ServerStreamingServer[StreamProvisionLogsResponse]
+
 // DevnetService_ServiceDesc is the grpc.ServiceDesc for DevnetService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -395,7 +433,13 @@ var DevnetService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _DevnetService_UpdateDevnet_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "StreamProvisionLogs",
+			Handler:       _DevnetService_StreamProvisionLogs_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "v1/devnet.proto",
 }
 

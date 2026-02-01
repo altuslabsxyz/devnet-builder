@@ -107,6 +107,16 @@ func NewDevnetProvisioner(s store.Store, cfg Config) *DevnetProvisioner {
 	}
 }
 
+// SetProgressCallback sets the callback for provisioning progress updates.
+// This implements the ProgressProvisioner interface from the controller package.
+// The callback receives the phase name (as a string) and a message.
+func (p *DevnetProvisioner) SetProgressCallback(callback func(phase, message string)) {
+	// Wrap the string-based callback to match the internal ProgressCallback type
+	p.onProgress = func(phase ProvisioningPhase, message string) {
+		callback(string(phase), message)
+	}
+}
+
 // Provision creates Node resources for all validators and fullnodes in the devnet.
 // When an OrchestratorFactory is configured, it first executes the full provisioning
 // flow (build, fork, init) before creating Node resources.

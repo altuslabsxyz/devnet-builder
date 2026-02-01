@@ -206,3 +206,40 @@ func (m *Manager) GetQueue(resourceType string) *WorkQueue {
 	defer m.mu.RUnlock()
 	return m.queues[resourceType]
 }
+
+// SubscribeProvisionLogs subscribes to provision logs for a devnet.
+// Returns a channel that receives log entries, or nil if the devnets controller is not registered.
+func (m *Manager) SubscribeProvisionLogs(namespace, name string) <-chan *ProvisionLogEntry {
+	m.mu.RLock()
+	ctrl, exists := m.controllers["devnets"]
+	m.mu.RUnlock()
+
+	if !exists {
+		return nil
+	}
+
+	dc, ok := ctrl.(*DevnetController)
+	if !ok {
+		return nil
+	}
+
+	return dc.SubscribeProvisionLogs(namespace, name)
+}
+
+// UnsubscribeProvisionLogs unsubscribes from provision logs for a devnet.
+func (m *Manager) UnsubscribeProvisionLogs(namespace, name string, ch <-chan *ProvisionLogEntry) {
+	m.mu.RLock()
+	ctrl, exists := m.controllers["devnets"]
+	m.mu.RUnlock()
+
+	if !exists {
+		return
+	}
+
+	dc, ok := ctrl.(*DevnetController)
+	if !ok {
+		return
+	}
+
+	dc.UnsubscribeProvisionLogs(namespace, name, ch)
+}

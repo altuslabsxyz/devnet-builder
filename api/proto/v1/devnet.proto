@@ -22,6 +22,8 @@ service DevnetService {
   rpc ApplyDevnet(ApplyDevnetRequest) returns (ApplyDevnetResponse);
   // Update modifies an existing devnet
   rpc UpdateDevnet(UpdateDevnetRequest) returns (UpdateDevnetResponse);
+  // StreamProvisionLogs streams provisioning logs for a devnet
+  rpc StreamProvisionLogs(StreamProvisionLogsRequest) returns (stream StreamProvisionLogsResponse);
 }
 
 // Devnet represents a local development network.
@@ -166,6 +168,18 @@ message UpdateDevnetRequest {
 
 message UpdateDevnetResponse {
   Devnet devnet = 1;
+}
+
+message StreamProvisionLogsRequest {
+  string namespace = 1;
+  string name = 2;
+}
+
+message StreamProvisionLogsResponse {
+  google.protobuf.Timestamp timestamp = 1;
+  string level = 2;      // "info", "warn", "error"
+  string message = 3;    // Log line
+  string phase = 4;      // Current phase when log was emitted
 }
 
 // =============================================================================

@@ -571,6 +571,14 @@ type LogEntry struct {
 	Message   string
 }
 
+// ProvisionLogEntry represents a provision log entry from the daemon.
+type ProvisionLogEntry struct {
+	Timestamp time.Time
+	Level     string // "info", "warn", "error"
+	Message   string
+	Phase     string
+}
+
 // StreamNodeLogs streams logs from a node, calling the callback for each log entry.
 // The callback should return an error to stop streaming.
 func (c *GRPCClient) StreamNodeLogs(ctx context.Context, devnetName string, index int, follow bool, since string, tail int, callback func(*LogEntry) error) error {
@@ -603,6 +611,47 @@ func (c *GRPCClient) StreamNodeLogs(ctx context.Context, devnetName string, inde
 		entry := &LogEntry{
 			Stream:  resp.Stream,
 			Message: resp.Message,
+		}
+		if resp.Timestamp != nil {
+			entry.Timestamp = resp.Timestamp.AsTime()
+		}
+
+		if err := callback(entry); err != nil {
+			return err
+		}
+	}
+}
+
+// StreamProvisionLogs streams provisioner log entries for a devnet.
+// The callback is called for each log entry received.
+func (c *GRPCClient) StreamProvisionLogs(ctx context.Context, namespace, name string, callback func(*ProvisionLogEntry) error) error {
+	req := &v1.StreamProvisionLogsRequest{
+		Namespace: namespace,
+		Name:      name,
+	}
+
+	stream, err := c.devnet.StreamProvisionLogs(ctx, req)
+	if err != nil {
+		return wrapGRPCError(err)
+	}
+
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			// Check if context was cancelled (normal for Ctrl+C)
+			if ctx.Err() != nil {
+				return nil
+			}
+			return wrapGRPCError(err)
+		}
+
+		entry := &ProvisionLogEntry{
+			Level:   resp.Level,
+			Message: resp.Message,
+			Phase:   resp.Phase,
 		}
 		if resp.Timestamp != nil {
 			entry.Timestamp = resp.Timestamp.AsTime()
