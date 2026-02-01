@@ -136,7 +136,6 @@ func main() {
 		newDaemonCmd(),
 		newUseCmd(),
 		newStatusCmd(),
-		newApplyCmd(),
 		newGetCmd(),
 		newDeleteCmd(),
 		newDiffCmd(),
@@ -153,6 +152,7 @@ func main() {
 		newGovCmd(),
 		newGenesisCmd(),
 		newProvisionCmd(),
+		newPluginsCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
