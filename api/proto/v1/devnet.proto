@@ -65,6 +65,7 @@ message DevnetStatus {
   string message = 7;
   repeated Condition conditions = 8;            // Detailed status conditions
   repeated Event events = 9;                    // Recent events (last 10)
+  uint32 subnet = 10;                           // Allocated loopback subnet (1-254) for 127.0.X.0/24
 }
 
 // Condition represents a status condition of a resource.
@@ -194,6 +195,7 @@ message NodeSpec {
   string home_dir = 3;
   string desired_phase = 4;  // "Running" or "Stopped"
   NodeRestartPolicy restart_policy = 5;
+  string address = 6;  // Node IP address (e.g., "127.0.42.1") for loopback subnet aliasing
 }
 
 enum NodeRestartPolicy {

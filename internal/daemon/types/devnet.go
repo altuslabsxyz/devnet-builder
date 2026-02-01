@@ -71,6 +71,10 @@ type DevnetStatus struct {
 	// Phase is the current lifecycle phase.
 	Phase string `json:"phase"`
 
+	// Subnet is the allocated loopback subnet (1-254).
+	// Used for IP address assignment in the 127.0.X.0/24 range.
+	Subnet uint8 `json:"subnet,omitempty"`
+
 	// Nodes is the total number of nodes.
 	Nodes int `json:"nodes"`
 

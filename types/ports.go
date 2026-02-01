@@ -32,10 +32,6 @@ const (
 
 	// DefaultRosettaPort is the Rosetta API port.
 	DefaultRosettaPort = 8080
-
-	// DefaultPortOffset is the port offset multiplier per node.
-	// Node 0: base ports, Node 1: base + 10000, Node 2: base + 20000, etc.
-	DefaultPortOffset = 10000
 )
 
 // PortConfig contains network port configuration for a node.
@@ -92,22 +88,10 @@ func DefaultPortConfig() PortConfig {
 }
 
 // PortConfigForNode returns the port configuration for a node at the given index.
-// Each node has a port offset of DefaultPortOffset * index.
-// Node 0 uses default ports, Node 1 adds 10000, Node 2 adds 20000, etc.
+// With loopback subnet aliasing, all nodes use the same standard ports since each
+// node has a unique IP address within the devnet's subnet.
 func PortConfigForNode(index int) PortConfig {
-	offset := index * DefaultPortOffset
-	return PortConfig{
-		RPC:     DefaultRPCPort + offset,
-		P2P:     DefaultP2PPort + offset,
-		Proxy:   DefaultProxyPort + offset,
-		GRPC:    DefaultGRPCPort + offset,
-		GRPCWeb: DefaultGRPCWebPort + offset,
-		API:     DefaultAPIPort + offset,
-		EVMRPC:  DefaultEVMRPCPort + offset,
-		EVMWS:   DefaultEVMWSPort + offset,
-		PProf:   DefaultPProfPort + offset,
-		Rosetta: DefaultRosettaPort + offset,
-	}
+	return DefaultPortConfig()
 }
 
 // WithOffset returns a new PortConfig with all ports offset by the given amount.

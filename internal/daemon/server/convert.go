@@ -228,6 +228,7 @@ func statusToProto(s *types.DevnetStatus) *v1.DevnetStatus {
 		Message:         s.Message,
 		Conditions:      conditions,
 		Events:          events,
+		Subnet:          uint32(s.Subnet),
 	}
 }
 
@@ -268,6 +269,7 @@ func statusFromProto(pb *v1.DevnetStatus) types.DevnetStatus {
 
 	s := types.DevnetStatus{
 		Phase:         pb.Phase,
+		Subnet:        uint8(pb.Subnet),
 		Nodes:         int(pb.Nodes),
 		ReadyNodes:    int(pb.ReadyNodes),
 		CurrentHeight: pb.CurrentHeight,

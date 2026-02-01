@@ -365,6 +365,7 @@ type DevnetStatus struct {
 	Message         string                 `protobuf:"bytes,7,opt,name=message,proto3" json:"message,omitempty"`
 	Conditions      []*Condition           `protobuf:"bytes,8,rep,name=conditions,proto3" json:"conditions,omitempty"` // Detailed status conditions
 	Events          []*Event               `protobuf:"bytes,9,rep,name=events,proto3" json:"events,omitempty"`         // Recent events (last 10)
+	Subnet          uint32                 `protobuf:"varint,10,opt,name=subnet,proto3" json:"subnet,omitempty"`       // Allocated loopback subnet (1-254) for 127.0.X.0/24
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -460,6 +461,13 @@ func (x *DevnetStatus) GetEvents() []*Event {
 		return x.Events
 	}
 	return nil
+}
+
+func (x *DevnetStatus) GetSubnet() uint32 {
+	if x != nil {
+		return x.Subnet
+	}
+	return 0
 }
 
 // Condition represents a status condition of a resource.
@@ -1617,6 +1625,7 @@ type NodeSpec struct {
 	HomeDir       string                 `protobuf:"bytes,3,opt,name=home_dir,json=homeDir,proto3" json:"home_dir,omitempty"`
 	DesiredPhase  string                 `protobuf:"bytes,4,opt,name=desired_phase,json=desiredPhase,proto3" json:"desired_phase,omitempty"` // "Running" or "Stopped"
 	RestartPolicy NodeRestartPolicy      `protobuf:"varint,5,opt,name=restart_policy,json=restartPolicy,proto3,enum=devnetbuilder.v1.NodeRestartPolicy" json:"restart_policy,omitempty"`
+	Address       string                 `protobuf:"bytes,6,opt,name=address,proto3" json:"address,omitempty"` // Node IP address (e.g., "127.0.42.1") for loopback subnet aliasing
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1684,6 +1693,13 @@ func (x *NodeSpec) GetRestartPolicy() NodeRestartPolicy {
 		return x.RestartPolicy
 	}
 	return NodeRestartPolicy_NODE_RESTART_POLICY_UNSPECIFIED
+}
+
+func (x *NodeSpec) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
 }
 
 type NodeStatus struct {
@@ -4975,7 +4991,7 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\arpc_url\x18\t \x01(\tR\x06rpcUrl\x12!\n" +
 	"\ffork_network\x18\n" +
 	" \x01(\tR\vforkNetwork\x12\x19\n" +
-	"\bchain_id\x18\v \x01(\tR\achainId\"\xf3\x02\n" +
+	"\bchain_id\x18\v \x01(\tR\achainId\"\x8b\x03\n" +
 	"\fDevnetStatus\x12\x14\n" +
 	"\x05phase\x18\x01 \x01(\tR\x05phase\x12\x14\n" +
 	"\x05nodes\x18\x02 \x01(\x05R\x05nodes\x12\x1f\n" +
@@ -4989,7 +5005,9 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\n" +
 	"conditions\x18\b \x03(\v2\x1b.devnetbuilder.v1.ConditionR\n" +
 	"conditions\x12/\n" +
-	"\x06events\x18\t \x03(\v2\x17.devnetbuilder.v1.EventR\x06events\"\xb7\x01\n" +
+	"\x06events\x18\t \x03(\v2\x17.devnetbuilder.v1.EventR\x06events\x12\x16\n" +
+	"\x06subnet\x18\n" +
+	" \x01(\rR\x06subnet\"\xb7\x01\n" +
 	"\tCondition\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12L\n" +
@@ -5082,14 +5100,15 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1c\n" +
-	"\tnamespace\x18\a \x01(\tR\tnamespace\"\xcb\x01\n" +
+	"\tnamespace\x18\a \x01(\tR\tnamespace\"\xe5\x01\n" +
 	"\bNodeSpec\x12\x12\n" +
 	"\x04role\x18\x01 \x01(\tR\x04role\x12\x1f\n" +
 	"\vbinary_path\x18\x02 \x01(\tR\n" +
 	"binaryPath\x12\x19\n" +
 	"\bhome_dir\x18\x03 \x01(\tR\ahomeDir\x12#\n" +
 	"\rdesired_phase\x18\x04 \x01(\tR\fdesiredPhase\x12J\n" +
-	"\x0erestart_policy\x18\x05 \x01(\x0e2#.devnetbuilder.v1.NodeRestartPolicyR\rrestartPolicy\"\xe0\x02\n" +
+	"\x0erestart_policy\x18\x05 \x01(\x0e2#.devnetbuilder.v1.NodeRestartPolicyR\rrestartPolicy\x12\x18\n" +
+	"\aaddress\x18\x06 \x01(\tR\aaddress\"\xe0\x02\n" +
 	"\n" +
 	"NodeStatus\x12\x14\n" +
 	"\x05phase\x18\x01 \x01(\tR\x05phase\x12!\n" +
