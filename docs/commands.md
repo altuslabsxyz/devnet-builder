@@ -12,8 +12,8 @@ This documentation covers both the modern `dvb` CLI and the legacy `devnet-build
     - [get](#get)
     - [delete](#delete)
     - [diff](#diff)
-    - [describe](#describe)
     - [list](#list)
+    - [status](#status)
   - [Lifecycle Commands](#lifecycle-commands)
     - [provision](#provision)
     - [start](#start)
@@ -29,8 +29,6 @@ This documentation covers both the modern `dvb` CLI and the legacy `devnet-build
     - [node restart](#node-restart)
     - [node exec](#node-exec)
     - [node init](#node-init)
-  - [Build Commands](#build-commands)
-    - [build](#build)
   - [Utility Commands](#utility-commands)
     - [version](#version)
     - [daemon](#daemon)
@@ -231,36 +229,6 @@ dvb diff -f devnet.yaml -o json
 
 ---
 
-#### describe
-
-Show detailed devnet information including status conditions, events, and nodes.
-
-```bash
-dvb describe <devnet> [flags]
-```
-
-##### Flags
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `-n, --namespace` | string | | Namespace (defaults to server default) |
-| `-o, --output` | string | | Output format (yaml) |
-
-##### Examples
-
-```bash
-# Describe a devnet
-dvb describe my-devnet
-
-# Describe with YAML output
-dvb describe my-devnet -o yaml
-
-# Describe in a specific namespace
-dvb describe my-devnet -n production
-```
-
----
-
 #### list
 
 List all devnets. Alias for `dvb get devnets`.
@@ -290,6 +258,43 @@ dvb list -n production
 
 # Using alias
 dvb ls
+```
+
+---
+
+#### status
+
+Show current devnet status. Use `--verbose/-v` for detailed output including conditions, events, and troubleshooting information (replaces the old `describe` command).
+
+```bash
+dvb status [devnet] [flags]
+```
+
+##### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-v, --verbose` | bool | false | Show detailed output (conditions, events, troubleshooting) |
+| `--events` | bool | false | Show recent events |
+| `-n, --namespace` | string | | Namespace (defaults to context or server default) |
+
+##### Examples
+
+```bash
+# Show status of current context
+dvb status
+
+# Show detailed status (like kubectl describe)
+dvb status -v
+
+# Show status with recent events
+dvb status --events
+
+# Show status of a specific devnet
+dvb status my-devnet
+
+# Show detailed status of a specific devnet
+dvb status my-devnet -v
 ```
 
 ---
@@ -705,49 +710,6 @@ dvb node init --chain-id my-devnet-1 --num-nodes 3 --moniker-prefix node
 
 ---
 
-### Build Commands
-
-#### build
-
-Build a blockchain binary from a git repository.
-
-```bash
-dvb build [flags]
-```
-
-##### Flags
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--git-repo` | string | | Git repository URL (uses plugin default if not specified) |
-| `--git-ref` | string | | Git ref (branch, tag, or commit) - required |
-| `--network` | string | | Network/plugin name (e.g., stable, cosmos) - required |
-| `--build-flags` | map | | Build flags as key=value pairs |
-| `--go-version` | string | | Go version constraint (e.g., 1.21) |
-| `--no-cache` | bool | false | Skip cache and force rebuild |
-| `--timeout` | duration | 30m | Build timeout duration |
-
-##### Examples
-
-```bash
-# Build stable binary from default repo at a specific tag
-dvb build --network stable --git-ref v1.0.0
-
-# Build from a custom repository
-dvb build --network stable --git-repo github.com/myorg/mychain --git-ref main
-
-# Build with custom Go version
-dvb build --network cosmos --git-ref v15.0.0 --go-version 1.21
-
-# Build with custom build flags
-dvb build --network stable --git-ref v1.0.0 --build-flags ldflags="-s -w"
-
-# Force rebuild without cache
-dvb build --network stable --git-ref v1.0.0 --no-cache
-```
-
----
-
 ### Utility Commands
 
 #### version
@@ -782,7 +744,7 @@ dvb version --json
 
 #### daemon
 
-Manage the devnetd daemon.
+Manage the devnetd daemon. All daemon-related functionality is grouped under this command.
 
 ```bash
 dvb daemon <subcommand>
@@ -792,13 +754,31 @@ dvb daemon <subcommand>
 
 | Subcommand | Description |
 |------------|-------------|
-| `status` | Check daemon status |
+| `status` | Check daemon status and connectivity (version, latency, mode) |
+| `logs` | View daemon logs |
+| `whoami` | Show authenticated user information |
+| `plugins` | Manage network plugins |
 
 ##### Examples
 
 ```bash
-# Check if daemon is running
+# Check daemon status with connectivity info
 dvb daemon status
+# Output:
+# ● Daemon is running
+#   Socket:  /var/run/devnetd.sock
+#   Version: v1.2.3
+#   Latency: 1.2ms
+#   Mode:    local (trusted)
+
+# View daemon logs
+dvb daemon logs -f
+
+# Show current user context
+dvb daemon whoami
+
+# List available plugins
+dvb daemon plugins list
 ```
 
 ---

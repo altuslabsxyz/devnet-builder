@@ -484,7 +484,7 @@ func executeCreate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 		fmt.Fprintf(os.Stderr, "  Namespace:    %s\n", devnet.Metadata.Namespace)
 		fmt.Fprintf(os.Stderr, "  Phase:        %s\n", devnet.Status.Phase)
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "Provisioning in background. Check status with: dvb describe %s\n", name)
+		fmt.Fprintf(os.Stderr, "Provisioning in background. Check status with: dvb status -v %s\n", name)
 		return nil
 	}
 
@@ -514,7 +514,7 @@ func executeCreate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 		fmt.Fprintf(os.Stderr, "  Full Nodes:   %d\n", devnet.Spec.FullNodes)
 	}
 	fmt.Fprintf(os.Stderr, "\n")
-	fmt.Fprintf(os.Stderr, "View status with: dvb describe %s\n", name)
+	fmt.Fprintf(os.Stderr, "View status with: dvb status -v %s\n", name)
 
 	return nil
 }
@@ -541,7 +541,7 @@ func executeUpdate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 			color.Green("Devnet %q update started", name)
 		}
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "Update in background. Check status with: dvb describe %s\n", name)
+		fmt.Fprintf(os.Stderr, "Update in background. Check status with: dvb status -v %s\n", name)
 		return nil
 	}
 
@@ -582,7 +582,7 @@ func executeUpdate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 	}
 
 	fmt.Fprintf(os.Stderr, "\n")
-	fmt.Fprintf(os.Stderr, "View status with: dvb describe %s\n", name)
+	fmt.Fprintf(os.Stderr, "View status with: dvb status -v %s\n", name)
 
 	return nil
 }

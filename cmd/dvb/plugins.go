@@ -40,7 +40,7 @@ the networks that can be used when provisioning a devnet.
 
 Examples:
   # List all available plugins
-  dvb plugins list`,
+  dvb daemon plugins list`,
 		Aliases: []string{"ls"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runPluginsList(cmd.Context())
