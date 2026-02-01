@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
 )
 
@@ -33,6 +34,7 @@ type DownloadOptions struct {
 	HomeDir  string
 	NoCache  bool
 	Logger   *output.Logger
+	Progress ports.ProgressReporter // Optional progress reporter
 }
 
 // Download downloads a snapshot file with retry logic.
@@ -81,7 +83,7 @@ func Download(ctx context.Context, opts DownloadOptions) (*SnapshotCache, error)
 			}
 		}
 
-		err := downloadFile(ctx, opts.URL, destPath, logger)
+		err := downloadFile(ctx, opts.URL, destPath, logger, opts.Progress)
 		if err == nil {
 			// Get file size
 			info, err := os.Stat(destPath)
@@ -110,7 +112,7 @@ func Download(ctx context.Context, opts DownloadOptions) (*SnapshotCache, error)
 }
 
 // downloadFile performs the actual HTTP download.
-func downloadFile(ctx context.Context, url, destPath string, logger *output.Logger) error {
+func downloadFile(ctx context.Context, url, destPath string, logger *output.Logger, progress ports.ProgressReporter) error {
 	// Create HTTP client with timeout
 	client := &http.Client{
 		Timeout: DownloadTimeout,
@@ -152,6 +154,7 @@ func downloadFile(ctx context.Context, url, destPath string, logger *output.Logg
 		total:          contentLength,
 		downloaded:     &downloaded,
 		logger:         logger,
+		progress:       progress,
 		lastReport:     now,
 		reportInterval: 500 * time.Millisecond, // Update every 500ms for smooth progress
 		startTime:      now,
@@ -202,6 +205,7 @@ type progressReader struct {
 	total          int64
 	downloaded     *int64
 	logger         *output.Logger
+	progress       ports.ProgressReporter // Optional progress reporter
 	lastReport     time.Time
 	reportInterval time.Duration
 	startTime      time.Time
@@ -231,6 +235,17 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 
 		// Show progress bar (visible by default)
 		pr.logger.Progress(*pr.downloaded, pr.total, pr.currentSpeed)
+
+		// Report step progress if progress reporter is provided
+		if pr.progress != nil {
+			pr.progress.ReportStep(ports.StepProgress{
+				Name:    "Downloading snapshot",
+				Status:  "running",
+				Current: *pr.downloaded,
+				Total:   pr.total,
+				Unit:    "bytes",
+			})
+		}
 	}
 
 	return n, err

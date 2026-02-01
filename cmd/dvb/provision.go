@@ -675,7 +675,13 @@ func printProvisionLog(entry *client.ProvisionLogEntry) {
 		return
 	}
 
-	// Format: [provisioner] message
+	// Handle progress updates (sub-steps)
+	if entry.StepName != "" {
+		printProgressStep(entry)
+		return
+	}
+
+	// Regular log entry (existing code)
 	prefix := "[provisioner]"
 	switch entry.Level {
 	case "error":
@@ -685,6 +691,54 @@ func printProvisionLog(entry *client.ProvisionLogEntry) {
 	default:
 		fmt.Fprintf(os.Stderr, "%s %s\n", color.CyanString(prefix), entry.Message)
 	}
+}
+
+// printProgressStep prints a progress sub-step with appropriate formatting.
+func printProgressStep(entry *client.ProvisionLogEntry) {
+	switch entry.StepStatus {
+	case "running":
+		if entry.ProgressTotal > 0 && entry.ProgressUnit == "bytes" {
+			// Byte-based progress with percentage
+			pct := float64(entry.ProgressCurrent) / float64(entry.ProgressTotal) * 100
+			currentMB := float64(entry.ProgressCurrent) / (1024 * 1024)
+			totalMB := float64(entry.ProgressTotal) / (1024 * 1024)
+			fmt.Fprintf(os.Stderr, "\r  %s %s... %.0f%% (%.1f/%.1f MB)    ",
+				color.CyanString("→"),
+				entry.StepName,
+				pct, currentMB, totalMB)
+		} else if entry.StepDetail != "" {
+			fmt.Fprintf(os.Stderr, "\r  %s %s... (%s)    ",
+				color.CyanString("→"),
+				entry.StepName,
+				entry.StepDetail)
+		} else {
+			fmt.Fprintf(os.Stderr, "\r  %s %s...    ",
+				color.CyanString("→"),
+				entry.StepName)
+		}
+	case "completed":
+		clearLine()
+		if entry.StepDetail != "" {
+			fmt.Fprintf(os.Stderr, "  %s %s (%s)\n",
+				color.GreenString("✓"),
+				entry.StepName,
+				entry.StepDetail)
+		} else {
+			fmt.Fprintf(os.Stderr, "  %s %s\n",
+				color.GreenString("✓"),
+				entry.StepName)
+		}
+	case "failed":
+		clearLine()
+		fmt.Fprintf(os.Stderr, "  %s %s\n",
+			color.RedString("✗"),
+			entry.StepName)
+	}
+}
+
+// clearLine clears the current terminal line for progress updates.
+func clearLine() {
+	fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 80))
 }
 
 // devnetGetter is an interface for getting devnet status, used for testing.

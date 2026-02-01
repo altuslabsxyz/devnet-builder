@@ -25,6 +25,10 @@ type Orchestrator interface {
 	// OnProgress sets the progress callback for phase updates.
 	OnProgress(callback ProgressCallback)
 
+	// SetStepProgressReporter sets the reporter for detailed sub-step progress.
+	// This is called before Execute to enable streaming progress to CLI.
+	SetStepProgressReporter(reporter ports.ProgressReporter)
+
 	// CurrentPhase returns the current provisioning phase.
 	CurrentPhase() ProvisioningPhase
 }
@@ -53,18 +57,23 @@ type NetworkDefaults struct {
 	AvailableNetworks []string
 }
 
+// StepProgressReporterFactory creates a progress reporter for a given devnet.
+// This allows the provisioner to stream detailed step progress to CLI clients.
+type StepProgressReporterFactory func(namespace, name string) ports.ProgressReporter
+
 // DevnetProvisioner implements the Provisioner interface for devnets.
 // It creates Node resources when a devnet is provisioned.
 // When an OrchestratorFactory is provided, it creates orchestrators for each
 // network type and executes the full provisioning flow (build, fork, init)
 // before creating Node resources.
 type DevnetProvisioner struct {
-	store               store.Store
-	dataDir             string
-	logger              *slog.Logger
-	orchestratorFactory OrchestratorFactory
-	subnetAllocator     *subnet.Allocator
-	onProgress          ProgressCallback
+	store                       store.Store
+	dataDir                     string
+	logger                      *slog.Logger
+	orchestratorFactory         OrchestratorFactory
+	subnetAllocator             *subnet.Allocator
+	onProgress                  ProgressCallback
+	stepProgressReporterFactory StepProgressReporterFactory
 }
 
 // Config configures the DevnetProvisioner.
@@ -88,6 +97,10 @@ type Config struct {
 	// OnProgress is an optional callback for provisioning progress updates.
 	// This is used to update devnet status in the store during provisioning.
 	OnProgress ProgressCallback
+
+	// StepProgressReporterFactory creates progress reporters for streaming
+	// detailed sub-step progress to CLI clients. Optional.
+	StepProgressReporterFactory StepProgressReporterFactory
 }
 
 // NewDevnetProvisioner creates a new DevnetProvisioner.
@@ -98,12 +111,13 @@ func NewDevnetProvisioner(s store.Store, cfg Config) *DevnetProvisioner {
 	}
 
 	return &DevnetProvisioner{
-		store:               s,
-		dataDir:             cfg.DataDir,
-		logger:              logger,
-		orchestratorFactory: cfg.OrchestratorFactory,
-		subnetAllocator:     cfg.SubnetAllocator,
-		onProgress:          cfg.OnProgress,
+		store:                       s,
+		dataDir:                     cfg.DataDir,
+		logger:                      logger,
+		orchestratorFactory:         cfg.OrchestratorFactory,
+		subnetAllocator:             cfg.SubnetAllocator,
+		onProgress:                  cfg.OnProgress,
+		stepProgressReporterFactory: cfg.StepProgressReporterFactory,
 	}
 }
 
@@ -115,6 +129,12 @@ func (p *DevnetProvisioner) SetProgressCallback(callback func(phase, message str
 	p.onProgress = func(phase ProvisioningPhase, message string) {
 		callback(string(phase), message)
 	}
+}
+
+// SetStepProgressReporterFactory sets the factory for creating step progress reporters.
+// This allows streaming detailed sub-step progress to CLI clients.
+func (p *DevnetProvisioner) SetStepProgressReporterFactory(factory StepProgressReporterFactory) {
+	p.stepProgressReporterFactory = factory
 }
 
 // Provision creates Node resources for all validators and fullnodes in the devnet.
@@ -208,6 +228,12 @@ func (p *DevnetProvisioner) provisionWithOrchestrator(ctx context.Context, devne
 	// Wire progress callback if set
 	if p.onProgress != nil {
 		orchestrator.OnProgress(p.onProgress)
+	}
+
+	// Wire step progress reporter for detailed sub-step progress streaming
+	if p.stepProgressReporterFactory != nil {
+		reporter := p.stepProgressReporterFactory(devnet.Metadata.Namespace, devnet.Metadata.Name)
+		orchestrator.SetStepProgressReporter(reporter)
 	}
 
 	// Convert devnet spec to provisioning options, using plugin defaults when URLs not specified

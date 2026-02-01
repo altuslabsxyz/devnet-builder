@@ -1518,13 +1518,20 @@ func (x *StreamProvisionLogsRequest) GetName() string {
 }
 
 type StreamProvisionLogsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	Level         string                 `protobuf:"bytes,2,opt,name=level,proto3" json:"level,omitempty"`     // "info", "warn", "error"
-	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"` // Log line
-	Phase         string                 `protobuf:"bytes,4,opt,name=phase,proto3" json:"phase,omitempty"`     // Current phase when log was emitted
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Timestamp *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Level     string                 `protobuf:"bytes,2,opt,name=level,proto3" json:"level,omitempty"`     // "info", "warn", "error"
+	Message   string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"` // Log line
+	Phase     string                 `protobuf:"bytes,4,opt,name=phase,proto3" json:"phase,omitempty"`     // Current phase when log was emitted
+	// Progress fields for detailed step tracking
+	StepName        string `protobuf:"bytes,5,opt,name=step_name,json=stepName,proto3" json:"step_name,omitempty"`                       // "Downloading snapshot", "Extracting...", etc.
+	StepStatus      string `protobuf:"bytes,6,opt,name=step_status,json=stepStatus,proto3" json:"step_status,omitempty"`                 // "running", "completed", "failed"
+	ProgressCurrent int64  `protobuf:"varint,7,opt,name=progress_current,json=progressCurrent,proto3" json:"progress_current,omitempty"` // Bytes downloaded, etc. (0 if indeterminate)
+	ProgressTotal   int64  `protobuf:"varint,8,opt,name=progress_total,json=progressTotal,proto3" json:"progress_total,omitempty"`       // Total bytes (0 if unknown)
+	ProgressUnit    string `protobuf:"bytes,9,opt,name=progress_unit,json=progressUnit,proto3" json:"progress_unit,omitempty"`           // "bytes", "files", "" for indeterminate
+	StepDetail      string `protobuf:"bytes,10,opt,name=step_detail,json=stepDetail,proto3" json:"step_detail,omitempty"`                // "from cache", etc.
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *StreamProvisionLogsResponse) Reset() {
@@ -1581,6 +1588,48 @@ func (x *StreamProvisionLogsResponse) GetMessage() string {
 func (x *StreamProvisionLogsResponse) GetPhase() string {
 	if x != nil {
 		return x.Phase
+	}
+	return ""
+}
+
+func (x *StreamProvisionLogsResponse) GetStepName() string {
+	if x != nil {
+		return x.StepName
+	}
+	return ""
+}
+
+func (x *StreamProvisionLogsResponse) GetStepStatus() string {
+	if x != nil {
+		return x.StepStatus
+	}
+	return ""
+}
+
+func (x *StreamProvisionLogsResponse) GetProgressCurrent() int64 {
+	if x != nil {
+		return x.ProgressCurrent
+	}
+	return 0
+}
+
+func (x *StreamProvisionLogsResponse) GetProgressTotal() int64 {
+	if x != nil {
+		return x.ProgressTotal
+	}
+	return 0
+}
+
+func (x *StreamProvisionLogsResponse) GetProgressUnit() string {
+	if x != nil {
+		return x.ProgressUnit
+	}
+	return ""
+}
+
+func (x *StreamProvisionLogsResponse) GetStepDetail() string {
+	if x != nil {
+		return x.StepDetail
 	}
 	return ""
 }
@@ -5206,12 +5255,21 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\x06devnet\x18\x01 \x01(\v2\x18.devnetbuilder.v1.DevnetR\x06devnet\"N\n" +
 	"\x1aStreamProvisionLogsRequest\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\"\x9d\x01\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"\xf3\x02\n" +
 	"\x1bStreamProvisionLogsResponse\x128\n" +
 	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x14\n" +
 	"\x05level\x18\x02 \x01(\tR\x05level\x12\x18\n" +
 	"\amessage\x18\x03 \x01(\tR\amessage\x12\x14\n" +
-	"\x05phase\x18\x04 \x01(\tR\x05phase\"\xa8\x01\n" +
+	"\x05phase\x18\x04 \x01(\tR\x05phase\x12\x1b\n" +
+	"\tstep_name\x18\x05 \x01(\tR\bstepName\x12\x1f\n" +
+	"\vstep_status\x18\x06 \x01(\tR\n" +
+	"stepStatus\x12)\n" +
+	"\x10progress_current\x18\a \x01(\x03R\x0fprogressCurrent\x12%\n" +
+	"\x0eprogress_total\x18\b \x01(\x03R\rprogressTotal\x12#\n" +
+	"\rprogress_unit\x18\t \x01(\tR\fprogressUnit\x12\x1f\n" +
+	"\vstep_detail\x18\n" +
+	" \x01(\tR\n" +
+	"stepDetail\"\xa8\x01\n" +
 	"\x04Node\x12:\n" +
 	"\bmetadata\x18\x01 \x01(\v2\x1e.devnetbuilder.v1.NodeMetadataR\bmetadata\x12.\n" +
 	"\x04spec\x18\x02 \x01(\v2\x1a.devnetbuilder.v1.NodeSpecR\x04spec\x124\n" +

@@ -55,7 +55,7 @@ type mockGenesisForker struct {
 	forkErr    error
 }
 
-func (m *mockGenesisForker) Fork(ctx context.Context, opts ports.ForkOptions) (*ports.ForkResult, error) {
+func (m *mockGenesisForker) Fork(ctx context.Context, opts ports.ForkOptions, progress ports.ProgressReporter) (*ports.ForkResult, error) {
 	m.forkCalled = true
 	m.forkOpts = opts
 	return m.forkResult, m.forkErr

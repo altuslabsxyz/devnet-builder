@@ -15,6 +15,7 @@ import (
 	"time"
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
+	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/altuslabsxyz/devnet-builder/internal/auth"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/checker"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
@@ -191,6 +192,24 @@ func New(config *Config) (*Server, error) {
 	devnetCtrl := controller.NewDevnetController(st, devnetProv)
 	devnetCtrl.SetLogger(logger)
 	mgr.Register("devnets", devnetCtrl)
+
+	// Wire step progress reporter to broadcast provision logs to CLI clients
+	devnetProv.SetStepProgressReporterFactory(func(namespace, name string) ports.ProgressReporter {
+		return ports.ProgressFunc(func(step ports.StepProgress) {
+			devnetCtrl.BroadcastProvisionLog(namespace, name, &controller.ProvisionLogEntry{
+				Timestamp:       time.Now(),
+				Level:           "info",
+				Message:         step.Name,
+				Phase:           "genesis-fork",
+				StepName:        step.Name,
+				StepStatus:      step.Status,
+				ProgressCurrent: step.Current,
+				ProgressTotal:   step.Total,
+				ProgressUnit:    step.Unit,
+				StepDetail:      step.Detail,
+			})
+		})
+	})
 
 	// Create node runtime (Docker or nil)
 	var nodeRuntime runtime.NodeRuntime

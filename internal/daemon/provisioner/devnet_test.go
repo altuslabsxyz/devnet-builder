@@ -251,6 +251,10 @@ func (m *mockOrchestrator) OnProgress(callback ProgressCallback) {
 	// No-op for tests
 }
 
+func (m *mockOrchestrator) SetStepProgressReporter(reporter ports.ProgressReporter) {
+	// No-op for tests
+}
+
 func (m *mockOrchestrator) CurrentPhase() ProvisioningPhase {
 	return PhaseRunning
 }
