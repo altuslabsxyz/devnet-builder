@@ -316,5 +316,6 @@ func TestProvisionLogEntry_EmptyPhase(t *testing.T) {
 	}
 
 	assert.Equal(t, "info", entry.Level)
+	assert.Equal(t, "Provisioning started", entry.Message)
 	assert.Empty(t, entry.Phase)
 }

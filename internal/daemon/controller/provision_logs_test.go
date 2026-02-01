@@ -47,9 +47,9 @@ func TestDevnetController_BroadcastLog_SendsToAllSubscribers(t *testing.T) {
 
 	entry := &ProvisionLogEntry{
 		Timestamp: time.Now(),
-		Level:   "info",
-		Message: "test message",
-		Phase:   "provisioning",
+		Level:     "info",
+		Message:   "test message",
+		Phase:     "provisioning",
 	}
 
 	// Broadcast in goroutine to avoid blocking
@@ -87,9 +87,9 @@ func TestDevnetController_BroadcastLog_OnlySendsToMatchingDevnet(t *testing.T) {
 
 	entry := &ProvisionLogEntry{
 		Timestamp: time.Now(),
-		Level:   "info",
-		Message: "test message",
-		Phase:   "provisioning",
+		Level:     "info",
+		Message:   "test message",
+		Phase:     "provisioning",
 	}
 
 	// Broadcast to devnet-1 only
@@ -125,9 +125,9 @@ func TestDevnetController_UnsubscribeProvisionLogs_RemovesChannel(t *testing.T) 
 
 	entry := &ProvisionLogEntry{
 		Timestamp: time.Now(),
-		Level:   "info",
-		Message: "test message",
-		Phase:   "provisioning",
+		Level:     "info",
+		Message:   "test message",
+		Phase:     "provisioning",
 	}
 
 	// Broadcast should not block (no subscribers)
@@ -163,9 +163,9 @@ func TestDevnetController_BroadcastLog_DoesNotBlockOnSlowConsumer(t *testing.T) 
 
 	entry := &ProvisionLogEntry{
 		Timestamp: time.Now(),
-		Level:   "info",
-		Message: "test message",
-		Phase:   "provisioning",
+		Level:     "info",
+		Message:   "test message",
+		Phase:     "provisioning",
 	}
 
 	// Broadcast should not block even with slow consumer

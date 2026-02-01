@@ -346,9 +346,9 @@ func (c *DevnetController) handleProvisioningProgress(ctx context.Context, devne
 	// Broadcast log entry for subscribers
 	c.broadcastLog(devnet.Metadata.Namespace, devnet.Metadata.Name, &ProvisionLogEntry{
 		Timestamp: time.Now(),
-		Level:   "info",
-		Message: eventMessage,
-		Phase:   phase,
+		Level:     "info",
+		Message:   eventMessage,
+		Phase:     phase,
 	})
 
 	c.logger.Debug("provisioning progress",
@@ -377,9 +377,9 @@ func (c *DevnetController) emitNodeReadyEvent(devnet *types.Devnet, nodeIndex in
 
 	c.broadcastLog(devnet.Metadata.Namespace, devnet.Metadata.Name, &ProvisionLogEntry{
 		Timestamp: time.Now(),
-		Level:   "info",
-		Message: fmt.Sprintf("Node %d is ready", nodeIndex),
-		Phase:   "NodeReady",
+		Level:     "info",
+		Message:   fmt.Sprintf("Node %d is ready", nodeIndex),
+		Phase:     "NodeReady",
 	})
 }
 

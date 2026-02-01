@@ -560,8 +560,8 @@ func (m *mockProvisionLogsStream) Send(resp *v1.StreamProvisionLogsResponse) err
 func (m *mockProvisionLogsStream) SetHeader(metadata.MD) error  { return nil }
 func (m *mockProvisionLogsStream) SendHeader(metadata.MD) error { return nil }
 func (m *mockProvisionLogsStream) SetTrailer(metadata.MD)       {}
-func (m *mockProvisionLogsStream) SendMsg(interface{}) error      { return nil }
-func (m *mockProvisionLogsStream) RecvMsg(interface{}) error      { return nil }
+func (m *mockProvisionLogsStream) SendMsg(interface{}) error    { return nil }
+func (m *mockProvisionLogsStream) RecvMsg(interface{}) error    { return nil }
 
 func TestDevnetService_StreamProvisionLogs_MissingName(t *testing.T) {
 	s := store.NewMemoryStore()
