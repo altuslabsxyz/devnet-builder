@@ -22,6 +22,8 @@ func TestDefaultPortConfig(t *testing.T) {
 }
 
 func TestPortConfigForNode(t *testing.T) {
+	// With loopback subnet aliasing, all nodes use the same standard ports
+	// since each node has a unique IP address within the devnet's subnet.
 	tests := []struct {
 		name       string
 		nodeIndex  int
@@ -41,22 +43,22 @@ func TestPortConfigForNode(t *testing.T) {
 			wantEVMRPC: 8545,
 		},
 		{
-			name:       "node 1 adds 10000 offset",
+			name:       "node 1 uses default ports (subnet aliasing)",
 			nodeIndex:  1,
-			wantRPC:    36657,
-			wantP2P:    36656,
-			wantGRPC:   19090,
-			wantAPI:    11317,
-			wantEVMRPC: 18545,
+			wantRPC:    26657,
+			wantP2P:    26656,
+			wantGRPC:   9090,
+			wantAPI:    1317,
+			wantEVMRPC: 8545,
 		},
 		{
-			name:       "node 2 adds 20000 offset",
+			name:       "node 2 uses default ports (subnet aliasing)",
 			nodeIndex:  2,
-			wantRPC:    46657,
-			wantP2P:    46656,
-			wantGRPC:   29090,
-			wantAPI:    21317,
-			wantEVMRPC: 28545,
+			wantRPC:    26657,
+			wantP2P:    26656,
+			wantGRPC:   9090,
+			wantAPI:    1317,
+			wantEVMRPC: 8545,
 		},
 	}
 
@@ -92,13 +94,13 @@ func TestPortConfig_WithOffset(t *testing.T) {
 }
 
 func TestPortConfig_WithOffset_Negative(t *testing.T) {
-	base := PortConfigForNode(1) // Node 1 has +10000 offset
+	base := DefaultPortConfig()
 
 	// Apply -5000 offset
 	adjusted := base.WithOffset(-5000)
 
-	require.Equal(t, 36657-5000, adjusted.RPC)
-	require.Equal(t, 36656-5000, adjusted.P2P)
+	require.Equal(t, 26657-5000, adjusted.RPC)
+	require.Equal(t, 26656-5000, adjusted.P2P)
 }
 
 func TestPortConfig_RPCURL(t *testing.T) {
@@ -231,9 +233,15 @@ func TestItoa(t *testing.T) {
 	}
 }
 
-func TestDefaultPortOffset(t *testing.T) {
-	// Verify the offset constant is 10000
-	require.Equal(t, 10000, DefaultPortOffset)
+func TestPortConfigForNode_AllNodesUseSamePorts(t *testing.T) {
+	// With subnet aliasing, all nodes use same ports (different IPs)
+	cfg0 := PortConfigForNode(0)
+	cfg1 := PortConfigForNode(1)
+	cfg2 := PortConfigForNode(2)
+
+	require.Equal(t, cfg0.RPC, cfg1.RPC, "all nodes should use same RPC port")
+	require.Equal(t, cfg1.RPC, cfg2.RPC, "all nodes should use same RPC port")
+	require.Equal(t, DefaultRPCPort, cfg0.RPC, "should be default RPC port")
 }
 
 func TestPortConstants(t *testing.T) {

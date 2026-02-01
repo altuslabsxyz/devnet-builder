@@ -31,15 +31,21 @@ func (r *CosmosRuntime) StartCommand(node *types.Node) []string {
 	// The actual host path is mounted to this container path
 	homeDir := r.ContainerHomePath()
 
+	// Determine bind address: use node's assigned IP (loopback subnet) or 0.0.0.0 (docker/legacy)
+	bindAddr := "0.0.0.0"
+	if node.Spec.Address != "" {
+		bindAddr = node.Spec.Address
+	}
+
 	return []string{
 		"start",
 		"--home", homeDir,
 		// Enable API for health checks
 		"--api.enable=true",
-		"--api.address=tcp://0.0.0.0:1317",
+		fmt.Sprintf("--api.address=tcp://%s:1317", bindAddr),
 		// Enable gRPC
 		"--grpc.enable=true",
-		"--grpc.address=0.0.0.0:9090",
+		fmt.Sprintf("--grpc.address=%s:9090", bindAddr),
 		// Logging
 		"--log_format=json",
 	}
@@ -71,7 +77,13 @@ func (r *CosmosRuntime) GracePeriod() time.Duration {
 // HealthEndpoint returns the health check endpoint for the node.
 // For Cosmos SDK chains, we use the RPC status endpoint.
 func (r *CosmosRuntime) HealthEndpoint(node *types.Node) string {
-	// Calculate RPC port based on node index
+	// Use node's Address if set (loopback subnet mode), otherwise fall back to localhost with offset
+	if node.Spec.Address != "" {
+		// Loopback subnet mode: use node's unique IP with standard RPC port
+		return fmt.Sprintf("http://%s:26657/status", node.Spec.Address)
+	}
+
+	// Legacy mode: Calculate RPC port based on node index
 	// Each node gets a 100-port range offset
 	rpcPort := 26657 + (node.Spec.Index * 100)
 	return fmt.Sprintf("http://localhost:%d/status", rpcPort)

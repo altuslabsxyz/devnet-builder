@@ -56,6 +56,11 @@ type Node struct {
 	ContainerID   string `json:"container_id,omitempty"`
 	ContainerName string `json:"container_name,omitempty"`
 
+	// Network Address (loopback subnet mode)
+	// Address is the node's IP address (e.g., "127.0.42.1").
+	// Used for loopback subnet aliasing where each node gets a unique IP.
+	Address string `json:"address,omitempty"`
+
 	// Validator Info
 	ValidatorAddress string `json:"validator_address"`
 	ValidatorPubKey  string `json:"validator_pubkey"`

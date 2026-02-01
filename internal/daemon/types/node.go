@@ -41,6 +41,10 @@ type NodeSpec struct {
 	// HomeDir is the node's data directory.
 	HomeDir string `json:"homeDir"`
 
+	// Address is the node's IP address (e.g., "127.0.42.1").
+	// Used for loopback subnet aliasing where each node gets a unique IP.
+	Address string `json:"address,omitempty"`
+
 	// Desired is the desired state: "Running" or "Stopped".
 	Desired string `json:"desired"`
 }

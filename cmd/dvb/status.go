@@ -206,6 +206,11 @@ func printDevnetStatus(d *v1.Devnet) {
 		fmt.Printf("Age:    %s\n", formatAge(age))
 	}
 
+	// Show subnet info
+	if d.Status.Subnet > 0 {
+		fmt.Printf("Subnet: 127.0.%d.0/24\n", d.Status.Subnet)
+	}
+
 	// Show plugin/network info
 	if d.Spec != nil && d.Spec.Plugin != "" {
 		fmt.Printf("Plugin: %s\n", d.Spec.Plugin)
@@ -217,7 +222,21 @@ func printNodesSummary(nodes []*v1.Node) {
 	fmt.Println("Nodes:")
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "  INDEX\tROLE\tSTATUS\tHEIGHT")
+
+	// Check if any node has an address to determine table format
+	hasAddresses := false
+	for _, n := range nodes {
+		if n.Spec != nil && n.Spec.Address != "" {
+			hasAddresses = true
+			break
+		}
+	}
+
+	if hasAddresses {
+		fmt.Fprintln(w, "  INDEX\tSTATUS\tIP\tRPC\tHEIGHT")
+	} else {
+		fmt.Fprintln(w, "  INDEX\tROLE\tSTATUS\tHEIGHT")
+	}
 
 	for _, n := range nodes {
 		phase := n.Status.Phase
@@ -240,12 +259,30 @@ func printNodesSummary(nodes []*v1.Node) {
 			height = fmt.Sprintf("%d", n.Status.BlockHeight)
 		}
 
-		fmt.Fprintf(w, "  %d\t%s\t%s\t%s\n",
-			n.Metadata.Index,
-			n.Spec.Role,
-			statusStr,
-			height,
-		)
+		if hasAddresses {
+			addr := n.Spec.Address
+			if addr == "" {
+				addr = "-"
+			}
+			rpc := "-"
+			if addr != "-" {
+				rpc = fmt.Sprintf("%s:26657", addr)
+			}
+			fmt.Fprintf(w, "  %d\t%s\t%s\t%s\t%s\n",
+				n.Metadata.Index,
+				statusStr,
+				addr,
+				rpc,
+				height,
+			)
+		} else {
+			fmt.Fprintf(w, "  %d\t%s\t%s\t%s\n",
+				n.Metadata.Index,
+				n.Spec.Role,
+				statusStr,
+				height,
+			)
+		}
 	}
 	w.Flush()
 }

@@ -114,17 +114,23 @@ func (m *LocalManager) Start(ctx context.Context, node *Node, genesisPath string
 		}
 	}()
 
+	// Determine bind address: use node's Address if set, otherwise default to 0.0.0.0
+	bindAddr := node.Address
+	if bindAddr == "" {
+		bindAddr = "0.0.0.0"
+	}
+
 	// Build start command
 	args := []string{
 		"start",
 		"--home", node.HomeDir,
-		fmt.Sprintf("--rpc.laddr=tcp://0.0.0.0:%d", node.Ports.RPC),
-		fmt.Sprintf("--p2p.laddr=tcp://0.0.0.0:%d", node.Ports.P2P),
-		fmt.Sprintf("--grpc.address=0.0.0.0:%d", node.Ports.GRPC),
+		fmt.Sprintf("--rpc.laddr=tcp://%s:%d", bindAddr, node.Ports.RPC),
+		fmt.Sprintf("--p2p.laddr=tcp://%s:%d", bindAddr, node.Ports.P2P),
+		fmt.Sprintf("--grpc.address=%s:%d", bindAddr, node.Ports.GRPC),
 		"--api.enabled-unsafe-cors=true",
 		"--api.enable=true",
-		fmt.Sprintf("--json-rpc.address=0.0.0.0:%d", node.Ports.EVMRPC),
-		fmt.Sprintf("--json-rpc.ws-address=0.0.0.0:%d", node.Ports.EVMWS),
+		fmt.Sprintf("--json-rpc.address=%s:%d", bindAddr, node.Ports.EVMRPC),
+		fmt.Sprintf("--json-rpc.ws-address=%s:%d", bindAddr, node.Ports.EVMWS),
 	}
 
 	// Add EVM chain ID if set

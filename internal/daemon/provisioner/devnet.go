@@ -10,6 +10,7 @@ import (
 
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/subnet"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	plugintypes "github.com/altuslabsxyz/devnet-builder/internal/plugin/types"
 )
@@ -62,6 +63,7 @@ type DevnetProvisioner struct {
 	dataDir             string
 	logger              *slog.Logger
 	orchestratorFactory OrchestratorFactory
+	subnetAllocator     *subnet.Allocator
 	onProgress          ProgressCallback
 }
 
@@ -78,6 +80,10 @@ type Config struct {
 	// provisioning flow (build, fork, init). When nil, only Node resources
 	// are created in the store (resource-only behavior).
 	OrchestratorFactory OrchestratorFactory
+
+	// SubnetAllocator manages subnet allocation for loopback network aliasing.
+	// When provided, each devnet gets a unique subnet in the 127.0.X.0/24 range.
+	SubnetAllocator *subnet.Allocator
 
 	// OnProgress is an optional callback for provisioning progress updates.
 	// This is used to update devnet status in the store during provisioning.
@@ -96,6 +102,7 @@ func NewDevnetProvisioner(s store.Store, cfg Config) *DevnetProvisioner {
 		dataDir:             cfg.DataDir,
 		logger:              logger,
 		orchestratorFactory: cfg.OrchestratorFactory,
+		subnetAllocator:     cfg.SubnetAllocator,
 		onProgress:          cfg.OnProgress,
 	}
 }
@@ -108,7 +115,29 @@ func (p *DevnetProvisioner) Provision(ctx context.Context, devnet *types.Devnet)
 		"name", devnet.Metadata.Name,
 		"validators", devnet.Spec.Validators,
 		"fullnodes", devnet.Spec.FullNodes,
-		"hasOrchestratorFactory", p.orchestratorFactory != nil)
+		"hasOrchestratorFactory", p.orchestratorFactory != nil,
+		"hasSubnetAllocator", p.subnetAllocator != nil)
+
+	// Allocate a subnet for loopback network aliasing
+	var allocatedSubnet uint8
+	if p.subnetAllocator != nil {
+		namespace := devnet.Metadata.Namespace
+		if namespace == "" {
+			namespace = types.DefaultNamespace
+		}
+
+		allocated, err := p.subnetAllocator.Allocate(namespace, devnet.Metadata.Name)
+		if err != nil {
+			return fmt.Errorf("failed to allocate subnet: %w", err)
+		}
+		allocatedSubnet = allocated
+		devnet.Status.Subnet = allocated
+
+		p.logger.Info("allocated subnet for devnet",
+			"devnet", devnet.Metadata.Name,
+			"subnet", allocated,
+			"subnetRange", fmt.Sprintf("127.0.%d.0/24", allocated))
+	}
 
 	// Track binary path from orchestration (may be built)
 	var builtBinaryPath string
@@ -123,8 +152,8 @@ func (p *DevnetProvisioner) Provision(ctx context.Context, devnet *types.Devnet)
 	}
 
 	// Create Node resources in the store (existing behavior)
-	// Pass the built binary path so nodes get the correct binary
-	return p.createNodeResources(ctx, devnet, builtBinaryPath)
+	// Pass the built binary path and allocated subnet so nodes get correct addresses
+	return p.createNodeResources(ctx, devnet, builtBinaryPath, allocatedSubnet)
 }
 
 // provisionWithOrchestrator executes the full provisioning flow using an orchestrator.
@@ -201,13 +230,14 @@ func (p *DevnetProvisioner) provisionWithOrchestrator(ctx context.Context, devne
 // createNodeResources creates Node resources in the store.
 // This is the original resource-only provisioning behavior.
 // builtBinaryPath is the path to the binary built by orchestrator (empty if no orchestration).
-func (p *DevnetProvisioner) createNodeResources(ctx context.Context, devnet *types.Devnet, builtBinaryPath string) error {
+// allocatedSubnet is the subnet for IP address assignment (0 means no subnet allocation).
+func (p *DevnetProvisioner) createNodeResources(ctx context.Context, devnet *types.Devnet, builtBinaryPath string, allocatedSubnet uint8) error {
 	totalNodes := devnet.Spec.Validators + devnet.Spec.FullNodes
 	devnetDataDir := filepath.Join(p.dataDir, devnet.Metadata.Name)
 
 	// Create validator nodes (indices 0 to Validators-1)
 	for i := 0; i < devnet.Spec.Validators; i++ {
-		node := p.createNodeSpec(devnet, i, "validator", devnetDataDir, builtBinaryPath)
+		node := p.createNodeSpec(devnet, i, "validator", devnetDataDir, builtBinaryPath, allocatedSubnet)
 		if err := p.createNodeIfNotExists(ctx, node); err != nil {
 			return fmt.Errorf("failed to create validator node %d: %w", i, err)
 		}
@@ -215,7 +245,7 @@ func (p *DevnetProvisioner) createNodeResources(ctx context.Context, devnet *typ
 
 	// Create fullnode nodes (indices Validators to totalNodes-1)
 	for i := devnet.Spec.Validators; i < totalNodes; i++ {
-		node := p.createNodeSpec(devnet, i, "fullnode", devnetDataDir, builtBinaryPath)
+		node := p.createNodeSpec(devnet, i, "fullnode", devnetDataDir, builtBinaryPath, allocatedSubnet)
 		if err := p.createNodeIfNotExists(ctx, node); err != nil {
 			return fmt.Errorf("failed to create fullnode %d: %w", i, err)
 		}
@@ -230,7 +260,8 @@ func (p *DevnetProvisioner) createNodeResources(ctx context.Context, devnet *typ
 
 // createNodeSpec creates a Node spec for the given devnet and index.
 // builtBinaryPath is the path to the binary built by orchestrator (takes precedence if set).
-func (p *DevnetProvisioner) createNodeSpec(devnet *types.Devnet, index int, role, devnetDataDir, builtBinaryPath string) *types.Node {
+// allocatedSubnet is the subnet for IP address assignment (0 means no subnet allocation).
+func (p *DevnetProvisioner) createNodeSpec(devnet *types.Devnet, index int, role, devnetDataDir, builtBinaryPath string, allocatedSubnet uint8) *types.Node {
 	// Determine binary path - built path takes precedence
 	binaryPath := builtBinaryPath
 	if binaryPath == "" {
@@ -250,6 +281,12 @@ func (p *DevnetProvisioner) createNodeSpec(devnet *types.Devnet, index int, role
 		namespace = types.DefaultNamespace
 	}
 
+	// Calculate node IP address from subnet allocation
+	var nodeAddress string
+	if allocatedSubnet > 0 {
+		nodeAddress = subnet.NodeIP(allocatedSubnet, index)
+	}
+
 	return &types.Node{
 		Metadata: types.ResourceMeta{
 			Name:      fmt.Sprintf("%s-node-%d", devnet.Metadata.Name, index),
@@ -263,6 +300,7 @@ func (p *DevnetProvisioner) createNodeSpec(devnet *types.Devnet, index int, role
 			Role:       role,
 			BinaryPath: binaryPath,
 			HomeDir:    filepath.Join(devnetDataDir, fmt.Sprintf("node-%d", index)),
+			Address:    nodeAddress,
 			Desired:    types.NodePhaseRunning,
 		},
 		Status: types.NodeStatus{

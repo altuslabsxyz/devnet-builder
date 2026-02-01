@@ -9,6 +9,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/server/ante"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/subnet"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -17,10 +18,11 @@ import (
 // DevnetService implements the gRPC DevnetServiceServer.
 type DevnetService struct {
 	v1.UnimplementedDevnetServiceServer
-	store   store.Store
-	manager *controller.Manager
-	logger  *slog.Logger
-	ante    *ante.AnteHandler
+	store           store.Store
+	manager         *controller.Manager
+	logger          *slog.Logger
+	ante            *ante.AnteHandler
+	subnetAllocator *subnet.Allocator
 }
 
 // NewDevnetService creates a new DevnetService.
@@ -32,13 +34,14 @@ func NewDevnetService(s store.Store, m *controller.Manager) *DevnetService {
 	}
 }
 
-// NewDevnetServiceWithAnte creates a new DevnetService with ante handler.
-func NewDevnetServiceWithAnte(s store.Store, m *controller.Manager, anteHandler *ante.AnteHandler) *DevnetService {
+// NewDevnetServiceWithAnte creates a new DevnetService with ante handler and subnet allocator.
+func NewDevnetServiceWithAnte(s store.Store, m *controller.Manager, anteHandler *ante.AnteHandler, subnetAlloc *subnet.Allocator) *DevnetService {
 	return &DevnetService{
-		store:   s,
-		manager: m,
-		logger:  slog.Default(),
-		ante:    anteHandler,
+		store:           s,
+		manager:         m,
+		logger:          slog.Default(),
+		ante:            anteHandler,
+		subnetAllocator: subnetAlloc,
 	}
 }
 
@@ -163,6 +166,16 @@ func (s *DevnetService) DeleteDevnet(ctx context.Context, req *v1.DeleteDevnetRe
 	if err := s.store.DeleteUpgradesByDevnet(ctx, namespace, req.Name); err != nil {
 		s.logger.Warn("failed to delete upgrades during cascade delete", "devnet", req.Name, "error", err)
 		// Continue with devnet deletion even if upgrade deletion fails
+	}
+
+	// Release the allocated subnet for this devnet
+	if s.subnetAllocator != nil {
+		if err := s.subnetAllocator.Release(namespace, req.Name); err != nil {
+			s.logger.Warn("failed to release subnet during delete", "devnet", req.Name, "error", err)
+			// Continue with devnet deletion even if subnet release fails
+		} else {
+			s.logger.Debug("released subnet for devnet", "devnet", req.Name)
+		}
 	}
 
 	err := s.store.DeleteDevnet(ctx, namespace, req.Name)

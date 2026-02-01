@@ -492,7 +492,7 @@ func TestDevnetService_CreateWithAnteHandler(t *testing.T) {
 	s := store.NewMemoryStore()
 	mockNetSvc := &mockNetworkServiceForDevnetTest{}
 	anteHandler := ante.New(s, mockNetSvc)
-	svc := NewDevnetServiceWithAnte(s, nil, anteHandler)
+	svc := NewDevnetServiceWithAnte(s, nil, anteHandler, nil)
 
 	// Test invalid mode rejected by ante handler
 	req := &v1.CreateDevnetRequest{
