@@ -191,7 +191,6 @@ func main() {
 		newDaemonCmd(),
 		newUseCmd(),
 		newStatusCmd(),
-		newApplyCmd(),
 		newGetCmd(),
 		newDeleteCmd(),
 		newDiffCmd(),
@@ -211,6 +210,7 @@ func main() {
 		newConfigCmd(),
 		newPingCmd(),
 		newWhoAmICmd(),
+		newPluginsCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -306,7 +306,7 @@ func newDeployCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:        "deploy [name]",
 		Short:      "Deploy a new devnet",
-		Deprecated: "use 'dvb apply -f <file>' instead",
+		Deprecated: "use 'dvb provision -f <file>' instead",
 		Args:       cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
