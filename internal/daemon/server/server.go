@@ -190,6 +190,7 @@ func New(config *Config) (*Server, error) {
 	// Register controllers
 	devnetCtrl := controller.NewDevnetController(st, devnetProv)
 	devnetCtrl.SetLogger(logger)
+	devnetCtrl.SetManager(mgr)
 	mgr.Register("devnets", devnetCtrl)
 
 	// Create node runtime (Docker or Process-based for local mode)
