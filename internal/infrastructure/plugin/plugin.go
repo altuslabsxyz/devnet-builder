@@ -32,6 +32,10 @@ import (
 	pb "github.com/altuslabsxyz/devnet-builder/pkg/network/plugin"
 )
 
+// maxGRPCMessageSize is the maximum message size for gRPC communication.
+// Genesis files can be large (100MB+), so we set this to 256MB.
+const maxGRPCMessageSize = 256 * 1024 * 1024 // 256MB
+
 // Handshake is the handshake config for plugins.
 // This ensures that the host and plugin are compatible.
 var Handshake = plugin.HandshakeConfig{
@@ -127,6 +131,12 @@ func (m *PluginManager) LoadPlugin(networkName string) (NetworkModule, error) {
 		AllowedProtocols: []plugin.Protocol{
 			plugin.ProtocolGRPC,
 		},
+		GRPCDialOptions: []grpc.DialOption{
+			grpc.WithDefaultCallOptions(
+				grpc.MaxCallRecvMsgSize(maxGRPCMessageSize),
+				grpc.MaxCallSendMsgSize(maxGRPCMessageSize),
+			),
+		},
 	})
 
 	rpcClient, err := client.Client()
@@ -180,6 +190,13 @@ func Serve(impl NetworkModule) {
 		Plugins: map[string]plugin.Plugin{
 			"network": &NetworkModuleGRPCPlugin{Impl: impl},
 		},
-		GRPCServer: plugin.DefaultGRPCServer,
+		GRPCServer: func(opts []grpc.ServerOption) *grpc.Server {
+			// Add message size options for large genesis files
+			opts = append(opts,
+				grpc.MaxRecvMsgSize(maxGRPCMessageSize),
+				grpc.MaxSendMsgSize(maxGRPCMessageSize),
+			)
+			return grpc.NewServer(opts...)
+		},
 	})
 }
