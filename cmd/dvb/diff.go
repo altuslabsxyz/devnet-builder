@@ -28,7 +28,7 @@ func newDiffCmd() *cobra.Command {
 
 The diff command compares the desired state (from YAML) with the current state
 and displays the differences without making any changes. This is useful for
-previewing what 'dvb apply' would do.
+previewing what 'dvb provision -f' would do.
 
 Examples:
   # Show diff for a single file
