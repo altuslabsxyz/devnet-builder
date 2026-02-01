@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"text/tabwriter"
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
@@ -145,6 +144,11 @@ func detectProvisionMode(opts *provisionOptions) ProvisionMode {
 
 // runInteractiveMode handles interactive wizard mode
 func runInteractiveMode(ctx context.Context, opts *provisionOptions) error {
+	// Require daemon to be running
+	if daemonClient == nil {
+		return fmt.Errorf("daemon not running - start with: devnetd\n\nThe provision command requires the devnetd daemon to be running.\nNetwork plugins are loaded by the daemon from ~/.devnet-builder/plugins/")
+	}
+
 	// Run the wizard to collect options
 	wizardOpts, err := RunProvisionWizard(daemonClient)
 	if err != nil {
@@ -515,42 +519,10 @@ func executeUpdate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 	return nil
 }
 
-// runListPlugins lists available network plugins from the daemon
+// runListPlugins lists available network plugins from the daemon.
+// Delegates to runPluginsList to avoid code duplication.
 func runListPlugins(ctx context.Context) error {
-	if daemonClient == nil {
-		return fmt.Errorf("daemon not running - start with: devnetd")
-	}
-
-	networks, err := daemonClient.ListNetworks(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list networks: %w", err)
-	}
-
-	if len(networks) == 0 {
-		fmt.Println("No network plugins found.")
-		fmt.Println()
-		fmt.Println("Install plugins to ~/.devnet-builder/plugins/")
-		return nil
-	}
-
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tDISPLAY NAME\tBINARY\tVERSION\tNETWORKS")
-	for _, n := range networks {
-		networks := "-"
-		if len(n.AvailableNetworks) > 0 {
-			networks = fmt.Sprintf("%v", n.AvailableNetworks)
-		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			n.Name,
-			n.DisplayName,
-			n.BinaryName,
-			n.DefaultBinaryVersion,
-			networks,
-		)
-	}
-	w.Flush()
-
-	return nil
+	return runPluginsList(ctx)
 }
 
 // YAMLProvisionOutput represents a provision spec in kubectl-style YAML format

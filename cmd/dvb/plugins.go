@@ -74,16 +74,16 @@ func runPluginsList(ctx context.Context) error {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME\tDISPLAY NAME\tBINARY\tVERSION\tNETWORKS")
 	for _, n := range networks {
-		networks := "-"
+		networksStr := "-"
 		if len(n.AvailableNetworks) > 0 {
-			networks = fmt.Sprintf("%v", n.AvailableNetworks)
+			networksStr = fmt.Sprintf("%v", n.AvailableNetworks)
 		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 			n.Name,
 			n.DisplayName,
 			n.BinaryName,
 			n.DefaultBinaryVersion,
-			networks,
+			networksStr,
 		)
 	}
 	w.Flush()
