@@ -201,8 +201,15 @@ func (m *CosmosModule) InitCommand(homeDir, chainID, moniker string) []string {
     return m.initializer.InitCommandArgs(homeDir, moniker, chainID)
 }
 
-func (m *CosmosModule) StartCommand(homeDir string) []string {
-    return []string{"start", "--home", homeDir}
+func (m *CosmosModule) StartCommand(homeDir string, networkMode string) []string {
+    args := []string{"start", "--home", homeDir}
+    // Add chain-id based on network mode
+    if networkMode == "mainnet" {
+        args = append(args, "--chain-id", "cosmoshub-4")
+    } else if networkMode == "testnet" {
+        args = append(args, "--chain-id", "theta-testnet-001")
+    }
+    return args
 }
 
 func (m *CosmosModule) ExportCommand(homeDir string) []string {

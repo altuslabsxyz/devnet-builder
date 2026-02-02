@@ -132,9 +132,10 @@ func (uc *RunUseCase) buildStartCommand(node *ports.NodeMetadata, metadata *port
 	}
 
 	// Build start command args
+	// Pass empty networkMode since chain-id is explicitly appended below
 	var args []string
 	if uc.networkModule != nil {
-		args = uc.networkModule.StartCommand(node.HomeDir)
+		args = uc.networkModule.StartCommand(node.HomeDir, "")
 	} else {
 		// Fallback: standard cosmos start command
 		args = []string{"start", "--home", node.HomeDir}

@@ -105,8 +105,9 @@ type CommandBuilder interface {
 	// StartCommand returns the command arguments for starting a node.
 	// Parameters:
 	//   - homeDir: Node home directory path
-	// Returns: Command arguments (e.g., ["start", "--home", homeDir])
-	StartCommand(homeDir string) []string
+	//   - networkMode: Network mode ("mainnet" or "testnet") for chain-id selection
+	// Returns: Command arguments (e.g., ["start", "--home", homeDir, "--chain-id", "..."])
+	StartCommand(homeDir string, networkMode string) []string
 
 	// ExportCommand returns the command arguments for exporting genesis/state.
 	// Parameters:

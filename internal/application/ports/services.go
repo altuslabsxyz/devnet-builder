@@ -121,7 +121,7 @@ type NetworkModule interface {
 
 	// Commands
 	InitCommand(homeDir, chainID, moniker string) []string
-	StartCommand(homeDir string) []string
+	StartCommand(homeDir string, networkMode string) []string
 	ExportCommand(homeDir string) []string
 
 	// Process

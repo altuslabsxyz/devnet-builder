@@ -96,7 +96,7 @@ type NetworkModuleClient interface {
 	DockerHomeDir(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StringResponse, error)
 	// Commands
 	InitCommand(ctx context.Context, in *InitCommandRequest, opts ...grpc.CallOption) (*StringListResponse, error)
-	StartCommand(ctx context.Context, in *StringRequest, opts ...grpc.CallOption) (*StringListResponse, error)
+	StartCommand(ctx context.Context, in *StartCommandRequest, opts ...grpc.CallOption) (*StringListResponse, error)
 	ExportCommand(ctx context.Context, in *StringRequest, opts ...grpc.CallOption) (*StringListResponse, error)
 	// Paths
 	DefaultNodeHome(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StringResponse, error)
@@ -317,7 +317,7 @@ func (c *networkModuleClient) InitCommand(ctx context.Context, in *InitCommandRe
 	return out, nil
 }
 
-func (c *networkModuleClient) StartCommand(ctx context.Context, in *StringRequest, opts ...grpc.CallOption) (*StringListResponse, error) {
+func (c *networkModuleClient) StartCommand(ctx context.Context, in *StartCommandRequest, opts ...grpc.CallOption) (*StringListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StringListResponse)
 	err := c.cc.Invoke(ctx, NetworkModule_StartCommand_FullMethodName, in, out, cOpts...)
@@ -627,7 +627,7 @@ type NetworkModuleServer interface {
 	DockerHomeDir(context.Context, *Empty) (*StringResponse, error)
 	// Commands
 	InitCommand(context.Context, *InitCommandRequest) (*StringListResponse, error)
-	StartCommand(context.Context, *StringRequest) (*StringListResponse, error)
+	StartCommand(context.Context, *StartCommandRequest) (*StringListResponse, error)
 	ExportCommand(context.Context, *StringRequest) (*StringListResponse, error)
 	// Paths
 	DefaultNodeHome(context.Context, *Empty) (*StringResponse, error)
@@ -729,7 +729,7 @@ func (UnimplementedNetworkModuleServer) DockerHomeDir(context.Context, *Empty) (
 func (UnimplementedNetworkModuleServer) InitCommand(context.Context, *InitCommandRequest) (*StringListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InitCommand not implemented")
 }
-func (UnimplementedNetworkModuleServer) StartCommand(context.Context, *StringRequest) (*StringListResponse, error) {
+func (UnimplementedNetworkModuleServer) StartCommand(context.Context, *StartCommandRequest) (*StringListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method StartCommand not implemented")
 }
 func (UnimplementedNetworkModuleServer) ExportCommand(context.Context, *StringRequest) (*StringListResponse, error) {
@@ -1141,7 +1141,7 @@ func _NetworkModule_InitCommand_Handler(srv interface{}, ctx context.Context, de
 }
 
 func _NetworkModule_StartCommand_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(StringRequest)
+	in := new(StartCommandRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -1153,7 +1153,7 @@ func _NetworkModule_StartCommand_Handler(srv interface{}, ctx context.Context, d
 		FullMethod: NetworkModule_StartCommand_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetworkModuleServer).StartCommand(ctx, req.(*StringRequest))
+		return srv.(NetworkModuleServer).StartCommand(ctx, req.(*StartCommandRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

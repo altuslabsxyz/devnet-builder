@@ -127,8 +127,8 @@ func (a *pluginAdapter) InitCommand(homeDir, chainID, moniker string) []string {
 	return a.module.InitCommand(homeDir, chainID, moniker)
 }
 
-func (a *pluginAdapter) StartCommand(homeDir string) []string {
-	return a.module.StartCommand(homeDir)
+func (a *pluginAdapter) StartCommand(homeDir string, networkMode string) []string {
+	return a.module.StartCommand(homeDir, networkMode)
 }
 
 func (a *pluginAdapter) ExportCommand(homeDir string) []string {

@@ -35,7 +35,7 @@ service NetworkModule {
 
     // Commands
     rpc InitCommand(InitCommandRequest) returns (StringListResponse);
-    rpc StartCommand(StringRequest) returns (StringListResponse);
+    rpc StartCommand(StartCommandRequest) returns (StringListResponse);
     rpc ExportCommand(StringRequest) returns (StringListResponse);
 
     // Paths
@@ -158,6 +158,11 @@ message InitCommandRequest {
     string home_dir = 1;
     string chain_id = 2;
     string moniker = 3;
+}
+
+message StartCommandRequest {
+    string home_dir = 1;
+    string network_mode = 2;  // "mainnet" or "testnet" - used by plugin to set chain-id
 }
 
 message ValidatorInfo {
