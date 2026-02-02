@@ -365,9 +365,21 @@ func (a *moduleRuntimeAdapter) StartCommand(node *daemontypes.Node) []string {
 	if homeDir == "" {
 		homeDir = a.module.DefaultNodeHome()
 	}
-	// For daemon-managed nodes, use empty networkMode (devnet context)
-	// The chain-id is already configured during genesis initialization
-	return a.module.StartCommand(homeDir, "")
+
+	// For daemon-managed nodes, we pass empty networkMode to get the base start command.
+	// The networkMode parameter ("mainnet"/"testnet") is used by plugins to select
+	// pre-configured chain-ids for public networks. However, devnets have custom
+	// chain-ids (e.g., "mydevnet-1") that are defined at provisioning time and stored
+	// in NodeSpec.ChainID. We append this chain-id separately below.
+	args := a.module.StartCommand(homeDir, "")
+
+	// Append chain-id from node spec. This is required for Cosmos SDK nodes to start.
+	// The ChainID is copied from DevnetSpec during node creation (see provisioner).
+	if node.Spec.ChainID != "" {
+		args = append(args, "--chain-id", node.Spec.ChainID)
+	}
+
+	return args
 }
 
 func (a *moduleRuntimeAdapter) StartEnv(node *daemontypes.Node) map[string]string {
