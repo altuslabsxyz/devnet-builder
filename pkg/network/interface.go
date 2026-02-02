@@ -159,9 +159,9 @@ type Module interface {
 	InitCommand(homeDir, chainID, moniker string) []string
 
 	// StartCommand returns arguments for starting a node.
-	// Parameters: homeDir
-	// Returns: e.g., ["start", "--home", "/path"]
-	StartCommand(homeDir string) []string
+	// Parameters: homeDir, networkMode ("mainnet" or "testnet")
+	// Returns: e.g., ["start", "--home", "/path", "--chain-id", "cosmos-1"]
+	StartCommand(homeDir string, networkMode string) []string
 
 	// ExportCommand returns arguments for exporting genesis/state.
 	// Parameters: homeDir

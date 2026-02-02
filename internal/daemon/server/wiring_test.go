@@ -83,7 +83,9 @@ func (m *mockNetworkModule) DockerHomeDir() string                { return m.doc
 func (m *mockNetworkModule) InitCommand(homeDir, chainID, moniker string) []string {
 	return m.initCommand
 }
-func (m *mockNetworkModule) StartCommand(homeDir string) []string  { return m.startCommand }
+func (m *mockNetworkModule) StartCommand(homeDir string, networkMode string) []string {
+	return m.startCommand
+}
 func (m *mockNetworkModule) ExportCommand(homeDir string) []string { return m.exportCommand }
 func (m *mockNetworkModule) DefaultMoniker(index int) string       { return "node" }
 

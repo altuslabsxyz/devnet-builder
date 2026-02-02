@@ -187,8 +187,8 @@ func (s *GRPCServer) InitCommand(ctx context.Context, req *InitCommandRequest) (
 	return &StringListResponse{Values: cmd}, nil
 }
 
-func (s *GRPCServer) StartCommand(ctx context.Context, req *StringRequest) (*StringListResponse, error) {
-	cmd := s.impl.StartCommand(req.Value)
+func (s *GRPCServer) StartCommand(ctx context.Context, req *StartCommandRequest) (*StringListResponse, error) {
+	cmd := s.impl.StartCommand(req.HomeDir, req.NetworkMode)
 	return &StringListResponse{Values: cmd}, nil
 }
 

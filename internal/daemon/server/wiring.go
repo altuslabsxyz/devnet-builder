@@ -365,7 +365,9 @@ func (a *moduleRuntimeAdapter) StartCommand(node *daemontypes.Node) []string {
 	if homeDir == "" {
 		homeDir = a.module.DefaultNodeHome()
 	}
-	return a.module.StartCommand(homeDir)
+	// For daemon-managed nodes, use empty networkMode (devnet context)
+	// The chain-id is already configured during genesis initialization
+	return a.module.StartCommand(homeDir, "")
 }
 
 func (a *moduleRuntimeAdapter) StartEnv(node *daemontypes.Node) map[string]string {

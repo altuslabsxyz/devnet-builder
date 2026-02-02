@@ -272,8 +272,11 @@ func (c *GRPCClient) InitCommand(homeDir, chainID, moniker string) []string {
 	return resp.Values
 }
 
-func (c *GRPCClient) StartCommand(homeDir string) []string {
-	resp, err := c.client.StartCommand(context.Background(), &StringRequest{Value: homeDir})
+func (c *GRPCClient) StartCommand(homeDir string, networkMode string) []string {
+	resp, err := c.client.StartCommand(context.Background(), &StartCommandRequest{
+		HomeDir:     homeDir,
+		NetworkMode: networkMode,
+	})
 	if err != nil {
 		return nil
 	}
