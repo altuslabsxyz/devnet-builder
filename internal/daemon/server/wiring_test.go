@@ -527,6 +527,34 @@ func TestModuleRuntimeAdapter_StartCommand_DefaultHomeDir(t *testing.T) {
 	assert.Contains(t, cmd, "test-chain")
 }
 
+func TestModuleRuntimeAdapter_StartCommand_GenesisFallback(t *testing.T) {
+	// Create temp dir with genesis.json
+	tmpDir := t.TempDir()
+	configDir := tmpDir + "/config"
+	require.NoError(t, os.MkdirAll(configDir, 0o755))
+
+	genesisContent := `{"chain_id": "fallback-chain-123"}`
+	require.NoError(t, os.WriteFile(configDir+"/genesis.json", []byte(genesisContent), 0o644))
+
+	mock := newMockModule("test", "testd")
+	adapter := &moduleRuntimeAdapter{module: mock}
+
+	node := &daemontypes.Node{
+		Metadata: daemontypes.ResourceMeta{Name: "test-node-0"},
+		Spec: daemontypes.NodeSpec{
+			HomeDir: tmpDir,
+			ChainID: "", // Empty - should fallback to genesis file
+		},
+	}
+
+	cmd := adapter.StartCommand(node)
+
+	// Should read chain-id from genesis.json
+	assert.Contains(t, cmd, "start")
+	assert.Contains(t, cmd, "--chain-id")
+	assert.Contains(t, cmd, "fallback-chain-123")
+}
+
 // =============================================================================
 // ensureOverwriteFlag Tests
 // =============================================================================
