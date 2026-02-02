@@ -373,10 +373,16 @@ func (a *moduleRuntimeAdapter) StartCommand(node *daemontypes.Node) []string {
 	// in NodeSpec.ChainID. We append this chain-id separately below.
 	args := a.module.StartCommand(homeDir, "")
 
-	// Append chain-id from node spec. This is required for Cosmos SDK nodes to start.
-	// The ChainID is copied from DevnetSpec during node creation (see provisioner).
-	if node.Spec.ChainID != "" {
-		args = append(args, "--chain-id", node.Spec.ChainID)
+	// Determine chain-id: prefer NodeSpec.ChainID, fallback to genesis file.
+	// The fallback handles existing nodes provisioned before ChainID was added to NodeSpec.
+	chainID := node.Spec.ChainID
+	if chainID == "" {
+		chainID = readChainIDFromGenesis(homeDir)
+	}
+
+	// Append chain-id if available. This is required for Cosmos SDK nodes to start.
+	if chainID != "" {
+		args = append(args, "--chain-id", chainID)
 	}
 
 	return args
@@ -405,6 +411,26 @@ func (a *moduleRuntimeAdapter) HealthEndpoint(node *daemontypes.Node) string {
 
 func (a *moduleRuntimeAdapter) ContainerHomePath() string {
 	return a.module.DockerHomeDir()
+}
+
+// readChainIDFromGenesis reads the chain_id from the genesis.json file in the node's home directory.
+// This is used as a fallback for existing nodes that were provisioned before ChainID was added to NodeSpec.
+// Returns empty string if the file cannot be read or parsed.
+func readChainIDFromGenesis(homeDir string) string {
+	genesisPath := filepath.Join(homeDir, "config", "genesis.json")
+	data, err := os.ReadFile(genesisPath)
+	if err != nil {
+		return ""
+	}
+
+	var genesis struct {
+		ChainID string `json:"chain_id"`
+	}
+	if err := json.Unmarshal(data, &genesis); err != nil {
+		return ""
+	}
+
+	return genesis.ChainID
 }
 
 // Ensure interface compliance
