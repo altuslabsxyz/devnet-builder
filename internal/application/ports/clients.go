@@ -158,8 +158,28 @@ type SnapshotFetcher interface {
 	//   - error: Any error that occurred
 	DownloadWithCache(ctx context.Context, url, cacheKey string, noCache bool) (snapshotPath string, fromCache bool, err error)
 
+	// DownloadWithProgress downloads a snapshot with caching support and progress reporting.
+	// If a valid cached snapshot exists, returns the cached path without downloading.
+	// Parameters:
+	//   - url: Snapshot download URL
+	//   - cacheKey: Cache key for organization (format: "plugin-network", e.g., "stable-mainnet", "ault-testnet")
+	//   - noCache: If true, ignores cache and always downloads
+	//   - progress: Progress reporter for download progress (can be NilProgressReporter)
+	// Returns:
+	//   - path: Path to the snapshot file (cached or newly downloaded)
+	//   - fromCache: True if the snapshot was served from cache
+	//   - err: Any error that occurred
+	DownloadWithProgress(ctx context.Context, url, cacheKey string, noCache bool, progress ProgressReporter) (path string, fromCache bool, err error)
+
 	// Extract extracts a compressed snapshot.
 	Extract(ctx context.Context, archivePath, destPath string) error
+
+	// ExtractWithProgress extracts a compressed snapshot with progress reporting.
+	// Parameters:
+	//   - archivePath: Path to the compressed snapshot archive
+	//   - destPath: Destination directory for extracted files
+	//   - progress: Progress reporter for extraction progress (can be NilProgressReporter)
+	ExtractWithProgress(ctx context.Context, archivePath, destPath string, progress ProgressReporter) error
 
 	// GetLatestSnapshotURL retrieves the latest snapshot URL for a cache key.
 	GetLatestSnapshotURL(ctx context.Context, cacheKey string) (string, error)

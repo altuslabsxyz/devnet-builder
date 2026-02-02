@@ -26,9 +26,10 @@ type GenesisForker interface {
 	// Parameters:
 	//   - ctx: Context for cancellation
 	//   - opts: Options specifying the source and patch configuration
+	//   - progress: Progress reporter for long-running operations (can be NilProgressReporter)
 	//
 	// Returns: ForkResult containing the forked genesis, or error
-	Fork(ctx context.Context, opts ForkOptions) (*ForkResult, error)
+	Fork(ctx context.Context, opts ForkOptions, progress ProgressReporter) (*ForkResult, error)
 }
 
 // ForkOptions specifies options for forking genesis.

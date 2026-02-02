@@ -94,6 +94,73 @@ func (f *FetcherAdapter) DownloadWithCache(ctx context.Context, url, cacheKey st
 	return cache.FilePath, false, nil
 }
 
+// DownloadWithProgress downloads a snapshot with caching support and progress reporting.
+// If a valid cached snapshot exists, returns the cached path without downloading.
+// The cache is stored in ~/.devnet-builder/snapshots/<cacheKey>/ with 30-minute expiration.
+// cacheKey format: "plugin-network" (e.g., "stable-mainnet", "ault-testnet")
+func (f *FetcherAdapter) DownloadWithProgress(ctx context.Context, url, cacheKey string, noCache bool, progress ports.ProgressReporter) (string, bool, error) {
+	// Check cache first (unless noCache is set)
+	if !noCache {
+		cache, err := GetValidCache(f.homeDir, cacheKey)
+		if err != nil {
+			f.logger.Debug("Cache check failed: %v", err)
+		}
+		if cache != nil {
+			// Verify the file still exists
+			if _, err := os.Stat(cache.FilePath); err == nil {
+				f.logger.Info("Using cached snapshot (expires in %s)", cache.TimeUntilExpiry().Round(time.Minute))
+				// Report cache hit via progress reporter
+				if progress != nil {
+					progress.ReportStep(ports.StepProgress{
+						Name:   "Downloading snapshot",
+						Status: "completed",
+						Detail: "from cache",
+					})
+				}
+				return cache.FilePath, true, nil
+			}
+			// File doesn't exist, clear invalid cache
+			f.logger.Debug("Cached file not found, will re-download")
+		}
+	}
+
+	// Download to cache directory
+	opts := DownloadOptions{
+		URL:      url,
+		CacheKey: cacheKey,
+		HomeDir:  f.homeDir,
+		NoCache:  noCache,
+		Logger:   f.logger,
+		Progress: progress,
+	}
+
+	cache, err := Download(ctx, opts)
+	if err != nil {
+		// Report failure via progress reporter
+		if progress != nil {
+			progress.ReportStep(ports.StepProgress{
+				Name:   "Downloading snapshot",
+				Status: "failed",
+				Error:  err.Error(),
+			})
+		}
+		return "", false, &SnapshotError{
+			Operation: "download",
+			Message:   err.Error(),
+		}
+	}
+
+	// Report completion via progress reporter
+	if progress != nil {
+		progress.ReportStep(ports.StepProgress{
+			Name:   "Downloading snapshot",
+			Status: "completed",
+		})
+	}
+
+	return cache.FilePath, false, nil
+}
+
 // Extract extracts a compressed snapshot.
 // If extraction fails due to a corrupted archive, the cache is automatically cleared.
 func (f *FetcherAdapter) Extract(ctx context.Context, archivePath, destPath string) error {
@@ -159,6 +226,43 @@ func (f *FetcherAdapter) Extract(ctx context.Context, archivePath, destPath stri
 	}
 
 	f.logger.Success("Extraction complete")
+	return nil
+}
+
+// ExtractWithProgress extracts a compressed snapshot with progress reporting.
+// If extraction fails due to a corrupted archive, the cache is automatically cleared.
+func (f *FetcherAdapter) ExtractWithProgress(ctx context.Context, archivePath, destPath string, progress ports.ProgressReporter) error {
+	// Report extraction starting
+	if progress != nil {
+		progress.ReportStep(ports.StepProgress{
+			Name:   "Extracting snapshot",
+			Status: "running",
+		})
+	}
+
+	// Delegate to the existing Extract method
+	err := f.Extract(ctx, archivePath, destPath)
+
+	if err != nil {
+		// Report failure via progress reporter
+		if progress != nil {
+			progress.ReportStep(ports.StepProgress{
+				Name:   "Extracting snapshot",
+				Status: "failed",
+				Error:  err.Error(),
+			})
+		}
+		return err
+	}
+
+	// Report completion via progress reporter
+	if progress != nil {
+		progress.ReportStep(ports.StepProgress{
+			Name:   "Extracting snapshot",
+			Status: "completed",
+		})
+	}
+
 	return nil
 }
 

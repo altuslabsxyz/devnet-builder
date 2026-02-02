@@ -48,8 +48,20 @@ func NewGenesisForker(config GenesisForkerConfig) *GenesisForker {
 	}
 }
 
+// reportStep is a helper to safely report progress.
+func reportStep(progress ports.ProgressReporter, name, status string, detail string) {
+	if progress == nil {
+		return
+	}
+	progress.ReportStep(ports.StepProgress{
+		Name:   name,
+		Status: status,
+		Detail: detail,
+	})
+}
+
 // Fork forks genesis from the specified source
-func (f *GenesisForker) Fork(ctx context.Context, opts ports.ForkOptions) (*ports.ForkResult, error) {
+func (f *GenesisForker) Fork(ctx context.Context, opts ports.ForkOptions, progress ports.ProgressReporter) (*ports.ForkResult, error) {
 	f.logger.Info("forking genesis",
 		"mode", opts.Source.Mode,
 		"networkType", opts.Source.NetworkType,
@@ -60,17 +72,31 @@ func (f *GenesisForker) Fork(ctx context.Context, opts ports.ForkOptions) (*port
 
 	switch opts.Source.Mode {
 	case types.GenesisModeRPC:
+		reportStep(progress, "Fetching genesis from RPC", "running", opts.Source.RPCURL)
 		genesis, err = f.forkFromRPC(ctx, opts)
+		if err != nil {
+			reportStep(progress, "Fetching genesis from RPC", "failed", err.Error())
+			return nil, fmt.Errorf("failed to fetch genesis: %w", err)
+		}
+		reportStep(progress, "Fetching genesis from RPC", "completed", "")
 	case types.GenesisModeSnapshot:
-		genesis, err = f.forkFromSnapshot(ctx, opts)
+		reportStep(progress, "Forking from snapshot", "running", opts.Source.SnapshotURL)
+		genesis, err = f.forkFromSnapshot(ctx, opts, progress)
+		if err != nil {
+			reportStep(progress, "Forking from snapshot", "failed", err.Error())
+			return nil, fmt.Errorf("failed to fetch genesis: %w", err)
+		}
+		reportStep(progress, "Forking from snapshot", "completed", "")
 	case types.GenesisModeLocal:
+		reportStep(progress, "Loading genesis from local file", "running", opts.Source.LocalPath)
 		genesis, err = f.forkFromLocal(ctx, opts)
+		if err != nil {
+			reportStep(progress, "Loading genesis from local file", "failed", err.Error())
+			return nil, fmt.Errorf("failed to fetch genesis: %w", err)
+		}
+		reportStep(progress, "Loading genesis from local file", "completed", "")
 	default:
 		return nil, fmt.Errorf("unsupported genesis mode: %s", opts.Source.Mode)
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch genesis: %w", err)
 	}
 
 	// Extract original chain ID
@@ -98,8 +124,10 @@ func (f *GenesisForker) Fork(ctx context.Context, opts ports.ForkOptions) (*port
 	}
 
 	// Apply patches
+	reportStep(progress, "Applying genesis patches", "running", "")
 	patched, err := f.applyPatches(genesis, opts.PatchOpts)
 	if err != nil {
+		reportStep(progress, "Applying genesis patches", "failed", err.Error())
 		return nil, fmt.Errorf("failed to apply patches: %w", err)
 	}
 
@@ -107,9 +135,11 @@ func (f *GenesisForker) Fork(ctx context.Context, opts ports.ForkOptions) (*port
 	if f.config.PluginGenesis != nil {
 		patched, err = f.config.PluginGenesis.PatchGenesis(patched, opts.PatchOpts)
 		if err != nil {
+			reportStep(progress, "Applying genesis patches", "failed", err.Error())
 			return nil, fmt.Errorf("plugin patch failed: %w", err)
 		}
 	}
+	reportStep(progress, "Applying genesis patches", "completed", "")
 
 	return &ports.ForkResult{
 		Genesis:       patched,
@@ -203,7 +233,7 @@ func (f *GenesisForker) forkFromRPC(ctx context.Context, opts ports.ForkOptions)
 }
 
 // forkFromSnapshot downloads snapshot and exports genesis
-func (f *GenesisForker) forkFromSnapshot(ctx context.Context, opts ports.ForkOptions) ([]byte, error) {
+func (f *GenesisForker) forkFromSnapshot(ctx context.Context, opts ports.ForkOptions, progress ports.ProgressReporter) ([]byte, error) {
 	if opts.BinaryPath == "" {
 		return nil, fmt.Errorf("binary path required for snapshot export")
 	}
@@ -219,14 +249,14 @@ func (f *GenesisForker) forkFromSnapshot(ctx context.Context, opts ports.ForkOpt
 
 	// Use existing infrastructure for snapshot download/export
 	if f.config.SnapshotFetcher != nil && f.config.StateExportService != nil {
-		return f.forkFromSnapshotInfra(ctx, opts, snapshotURL)
+		return f.forkFromSnapshotInfra(ctx, opts, snapshotURL, progress)
 	}
 
 	return nil, fmt.Errorf("snapshot forking requires SnapshotFetcher and StateExportService")
 }
 
 // forkFromSnapshotInfra uses existing infrastructure for snapshot-based forking
-func (f *GenesisForker) forkFromSnapshotInfra(ctx context.Context, opts ports.ForkOptions, snapshotURL string) ([]byte, error) {
+func (f *GenesisForker) forkFromSnapshotInfra(ctx context.Context, opts ports.ForkOptions, snapshotURL string, progress ports.ProgressReporter) ([]byte, error) {
 	// Create work directory
 	workDir := filepath.Join(f.config.DataDir, "genesis-work", fmt.Sprintf("fork-%d", time.Now().UnixNano()))
 	if err := os.MkdirAll(workDir, 0755); err != nil {
@@ -243,11 +273,19 @@ func (f *GenesisForker) forkFromSnapshotInfra(ctx context.Context, opts ports.Fo
 	}
 
 	// Download snapshot
+	reportStep(progress, "Downloading snapshot", "running", snapshotURL)
 	snapshotPath, fromCache, err := f.config.SnapshotFetcher.DownloadWithCache(
 		ctx, snapshotURL, cacheKey, opts.NoCache)
 	if err != nil {
+		reportStep(progress, "Downloading snapshot", "failed", err.Error())
 		return nil, fmt.Errorf("failed to download snapshot: %w", err)
 	}
+
+	cacheDetail := ""
+	if fromCache {
+		cacheDetail = "from cache"
+	}
+	reportStep(progress, "Downloading snapshot", "completed", cacheDetail)
 
 	f.logger.Info("snapshot downloaded",
 		"path", snapshotPath,
@@ -255,9 +293,12 @@ func (f *GenesisForker) forkFromSnapshotInfra(ctx context.Context, opts ports.Fo
 		"snapshotURL", snapshotURL)
 
 	// Extract snapshot
+	reportStep(progress, "Extracting snapshot", "running", "")
 	if err := f.config.SnapshotFetcher.Extract(ctx, snapshotPath, workDir); err != nil {
+		reportStep(progress, "Extracting snapshot", "failed", err.Error())
 		return nil, fmt.Errorf("failed to extract snapshot: %w", err)
 	}
+	reportStep(progress, "Extracting snapshot", "completed", "")
 
 	// First, fetch RPC genesis for chain params
 	// The RPC genesis is required for the export command to read chain parameters
@@ -274,20 +315,25 @@ func (f *GenesisForker) forkFromSnapshotInfra(ctx context.Context, opts ports.Fo
 		return nil, fmt.Errorf("genesis fetcher not configured: cannot fetch RPC genesis from %s", rpcURL)
 	}
 
+	reportStep(progress, "Fetching RPC genesis", "running", rpcURL)
 	f.logger.Debug("fetching RPC genesis for chain params", "rpcURL", rpcURL)
 
 	rpcGenesis, err := f.config.GenesisFetcher.FetchFromRPC(ctx, rpcURL)
 	if err != nil {
+		reportStep(progress, "Fetching RPC genesis", "failed", err.Error())
 		return nil, fmt.Errorf("failed to fetch RPC genesis from %s: %w", rpcURL, err)
 	}
 
 	if len(rpcGenesis) == 0 {
+		reportStep(progress, "Fetching RPC genesis", "failed", "empty response")
 		return nil, fmt.Errorf("RPC genesis is empty: fetched from %s but received no data", rpcURL)
 	}
+	reportStep(progress, "Fetching RPC genesis", "completed", "")
 
 	f.logger.Debug("RPC genesis fetched successfully", "size", len(rpcGenesis))
 
 	// Export genesis from snapshot
+	reportStep(progress, "Exporting state from snapshot", "running", "")
 	exportOpts := ports.StateExportOptions{
 		HomeDir:           workDir,
 		BinaryPath:        opts.BinaryPath,
@@ -299,8 +345,10 @@ func (f *GenesisForker) forkFromSnapshotInfra(ctx context.Context, opts ports.Fo
 
 	genesis, err := f.config.StateExportService.ExportFromSnapshot(ctx, exportOpts)
 	if err != nil {
+		reportStep(progress, "Exporting state from snapshot", "failed", err.Error())
 		return nil, fmt.Errorf("failed to export genesis from snapshot: %w", err)
 	}
+	reportStep(progress, "Exporting state from snapshot", "completed", "")
 
 	return genesis, nil
 }

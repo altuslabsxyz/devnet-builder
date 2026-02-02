@@ -103,7 +103,7 @@ func TestGenesisForkerForkFromLocal(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	result, err := forker.Fork(ctx, opts)
+	result, err := forker.Fork(ctx, opts, ports.NilProgressReporter)
 	if err != nil {
 		t.Fatalf("Fork failed: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestGenesisForkerForkFromLocalMissingPath(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_, err := forker.Fork(ctx, opts)
+	_, err := forker.Fork(ctx, opts, ports.NilProgressReporter)
 	if err == nil {
 		t.Fatal("Expected error for missing local path")
 	}
@@ -169,7 +169,7 @@ func TestGenesisForkerForkFromLocalFileNotFound(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_, err := forker.Fork(ctx, opts)
+	_, err := forker.Fork(ctx, opts, ports.NilProgressReporter)
 	if err == nil {
 		t.Fatal("Expected error for non-existent file")
 	}
@@ -193,7 +193,7 @@ func TestGenesisForkerForkFromRPCNoURL(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_, err := forker.Fork(ctx, opts)
+	_, err := forker.Fork(ctx, opts, ports.NilProgressReporter)
 	if err == nil {
 		t.Fatal("Expected error for missing RPC URL")
 	}
@@ -220,7 +220,7 @@ func TestGenesisForkerForkFromSnapshotNoBinary(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_, err := forker.Fork(ctx, opts)
+	_, err := forker.Fork(ctx, opts, ports.NilProgressReporter)
 	if err == nil {
 		t.Fatal("Expected error for missing binary path")
 	}
@@ -258,7 +258,7 @@ func TestGenesisForkerApplyChainIDPatch(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	result, err := forker.Fork(ctx, opts)
+	result, err := forker.Fork(ctx, opts, ports.NilProgressReporter)
 	if err != nil {
 		t.Fatalf("Fork failed: %v", err)
 	}
@@ -291,7 +291,7 @@ func TestGenesisForkerUnsupportedMode(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_, err := forker.Fork(ctx, opts)
+	_, err := forker.Fork(ctx, opts, ports.NilProgressReporter)
 	if err == nil {
 		t.Fatal("Expected error for unsupported mode")
 	}
@@ -329,7 +329,7 @@ func TestGenesisForkerWithNilPluginGenesis(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	result, err := forker.Fork(ctx, opts)
+	result, err := forker.Fork(ctx, opts, ports.NilProgressReporter)
 	if err != nil {
 		t.Fatalf("Fork failed: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestGenesisForkerNoPatchOptions(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	result, err := forker.Fork(ctx, opts)
+	result, err := forker.Fork(ctx, opts, ports.NilProgressReporter)
 	if err != nil {
 		t.Fatalf("Fork failed: %v", err)
 	}
@@ -399,7 +399,7 @@ func TestGenesisForkerForkFromLocalRelativePathRejected(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_, err := forker.Fork(ctx, opts)
+	_, err := forker.Fork(ctx, opts, ports.NilProgressReporter)
 	if err == nil {
 		t.Fatal("Expected error for relative path")
 	}

@@ -101,6 +101,10 @@ type OrchestratorConfig struct {
 
 	// Logger for logging provisioning progress
 	Logger *slog.Logger
+
+	// StepProgressReporter reports detailed sub-step progress (optional)
+	// This is used to stream progress updates to CLI clients
+	StepProgressReporter ports.ProgressReporter
 }
 
 // =============================================================================
@@ -152,6 +156,14 @@ func (o *ProvisioningOrchestrator) OnProgress(callback ProgressCallback) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.progress = callback
+}
+
+// SetStepProgressReporter sets the reporter for detailed sub-step progress.
+// This should be called before Execute to enable streaming progress to CLI.
+func (o *ProvisioningOrchestrator) SetStepProgressReporter(reporter ports.ProgressReporter) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.config.StepProgressReporter = reporter
 }
 
 // setPhase updates the current phase and notifies the progress callback
@@ -372,7 +384,13 @@ func (o *ProvisioningOrchestrator) executeForkPhase(ctx context.Context, opts po
 		forkOpts.PatchOpts.BinaryVersion = opts.BinaryVersion
 	}
 
-	result, err := o.config.GenesisForker.Fork(ctx, forkOpts)
+	// Use configured progress reporter if available, otherwise no-op
+	progress := o.config.StepProgressReporter
+	if progress == nil {
+		progress = ports.NilProgressReporter
+	}
+
+	result, err := o.config.GenesisForker.Fork(ctx, forkOpts, progress)
 	if err != nil {
 		return nil, fmt.Errorf("genesis fork failed: %w", err)
 	}

@@ -188,7 +188,7 @@ func runGenesisFork(ctx context.Context, opts *genesisForkOptions) error {
 		},
 		BinaryPath: opts.binaryPath,
 		NoCache:    opts.noCache,
-	})
+	}, ports.NilProgressReporter)
 	if err != nil {
 		return fmt.Errorf("failed to fork genesis: %w", err)
 	}
