@@ -1524,12 +1524,13 @@ type StreamProvisionLogsResponse struct {
 	Message   string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"` // Log line
 	Phase     string                 `protobuf:"bytes,4,opt,name=phase,proto3" json:"phase,omitempty"`     // Current phase when log was emitted
 	// Progress fields for detailed step tracking
-	StepName        string `protobuf:"bytes,5,opt,name=step_name,json=stepName,proto3" json:"step_name,omitempty"`                       // "Downloading snapshot", "Extracting...", etc.
-	StepStatus      string `protobuf:"bytes,6,opt,name=step_status,json=stepStatus,proto3" json:"step_status,omitempty"`                 // "running", "completed", "failed"
-	ProgressCurrent int64  `protobuf:"varint,7,opt,name=progress_current,json=progressCurrent,proto3" json:"progress_current,omitempty"` // Bytes downloaded, etc. (0 if indeterminate)
-	ProgressTotal   int64  `protobuf:"varint,8,opt,name=progress_total,json=progressTotal,proto3" json:"progress_total,omitempty"`       // Total bytes (0 if unknown)
-	ProgressUnit    string `protobuf:"bytes,9,opt,name=progress_unit,json=progressUnit,proto3" json:"progress_unit,omitempty"`           // "bytes", "files", "" for indeterminate
-	StepDetail      string `protobuf:"bytes,10,opt,name=step_detail,json=stepDetail,proto3" json:"step_detail,omitempty"`                // "from cache", etc.
+	StepName        string  `protobuf:"bytes,5,opt,name=step_name,json=stepName,proto3" json:"step_name,omitempty"`                       // "Downloading snapshot", "Extracting...", etc.
+	StepStatus      string  `protobuf:"bytes,6,opt,name=step_status,json=stepStatus,proto3" json:"step_status,omitempty"`                 // "running", "completed", "failed"
+	ProgressCurrent int64   `protobuf:"varint,7,opt,name=progress_current,json=progressCurrent,proto3" json:"progress_current,omitempty"` // Bytes downloaded, etc. (0 if indeterminate)
+	ProgressTotal   int64   `protobuf:"varint,8,opt,name=progress_total,json=progressTotal,proto3" json:"progress_total,omitempty"`       // Total bytes (0 if unknown)
+	ProgressUnit    string  `protobuf:"bytes,9,opt,name=progress_unit,json=progressUnit,proto3" json:"progress_unit,omitempty"`           // "bytes", "files", "" for indeterminate
+	StepDetail      string  `protobuf:"bytes,10,opt,name=step_detail,json=stepDetail,proto3" json:"step_detail,omitempty"`                // "from cache", etc.
+	Speed           float64 `protobuf:"fixed64,11,opt,name=speed,proto3" json:"speed,omitempty"`                                          // bytes per second (for download progress)
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -1632,6 +1633,13 @@ func (x *StreamProvisionLogsResponse) GetStepDetail() string {
 		return x.StepDetail
 	}
 	return ""
+}
+
+func (x *StreamProvisionLogsResponse) GetSpeed() float64 {
+	if x != nil {
+		return x.Speed
+	}
+	return 0
 }
 
 // Node represents a single blockchain node within a devnet.
@@ -5255,7 +5263,7 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\x06devnet\x18\x01 \x01(\v2\x18.devnetbuilder.v1.DevnetR\x06devnet\"N\n" +
 	"\x1aStreamProvisionLogsRequest\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\"\xf3\x02\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"\x89\x03\n" +
 	"\x1bStreamProvisionLogsResponse\x128\n" +
 	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x14\n" +
 	"\x05level\x18\x02 \x01(\tR\x05level\x12\x18\n" +
@@ -5269,7 +5277,8 @@ const file_v1_devnet_proto_rawDesc = "" +
 	"\rprogress_unit\x18\t \x01(\tR\fprogressUnit\x12\x1f\n" +
 	"\vstep_detail\x18\n" +
 	" \x01(\tR\n" +
-	"stepDetail\"\xa8\x01\n" +
+	"stepDetail\x12\x14\n" +
+	"\x05speed\x18\v \x01(\x01R\x05speed\"\xa8\x01\n" +
 	"\x04Node\x12:\n" +
 	"\bmetadata\x18\x01 \x01(\v2\x1e.devnetbuilder.v1.NodeMetadataR\bmetadata\x12.\n" +
 	"\x04spec\x18\x02 \x01(\v2\x1a.devnetbuilder.v1.NodeSpecR\x04spec\x124\n" +

@@ -706,6 +706,7 @@ func runProvisionTUI(ctx context.Context, c *client.Client, namespace, devnetNam
 				Total:      entry.ProgressTotal,
 				Unit:       entry.ProgressUnit,
 				Detail:     entry.StepDetail,
+				Speed:      entry.Speed,
 			})
 			return nil
 		})
@@ -755,14 +756,38 @@ func printProgressStep(entry *client.ProvisionLogEntry) {
 	switch entry.StepStatus {
 	case "running":
 		if entry.ProgressTotal > 0 && entry.ProgressUnit == "bytes" {
-			// Byte-based progress with percentage
+			// Byte-based progress with progress bar, speed, and ETA
 			pct := float64(entry.ProgressCurrent) / float64(entry.ProgressTotal) * 100
 			currentMB := float64(entry.ProgressCurrent) / (1024 * 1024)
 			totalMB := float64(entry.ProgressTotal) / (1024 * 1024)
-			fmt.Fprintf(os.Stderr, "\r  %s %s... %.0f%% (%.1f/%.1f MB)    ",
-				color.CyanString("→"),
-				entry.StepName,
-				pct, currentMB, totalMB)
+			speedMB := entry.Speed / (1024 * 1024)
+
+			// Build progress bar (width: 30 chars)
+			barWidth := 30
+			filled := int(pct / 100 * float64(barWidth))
+			if filled < 0 {
+				filled = 0
+			} else if filled > barWidth {
+				filled = barWidth
+			}
+			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+
+			// Calculate ETA
+			eta := ""
+			if entry.Speed > 0 {
+				remaining := float64(entry.ProgressTotal - entry.ProgressCurrent)
+				etaSecs := remaining / entry.Speed
+				if etaSecs < 60 {
+					eta = fmt.Sprintf("%.0fs", etaSecs)
+				} else if etaSecs < 3600 {
+					eta = fmt.Sprintf("%.1fm", etaSecs/60)
+				} else {
+					eta = fmt.Sprintf("%.1fh", etaSecs/3600)
+				}
+			}
+
+			fmt.Fprintf(os.Stderr, "\r  %s %5.1f%% | %.1f/%.1f MB | %.1f MB/s | ETA: %s    ",
+				color.CyanString(bar), pct, currentMB, totalMB, speedMB, eta)
 		} else if entry.StepDetail != "" {
 			fmt.Fprintf(os.Stderr, "\r  %s %s... (%s)    ",
 				color.CyanString("→"),

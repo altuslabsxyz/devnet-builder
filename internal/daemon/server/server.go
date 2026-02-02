@@ -208,6 +208,7 @@ func New(config *Config) (*Server, error) {
 				ProgressTotal:   step.Total,
 				ProgressUnit:    step.Unit,
 				StepDetail:      step.Detail,
+				Speed:           step.Speed,
 			})
 		})
 	})

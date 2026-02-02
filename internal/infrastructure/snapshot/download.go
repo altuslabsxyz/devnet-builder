@@ -244,6 +244,7 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 				Current: *pr.downloaded,
 				Total:   pr.total,
 				Unit:    "bytes",
+				Speed:   pr.currentSpeed,
 			})
 		}
 	}
