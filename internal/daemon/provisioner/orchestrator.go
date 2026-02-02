@@ -521,6 +521,7 @@ func (o *ProvisioningOrchestrator) initializeNode(ctx context.Context, opts port
 			BinaryPath: binaryPath,
 			HomeDir:    nodeDir,
 			Desired:    types.NodePhaseRunning,
+			ChainID:    opts.ChainID,
 		},
 		Status: types.NodeStatus{
 			Phase: types.NodePhasePending,
