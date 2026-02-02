@@ -250,19 +250,13 @@ func TestProvisionLogEntry_Fields(t *testing.T) {
 }
 
 func TestProvisionLogEntry_ProgressFields(t *testing.T) {
-	now := time.Now()
 	entry := &ProvisionLogEntry{
-		Timestamp:       now,
-		Level:           "info",
-		Message:         "Downloading snapshot",
-		Phase:           "genesis-fork",
 		StepName:        "Downloading snapshot",
 		StepStatus:      "running",
-		ProgressCurrent: 500 * 1024 * 1024, // 500 MB
-		ProgressTotal:   1000 * 1024 * 1024, // 1000 MB
+		ProgressCurrent: 500 * 1024 * 1024,
+		ProgressTotal:   1000 * 1024 * 1024,
 		ProgressUnit:    "bytes",
-		StepDetail:      "",
-		Speed:           50 * 1024 * 1024, // 50 MB/s
+		Speed:           50 * 1024 * 1024,
 	}
 
 	if entry.StepName != "Downloading snapshot" {
