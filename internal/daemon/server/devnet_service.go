@@ -548,6 +548,7 @@ func (s *DevnetService) StreamProvisionLogs(
 				ProgressTotal:   entry.ProgressTotal,
 				ProgressUnit:    entry.ProgressUnit,
 				StepDetail:      entry.StepDetail,
+				Speed:           entry.Speed,
 			}
 			if err := stream.Send(resp); err != nil {
 				return err

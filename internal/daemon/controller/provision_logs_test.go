@@ -248,3 +248,76 @@ func TestProvisionLogEntry_Fields(t *testing.T) {
 		t.Errorf("expected phase %q, got %q", "configuration", entry.Phase)
 	}
 }
+
+func TestProvisionLogEntry_ProgressFields(t *testing.T) {
+	now := time.Now()
+	entry := &ProvisionLogEntry{
+		Timestamp:       now,
+		Level:           "info",
+		Message:         "Downloading snapshot",
+		Phase:           "genesis-fork",
+		StepName:        "Downloading snapshot",
+		StepStatus:      "running",
+		ProgressCurrent: 500 * 1024 * 1024, // 500 MB
+		ProgressTotal:   1000 * 1024 * 1024, // 1000 MB
+		ProgressUnit:    "bytes",
+		StepDetail:      "",
+		Speed:           50 * 1024 * 1024, // 50 MB/s
+	}
+
+	if entry.StepName != "Downloading snapshot" {
+		t.Errorf("expected step name %q, got %q", "Downloading snapshot", entry.StepName)
+	}
+	if entry.StepStatus != "running" {
+		t.Errorf("expected step status %q, got %q", "running", entry.StepStatus)
+	}
+	if entry.ProgressCurrent != 500*1024*1024 {
+		t.Errorf("expected progress current %d, got %d", 500*1024*1024, entry.ProgressCurrent)
+	}
+	if entry.ProgressTotal != 1000*1024*1024 {
+		t.Errorf("expected progress total %d, got %d", 1000*1024*1024, entry.ProgressTotal)
+	}
+	if entry.ProgressUnit != "bytes" {
+		t.Errorf("expected progress unit %q, got %q", "bytes", entry.ProgressUnit)
+	}
+	if entry.Speed != 50*1024*1024 {
+		t.Errorf("expected speed %f, got %f", float64(50*1024*1024), entry.Speed)
+	}
+}
+
+func TestDevnetController_BroadcastLog_PreservesSpeedField(t *testing.T) {
+	c := &DevnetController{}
+	c.initLogSubscribers()
+
+	ch := c.SubscribeProvisionLogs("default", "test-devnet")
+
+	entry := &ProvisionLogEntry{
+		Timestamp:       time.Now(),
+		Level:           "info",
+		Message:         "Downloading snapshot",
+		Phase:           "genesis-fork",
+		StepName:        "Downloading snapshot",
+		StepStatus:      "running",
+		ProgressCurrent: 100 * 1024 * 1024,
+		ProgressTotal:   500 * 1024 * 1024,
+		ProgressUnit:    "bytes",
+		Speed:           25.5 * 1024 * 1024, // 25.5 MB/s
+	}
+
+	go c.broadcastLog("default", "test-devnet", entry)
+
+	select {
+	case received := <-ch:
+		if received.Speed != entry.Speed {
+			t.Errorf("expected speed %f, got %f", entry.Speed, received.Speed)
+		}
+		if received.ProgressCurrent != entry.ProgressCurrent {
+			t.Errorf("expected progress current %d, got %d", entry.ProgressCurrent, received.ProgressCurrent)
+		}
+		if received.ProgressTotal != entry.ProgressTotal {
+			t.Errorf("expected progress total %d, got %d", entry.ProgressTotal, received.ProgressTotal)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for broadcast")
+	}
+}

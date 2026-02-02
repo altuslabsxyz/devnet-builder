@@ -14,12 +14,13 @@ type ProvisionLogEntry struct {
 	Message   string
 	Phase     string
 	// Progress fields for detailed step tracking
-	StepName        string // "Downloading snapshot", "Extracting...", etc.
-	StepStatus      string // "running", "completed", "failed"
-	ProgressCurrent int64  // Bytes downloaded, etc. (0 if indeterminate)
-	ProgressTotal   int64  // Total bytes (0 if unknown)
-	ProgressUnit    string // "bytes", "files", "" for indeterminate
-	StepDetail      string // "from cache", etc.
+	StepName        string  // "Downloading snapshot", "Extracting...", etc.
+	StepStatus      string  // "running", "completed", "failed"
+	ProgressCurrent int64   // Bytes downloaded, etc. (0 if indeterminate)
+	ProgressTotal   int64   // Total bytes (0 if unknown)
+	ProgressUnit    string  // "bytes", "files", "" for indeterminate
+	StepDetail      string  // "from cache", etc.
+	Speed           float64 // bytes per second (for download progress)
 }
 
 // logSubscriberBufferSize is the buffer size for log subscriber channels.
