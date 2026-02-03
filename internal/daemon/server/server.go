@@ -227,9 +227,11 @@ func New(config *Config) (*Server, error) {
 		logger.Info("docker runtime enabled", "image", config.DockerImage)
 	} else {
 		// Use process-based runtime for local mode
+		// Pass PluginRuntimeProvider so ProcessRuntime can get network-specific commands
 		nodeRuntime = runtime.NewProcessRuntime(runtime.ProcessRuntimeConfig{
-			DataDir: config.DataDir,
-			Logger:  logger,
+			DataDir:               config.DataDir,
+			Logger:                logger,
+			PluginRuntimeProvider: orchFactory.AsPluginRuntimeProvider(),
 		})
 		logger.Info("process runtime enabled for local mode")
 	}

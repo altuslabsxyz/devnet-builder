@@ -740,6 +740,29 @@ func (f *OrchestratorFactory) GetPluginRuntime(pluginName string) (runtime.Plugi
 	return &moduleRuntimeAdapter{module: module}, nil
 }
 
+// pluginRuntimeProviderAdapter wraps OrchestratorFactory to implement PluginRuntimeProvider.
+type pluginRuntimeProviderAdapter struct {
+	factory *OrchestratorFactory
+}
+
+// GetPluginRuntime implements runtime.PluginRuntimeProvider.
+// Returns nil if the network is not found.
+func (p *pluginRuntimeProviderAdapter) GetPluginRuntime(network string) runtime.PluginRuntime {
+	pr, err := p.factory.GetPluginRuntime(network)
+	if err != nil {
+		return nil
+	}
+	return pr
+}
+
+// Ensure pluginRuntimeProviderAdapter implements PluginRuntimeProvider
+var _ runtime.PluginRuntimeProvider = (*pluginRuntimeProviderAdapter)(nil)
+
+// AsPluginRuntimeProvider returns the factory as a PluginRuntimeProvider.
+func (f *OrchestratorFactory) AsPluginRuntimeProvider() runtime.PluginRuntimeProvider {
+	return &pluginRuntimeProviderAdapter{factory: f}
+}
+
 // CreateOrchestrator creates an Orchestrator for the given network.
 // In daemon mode, the orchestrator is configured to skip the start phase
 // (SkipStart=true in ProvisionOptions), so NodeRuntime is not needed.

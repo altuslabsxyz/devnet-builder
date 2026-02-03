@@ -109,3 +109,11 @@ type PluginRuntime interface {
 	// This is where host node data directories should be mounted.
 	ContainerHomePath() string
 }
+
+// PluginRuntimeProvider provides PluginRuntime instances for different networks.
+// This allows the runtime to obtain network-specific commands dynamically.
+type PluginRuntimeProvider interface {
+	// GetPluginRuntime returns the PluginRuntime for a network.
+	// Returns nil if the network is not found.
+	GetPluginRuntime(network string) PluginRuntime
+}
