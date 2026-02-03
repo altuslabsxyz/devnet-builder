@@ -154,17 +154,43 @@ func printNodes(nodes []*v1.Node) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "INDEX\tROLE\tPHASE\tHEALTH\tHEIGHT\tPEERS")
 	for _, n := range nodes {
-		health := "Unknown"
-		if n.Status.Health != nil {
-			health = n.Status.Health.Status
+		if n == nil {
+			continue
 		}
+
+		// Safely extract fields with nil checks
+		var index int32
+		if n.Metadata != nil {
+			index = n.Metadata.Index
+		}
+
+		var role string
+		if n.Spec != nil {
+			role = n.Spec.Role
+		}
+
+		var phase, health string
+		var blockHeight int64
+		var peerCount int32
+		if n.Status != nil {
+			phase = n.Status.Phase
+			blockHeight = n.Status.BlockHeight
+			peerCount = n.Status.PeerCount
+			if n.Status.Health != nil {
+				health = n.Status.Health.Status
+			}
+		}
+		if health == "" {
+			health = "Unknown"
+		}
+
 		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%d\t%d\n",
-			n.Metadata.Index,
-			n.Spec.Role,
-			colorPhase(n.Status.Phase),
+			index,
+			role,
+			colorPhase(phase),
 			health,
-			n.Status.BlockHeight,
-			n.Status.PeerCount)
+			blockHeight,
+			peerCount)
 	}
 	w.Flush()
 }
