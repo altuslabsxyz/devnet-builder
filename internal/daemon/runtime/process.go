@@ -3,9 +3,11 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"sync"
 	"syscall"
@@ -90,8 +92,18 @@ func (pr *ProcessRuntime) StartNode(ctx context.Context, node *types.Node, opts 
 	} else if pluginRuntime != nil {
 		command = pluginRuntime.StartCommand(node)
 	} else {
-		// Default command
+		// Default command - used when PluginRuntime is not available
+		// (e.g., existing nodes without Network field in NodeSpec)
 		command = []string{node.Spec.BinaryPath, "start", "--home", node.Spec.HomeDir}
+
+		// Append chain-id: prefer NodeSpec.ChainID, fallback to genesis file
+		chainID := node.Spec.ChainID
+		if chainID == "" {
+			chainID = readChainIDFromGenesis(node.Spec.HomeDir)
+		}
+		if chainID != "" {
+			command = append(command, "--chain-id", chainID)
+		}
 	}
 
 	// Set up log writer
@@ -234,3 +246,23 @@ func (pr *ProcessRuntime) logPath(node *types.Node) string {
 
 // Ensure ProcessRuntime implements NodeRuntime interface
 var _ NodeRuntime = (*ProcessRuntime)(nil)
+
+// readChainIDFromGenesis reads the chain_id from the genesis.json file in the node's home directory.
+// This is used as a fallback for existing nodes that don't have PluginRuntime available.
+// Returns empty string if the file cannot be read or parsed.
+func readChainIDFromGenesis(homeDir string) string {
+	genesisPath := filepath.Join(homeDir, "config", "genesis.json")
+	data, err := os.ReadFile(genesisPath)
+	if err != nil {
+		return ""
+	}
+
+	var genesis struct {
+		ChainID string `json:"chain_id"`
+	}
+	if err := json.Unmarshal(data, &genesis); err != nil {
+		return ""
+	}
+
+	return genesis.ChainID
+}
