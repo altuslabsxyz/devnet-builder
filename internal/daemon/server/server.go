@@ -24,6 +24,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/server/ante"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/subnet"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/upgrader"
 	"google.golang.org/grpc"
 )
@@ -91,6 +92,7 @@ type Server struct {
 	healthCtrl      *controller.HealthController
 	pluginManager   *PluginManager
 	subnetAllocator *subnet.Allocator
+	nodeRuntime     runtime.NodeRuntime // Node runtime for process management
 	grpcServer      *grpc.Server
 	listener        net.Listener // Unix socket listener
 	tcpListener     net.Listener // TCP/TLS listener (optional)
@@ -330,6 +332,7 @@ func New(config *Config) (*Server, error) {
 		healthCtrl:      healthCtrl,
 		pluginManager:   pluginMgr,
 		subnetAllocator: subnetAlloc,
+		nodeRuntime:     nodeRuntime,
 		grpcServer:      grpcServer,
 		logger:          logger,
 		logFile:         logFile,
@@ -380,6 +383,12 @@ func (s *Server) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Reconnect to running processes from previous session (orphaned processes)
+	if err := s.reconnectExistingProcesses(ctx); err != nil {
+		s.logger.Warn("partial process reconnection", "error", err)
+		// Continue anyway - failed nodes will be restarted by controllers
+	}
+
 	// Start controller manager in background
 	go s.manager.Start(ctx, s.config.Workers)
 
@@ -426,6 +435,7 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 // Shutdown gracefully shuts down the server.
+// Detaches from running processes so they continue as orphans.
 func (s *Server) Shutdown() error {
 	s.logger.Info("shutting down")
 
@@ -445,6 +455,15 @@ func (s *Server) Shutdown() error {
 			s.logger.Debug("controller workers stopped gracefully")
 		} else {
 			s.logger.Warn("controller workers did not stop within timeout, proceeding with shutdown")
+		}
+	}
+
+	// Detach from running processes - they will continue as orphans
+	// and can be reconnected on next startup
+	if pr, ok := s.nodeRuntime.(*runtime.ProcessRuntime); ok {
+		s.logger.Info("detaching from running processes (will persist as orphans)")
+		if err := pr.Detach(); err != nil {
+			s.logger.Warn("failed to detach from processes", "error", err)
 		}
 	}
 
@@ -480,6 +499,53 @@ func (s *Server) Shutdown() error {
 	os.Remove(s.config.SocketPath)
 
 	s.logger.Info("devnetd stopped")
+	return nil
+}
+
+// reconnectExistingProcesses attempts to reconnect to orphaned node processes
+// from a previous daemon session. This is called at startup.
+func (s *Server) reconnectExistingProcesses(ctx context.Context) error {
+	pr, ok := s.nodeRuntime.(*runtime.ProcessRuntime)
+	if !ok {
+		// Not using ProcessRuntime (e.g., Docker), skip reconnection
+		return nil
+	}
+
+	// List all devnets from all namespaces
+	devnets, err := s.store.ListDevnets(ctx, "")
+	if err != nil {
+		return fmt.Errorf("failed to list devnets: %w", err)
+	}
+
+	// Collect all nodes from all devnets
+	var allNodes []*types.Node
+	for _, devnet := range devnets {
+		nodes, err := s.store.ListNodes(ctx, devnet.Metadata.Namespace, devnet.Metadata.Name)
+		if err != nil {
+			s.logger.Warn("failed to list nodes for devnet",
+				"namespace", devnet.Metadata.Namespace,
+				"devnet", devnet.Metadata.Name,
+				"error", err)
+			continue
+		}
+		allNodes = append(allNodes, nodes...)
+	}
+
+	if len(allNodes) == 0 {
+		s.logger.Debug("no nodes to reconnect")
+		return nil
+	}
+
+	// Attempt to reconnect to running processes
+	reconnected, err := pr.ReconnectAll(ctx, allNodes)
+	if err != nil {
+		return fmt.Errorf("reconnection failed: %w", err)
+	}
+
+	s.logger.Info("process reconnection summary",
+		"reconnected", reconnected,
+		"totalNodes", len(allNodes))
+
 	return nil
 }
 
