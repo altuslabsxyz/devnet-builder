@@ -112,6 +112,7 @@ func (lm *LogManager) followFile(ctx context.Context, logPath string, lines int)
 	cfg := tail.Config{
 		Follow:    true,
 		ReOpen:    true, // Handle log rotation
+		Poll:      true, // Use polling instead of inotify - more reliable for detecting appends after process restart
 		MustExist: true,
 		Location:  &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd},
 		Logger:    log.New(io.Discard, "", 0), // Suppress tail's internal logging
