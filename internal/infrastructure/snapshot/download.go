@@ -165,8 +165,7 @@ func downloadFile(ctx context.Context, url, destPath string, logger *output.Logg
 
 	_, err = io.Copy(out, progressReader)
 
-	// Complete progress bar
-	logger.ProgressComplete()
+	// Note: Terminal progress bar removed - progress reported via ProgressReporter
 
 	if err != nil {
 		os.Remove(tmpPath)
@@ -233,10 +232,8 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 
 		pr.lastReport = now
 
-		// Show progress bar (visible by default)
-		pr.logger.Progress(*pr.downloaded, pr.total, pr.currentSpeed)
-
 		// Report step progress if progress reporter is provided
+		// Note: Terminal progress bar removed - CLI displays progress via daemon API
 		if pr.progress != nil {
 			pr.progress.ReportStep(ports.StepProgress{
 				Name:    "Downloading snapshot",

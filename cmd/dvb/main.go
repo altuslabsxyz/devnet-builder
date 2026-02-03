@@ -12,6 +12,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	"github.com/altuslabsxyz/devnet-builder/internal/dvbcontext"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/altuslabsxyz/devnet-builder/internal/tui"
 	"github.com/altuslabsxyz/devnet-builder/internal/version"
 	"github.com/fatih/color"
@@ -453,7 +454,6 @@ func getBinaryNameFromPlugin(plugin string) string {
 
 // pollStartStatus polls devnet status until Running phase is reached.
 func pollStartStatus(ctx context.Context, ns, name string) error {
-	color.Cyan("Starting devnet %q...", name)
 	return pollStartStatusWithClient(ctx, ns, name, daemonClient, 2*time.Second)
 }
 
@@ -462,29 +462,41 @@ func pollStartStatusWithClient(ctx context.Context, ns, name string, client devn
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
+	spinner := output.NewStatusSpinner()
+	spinner.Start(fmt.Sprintf("Phase: Pending | Starting %s...", name))
+	defer spinner.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
+			spinner.StopWithNewline()
 			return ctx.Err()
 		case <-ticker.C:
 			devnet, err := client.GetDevnet(ctx, ns, name)
 			if err != nil {
+				spinner.StopWithNewline()
 				return err
 			}
 
-			fmt.Fprintf(os.Stderr, "  Phase: %s, Nodes: %d/%d ready\n",
-				devnet.Status.Phase,
-				devnet.Status.ReadyNodes,
-				devnet.Status.Nodes)
+			// Update spinner message
+			msg := devnet.Status.Message
+			if msg == "" {
+				msg = devnet.Status.Phase
+			}
+			spinner.Update(fmt.Sprintf("Phase: %s | %s | Nodes: %d/%d",
+				devnet.Status.Phase, msg, devnet.Status.ReadyNodes, devnet.Status.Nodes))
 
 			switch devnet.Status.Phase {
 			case types.PhaseRunning:
+				spinner.StopWithNewline()
 				fmt.Fprintf(os.Stderr, "\n")
 				color.Green("✓ Devnet %q is running", name)
 				return nil
 			case types.PhaseDegraded:
+				spinner.StopWithNewline()
 				return fmt.Errorf("devnet degraded: %s", devnet.Status.Message)
 			case types.PhaseStopped:
+				spinner.StopWithNewline()
 				return fmt.Errorf("devnet stopped unexpectedly: %s", devnet.Status.Message)
 			case types.PhasePending, types.PhaseProvisioning:
 				// Transitional states - continue polling
@@ -494,12 +506,9 @@ func pollStartStatusWithClient(ctx context.Context, ns, name string, client devn
 }
 
 // runStartTUI shows interactive progress using TUI.
-// For now, falls back to polling. Can be enhanced with BubbleTea later.
+// Uses spinner via pollStartStatus. Can be enhanced with BubbleTea later.
 func runStartTUI(ctx context.Context, ns, name string) error {
-	// Initial message
-	fmt.Fprintf(os.Stderr, "Starting devnet %q...\n\n", name)
-
-	// For now, use polling. Can be enhanced with BubbleTea TUI later
-	// following the pattern in provision.go:693 (runProvisionTUI)
+	// Uses spinner via pollStartStatus -> pollStartStatusWithClient
+	// Can be enhanced with BubbleTea TUI later following provision.go:693
 	return pollStartStatus(ctx, ns, name)
 }

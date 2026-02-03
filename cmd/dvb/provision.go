@@ -13,6 +13,7 @@ import (
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/altuslabsxyz/devnet-builder/internal/tui"
 	"github.com/altuslabsxyz/devnet-builder/internal/tui/views"
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,6 +21,9 @@ import (
 	"github.com/spf13/cobra"
 	k8syaml "sigs.k8s.io/yaml"
 )
+
+// stepSpinner is a package-level spinner for non-byte progress steps in verbose mode
+var stepSpinner *output.StatusSpinner
 
 // ProvisionMode represents the mode of operation for the provision command
 type ProvisionMode int
@@ -781,7 +785,12 @@ func printProgressStep(entry *client.ProvisionLogEntry) {
 	switch entry.StepStatus {
 	case "running":
 		if entry.ProgressTotal > 0 && entry.ProgressUnit == "bytes" {
-			// Byte-based progress with progress bar, speed, and ETA
+			// Byte-based progress: stop spinner if running, show progress bar
+			if stepSpinner != nil {
+				stepSpinner.Stop()
+				stepSpinner = nil
+			}
+
 			pct := float64(entry.ProgressCurrent) / float64(entry.ProgressTotal) * 100
 			currentMB := float64(entry.ProgressCurrent) / (1024 * 1024)
 			totalMB := float64(entry.ProgressTotal) / (1024 * 1024)
@@ -813,17 +822,26 @@ func printProgressStep(entry *client.ProvisionLogEntry) {
 
 			fmt.Fprintf(os.Stderr, "\r  %s %5.1f%% | %.1f/%.1f MB | %.1f MB/s | ETA: %s    ",
 				color.CyanString(bar), pct, currentMB, totalMB, speedMB, eta)
-		} else if entry.StepDetail != "" {
-			fmt.Fprintf(os.Stderr, "\r  %s %s... (%s)    ",
-				color.CyanString("→"),
-				entry.StepName,
-				entry.StepDetail)
 		} else {
-			fmt.Fprintf(os.Stderr, "\r  %s %s...    ",
-				color.CyanString("→"),
-				entry.StepName)
+			// Non-byte progress: use spinner for animated feedback
+			msg := entry.StepName
+			if entry.StepDetail != "" {
+				msg = fmt.Sprintf("%s (%s)", entry.StepName, entry.StepDetail)
+			}
+
+			if stepSpinner == nil {
+				stepSpinner = output.NewStatusSpinner()
+				stepSpinner.Start(msg)
+			} else {
+				stepSpinner.Update(msg)
+			}
 		}
 	case "completed":
+		// Stop spinner and show completion
+		if stepSpinner != nil {
+			stepSpinner.Stop()
+			stepSpinner = nil
+		}
 		clearLine()
 		if entry.StepDetail != "" {
 			fmt.Fprintf(os.Stderr, "  %s %s (%s)\n",
@@ -836,6 +854,11 @@ func printProgressStep(entry *client.ProvisionLogEntry) {
 				entry.StepName)
 		}
 	case "failed":
+		// Stop spinner and show failure
+		if stepSpinner != nil {
+			stepSpinner.Stop()
+			stepSpinner = nil
+		}
 		clearLine()
 		fmt.Fprintf(os.Stderr, "  %s %s\n",
 			color.RedString("✗"),
