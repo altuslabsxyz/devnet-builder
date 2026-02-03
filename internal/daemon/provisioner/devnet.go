@@ -346,6 +346,7 @@ func (p *DevnetProvisioner) createNodeSpec(devnet *types.Devnet, index int, role
 			Address:    nodeAddress,
 			Desired:    types.NodePhaseRunning,
 			ChainID:    devnet.Spec.ChainID,
+			Network:    devnet.Spec.Plugin,
 		},
 		Status: types.NodeStatus{
 			Phase:   types.NodePhasePending,

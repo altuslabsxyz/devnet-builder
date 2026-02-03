@@ -19,10 +19,11 @@ import (
 
 // ProcessRuntimeConfig configures the process runtime
 type ProcessRuntimeConfig struct {
-	DataDir       string
-	LogConfig     LogConfig
-	PluginRuntime PluginRuntime
-	Logger        *slog.Logger
+	DataDir               string
+	LogConfig             LogConfig
+	PluginRuntime         PluginRuntime         // Deprecated: use PluginRuntimeProvider
+	PluginRuntimeProvider PluginRuntimeProvider // Provider to get PluginRuntime per network
+	Logger                *slog.Logger
 }
 
 // ProcessRuntime manages local processes
@@ -78,12 +79,22 @@ func (pr *ProcessRuntime) StartNode(ctx context.Context, node *types.Node, opts 
 		pr.logManager.Close(nodeID)
 	}
 
+	// Determine PluginRuntime: opts > provider (by network) > config default
+	pluginRuntime := opts.PluginRuntime
+	if pluginRuntime == nil && pr.config.PluginRuntimeProvider != nil {
+		// Look up the node's network from the devnet
+		pluginRuntime = pr.config.PluginRuntimeProvider.GetPluginRuntime(node.Spec.Network)
+	}
+	if pluginRuntime == nil {
+		pluginRuntime = pr.config.PluginRuntime
+	}
+
 	// Determine command
 	var command []string
 	if override, ok := pr.cmdOverride[nodeID]; ok {
 		command = override
-	} else if pr.config.PluginRuntime != nil {
-		command = pr.config.PluginRuntime.StartCommand(node)
+	} else if pluginRuntime != nil {
+		command = pluginRuntime.StartCommand(node)
 	} else {
 		// Default command
 		command = []string{node.Spec.BinaryPath, "start", "--home", node.Spec.HomeDir}
@@ -98,8 +109,8 @@ func (pr *ProcessRuntime) StartNode(ctx context.Context, node *types.Node, opts 
 
 	// Build environment
 	env := make(map[string]string)
-	if pr.config.PluginRuntime != nil {
-		for k, v := range pr.config.PluginRuntime.StartEnv(node) {
+	if pluginRuntime != nil {
+		for k, v := range pluginRuntime.StartEnv(node) {
 			env[k] = v
 		}
 	}
@@ -110,9 +121,9 @@ func (pr *ProcessRuntime) StartNode(ctx context.Context, node *types.Node, opts 
 	// Determine signals
 	stopSignal := syscall.SIGTERM
 	gracePeriod := 10 * time.Second
-	if pr.config.PluginRuntime != nil {
-		stopSignal = pr.config.PluginRuntime.StopSignal()
-		gracePeriod = pr.config.PluginRuntime.GracePeriod()
+	if pluginRuntime != nil {
+		stopSignal = pluginRuntime.StopSignal()
+		gracePeriod = pluginRuntime.GracePeriod()
 	}
 
 	// Create supervisor
