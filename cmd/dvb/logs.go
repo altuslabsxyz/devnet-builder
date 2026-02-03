@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -17,6 +18,44 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
+
+// validNodeNamePattern matches safe node names: alphanumeric, hyphens, underscores
+var validNodeNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+
+// isValidNodeName checks if a node name is safe (no path traversal)
+func isValidNodeName(name string) bool {
+	// Reject empty names
+	if name == "" {
+		return false
+	}
+	// Reject names with path separators or parent directory references
+	if strings.Contains(name, "/") || strings.Contains(name, "\\") ||
+		strings.Contains(name, "..") || name == "." {
+		return false
+	}
+	// Must match safe pattern
+	return validNodeNamePattern.MatchString(name)
+}
+
+// isPathWithinBase checks if resolvedPath stays within baseDir (prevents symlink escapes)
+func isPathWithinBase(resolvedPath, baseDir string) bool {
+	// Clean both paths
+	resolvedPath = filepath.Clean(resolvedPath)
+	baseDir = filepath.Clean(baseDir)
+
+	// Check if resolved path starts with base directory
+	if !strings.HasPrefix(resolvedPath, baseDir) {
+		return false
+	}
+
+	// Ensure it's a proper subdirectory, not just a prefix match
+	// e.g., /base/dir should not match /base/directory
+	if len(resolvedPath) > len(baseDir) && resolvedPath[len(baseDir)] != filepath.Separator {
+		return false
+	}
+
+	return true
+}
 
 // logsOptions holds options for the logs command
 type logsOptions struct {
@@ -159,6 +198,10 @@ func runLogs(ctx context.Context, opts *logsOptions) error {
 	// Get list of nodes to show logs for
 	var nodes []string
 	if opts.node != "" {
+		// Validate node name to prevent path traversal
+		if !isValidNodeName(opts.node) {
+			return fmt.Errorf("invalid node name '%s': must be alphanumeric with hyphens or underscores", opts.node)
+		}
 		// Specific node requested
 		nodePath := filepath.Join(nodesDir, opts.node)
 		if _, err := os.Stat(nodePath); os.IsNotExist(err) {
@@ -210,7 +253,7 @@ func runLogs(ctx context.Context, opts *logsOptions) error {
 	return streamMultipleLogFiles(ctx, logFiles, opts)
 }
 
-// findLogFile locates the log file for a node
+// findLogFile locates the log file for a node, with symlink protection
 func findLogFile(nodesDir, node string) string {
 	nodePath := filepath.Join(nodesDir, node)
 
@@ -224,6 +267,10 @@ func findLogFile(nodesDir, node string) string {
 
 	for _, path := range possiblePaths {
 		if _, err := os.Stat(path); err == nil {
+			// Verify the path doesn't escape via symlinks
+			if !verifyPathSafe(path, nodesDir) {
+				continue
+			}
 			return path
 		}
 	}
@@ -233,12 +280,37 @@ func findLogFile(nodesDir, node string) string {
 	if err == nil {
 		for _, entry := range entries {
 			if strings.HasSuffix(entry.Name(), ".log") {
-				return filepath.Join(nodePath, entry.Name())
+				path := filepath.Join(nodePath, entry.Name())
+				// Verify the path doesn't escape via symlinks
+				if !verifyPathSafe(path, nodesDir) {
+					continue
+				}
+				return path
 			}
 		}
 	}
 
 	return ""
+}
+
+// verifyPathSafe checks that a path doesn't escape the base directory via symlinks
+func verifyPathSafe(path, baseDir string) bool {
+	// Resolve any symlinks in the path
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		// If we can't resolve symlinks, treat as unsafe
+		return false
+	}
+
+	// Also resolve the base directory in case it contains symlinks
+	resolvedBase, err := filepath.EvalSymlinks(baseDir)
+	if err != nil {
+		// Use the original base if we can't resolve
+		resolvedBase = baseDir
+	}
+
+	// Check that resolved path stays within base directory
+	return isPathWithinBase(resolved, resolvedBase)
 }
 
 // streamLogFile streams a single log file to stdout

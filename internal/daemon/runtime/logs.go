@@ -96,48 +96,58 @@ func (lm *LogManager) GetReader(ctx context.Context, logPath string, opts LogOpt
 
 // followFile uses nxadm/tail to follow a log file for new content.
 func (lm *LogManager) followFile(ctx context.Context, logPath string, lines int) (io.ReadCloser, error) {
-	// Determine where to start reading
-	location := &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd}
+	// If lines > 0, we need to first read the last N lines, then follow from end.
+	// The tail package doesn't support "last N lines" directly - Location is for byte offset.
+	var initialContent io.ReadCloser
 	if lines > 0 {
-		// Start from end and show last N lines
-		location = nil // Let tail calculate from end
+		// Read the last N lines first
+		var err error
+		initialContent, err = lm.tailFile(logPath, lines)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read initial lines: %w", err)
+		}
 	}
 
+	// Always start following from the end of the file
 	cfg := tail.Config{
 		Follow:    true,
 		ReOpen:    true, // Handle log rotation
 		MustExist: true,
-		Location:  location,
+		Location:  &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd},
 		Logger:    log.New(io.Discard, "", 0), // Suppress tail's internal logging
 	}
 
 	t, err := tail.TailFile(logPath, cfg)
 	if err != nil {
+		if initialContent != nil {
+			initialContent.Close()
+		}
 		return nil, fmt.Errorf("failed to tail file: %w", err)
 	}
 
-	return newTailReader(ctx, t, lines), nil
+	return newTailReader(ctx, t, initialContent), nil
 }
 
 // tailReader wraps tail.Tail to implement io.ReadCloser.
+// It optionally reads from initialContent first, then follows with tail.
 type tailReader struct {
-	ctx    context.Context
-	t      *tail.Tail
-	buf    []byte
-	lines  int
-	lineCh <-chan *tail.Line
-	done   chan struct{}
-	closed bool
-	mu     sync.Mutex
+	ctx            context.Context
+	t              *tail.Tail
+	buf            []byte
+	initialContent io.ReadCloser // Optional: content to read before following
+	lineCh         <-chan *tail.Line
+	done           chan struct{}
+	closed         bool
+	mu             sync.Mutex
 }
 
-func newTailReader(ctx context.Context, t *tail.Tail, lines int) *tailReader {
+func newTailReader(ctx context.Context, t *tail.Tail, initialContent io.ReadCloser) *tailReader {
 	return &tailReader{
-		ctx:    ctx,
-		t:      t,
-		lines:  lines,
-		lineCh: t.Lines,
-		done:   make(chan struct{}),
+		ctx:            ctx,
+		t:              t,
+		initialContent: initialContent,
+		lineCh:         t.Lines,
+		done:           make(chan struct{}),
 	}
 }
 
@@ -154,6 +164,25 @@ func (tr *tailReader) Read(p []byte) (int, error) {
 		n := copy(p, tr.buf)
 		tr.buf = tr.buf[n:]
 		return n, nil
+	}
+
+	// If we have initial content (last N lines), read from it first
+	if tr.initialContent != nil {
+		n, err := tr.initialContent.Read(p)
+		if err == io.EOF {
+			// Done with initial content, close it and switch to following
+			tr.initialContent.Close()
+			tr.initialContent = nil
+			// If we got some data before EOF, return it
+			if n > 0 {
+				return n, nil
+			}
+			// Otherwise fall through to tail following
+		} else if err != nil {
+			return n, err
+		} else {
+			return n, nil
+		}
 	}
 
 	// Wait for new line from tail
@@ -188,6 +217,13 @@ func (tr *tailReader) Close() error {
 	}
 	tr.closed = true
 	close(tr.done)
+
+	// Close initial content if still open
+	if tr.initialContent != nil {
+		tr.initialContent.Close()
+		tr.initialContent = nil
+	}
+
 	err := tr.t.Stop()
 	tr.t.Cleanup()
 	return err

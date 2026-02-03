@@ -13,6 +13,10 @@ import (
 
 // CreateDevnet creates a new devnet.
 func (s *BoltStore) CreateDevnet(ctx context.Context, devnet *Devnet) error {
+	if devnet == nil {
+		return fmt.Errorf("devnet cannot be nil")
+	}
+
 	return s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDevnets)
 

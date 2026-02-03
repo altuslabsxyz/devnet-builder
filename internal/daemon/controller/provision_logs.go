@@ -121,7 +121,13 @@ func (c *DevnetController) broadcastLog(namespace, name string, entry *Provision
 		case <-sub.done:
 			// Subscriber unsubscribed while we were trying to send
 		default:
-			// Channel buffer full, skip this subscriber
+			// Channel buffer full, log the dropped message
+			if c.logger != nil {
+				c.logger.Warn("provision log dropped due to slow consumer",
+					"namespace", namespace,
+					"devnet", name,
+					"message", entry.Message)
+			}
 		}
 	}
 }

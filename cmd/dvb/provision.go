@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -696,9 +697,21 @@ func runProvisionTUI(ctx context.Context, c *client.Client, namespace, devnetNam
 	// Create program
 	p := tea.NewProgram(model)
 
+	// Create a cancellable context for the streaming goroutine
+	// This ensures the goroutine stops when the TUI exits
+	streamCtx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
+
 	// Start log streaming in background
 	go func() {
-		err := c.StreamProvisionLogs(ctx, namespace, devnetName, func(entry *client.ProvisionLogEntry) error {
+		err := c.StreamProvisionLogs(streamCtx, namespace, devnetName, func(entry *client.ProvisionLogEntry) error {
+			// Check if context is cancelled before sending
+			select {
+			case <-streamCtx.Done():
+				return streamCtx.Err()
+			default:
+			}
+
 			p.Send(views.StepProgressMsg{
 				StepName:   entry.StepName,
 				StepStatus: entry.StepStatus,
@@ -710,9 +723,18 @@ func runProvisionTUI(ctx context.Context, c *client.Client, namespace, devnetNam
 			})
 			return nil
 		})
-		if err != nil {
+
+		// Only send messages if context is still active
+		select {
+		case <-streamCtx.Done():
+			// Context cancelled, TUI already exited - don't send
+			return
+		default:
+		}
+
+		if err != nil && !errors.Is(err, context.Canceled) {
 			p.Send(views.ProvisionErrorMsg{Error: err})
-		} else {
+		} else if err == nil {
 			p.Send(views.ProvisionCompleteMsg{})
 		}
 	}()
@@ -723,7 +745,10 @@ func runProvisionTUI(ctx context.Context, c *client.Client, namespace, devnetNam
 		return err
 	}
 
-	pm := finalModel.(views.ProvisionModel)
+	pm, ok := finalModel.(views.ProvisionModel)
+	if !ok {
+		return fmt.Errorf("unexpected TUI model type: %T", finalModel)
+	}
 	return pm.GetError()
 }
 
