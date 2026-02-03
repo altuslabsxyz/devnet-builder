@@ -2,13 +2,17 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"text/tabwriter"
+	"time"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	"github.com/altuslabsxyz/devnet-builder/internal/dvbcontext"
+	"github.com/altuslabsxyz/devnet-builder/internal/tui"
 	"github.com/altuslabsxyz/devnet-builder/internal/version"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -300,17 +304,24 @@ func newListCmd() *cobra.Command {
 }
 
 func newStartCmd() *cobra.Command {
-	var namespace string
+	var (
+		namespace string
+		noWait    bool
+		verbose   bool
+		force     bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "start [devnet]",
 		Short: "Start a stopped devnet",
+		Long:  "Start a stopped devnet. If already running, prompts to restart (use --force to skip prompt).",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
+			// 1. Resolve devnet from args or context
 			var explicitDevnet string
 			if len(args) > 0 {
 				explicitDevnet = args[0]
@@ -323,19 +334,63 @@ func newStartCmd() *cobra.Command {
 
 			printContextHeader(explicitDevnet, currentContext)
 
-			devnet, err := daemonClient.StartDevnet(cmd.Context(), ns, name)
+			// 2. Get current status to check if already running
+			devnet, err := daemonClient.GetDevnet(cmd.Context(), ns, name)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to get devnet: %w", err)
 			}
 
-			color.Green("✓ Devnet %q starting", devnet.Metadata.Name)
-			fmt.Printf("  Phase: %s\n", devnet.Status.Phase)
+			// 3. Check if running - prompt for restart (unless --force)
+			if devnet.Status.Phase == types.PhaseRunning {
+				if !force {
+					// In non-interactive mode without --force, error out
+					if !tui.IsInteractive() {
+						return fmt.Errorf("devnet %q is already running; use --force to restart in non-interactive mode", name)
+					}
+					// Interactive mode: prompt for confirmation
+					fmt.Fprintf(os.Stderr, "Devnet %q is already running. Restart? [y/N] ", name)
+					var response string
+					if _, err := fmt.Scanln(&response); err != nil ||
+						(response != "y" && response != "Y") {
+						fmt.Fprintf(os.Stderr, "Cancelled\n")
+						return nil
+					}
+				}
 
-			return nil
+				// Stop for restart
+				color.Yellow("Stopping devnet %q...", name)
+				if _, err := daemonClient.StopDevnet(cmd.Context(), ns, name); err != nil {
+					return fmt.Errorf("failed to stop: %w", err)
+				}
+			}
+
+			// 4. Start the devnet
+			devnet, err = daemonClient.StartDevnet(cmd.Context(), ns, name)
+			if err != nil {
+				return fmt.Errorf("failed to start: %w", err)
+			}
+
+			// 5. Handle --no-wait
+			if noWait {
+				color.Green("✓ Devnet %q starting", name)
+				fmt.Fprintf(os.Stderr, "  Phase: %s\n", devnet.Status.Phase)
+				return nil
+			}
+
+			// 6. Handle wait behavior (same pattern as provision.go)
+			if tui.IsInteractive() && !verbose {
+				// Use TUI for interactive terminals
+				return runStartTUI(cmd.Context(), ns, name)
+			}
+			// Stream detailed status (verbose or non-interactive)
+			return pollStartStatus(cmd.Context(), ns, name)
 		},
 	}
 
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+	cmd.Flags().BoolVar(&noWait, "no-wait", false, "Return immediately without waiting")
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show verbose status updates")
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "Force restart without confirmation prompt")
 
 	return cmd
 }
@@ -394,4 +449,57 @@ func getBinaryNameFromPlugin(plugin string) string {
 	default:
 		return "gaiad"
 	}
+}
+
+// pollStartStatus polls devnet status until Running phase is reached.
+func pollStartStatus(ctx context.Context, ns, name string) error {
+	color.Cyan("Starting devnet %q...", name)
+	return pollStartStatusWithClient(ctx, ns, name, daemonClient, 2*time.Second)
+}
+
+// pollStartStatusWithClient is the testable implementation of pollStartStatus.
+func pollStartStatusWithClient(ctx context.Context, ns, name string, client devnetGetter, pollInterval time.Duration) error {
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			devnet, err := client.GetDevnet(ctx, ns, name)
+			if err != nil {
+				return err
+			}
+
+			fmt.Fprintf(os.Stderr, "  Phase: %s, Nodes: %d/%d ready\n",
+				devnet.Status.Phase,
+				devnet.Status.ReadyNodes,
+				devnet.Status.Nodes)
+
+			switch devnet.Status.Phase {
+			case types.PhaseRunning:
+				fmt.Fprintf(os.Stderr, "\n")
+				color.Green("✓ Devnet %q is running", name)
+				return nil
+			case types.PhaseDegraded:
+				return fmt.Errorf("devnet degraded: %s", devnet.Status.Message)
+			case types.PhaseStopped:
+				return fmt.Errorf("devnet stopped unexpectedly: %s", devnet.Status.Message)
+			case types.PhasePending, types.PhaseProvisioning:
+				// Transitional states - continue polling
+			}
+		}
+	}
+}
+
+// runStartTUI shows interactive progress using TUI.
+// For now, falls back to polling. Can be enhanced with BubbleTea later.
+func runStartTUI(ctx context.Context, ns, name string) error {
+	// Initial message
+	fmt.Fprintf(os.Stderr, "Starting devnet %q...\n\n", name)
+
+	// For now, use polling. Can be enhanced with BubbleTea TUI later
+	// following the pattern in provision.go:693 (runProvisionTUI)
+	return pollStartStatus(ctx, ns, name)
 }

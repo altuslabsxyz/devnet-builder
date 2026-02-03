@@ -3,6 +3,8 @@ package runtime
 
 import (
 	"context"
+	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -230,4 +232,261 @@ func TestProcessRuntimeRestartNotRunning(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error when restarting non-running node")
 	}
+}
+
+func TestProcessRuntimeDetach(t *testing.T) {
+	tempDir := t.TempDir()
+
+	pr := NewProcessRuntime(ProcessRuntimeConfig{
+		DataDir: tempDir,
+	})
+
+	// Start multiple nodes
+	var pids []int
+	for i := 0; i < 2; i++ {
+		nodeID := "detach-test-node-" + string(rune('a'+i))
+		node := &types.Node{
+			Metadata: types.ResourceMeta{
+				Name: nodeID,
+			},
+			Spec: types.NodeSpec{
+				BinaryPath: "sleep",
+				HomeDir:    tempDir,
+			},
+		}
+
+		pr.SetCommandOverride(nodeID, []string{"sleep", "60"})
+
+		err := pr.StartNode(context.Background(), node, StartOptions{
+			RestartPolicy: RestartPolicy{Policy: "never"},
+		})
+		if err != nil {
+			t.Fatalf("StartNode for %s failed: %v", nodeID, err)
+		}
+	}
+
+	// Give processes time to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Get PIDs before detach
+	for i := 0; i < 2; i++ {
+		nodeID := "detach-test-node-" + string(rune('a'+i))
+		status, err := pr.GetNodeStatus(context.Background(), nodeID)
+		if err != nil {
+			t.Fatalf("GetNodeStatus for %s failed: %v", nodeID, err)
+		}
+		if !status.Running || status.PID <= 0 {
+			t.Fatalf("Node %s should be running with valid PID", nodeID)
+		}
+		pids = append(pids, status.PID)
+	}
+
+	// Detach should NOT stop processes
+	err := pr.Detach()
+	if err != nil {
+		t.Fatalf("Detach failed: %v", err)
+	}
+
+	// Give a moment for supervisor to exit
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify processes are still running (using signal 0)
+	for i, pid := range pids {
+		proc, err := os.FindProcess(pid)
+		if err != nil {
+			t.Errorf("FindProcess for PID %d failed: %v", pid, err)
+			continue
+		}
+		if err := proc.Signal(syscall.Signal(0)); err != nil {
+			t.Errorf("Process %d (PID %d) should still be running after detach: %v", i, pid, err)
+		}
+	}
+
+	// Cleanup: kill the orphaned processes
+	for _, pid := range pids {
+		if proc, err := os.FindProcess(pid); err == nil {
+			_ = proc.Signal(syscall.SIGTERM)
+		}
+	}
+}
+
+func TestProcessRuntimeReconnect(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// First runtime starts a process
+	pr1 := NewProcessRuntime(ProcessRuntimeConfig{
+		DataDir: tempDir,
+	})
+
+	node := &types.Node{
+		Metadata: types.ResourceMeta{
+			Name: "reconnect-test-node",
+		},
+		Spec: types.NodeSpec{
+			BinaryPath: "sleep",
+			HomeDir:    tempDir,
+		},
+	}
+
+	pr1.SetCommandOverride("reconnect-test-node", []string{"sleep", "60"})
+
+	ctx := context.Background()
+
+	err := pr1.StartNode(ctx, node, StartOptions{
+		RestartPolicy: RestartPolicy{Policy: "never"},
+	})
+	if err != nil {
+		t.Fatalf("StartNode failed: %v", err)
+	}
+
+	// Give process time to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Get PID
+	status, err := pr1.GetNodeStatus(ctx, "reconnect-test-node")
+	if err != nil {
+		t.Fatalf("GetNodeStatus failed: %v", err)
+	}
+	if !status.Running || status.PID <= 0 {
+		t.Fatal("Node should be running with valid PID")
+	}
+	originalPID := status.PID
+
+	// Detach (simulates daemon shutdown)
+	err = pr1.Detach()
+	if err != nil {
+		t.Fatalf("Detach failed: %v", err)
+	}
+
+	// Create new runtime (simulates daemon restart)
+	pr2 := NewProcessRuntime(ProcessRuntimeConfig{
+		DataDir: tempDir,
+	})
+
+	// Update node with stored PID (simulating what ReconnectAll would do)
+	node.Status.PID = originalPID
+	node.Status.Phase = types.NodePhaseRunning
+
+	// Reconnect to the running process
+	ok, err := pr2.ReconnectNode(ctx, node, originalPID)
+	if err != nil {
+		t.Fatalf("ReconnectNode failed: %v", err)
+	}
+	if !ok {
+		t.Fatal("ReconnectNode should return true for running process")
+	}
+
+	// Verify we can get status through the new runtime
+	status2, err := pr2.GetNodeStatus(ctx, "reconnect-test-node")
+	if err != nil {
+		t.Fatalf("GetNodeStatus on new runtime failed: %v", err)
+	}
+	if !status2.Running {
+		t.Error("Node should be running through reconnected supervisor")
+	}
+	if status2.PID != originalPID {
+		t.Errorf("PID mismatch: got %d, want %d", status2.PID, originalPID)
+	}
+
+	// Cleanup: stop through new runtime
+	err = pr2.StopNode(ctx, "reconnect-test-node", true)
+	if err != nil {
+		// Monitoring supervisor in detach mode doesn't kill, so use signal
+		if proc, err := os.FindProcess(originalPID); err == nil {
+			_ = proc.Signal(syscall.SIGTERM)
+		}
+	}
+}
+
+func TestProcessRuntimeReconnectDeadProcess(t *testing.T) {
+	tempDir := t.TempDir()
+
+	pr := NewProcessRuntime(ProcessRuntimeConfig{
+		DataDir: tempDir,
+	})
+
+	node := &types.Node{
+		Metadata: types.ResourceMeta{
+			Name: "dead-reconnect-test",
+		},
+		Spec: types.NodeSpec{
+			BinaryPath: "nonexistent-binary",
+			HomeDir:    tempDir,
+		},
+		Status: types.NodeStatus{
+			Phase: types.NodePhaseRunning,
+			PID:   999999, // Almost certainly not running
+		},
+	}
+
+	ctx := context.Background()
+
+	// Try to reconnect to a dead PID
+	ok, err := pr.ReconnectNode(ctx, node, 999999)
+	if err != nil {
+		t.Fatalf("ReconnectNode failed: %v", err)
+	}
+	if ok {
+		t.Error("ReconnectNode should return false for dead process")
+	}
+}
+
+func TestValidateProcessFallback(t *testing.T) {
+	tempDir := t.TempDir()
+
+	pr := NewProcessRuntime(ProcessRuntimeConfig{
+		DataDir: tempDir,
+	})
+
+	// Start a real process to validate against
+	pr.SetCommandOverride("validate-test", []string{"sleep", "60"})
+
+	node := &types.Node{
+		Metadata: types.ResourceMeta{
+			Name: "validate-test",
+		},
+		Spec: types.NodeSpec{
+			BinaryPath: "sleep",
+			HomeDir:    tempDir,
+		},
+	}
+
+	ctx := context.Background()
+
+	err := pr.StartNode(ctx, node, StartOptions{
+		RestartPolicy: RestartPolicy{Policy: "never"},
+	})
+	if err != nil {
+		t.Fatalf("StartNode failed: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	status, err := pr.GetNodeStatus(ctx, "validate-test")
+	if err != nil || status.PID <= 0 {
+		t.Fatalf("Failed to get running process: %v", err)
+	}
+
+	pid := status.PID
+
+	// Validation should pass for matching process
+	valid := pr.validateProcess(pid, node)
+	if !valid {
+		t.Error("validateProcess should return true for matching process")
+	}
+
+	// Validation with wrong binary should fail
+	wrongNode := &types.Node{
+		Spec: types.NodeSpec{
+			BinaryPath: "/totally/wrong/binary",
+			HomeDir:    "/wrong/home",
+		},
+	}
+	valid = pr.validateProcess(pid, wrongNode)
+	if valid {
+		t.Error("validateProcess should return false for non-matching process")
+	}
+
+	// Cleanup
+	_ = pr.StopNode(ctx, "validate-test", true)
 }

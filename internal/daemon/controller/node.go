@@ -173,6 +173,17 @@ func (c *NodeController) reconcileStarting(ctx context.Context, node *types.Node
 
 			return c.store.UpdateNode(ctx, node)
 		}
+
+		// Get and persist PID for reconnection on daemon restart
+		nodeID := node.Metadata.Name
+		status, err := c.runtime.GetNodeStatus(ctx, nodeID)
+		if err == nil && status.PID > 0 {
+			node.Status.PID = status.PID
+			c.logger.Debug("persisted node PID",
+				"devnet", node.Spec.DevnetRef,
+				"index", node.Spec.Index,
+				"pid", status.PID)
+		}
 	}
 
 	// Transition to Running
@@ -214,6 +225,7 @@ func (c *NodeController) reconcileRunning(ctx context.Context, node *types.Node)
 
 			node.Status.Phase = types.NodePhaseCrashed
 			node.Status.Message = "Node stopped unexpectedly"
+			node.Status.PID = 0 // Clear stale PID to prevent reconnection to wrong process
 
 			return c.store.UpdateNode(ctx, node)
 		}
