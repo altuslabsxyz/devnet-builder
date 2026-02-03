@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/nxadm/tail"
 )
@@ -100,11 +101,24 @@ func (lm *LogManager) followFile(ctx context.Context, logPath string, lines int)
 	// The tail package doesn't support "last N lines" directly - Location is for byte offset.
 	var initialContent io.ReadCloser
 	if lines > 0 {
-		// Read the last N lines first
-		var err error
-		initialContent, err = lm.tailFile(logPath, lines)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read initial lines: %w", err)
+		// Check if file has been recently modified (within last 2 seconds).
+		// If not, the content is likely stale (e.g., from before a node restart),
+		// so we skip showing initial content and just follow for new logs.
+		const freshnessThreshold = 2 * time.Second
+		showInitialContent := true
+		if info, err := os.Stat(logPath); err == nil {
+			if time.Since(info.ModTime()) > freshnessThreshold {
+				showInitialContent = false
+			}
+		}
+
+		if showInitialContent {
+			// Read the last N lines first
+			var err error
+			initialContent, err = lm.tailFile(logPath, lines)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read initial lines: %w", err)
+			}
 		}
 	}
 
