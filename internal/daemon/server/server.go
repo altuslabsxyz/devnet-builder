@@ -98,6 +98,11 @@ type Server struct {
 	tcpListener     net.Listener // TCP/TLS listener (optional)
 	logger          *slog.Logger
 	logFile         *os.File // Log file handle for cleanup
+
+	// shutdownCtx is cancelled during server shutdown to terminate long-running
+	// streaming RPCs (like log streaming) that would otherwise block GracefulStop.
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
 }
 
 // New creates a new server.
@@ -304,12 +309,17 @@ func New(config *Config) (*Server, error) {
 	// Create ante handler for request validation
 	anteHandler := ante.New(st, networkSvc)
 
+	// Create shutdown context for terminating long-running streaming RPCs during shutdown.
+	// This context is cancelled before GracefulStop() to unblock streams that would
+	// otherwise prevent graceful shutdown (e.g., log streaming blocked waiting for input).
+	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
+
 	// Register services
 	devnetSvc := NewDevnetServiceWithAnte(st, mgr, anteHandler, subnetAlloc)
 	devnetSvc.SetLogger(logger)
 	v1.RegisterDevnetServiceServer(grpcServer, devnetSvc)
 
-	nodeSvc := NewNodeServiceWithAnte(st, mgr, nodeRuntime, anteHandler)
+	nodeSvc := NewNodeServiceWithAnte(st, mgr, nodeRuntime, anteHandler, shutdownCtx)
 	nodeSvc.SetLogger(logger)
 	v1.RegisterNodeServiceServer(grpcServer, nodeSvc)
 
@@ -338,6 +348,8 @@ func New(config *Config) (*Server, error) {
 		grpcServer:      grpcServer,
 		logger:          logger,
 		logFile:         logFile,
+		shutdownCtx:     shutdownCtx,
+		shutdownCancel:  shutdownCancel,
 	}, nil
 }
 
@@ -467,6 +479,14 @@ func (s *Server) Shutdown() error {
 		if err := pr.Detach(); err != nil {
 			s.logger.Warn("failed to detach from processes", "error", err)
 		}
+	}
+
+	// Cancel shutdown context to terminate long-running streaming RPCs (e.g., log streaming).
+	// This MUST happen before GracefulStop() to unblock streams that would otherwise
+	// prevent graceful shutdown from completing.
+	if s.shutdownCancel != nil {
+		s.logger.Debug("cancelling streaming RPCs for graceful shutdown")
+		s.shutdownCancel()
 	}
 
 	// Graceful gRPC shutdown

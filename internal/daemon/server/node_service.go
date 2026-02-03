@@ -23,11 +23,12 @@ import (
 // NodeService implements the gRPC NodeServiceServer.
 type NodeService struct {
 	v1.UnimplementedNodeServiceServer
-	store   store.Store
-	manager *controller.Manager
-	runtime runtime.NodeRuntime
-	logger  *slog.Logger
-	ante    *ante.AnteHandler
+	store       store.Store
+	manager     *controller.Manager
+	runtime     runtime.NodeRuntime
+	logger      *slog.Logger
+	ante        *ante.AnteHandler
+	shutdownCtx context.Context // Cancelled during server shutdown to terminate streaming RPCs
 }
 
 // NewNodeService creates a new NodeService.
@@ -40,20 +41,48 @@ func NewNodeService(s store.Store, m *controller.Manager, r runtime.NodeRuntime)
 	}
 }
 
-// NewNodeServiceWithAnte creates a new NodeService with ante handler.
-func NewNodeServiceWithAnte(s store.Store, m *controller.Manager, r runtime.NodeRuntime, anteHandler *ante.AnteHandler) *NodeService {
+// NewNodeServiceWithAnte creates a new NodeService with ante handler and shutdown context.
+// The shutdownCtx should be cancelled during server shutdown to terminate long-running
+// streaming RPCs (like log streaming) that would otherwise block graceful shutdown.
+func NewNodeServiceWithAnte(s store.Store, m *controller.Manager, r runtime.NodeRuntime, anteHandler *ante.AnteHandler, shutdownCtx context.Context) *NodeService {
 	return &NodeService{
-		store:   s,
-		manager: m,
-		runtime: r,
-		logger:  slog.Default(),
-		ante:    anteHandler,
+		store:       s,
+		manager:     m,
+		runtime:     r,
+		logger:      slog.Default(),
+		ante:        anteHandler,
+		shutdownCtx: shutdownCtx,
 	}
 }
 
 // SetLogger sets the logger for the service.
 func (s *NodeService) SetLogger(logger *slog.Logger) {
 	s.logger = logger
+}
+
+// mergeContexts creates a context that is cancelled when either the given context
+// or the server shutdown context is cancelled. This allows streaming RPCs to
+// terminate gracefully during server shutdown.
+func (s *NodeService) mergeContexts(streamCtx context.Context) (context.Context, context.CancelFunc) {
+	// If no shutdown context is set, just return the stream context
+	if s.shutdownCtx == nil {
+		ctx, cancel := context.WithCancel(streamCtx)
+		return ctx, cancel
+	}
+
+	// Create a new context that will be cancelled when either context is done
+	ctx, cancel := context.WithCancel(streamCtx)
+	go func() {
+		select {
+		case <-s.shutdownCtx.Done():
+			cancel()
+		case <-streamCtx.Done():
+			// Stream context already cancelled, nothing to do
+		case <-ctx.Done():
+			// Merged context already cancelled, nothing to do
+		}
+	}()
+	return ctx, cancel
 }
 
 // GetNode retrieves a node by devnet name and index.
@@ -445,7 +474,12 @@ func (s *NodeService) StreamNodeLogs(req *v1.StreamNodeLogsRequest, stream grpc.
 		return status.Error(codes.InvalidArgument, "devnet_name is required")
 	}
 
-	ctx := stream.Context()
+	// Merge stream context with server shutdown context.
+	// This ensures the stream terminates when either:
+	// 1. The client disconnects (stream context cancelled)
+	// 2. The server is shutting down (shutdown context cancelled)
+	ctx, cancel := s.mergeContexts(stream.Context())
+	defer cancel()
 
 	// Verify node exists
 	node, err := s.store.GetNode(ctx, req.Namespace, req.DevnetName, int(req.Index))
