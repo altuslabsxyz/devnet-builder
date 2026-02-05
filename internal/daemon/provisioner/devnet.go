@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -137,6 +138,33 @@ func (p *DevnetProvisioner) SetStepProgressReporterFactory(factory StepProgressR
 	p.stepProgressReporterFactory = factory
 }
 
+// eraseDevnetDir removes the entire devnet data directory to ensure a clean state.
+// Called at the start of Provision to guarantee fresh provisioning.
+// Handles: directory doesn't exist (no error), permission errors (returns error).
+func (p *DevnetProvisioner) eraseDevnetDir(devnetName string) error {
+	devnetDataDir := filepath.Join(p.dataDir, devnetName)
+
+	p.logger.Info("erasing devnet directory",
+		"name", devnetName,
+		"path", devnetDataDir)
+
+	if _, err := os.Stat(devnetDataDir); os.IsNotExist(err) {
+		p.logger.Debug("devnet directory does not exist, nothing to erase",
+			"name", devnetName)
+		return nil
+	}
+
+	if err := os.RemoveAll(devnetDataDir); err != nil {
+		return fmt.Errorf("failed to erase devnet directory %s: %w", devnetDataDir, err)
+	}
+
+	p.logger.Info("erased devnet directory",
+		"name", devnetName,
+		"path", devnetDataDir)
+
+	return nil
+}
+
 // Provision creates Node resources for all validators and fullnodes in the devnet.
 // When an OrchestratorFactory is configured, it first executes the full provisioning
 // flow (build, fork, init) before creating Node resources.
@@ -147,6 +175,11 @@ func (p *DevnetProvisioner) Provision(ctx context.Context, devnet *types.Devnet)
 		"fullnodes", devnet.Spec.FullNodes,
 		"hasOrchestratorFactory", p.orchestratorFactory != nil,
 		"hasSubnetAllocator", p.subnetAllocator != nil)
+
+	// Erase existing devnet directory to ensure clean state
+	if err := p.eraseDevnetDir(devnet.Metadata.Name); err != nil {
+		return fmt.Errorf("failed to erase devnet directory: %w", err)
+	}
 
 	// Allocate a subnet for loopback network aliasing
 	var allocatedSubnet uint8
