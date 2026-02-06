@@ -41,6 +41,8 @@ type Config struct {
 	Workers int
 	// LogLevel is the log level (debug, info, warn, error).
 	LogLevel string
+	// RuntimeMode selects the node process runtime: "process" (default), "service", "docker".
+	RuntimeMode string
 	// EnableDocker enables Docker container runtime for nodes.
 	EnableDocker bool
 	// DockerImage is the default Docker image for nodes.
@@ -220,9 +222,19 @@ func New(config *Config) (*Server, error) {
 		})
 	})
 
-	// Create node runtime (Docker or Process-based for local mode)
-	var nodeRuntime runtime.NodeRuntime
+	// Select node runtime based on RuntimeMode.
+	// Backward compat: --docker flag overrides RuntimeMode.
+	runtimeMode := config.RuntimeMode
+	if runtimeMode == "" {
+		runtimeMode = "process"
+	}
 	if config.EnableDocker {
+		runtimeMode = "docker"
+	}
+
+	var nodeRuntime runtime.NodeRuntime
+	switch runtimeMode {
+	case "docker":
 		dockerRuntime, err := runtime.NewDockerRuntime(runtime.DockerConfig{
 			DefaultImage: config.DockerImage,
 			Logger:       logger,
@@ -232,9 +244,18 @@ func New(config *Config) (*Server, error) {
 		}
 		nodeRuntime = dockerRuntime
 		logger.Info("docker runtime enabled", "image", config.DockerImage)
-	} else {
-		// Use process-based runtime for local mode
-		// Pass PluginRuntimeProvider so ProcessRuntime can get network-specific commands
+	case "service":
+		svcRuntime, err := runtime.NewServiceRuntime(runtime.ServiceRuntimeConfig{
+			DataDir:               config.DataDir,
+			Logger:                logger,
+			PluginRuntimeProvider: orchFactory.AsPluginRuntimeProvider(),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create service runtime: %w", err)
+		}
+		nodeRuntime = svcRuntime
+		logger.Info("service runtime enabled (OS service manager)")
+	default: // "process"
 		nodeRuntime = runtime.NewProcessRuntime(runtime.ProcessRuntimeConfig{
 			DataDir:               config.DataDir,
 			Logger:                logger,
@@ -315,7 +336,7 @@ func New(config *Config) (*Server, error) {
 	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 
 	// Register services
-	devnetSvc := NewDevnetServiceWithAnte(st, mgr, anteHandler, subnetAlloc)
+	devnetSvc := NewDevnetServiceWithAnte(st, mgr, anteHandler, subnetAlloc, devnetProv)
 	devnetSvc.SetLogger(logger)
 	v1.RegisterDevnetServiceServer(grpcServer, devnetSvc)
 
@@ -472,13 +493,18 @@ func (s *Server) Shutdown() error {
 		}
 	}
 
-	// Detach from running processes - they will continue as orphans
-	// and can be reconnected on next startup
-	if pr, ok := s.nodeRuntime.(*runtime.ProcessRuntime); ok {
+	// Handle runtime-specific shutdown behavior
+	switch rt := s.nodeRuntime.(type) {
+	case *runtime.ProcessRuntime:
+		// Detach from running processes - they will continue as orphans
+		// and can be reconnected on next startup
 		s.logger.Info("detaching from running processes (will persist as orphans)")
-		if err := pr.Detach(); err != nil {
+		if err := rt.Detach(); err != nil {
 			s.logger.Warn("failed to detach from processes", "error", err)
 		}
+	case *runtime.ServiceRuntime:
+		// No-op: launchd/systemd owns the processes. They persist independently.
+		s.logger.Info("nodes persist under OS service manager")
 	}
 
 	// Cancel shutdown context to terminate long-running streaming RPCs (e.g., log streaming).
@@ -527,19 +553,59 @@ func (s *Server) Shutdown() error {
 // reconnectExistingProcesses attempts to reconnect to orphaned node processes
 // from a previous daemon session. This is called at startup.
 func (s *Server) reconnectExistingProcesses(ctx context.Context) error {
-	pr, ok := s.nodeRuntime.(*runtime.ProcessRuntime)
-	if !ok {
-		// Not using ProcessRuntime (e.g., Docker), skip reconnection
+	// Determine reconnection strategy based on runtime type
+	switch rt := s.nodeRuntime.(type) {
+	case *runtime.ProcessRuntime:
+		allNodes, err := s.collectAllNodes(ctx)
+		if err != nil {
+			return err
+		}
+		if len(allNodes) == 0 {
+			s.logger.Debug("no nodes to reconnect")
+			return nil
+		}
+
+		reconnected, err := rt.ReconnectAll(ctx, allNodes)
+		if err != nil {
+			return fmt.Errorf("reconnection failed: %w", err)
+		}
+		s.logger.Info("process reconnection summary",
+			"reconnected", reconnected,
+			"totalNodes", len(allNodes))
+		return nil
+
+	case *runtime.ServiceRuntime:
+		allNodes, err := s.collectAllNodes(ctx)
+		if err != nil {
+			return err
+		}
+		if len(allNodes) == 0 {
+			s.logger.Debug("no nodes to discover")
+			return nil
+		}
+
+		discovered, err := rt.DiscoverExisting(ctx, allNodes)
+		if err != nil {
+			return fmt.Errorf("service discovery failed: %w", err)
+		}
+		s.logger.Info("service discovery summary",
+			"discovered", discovered,
+			"totalNodes", len(allNodes))
+		return nil
+
+	default:
+		// Docker or other runtimes don't need reconnection
 		return nil
 	}
+}
 
-	// List all devnets from all namespaces
+// collectAllNodes gathers all nodes from all devnets in the store.
+func (s *Server) collectAllNodes(ctx context.Context) ([]*types.Node, error) {
 	devnets, err := s.store.ListDevnets(ctx, "")
 	if err != nil {
-		return fmt.Errorf("failed to list devnets: %w", err)
+		return nil, fmt.Errorf("failed to list devnets: %w", err)
 	}
 
-	// Collect all nodes from all devnets
 	var allNodes []*types.Node
 	for _, devnet := range devnets {
 		nodes, err := s.store.ListNodes(ctx, devnet.Metadata.Namespace, devnet.Metadata.Name)
@@ -552,23 +618,7 @@ func (s *Server) reconnectExistingProcesses(ctx context.Context) error {
 		}
 		allNodes = append(allNodes, nodes...)
 	}
-
-	if len(allNodes) == 0 {
-		s.logger.Debug("no nodes to reconnect")
-		return nil
-	}
-
-	// Attempt to reconnect to running processes
-	reconnected, err := pr.ReconnectAll(ctx, allNodes)
-	if err != nil {
-		return fmt.Errorf("reconnection failed: %w", err)
-	}
-
-	s.logger.Info("process reconnection summary",
-		"reconnected", reconnected,
-		"totalNodes", len(allNodes))
-
-	return nil
+	return allNodes, nil
 }
 
 // createTLSListener creates a TCP listener with TLS configured.

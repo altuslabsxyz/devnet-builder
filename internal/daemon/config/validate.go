@@ -27,6 +27,16 @@ func Validate(cfg *Config) error {
 			cfg.Server.LogLevel, strings.Join(ValidLogLevels, ", ")))
 	}
 
+	// Validate runtime mode
+	validModes := map[string]bool{"process": true, "service": true, "docker": true}
+	if !validModes[cfg.Server.RuntimeMode] {
+		errs = append(errs, fmt.Sprintf("invalid runtime_mode %q (must be one of: process, service, docker)",
+			cfg.Server.RuntimeMode))
+	}
+	if cfg.Server.RuntimeMode == "docker" && !cfg.Docker.Enabled {
+		cfg.Docker.Enabled = true
+	}
+
 	// Validate workers
 	if cfg.Server.Workers < 1 {
 		errs = append(errs, "workers must be at least 1")

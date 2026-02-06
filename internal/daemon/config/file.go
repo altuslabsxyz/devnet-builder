@@ -21,6 +21,8 @@ type FileServerConfig struct {
 	Workers    *int    `toml:"workers"`
 	Foreground *bool   `toml:"foreground"`
 
+	RuntimeMode *string `toml:"runtime_mode"`
+
 	// Remote listener settings
 	Listen  *string `toml:"listen"`
 	TLSCert *string `toml:"tls_cert"`
@@ -76,6 +78,7 @@ func (f *FileConfig) IsEmpty() bool {
 		f.Server.LogLevel == nil &&
 		f.Server.Workers == nil &&
 		f.Server.Foreground == nil &&
+		f.Server.RuntimeMode == nil &&
 		f.Auth.Enabled == nil &&
 		f.Auth.KeysFile == nil &&
 		f.Docker.Enabled == nil &&

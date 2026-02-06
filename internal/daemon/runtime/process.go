@@ -90,12 +90,14 @@ func (pr *ProcessRuntime) StartNode(ctx context.Context, node *types.Node, opts 
 		pluginRuntime = pr.config.PluginRuntime
 	}
 
-	// Determine command
+	// Determine command: PluginRuntime.StartCommand() returns args only
+	// (designed for Docker entrypoint), so we prepend the binary path for
+	// bare-metal execution.
 	var command []string
 	if override, ok := pr.cmdOverride[nodeID]; ok {
 		command = override
 	} else if pluginRuntime != nil {
-		command = pluginRuntime.StartCommand(node)
+		command = append([]string{node.Spec.BinaryPath}, pluginRuntime.StartCommand(node)...)
 	} else {
 		// Default command - used when PluginRuntime is not available
 		// (e.g., existing nodes without Network field in NodeSpec)
