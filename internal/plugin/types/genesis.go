@@ -28,6 +28,14 @@ type GenesisSource struct {
 	NetworkType string // e.g., "mainnet", "testnet"
 }
 
+// ValidatorInfo represents validator information for genesis injection.
+type ValidatorInfo struct {
+	Moniker         string // validator display name
+	ConsPubKey      string // Base64 encoded Ed25519 consensus pubkey
+	OperatorAddress string // Bech32 valoper address
+	SelfDelegation  string // amount of tokens to self-delegate
+}
+
 // GenesisPatchOptions specifies modifications to apply to genesis
 type GenesisPatchOptions struct {
 	ChainID       string        // new chain ID for the forked network
@@ -36,6 +44,7 @@ type GenesisPatchOptions struct {
 	InflationRate string        // inflation rate (e.g., "0.0" for no inflation)
 	MinGasPrice   string        // minimum gas price
 	BinaryVersion string        // binary version/ref used for genesis modification (e.g., "v1.0.0" or commit hash)
+	Validators    []ValidatorInfo // validator entries to inject into genesis
 }
 
 // DefaultDevnetPatchOptions returns patch options suitable for local devnets

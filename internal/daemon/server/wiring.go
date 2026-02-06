@@ -284,23 +284,36 @@ func (a *moduleGenesisAdapter) ValidateGenesis(genesis []byte) error {
 }
 
 func (a *moduleGenesisAdapter) PatchGenesis(genesis []byte, opts plugintypes.GenesisPatchOptions) ([]byte, error) {
-	// Apply patches via the module's ModifyGenesis
 	modifyOpts := network.GenesisOptions{
 		ChainID: opts.ChainID,
+	}
+	for _, v := range opts.Validators {
+		modifyOpts.Validators = append(modifyOpts.Validators, network.GenesisValidatorInfo{
+			Moniker:         v.Moniker,
+			ConsPubKey:      v.ConsPubKey,
+			OperatorAddress: v.OperatorAddress,
+			SelfDelegation:  v.SelfDelegation,
+		})
 	}
 	return a.module.ModifyGenesis(genesis, modifyOpts)
 }
 
 func (a *moduleGenesisAdapter) PatchGenesisFile(inputPath, outputPath string, opts plugintypes.GenesisPatchOptions) (int64, error) {
-	// Check if module supports file-based modification
 	fileModifier, ok := a.module.(network.FileBasedGenesisModifier)
 	if !ok {
 		return 0, fmt.Errorf("plugin does not support file-based genesis modification")
 	}
 
-	// Use file-based modification to bypass gRPC message size limits
 	modifyOpts := network.GenesisOptions{
 		ChainID: opts.ChainID,
+	}
+	for _, v := range opts.Validators {
+		modifyOpts.Validators = append(modifyOpts.Validators, network.GenesisValidatorInfo{
+			Moniker:         v.Moniker,
+			ConsPubKey:      v.ConsPubKey,
+			OperatorAddress: v.OperatorAddress,
+			SelfDelegation:  v.SelfDelegation,
+		})
 	}
 	return fileModifier.ModifyGenesisFile(inputPath, outputPath, modifyOpts)
 }
@@ -806,8 +819,10 @@ func (f *OrchestratorFactory) CreateOrchestrator(networkName string) (provisione
 		NodeInitializer: nodeInitializer,
 		// NodeRuntime: nil - not needed, daemon skips start phase
 		// HealthChecker: nil - not needed, NodeController handles health
-		DataDir: f.dataDir,
-		Logger:  f.logger,
+		DataDir:       f.dataDir,
+		Logger:        f.logger,
+		PluginGenesis: genesisAdapter,
+		Bech32Prefix:  module.Bech32Prefix(),
 	}
 
 	return provisioner.NewProvisioningOrchestrator(config), nil

@@ -3,18 +3,26 @@ package provisioner
 
 import (
 	"context"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/cosmos/cosmos-sdk/types/bech32"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/builder"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
+	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/nodeconfig"
+	plugintypes "github.com/altuslabsxyz/devnet-builder/internal/plugin/types"
+	dvbtypes "github.com/altuslabsxyz/devnet-builder/types"
 )
 
 // =============================================================================
@@ -105,6 +113,14 @@ type OrchestratorConfig struct {
 	// StepProgressReporter reports detailed sub-step progress (optional)
 	// This is used to stream progress updates to CLI clients
 	StepProgressReporter ports.ProgressReporter
+
+	// PluginGenesis provides access to plugin-specific genesis operations.
+	// Used for post-init genesis re-patching with validator info.
+	PluginGenesis plugintypes.PluginGenesis
+
+	// Bech32Prefix is the address prefix for this network (e.g., "stable", "cosmos").
+	// Used to derive validator operator addresses from consensus keys.
+	Bech32Prefix string
 }
 
 // =============================================================================
@@ -481,6 +497,52 @@ func (o *ProvisioningOrchestrator) executeInitPhase(ctx context.Context, opts po
 		}
 	}
 
+	// Post-init: inject validators into genesis and redistribute
+	if o.config.PluginGenesis != nil && opts.NumValidators > 0 {
+		o.logger.Info("reading validator keys for genesis injection")
+
+		validators, err := o.readValidatorKeys(nodes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read validator keys: %w", err)
+		}
+
+		if len(validators) > 0 {
+			patchOpts := plugintypes.GenesisPatchOptions{
+				ChainID:    opts.ChainID,
+				Validators: validators,
+			}
+
+			genesisToRepatch := forkResult.Genesis
+			rePatchedGenesis, err := o.config.PluginGenesis.PatchGenesis(genesisToRepatch, patchOpts)
+			if err != nil {
+				return nil, fmt.Errorf("failed to re-patch genesis with validators: %w", err)
+			}
+
+			o.logger.Info("redistributing genesis with validator entries",
+				"validators", len(validators),
+				"genesisSize", len(rePatchedGenesis),
+			)
+
+			for _, node := range nodes {
+				genesisPath := filepath.Join(node.Spec.HomeDir, "config", "genesis.json")
+				if err := os.WriteFile(genesisPath, rePatchedGenesis, 0644); err != nil {
+					return nil, fmt.Errorf("failed to redistribute genesis to %s: %w", node.Metadata.Name, err)
+				}
+			}
+
+			// Update master genesis in data dir
+			masterGenesisPath := filepath.Join(opts.DataDir, "genesis.json")
+			if err := os.WriteFile(masterGenesisPath, rePatchedGenesis, 0644); err != nil {
+				return nil, fmt.Errorf("failed to update master genesis: %w", err)
+			}
+		}
+	}
+
+	// Post-init: configure node networking (persistent peers, ports, P2P settings)
+	if err := o.configureNodeNetworking(ctx, nodes); err != nil {
+		return nil, fmt.Errorf("failed to configure node networking: %w", err)
+	}
+
 	o.logger.Info("init phase completed",
 		"nodeCount", len(nodes),
 	)
@@ -686,4 +748,143 @@ func (o *ProvisioningOrchestrator) executeHealthPhase(ctx context.Context, nodes
 			// Continue to next poll
 		}
 	}
+}
+
+// =============================================================================
+// Post-Init Helpers: Validator Injection & Peer Configuration
+// =============================================================================
+
+// readValidatorKeys reads consensus pubkeys from validator nodes' priv_validator_key.json
+// files and derives operator addresses using the configured bech32 prefix.
+func (o *ProvisioningOrchestrator) readValidatorKeys(nodes []*types.Node) ([]plugintypes.ValidatorInfo, error) {
+	var validators []plugintypes.ValidatorInfo
+	for _, node := range nodes {
+		if node.Spec.Role != "validator" {
+			continue
+		}
+
+		keyPath := filepath.Join(node.Spec.HomeDir, "config", "priv_validator_key.json")
+		keyData, err := os.ReadFile(keyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read validator key for %s: %w", node.Metadata.Name, err)
+		}
+
+		var keyFile struct {
+			Address string `json:"address"`
+			PubKey  struct {
+				Type  string `json:"type"`
+				Value string `json:"value"`
+			} `json:"pub_key"`
+		}
+		if err := json.Unmarshal(keyData, &keyFile); err != nil {
+			return nil, fmt.Errorf("failed to parse validator key for %s: %w", node.Metadata.Name, err)
+		}
+
+		// Derive bech32 valoper address from hex consensus address
+		addressBytes, err := hex.DecodeString(keyFile.Address)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode address for %s: %w", node.Metadata.Name, err)
+		}
+
+		valoperPrefix := o.config.Bech32Prefix + "valoper"
+		operatorAddress, err := bech32.ConvertAndEncode(valoperPrefix, addressBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode operator address for %s: %w", node.Metadata.Name, err)
+		}
+
+		validators = append(validators, plugintypes.ValidatorInfo{
+			Moniker:         node.Metadata.Name,
+			ConsPubKey:      keyFile.PubKey.Value,
+			OperatorAddress: operatorAddress,
+			SelfDelegation:  "1000000000000000000000", // 1000 tokens (18 decimals)
+		})
+
+		o.logger.Debug("extracted validator key",
+			"node", node.Metadata.Name,
+			"operator", operatorAddress,
+		)
+	}
+	return validators, nil
+}
+
+// configureNodeNetworking configures persistent peers, P2P settings, and ports for all nodes.
+func (o *ProvisioningOrchestrator) configureNodeNetworking(ctx context.Context, nodes []*types.Node) error {
+	if len(nodes) == 0 {
+		return nil
+	}
+
+	// Collect node IDs
+	nodeIDs := make([]string, len(nodes))
+	for i, node := range nodes {
+		nodeID, err := o.config.NodeInitializer.GetNodeID(ctx, node.Spec.HomeDir)
+		if err != nil {
+			return fmt.Errorf("failed to get node ID for %s: %w", node.Metadata.Name, err)
+		}
+		nodeIDs[i] = nodeID
+	}
+
+	o.logger.Info("configuring node networking",
+		"nodeCount", len(nodes),
+	)
+
+	// Configure each node
+	for i, node := range nodes {
+		peers := buildPeersExcludingSelf(nodeIDs, nodes, i)
+
+		editor := nodeconfig.NewConfigEditor(node.Spec.HomeDir, nil)
+		if err := editor.SetPersistentPeers(peers); err != nil {
+			return fmt.Errorf("failed to set peers for %s: %w", node.Metadata.Name, err)
+		}
+		if err := editor.SetP2PLocalDevnet(); err != nil {
+			return fmt.Errorf("failed to set P2P config for %s: %w", node.Metadata.Name, err)
+		}
+		if err := editor.SetConsensusParams(); err != nil {
+			return fmt.Errorf("failed to set consensus params for %s: %w", node.Metadata.Name, err)
+		}
+
+		// Configure ports based on node index
+		host := node.Spec.Address // empty string if no subnet (port-offset mode)
+		if err := editor.SetPortsWithHost(node.Spec.Index, host); err != nil {
+			return fmt.Errorf("failed to set ports for %s: %w", node.Metadata.Name, err)
+		}
+
+		// Enable API/gRPC/JSON-RPC services on first node only
+		if i == 0 {
+			if err := editor.EnableNode0Services(); err != nil {
+				return fmt.Errorf("failed to enable services for %s: %w", node.Metadata.Name, err)
+			}
+		}
+
+		o.logger.Debug("configured node networking",
+			"node", node.Metadata.Name,
+			"nodeID", nodeIDs[i],
+			"peers", peers,
+		)
+	}
+	return nil
+}
+
+// buildPeersExcludingSelf builds a persistent_peers string excluding the node at excludeIndex.
+// Uses port-offset mode (127.0.0.1 with P2P port offset per node) when Address is not set,
+// or loopback subnet mode (unique IP with default P2P port) when Address is set.
+func buildPeersExcludingSelf(nodeIDs []string, nodes []*types.Node, excludeIndex int) string {
+	defaultP2P := dvbtypes.DefaultP2PPort
+	var peers []string
+	for i, nodeID := range nodeIDs {
+		if i == excludeIndex {
+			continue
+		}
+
+		var peer string
+		if nodes[i].Spec.Address != "" {
+			// Loopback subnet mode: unique IP, standard port
+			peer = fmt.Sprintf("%s@%s:%d", nodeID, nodes[i].Spec.Address, defaultP2P)
+		} else {
+			// Port-offset mode: 127.0.0.1 with port = base + (index * 10000)
+			port := defaultP2P + (i * 10000)
+			peer = fmt.Sprintf("%s@127.0.0.1:%d", nodeID, port)
+		}
+		peers = append(peers, peer)
+	}
+	return strings.Join(peers, ",")
 }
