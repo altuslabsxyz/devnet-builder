@@ -503,20 +503,6 @@ func tailLines(file *os.File, n int) ([]string, error) {
 	return lines, nil
 }
 
-// looksLikeNodeIdentifier returns true if the string looks like a node identifier.
-// Node identifiers are: pure numeric (0, 1, 2) or "validator-N" / "node-N" patterns.
-func looksLikeNodeIdentifier(s string) bool {
-	// Pure numeric
-	if _, err := parseNodeIndex(s); err == nil {
-		return true
-	}
-	// Common node name patterns
-	if strings.HasPrefix(s, "validator-") || strings.HasPrefix(s, "node-") || strings.HasPrefix(s, "full-") {
-		return true
-	}
-	return false
-}
-
 // nodeLogStreamer streams logs from the daemon for a specific node.
 type nodeLogStreamer interface {
 	StreamNodeLogs(ctx context.Context, devnetName string, index int, follow bool, since string, tail int, callback func(*client.LogEntry) error) error

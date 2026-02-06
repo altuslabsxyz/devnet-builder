@@ -93,29 +93,6 @@ func TestIsPathWithinBase(t *testing.T) {
 	}
 }
 
-func TestLooksLikeNodeIdentifier(t *testing.T) {
-	tests := []struct {
-		input string
-		want  bool
-	}{
-		{"0", true},
-		{"5", true},
-		{"validator-0", true},
-		{"node-1", true},
-		{"full-3", true},
-		{"my-devnet", false},
-		{"cosmos", false},
-		{"mainnet", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			if got := looksLikeNodeIdentifier(tt.input); got != tt.want {
-				t.Errorf("looksLikeNodeIdentifier(%q) = %v, want %v", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestGetNodeColor(t *testing.T) {
 	// Same input should always return same color (deterministic)
 	c1 := getNodeColor("validator-0")
