@@ -77,7 +77,7 @@ func (s *StatusSpinner) Stop() {
 	s.mu.Unlock()
 
 	<-s.done
-	fmt.Fprintf(s.out, "\r%80s\r", "") // Clear line
+	fmt.Fprintf(s.out, "\x1b[2K\r") // Clear line (ANSI erase-in-line)
 }
 
 // StopWithNewline stops the spinner and moves to a new line.
@@ -93,5 +93,5 @@ func (s *StatusSpinner) render() {
 	s.frameIdx = (s.frameIdx + 1) % len(statusSpinnerFrames)
 	s.mu.Unlock()
 
-	fmt.Fprintf(s.out, "\r%s %s          ", statusSpinnerFrames[idx], msg)
+	fmt.Fprintf(s.out, "\x1b[2K\r%s %s", statusSpinnerFrames[idx], msg)
 }

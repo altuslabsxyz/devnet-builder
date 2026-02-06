@@ -868,7 +868,7 @@ func printProgressStep(entry *client.ProvisionLogEntry) {
 
 // clearLine clears the current terminal line for progress updates.
 func clearLine() {
-	fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 80))
+	fmt.Fprintf(os.Stderr, "\x1b[2K\r")
 }
 
 // devnetGetter is an interface for getting devnet status, used for testing.
