@@ -35,6 +35,9 @@ const (
 	// Authentication environment variables
 	EnvAuthEnabled  = "DEVNETD_AUTH_ENABLED"
 	EnvAuthKeysFile = "DEVNETD_AUTH_KEYS_FILE"
+
+	// Runtime mode environment variable
+	EnvRuntimeMode = "DEVNETD_RUNTIME_MODE"
 )
 
 // Loader loads configuration from file, environment, and applies defaults.
@@ -123,6 +126,9 @@ func mergeFileConfig(cfg *Config, file *FileConfig) {
 	}
 	if file.Server.Foreground != nil {
 		cfg.Server.Foreground = *file.Server.Foreground
+	}
+	if file.Server.RuntimeMode != nil {
+		cfg.Server.RuntimeMode = *file.Server.RuntimeMode
 	}
 	if file.Server.Listen != nil {
 		cfg.Server.Listen = *file.Server.Listen
@@ -253,6 +259,11 @@ func applyEnvVars(cfg *Config) {
 	}
 	if v := os.Getenv(EnvTLSKey); v != "" {
 		cfg.Server.TLSKey = v
+	}
+
+	// Runtime mode
+	if v := os.Getenv(EnvRuntimeMode); v != "" {
+		cfg.Server.RuntimeMode = v
 	}
 
 	// Authentication
