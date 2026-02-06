@@ -315,7 +315,7 @@ func New(config *Config) (*Server, error) {
 	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 
 	// Register services
-	devnetSvc := NewDevnetServiceWithAnte(st, mgr, anteHandler, subnetAlloc)
+	devnetSvc := NewDevnetServiceWithAnte(st, mgr, anteHandler, subnetAlloc, devnetProv)
 	devnetSvc.SetLogger(logger)
 	v1.RegisterDevnetServiceServer(grpcServer, devnetSvc)
 
