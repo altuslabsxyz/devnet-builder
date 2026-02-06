@@ -512,28 +512,72 @@ func (o *ProvisioningOrchestrator) executeInitPhase(ctx context.Context, opts po
 				Validators: validators,
 			}
 
-			genesisToRepatch := forkResult.Genesis
-			rePatchedGenesis, err := o.config.PluginGenesis.PatchGenesis(genesisToRepatch, patchOpts)
-			if err != nil {
-				return nil, fmt.Errorf("failed to re-patch genesis with validators: %w", err)
-			}
+			// Use the first node's genesis as the source (all nodes have identical copies)
+			sourceGenesisPath := filepath.Join(nodes[0].Spec.HomeDir, "config", "genesis.json")
 
-			o.logger.Info("redistributing genesis with validator entries",
-				"validators", len(validators),
-				"genesisSize", len(rePatchedGenesis),
-			)
-
-			for _, node := range nodes {
-				genesisPath := filepath.Join(node.Spec.HomeDir, "config", "genesis.json")
-				if err := os.WriteFile(genesisPath, rePatchedGenesis, 0644); err != nil {
-					return nil, fmt.Errorf("failed to redistribute genesis to %s: %w", node.Metadata.Name, err)
+			// Prefer file-based patching to avoid gRPC message size limits on large genesis files.
+			// Fall back to in-memory patching only for small genesis.
+			if fileBasedPlugin, ok := o.config.PluginGenesis.(plugintypes.FileBasedPluginGenesis); ok {
+				workDir := filepath.Join(opts.DataDir, "genesis-work", fmt.Sprintf("validator-patch-%d", time.Now().UnixNano()))
+				if err := os.MkdirAll(workDir, 0755); err != nil {
+					return nil, fmt.Errorf("failed to create work dir for validator patch: %w", err)
 				}
-			}
+				defer os.RemoveAll(workDir)
 
-			// Update master genesis in data dir
-			masterGenesisPath := filepath.Join(opts.DataDir, "genesis.json")
-			if err := os.WriteFile(masterGenesisPath, rePatchedGenesis, 0644); err != nil {
-				return nil, fmt.Errorf("failed to update master genesis: %w", err)
+				outputPath := filepath.Join(workDir, "genesis-output.json")
+				outputSize, err := fileBasedPlugin.PatchGenesisFile(sourceGenesisPath, outputPath, patchOpts)
+				if err != nil {
+					return nil, fmt.Errorf("failed to re-patch genesis with validators (file-based): %w", err)
+				}
+
+				o.logger.Info("file-based validator patch complete",
+					"validators", len(validators),
+					"outputSize", outputSize,
+				)
+
+				// Copy patched genesis to all nodes and master
+				patchedGenesis, err := os.ReadFile(outputPath)
+				if err != nil {
+					return nil, fmt.Errorf("failed to read patched genesis: %w", err)
+				}
+
+				for _, node := range nodes {
+					genesisPath := filepath.Join(node.Spec.HomeDir, "config", "genesis.json")
+					if err := os.WriteFile(genesisPath, patchedGenesis, 0644); err != nil {
+						return nil, fmt.Errorf("failed to redistribute genesis to %s: %w", node.Metadata.Name, err)
+					}
+				}
+				masterGenesisPath := filepath.Join(opts.DataDir, "genesis.json")
+				if err := os.WriteFile(masterGenesisPath, patchedGenesis, 0644); err != nil {
+					return nil, fmt.Errorf("failed to update master genesis: %w", err)
+				}
+			} else {
+				// Small genesis: in-memory patching via gRPC
+				genesisToRepatch, err := os.ReadFile(sourceGenesisPath)
+				if err != nil {
+					return nil, fmt.Errorf("failed to read genesis for re-patching: %w", err)
+				}
+
+				rePatchedGenesis, err := o.config.PluginGenesis.PatchGenesis(genesisToRepatch, patchOpts)
+				if err != nil {
+					return nil, fmt.Errorf("failed to re-patch genesis with validators: %w", err)
+				}
+
+				o.logger.Info("redistributing genesis with validator entries",
+					"validators", len(validators),
+					"genesisSize", len(rePatchedGenesis),
+				)
+
+				for _, node := range nodes {
+					genesisPath := filepath.Join(node.Spec.HomeDir, "config", "genesis.json")
+					if err := os.WriteFile(genesisPath, rePatchedGenesis, 0644); err != nil {
+						return nil, fmt.Errorf("failed to redistribute genesis to %s: %w", node.Metadata.Name, err)
+					}
+				}
+				masterGenesisPath := filepath.Join(opts.DataDir, "genesis.json")
+				if err := os.WriteFile(masterGenesisPath, rePatchedGenesis, 0644); err != nil {
+					return nil, fmt.Errorf("failed to update master genesis: %w", err)
+				}
 			}
 		}
 	}
