@@ -426,8 +426,8 @@ func (a *networkModuleAdapter) InitCommand(homeDir, chainID, moniker string) []s
 	return a.module.InitCommand(homeDir, chainID, moniker)
 }
 
-func (a *networkModuleAdapter) StartCommand(homeDir string) []string {
-	return a.module.StartCommand(homeDir)
+func (a *networkModuleAdapter) StartCommand(homeDir string, networkMode string) []string {
+	return a.module.StartCommand(homeDir, networkMode)
 }
 
 func (a *networkModuleAdapter) ExportCommand(homeDir string) []string {

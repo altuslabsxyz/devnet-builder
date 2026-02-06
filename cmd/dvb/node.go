@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -249,18 +250,24 @@ func printNodeTable(nodes []*v1.Node, wide bool) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
 	if wide {
-		fmt.Fprintln(w, "INDEX\tHEALTH\tROLE\tPHASE\tCONTAINER\tRPC ENDPOINT\tRESTARTS\tMESSAGE")
+		fmt.Fprintln(w, "INDEX\tHEALTH\tROLE\tPHASE\tRUNTIME ID\tRPC ENDPOINT\tRESTARTS\tMESSAGE")
 	} else {
-		fmt.Fprintln(w, "INDEX\tHEALTH\tROLE\tPHASE\tCONTAINER\tRESTARTS")
+		fmt.Fprintln(w, "INDEX\tHEALTH\tROLE\tPHASE\tRUNTIME ID\tRESTARTS")
 	}
 
 	for _, n := range nodes {
-		containerID := n.Status.ContainerId
-		if len(containerID) > 12 {
-			containerID = containerID[:12]
+		// Determine runtime identifier: container ID, service ID, or "-"
+		runtimeID := n.Status.ContainerId
+		if len(runtimeID) > 12 {
+			runtimeID = runtimeID[:12]
 		}
-		if containerID == "" {
-			containerID = "-"
+		if runtimeID == "" {
+			if svcInfo := getNodeServiceInfo(n.Metadata.Id); svcInfo != nil {
+				runtimeID = svcInfo.ServiceID
+			}
+		}
+		if runtimeID == "" {
+			runtimeID = "-"
 		}
 
 		healthIcon := getHealthIcon(n.Status.Phase)
@@ -288,7 +295,7 @@ func printNodeTable(nodes []*v1.Node, wide bool) {
 				healthIcon,
 				n.Spec.Role,
 				n.Status.Phase,
-				containerID,
+				runtimeID,
 				rpcEndpoint,
 				n.Status.RestartCount,
 				message,
@@ -299,7 +306,7 @@ func printNodeTable(nodes []*v1.Node, wide bool) {
 				healthIcon,
 				n.Spec.Role,
 				n.Status.Phase,
-				containerID,
+				runtimeID,
 				n.Status.RestartCount,
 			)
 		}
@@ -403,6 +410,8 @@ Examples:
 				return err
 			}
 
+			printContextHeader(explicitDevnet, currentContext)
+
 			var index int
 			if indexArg == "" {
 				// Use picker
@@ -495,6 +504,8 @@ Examples:
 				return err
 			}
 
+			printContextHeader(explicitDevnet, currentContext)
+
 			var index int
 			if indexArg == "" {
 				index, err = dvbcontext.PickNode(daemonClient, ns, devnetName)
@@ -579,6 +590,8 @@ Examples:
 			if err != nil {
 				return err
 			}
+
+			printContextHeader(explicitDevnet, currentContext)
 
 			var index int
 			if indexArg == "" {
@@ -684,6 +697,8 @@ Examples:
 				return err
 			}
 
+			printContextHeader(explicitDevnet, currentContext)
+
 			var index int
 			if indexArg == "" {
 				index, err = dvbcontext.PickNode(daemonClient, ns, devnetName)
@@ -763,6 +778,8 @@ Examples:
 				return err
 			}
 
+			printContextHeader(explicitDevnet, currentContext)
+
 			var index int
 			if indexArg == "" {
 				index, err = dvbcontext.PickNode(daemonClient, ns, devnetName)
@@ -841,6 +858,8 @@ Examples:
 			if err != nil {
 				return err
 			}
+
+			printContextHeader(explicitDevnet, currentContext)
 
 			var index int
 			if indexArg == "" {
@@ -961,6 +980,8 @@ Examples:
 			if err != nil {
 				return err
 			}
+
+			printContextHeader(explicitDevnet, currentContext)
 
 			var index int
 			if indexArg == "" {
@@ -1227,6 +1248,12 @@ func printNodeStatus(n *v1.Node) {
 		fmt.Printf("PID:        %d\n", n.Status.Pid)
 	}
 
+	// Show OS service info if the node is managed by launchd/systemd
+	if svcInfo := getNodeServiceInfo(n.Metadata.Id); svcInfo != nil {
+		fmt.Printf("Service:    %s\n", svcInfo.ServiceID)
+		fmt.Printf("ServiceFile: %s\n", svcInfo.FilePath)
+	}
+
 	if n.Status.BlockHeight > 0 {
 		fmt.Printf("Height:     %d\n", n.Status.BlockHeight)
 	}
@@ -1252,6 +1279,42 @@ func printNodeStatus(n *v1.Node) {
 		fmt.Printf("  REST:     http://localhost:%d\n", 1317+offset)
 		fmt.Printf("  gRPC:     localhost:%d\n", 9090+offset)
 		fmt.Printf("  P2P:      localhost:%d\n", 26656+offset)
+	}
+}
+
+// nodeServiceInfo holds service file information for a node.
+type nodeServiceInfo struct {
+	ServiceID string
+	FilePath  string
+}
+
+// getNodeServiceInfo returns the service file info if the node is managed by an OS service.
+// Returns nil if no service file exists for this node.
+func getNodeServiceInfo(nodeName string) *nodeServiceInfo {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	var serviceID, filePath string
+	switch goruntime.GOOS {
+	case "darwin":
+		serviceID = "com.altuslabs.devnet." + nodeName
+		filePath = filepath.Join(home, "Library", "LaunchAgents", serviceID+".plist")
+	case "linux":
+		serviceID = "devnet-" + nodeName + ".service"
+		filePath = filepath.Join(home, ".config", "systemd", "user", serviceID)
+	default:
+		return nil
+	}
+
+	if _, err := os.Stat(filePath); err != nil {
+		return nil
+	}
+
+	return &nodeServiceInfo{
+		ServiceID: serviceID,
+		FilePath:  filePath,
 	}
 }
 

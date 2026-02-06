@@ -23,6 +23,9 @@ var (
 	flagDocker      bool
 	flagDockerImage string
 
+	// Runtime flag
+	flagRuntimeMode string
+
 	// Remote listener flags
 	flagListen  string
 	flagTLSCert string
@@ -48,6 +51,9 @@ func main() {
 	rootCmd.Flags().StringVar(&flagLogLevel, "log-level", "", fmt.Sprintf("Log level: debug, info, warn, error (default: %s)", defaults.Server.LogLevel))
 	rootCmd.Flags().IntVar(&flagWorkers, "workers", 0, fmt.Sprintf("Workers per controller (default: %d)", defaults.Server.Workers))
 	rootCmd.Flags().BoolVar(&flagForeground, "foreground", true, "Run in foreground")
+
+	// Runtime flag
+	rootCmd.Flags().StringVar(&flagRuntimeMode, "runtime", "", `Node runtime: "process" (default), "service" (launchd/systemd), "docker"`)
 
 	// Docker flags
 	rootCmd.Flags().BoolVar(&flagDocker, "docker", false, "Enable Docker container runtime")
@@ -98,6 +104,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		Foreground:         cfg.Server.Foreground,
 		Workers:            cfg.Server.Workers,
 		LogLevel:           cfg.Server.LogLevel,
+		RuntimeMode:        cfg.Server.RuntimeMode,
 		EnableDocker:       cfg.Docker.Enabled,
 		DockerImage:        cfg.Docker.Image,
 		ShutdownTimeout:    cfg.Timeouts.Shutdown,
@@ -138,6 +145,9 @@ func applyFlagOverrides(cmd *cobra.Command, cfg *config.Config) {
 	}
 	if cmd.Flags().Changed("foreground") {
 		cfg.Server.Foreground = flagForeground
+	}
+	if cmd.Flags().Changed("runtime") {
+		cfg.Server.RuntimeMode = flagRuntimeMode
 	}
 	if cmd.Flags().Changed("docker") {
 		cfg.Docker.Enabled = flagDocker

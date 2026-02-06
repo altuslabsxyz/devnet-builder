@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -137,6 +138,34 @@ func (p *DevnetProvisioner) SetStepProgressReporterFactory(factory StepProgressR
 	p.stepProgressReporterFactory = factory
 }
 
+// EraseDevnetDir removes the entire devnet data directory to ensure a clean state.
+// Called at the start of Provision to guarantee fresh provisioning, and also
+// during delete to clean up filesystem artifacts.
+// Handles: directory doesn't exist (no error), permission errors (returns error).
+func (p *DevnetProvisioner) EraseDevnetDir(devnetName string) error {
+	devnetDataDir := filepath.Join(p.dataDir, devnetName)
+
+	p.logger.Info("erasing devnet directory",
+		"name", devnetName,
+		"path", devnetDataDir)
+
+	if _, err := os.Stat(devnetDataDir); os.IsNotExist(err) {
+		p.logger.Debug("devnet directory does not exist, nothing to erase",
+			"name", devnetName)
+		return nil
+	}
+
+	if err := os.RemoveAll(devnetDataDir); err != nil {
+		return fmt.Errorf("failed to erase devnet directory %s: %w", devnetDataDir, err)
+	}
+
+	p.logger.Info("erased devnet directory",
+		"name", devnetName,
+		"path", devnetDataDir)
+
+	return nil
+}
+
 // Provision creates Node resources for all validators and fullnodes in the devnet.
 // When an OrchestratorFactory is configured, it first executes the full provisioning
 // flow (build, fork, init) before creating Node resources.
@@ -147,6 +176,11 @@ func (p *DevnetProvisioner) Provision(ctx context.Context, devnet *types.Devnet)
 		"fullnodes", devnet.Spec.FullNodes,
 		"hasOrchestratorFactory", p.orchestratorFactory != nil,
 		"hasSubnetAllocator", p.subnetAllocator != nil)
+
+	// Erase existing devnet directory to ensure clean state
+	if err := p.EraseDevnetDir(devnet.Metadata.Name); err != nil {
+		return fmt.Errorf("failed to erase devnet directory: %w", err)
+	}
 
 	// Allocate a subnet for loopback network aliasing
 	var allocatedSubnet uint8
@@ -297,6 +331,10 @@ func (p *DevnetProvisioner) createNodeResources(ctx context.Context, devnet *typ
 // createNodeSpec creates a Node spec for the given devnet and index.
 // builtBinaryPath is the path to the binary built by orchestrator (takes precedence if set).
 // allocatedSubnet is the subnet for IP address assignment (0 means no subnet allocation).
+//
+// IMPORTANT: The HomeDir path format MUST match the orchestrator's initializeNode() path format:
+// {dataDir}/nodes/{devnetName}-{role}-{index}
+// This ensures the node runtime starts with the same directory that was initialized.
 func (p *DevnetProvisioner) createNodeSpec(devnet *types.Devnet, index int, role, devnetDataDir, builtBinaryPath string, allocatedSubnet uint8) *types.Node {
 	// Determine binary path - built path takes precedence
 	binaryPath := builtBinaryPath
@@ -323,6 +361,9 @@ func (p *DevnetProvisioner) createNodeSpec(devnet *types.Devnet, index int, role
 		nodeAddress = subnet.NodeIP(allocatedSubnet, index)
 	}
 
+	// Generate moniker matching orchestrator's format: {devnetName}-{role}-{index}
+	moniker := fmt.Sprintf("%s-%s-%d", devnet.Metadata.Name, role, index)
+
 	return &types.Node{
 		Metadata: types.ResourceMeta{
 			Name:      fmt.Sprintf("%s-node-%d", devnet.Metadata.Name, index),
@@ -335,9 +376,11 @@ func (p *DevnetProvisioner) createNodeSpec(devnet *types.Devnet, index int, role
 			Index:      index,
 			Role:       role,
 			BinaryPath: binaryPath,
-			HomeDir:    filepath.Join(devnetDataDir, fmt.Sprintf("node-%d", index)),
+			HomeDir:    filepath.Join(devnetDataDir, "nodes", moniker),
 			Address:    nodeAddress,
 			Desired:    types.NodePhaseRunning,
+			ChainID:    devnet.Spec.ChainID,
+			Network:    devnet.Spec.Plugin,
 		},
 		Status: types.NodeStatus{
 			Phase:   types.NodePhasePending,

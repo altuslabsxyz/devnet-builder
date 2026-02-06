@@ -17,6 +17,11 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// DirEraser removes devnet data directories from the filesystem.
+type DirEraser interface {
+	EraseDevnetDir(devnetName string) error
+}
+
 // DevnetService implements the gRPC DevnetServiceServer.
 type DevnetService struct {
 	v1.UnimplementedDevnetServiceServer
@@ -25,25 +30,28 @@ type DevnetService struct {
 	logger          *slog.Logger
 	ante            *ante.AnteHandler
 	subnetAllocator *subnet.Allocator
+	dirEraser       DirEraser
 }
 
 // NewDevnetService creates a new DevnetService.
-func NewDevnetService(s store.Store, m *controller.Manager) *DevnetService {
+func NewDevnetService(s store.Store, m *controller.Manager, dirEraser DirEraser) *DevnetService {
 	return &DevnetService{
-		store:   s,
-		manager: m,
-		logger:  slog.Default(),
+		store:     s,
+		manager:   m,
+		logger:    slog.Default(),
+		dirEraser: dirEraser,
 	}
 }
 
 // NewDevnetServiceWithAnte creates a new DevnetService with ante handler and subnet allocator.
-func NewDevnetServiceWithAnte(s store.Store, m *controller.Manager, anteHandler *ante.AnteHandler, subnetAlloc *subnet.Allocator) *DevnetService {
+func NewDevnetServiceWithAnte(s store.Store, m *controller.Manager, anteHandler *ante.AnteHandler, subnetAlloc *subnet.Allocator, dirEraser DirEraser) *DevnetService {
 	return &DevnetService{
 		store:           s,
 		manager:         m,
 		logger:          slog.Default(),
 		ante:            anteHandler,
 		subnetAllocator: subnetAlloc,
+		dirEraser:       dirEraser,
 	}
 }
 
@@ -177,6 +185,14 @@ func (s *DevnetService) DeleteDevnet(ctx context.Context, req *v1.DeleteDevnetRe
 			// Continue with devnet deletion even if subnet release fails
 		} else {
 			s.logger.Debug("released subnet for devnet", "devnet", req.Name)
+		}
+	}
+
+	// Erase devnet data directory from filesystem
+	if s.dirEraser != nil {
+		if err := s.dirEraser.EraseDevnetDir(req.Name); err != nil {
+			s.logger.Warn("failed to erase devnet directory", "devnet", req.Name, "error", err)
+			// Continue with devnet deletion even if directory cleanup fails
 		}
 	}
 
@@ -548,6 +564,7 @@ func (s *DevnetService) StreamProvisionLogs(
 				ProgressTotal:   entry.ProgressTotal,
 				ProgressUnit:    entry.ProgressUnit,
 				StepDetail:      entry.StepDetail,
+				Speed:           entry.Speed,
 			}
 			if err := stream.Send(resp); err != nil {
 				return err

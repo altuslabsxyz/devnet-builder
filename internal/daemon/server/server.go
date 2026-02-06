@@ -24,6 +24,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/server/ante"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/store"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/subnet"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/upgrader"
 	"google.golang.org/grpc"
 )
@@ -40,6 +41,8 @@ type Config struct {
 	Workers int
 	// LogLevel is the log level (debug, info, warn, error).
 	LogLevel string
+	// RuntimeMode selects the node process runtime: "process" (default), "service", "docker".
+	RuntimeMode string
 	// EnableDocker enables Docker container runtime for nodes.
 	EnableDocker bool
 	// DockerImage is the default Docker image for nodes.
@@ -91,11 +94,17 @@ type Server struct {
 	healthCtrl      *controller.HealthController
 	pluginManager   *PluginManager
 	subnetAllocator *subnet.Allocator
+	nodeRuntime     runtime.NodeRuntime // Node runtime for process management
 	grpcServer      *grpc.Server
 	listener        net.Listener // Unix socket listener
 	tcpListener     net.Listener // TCP/TLS listener (optional)
 	logger          *slog.Logger
 	logFile         *os.File // Log file handle for cleanup
+
+	// shutdownCtx is cancelled during server shutdown to terminate long-running
+	// streaming RPCs (like log streaming) that would otherwise block GracefulStop.
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
 }
 
 // New creates a new server.
@@ -191,6 +200,7 @@ func New(config *Config) (*Server, error) {
 	// Register controllers
 	devnetCtrl := controller.NewDevnetController(st, devnetProv)
 	devnetCtrl.SetLogger(logger)
+	devnetCtrl.SetManager(mgr)
 	mgr.Register("devnets", devnetCtrl)
 
 	// Wire step progress reporter to broadcast provision logs to CLI clients
@@ -207,13 +217,24 @@ func New(config *Config) (*Server, error) {
 				ProgressTotal:   step.Total,
 				ProgressUnit:    step.Unit,
 				StepDetail:      step.Detail,
+				Speed:           step.Speed,
 			})
 		})
 	})
 
-	// Create node runtime (Docker or Process-based for local mode)
-	var nodeRuntime runtime.NodeRuntime
+	// Select node runtime based on RuntimeMode.
+	// Backward compat: --docker flag overrides RuntimeMode.
+	runtimeMode := config.RuntimeMode
+	if runtimeMode == "" {
+		runtimeMode = "process"
+	}
 	if config.EnableDocker {
+		runtimeMode = "docker"
+	}
+
+	var nodeRuntime runtime.NodeRuntime
+	switch runtimeMode {
+	case "docker":
 		dockerRuntime, err := runtime.NewDockerRuntime(runtime.DockerConfig{
 			DefaultImage: config.DockerImage,
 			Logger:       logger,
@@ -223,11 +244,22 @@ func New(config *Config) (*Server, error) {
 		}
 		nodeRuntime = dockerRuntime
 		logger.Info("docker runtime enabled", "image", config.DockerImage)
-	} else {
-		// Use process-based runtime for local mode
+	case "service":
+		svcRuntime, err := runtime.NewServiceRuntime(runtime.ServiceRuntimeConfig{
+			DataDir:               config.DataDir,
+			Logger:                logger,
+			PluginRuntimeProvider: orchFactory.AsPluginRuntimeProvider(),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create service runtime: %w", err)
+		}
+		nodeRuntime = svcRuntime
+		logger.Info("service runtime enabled (OS service manager)")
+	default: // "process"
 		nodeRuntime = runtime.NewProcessRuntime(runtime.ProcessRuntimeConfig{
-			DataDir: config.DataDir,
-			Logger:  logger,
+			DataDir:               config.DataDir,
+			Logger:                logger,
+			PluginRuntimeProvider: orchFactory.AsPluginRuntimeProvider(),
 		})
 		logger.Info("process runtime enabled for local mode")
 	}
@@ -298,12 +330,17 @@ func New(config *Config) (*Server, error) {
 	// Create ante handler for request validation
 	anteHandler := ante.New(st, networkSvc)
 
+	// Create shutdown context for terminating long-running streaming RPCs during shutdown.
+	// This context is cancelled before GracefulStop() to unblock streams that would
+	// otherwise prevent graceful shutdown (e.g., log streaming blocked waiting for input).
+	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
+
 	// Register services
-	devnetSvc := NewDevnetServiceWithAnte(st, mgr, anteHandler, subnetAlloc)
+	devnetSvc := NewDevnetServiceWithAnte(st, mgr, anteHandler, subnetAlloc, devnetProv)
 	devnetSvc.SetLogger(logger)
 	v1.RegisterDevnetServiceServer(grpcServer, devnetSvc)
 
-	nodeSvc := NewNodeServiceWithAnte(st, mgr, nodeRuntime, anteHandler)
+	nodeSvc := NewNodeServiceWithAnte(st, mgr, nodeRuntime, anteHandler, shutdownCtx)
 	nodeSvc.SetLogger(logger)
 	v1.RegisterNodeServiceServer(grpcServer, nodeSvc)
 
@@ -328,9 +365,12 @@ func New(config *Config) (*Server, error) {
 		healthCtrl:      healthCtrl,
 		pluginManager:   pluginMgr,
 		subnetAllocator: subnetAlloc,
+		nodeRuntime:     nodeRuntime,
 		grpcServer:      grpcServer,
 		logger:          logger,
 		logFile:         logFile,
+		shutdownCtx:     shutdownCtx,
+		shutdownCancel:  shutdownCancel,
 	}, nil
 }
 
@@ -378,6 +418,12 @@ func (s *Server) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Reconnect to running processes from previous session (orphaned processes)
+	if err := s.reconnectExistingProcesses(ctx); err != nil {
+		s.logger.Warn("partial process reconnection", "error", err)
+		// Continue anyway - failed nodes will be restarted by controllers
+	}
+
 	// Start controller manager in background
 	go s.manager.Start(ctx, s.config.Workers)
 
@@ -424,6 +470,7 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 // Shutdown gracefully shuts down the server.
+// Detaches from running processes so they continue as orphans.
 func (s *Server) Shutdown() error {
 	s.logger.Info("shutting down")
 
@@ -444,6 +491,28 @@ func (s *Server) Shutdown() error {
 		} else {
 			s.logger.Warn("controller workers did not stop within timeout, proceeding with shutdown")
 		}
+	}
+
+	// Handle runtime-specific shutdown behavior
+	switch rt := s.nodeRuntime.(type) {
+	case *runtime.ProcessRuntime:
+		// Detach from running processes - they will continue as orphans
+		// and can be reconnected on next startup
+		s.logger.Info("detaching from running processes (will persist as orphans)")
+		if err := rt.Detach(); err != nil {
+			s.logger.Warn("failed to detach from processes", "error", err)
+		}
+	case *runtime.ServiceRuntime:
+		// No-op: launchd/systemd owns the processes. They persist independently.
+		s.logger.Info("nodes persist under OS service manager")
+	}
+
+	// Cancel shutdown context to terminate long-running streaming RPCs (e.g., log streaming).
+	// This MUST happen before GracefulStop() to unblock streams that would otherwise
+	// prevent graceful shutdown from completing.
+	if s.shutdownCancel != nil {
+		s.logger.Debug("cancelling streaming RPCs for graceful shutdown")
+		s.shutdownCancel()
 	}
 
 	// Graceful gRPC shutdown
@@ -479,6 +548,77 @@ func (s *Server) Shutdown() error {
 
 	s.logger.Info("devnetd stopped")
 	return nil
+}
+
+// reconnectExistingProcesses attempts to reconnect to orphaned node processes
+// from a previous daemon session. This is called at startup.
+func (s *Server) reconnectExistingProcesses(ctx context.Context) error {
+	// Determine reconnection strategy based on runtime type
+	switch rt := s.nodeRuntime.(type) {
+	case *runtime.ProcessRuntime:
+		allNodes, err := s.collectAllNodes(ctx)
+		if err != nil {
+			return err
+		}
+		if len(allNodes) == 0 {
+			s.logger.Debug("no nodes to reconnect")
+			return nil
+		}
+
+		reconnected, err := rt.ReconnectAll(ctx, allNodes)
+		if err != nil {
+			return fmt.Errorf("reconnection failed: %w", err)
+		}
+		s.logger.Info("process reconnection summary",
+			"reconnected", reconnected,
+			"totalNodes", len(allNodes))
+		return nil
+
+	case *runtime.ServiceRuntime:
+		allNodes, err := s.collectAllNodes(ctx)
+		if err != nil {
+			return err
+		}
+		if len(allNodes) == 0 {
+			s.logger.Debug("no nodes to discover")
+			return nil
+		}
+
+		discovered, err := rt.DiscoverExisting(ctx, allNodes)
+		if err != nil {
+			return fmt.Errorf("service discovery failed: %w", err)
+		}
+		s.logger.Info("service discovery summary",
+			"discovered", discovered,
+			"totalNodes", len(allNodes))
+		return nil
+
+	default:
+		// Docker or other runtimes don't need reconnection
+		return nil
+	}
+}
+
+// collectAllNodes gathers all nodes from all devnets in the store.
+func (s *Server) collectAllNodes(ctx context.Context) ([]*types.Node, error) {
+	devnets, err := s.store.ListDevnets(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list devnets: %w", err)
+	}
+
+	var allNodes []*types.Node
+	for _, devnet := range devnets {
+		nodes, err := s.store.ListNodes(ctx, devnet.Metadata.Namespace, devnet.Metadata.Name)
+		if err != nil {
+			s.logger.Warn("failed to list nodes for devnet",
+				"namespace", devnet.Metadata.Namespace,
+				"devnet", devnet.Metadata.Name,
+				"error", err)
+			continue
+		}
+		allNodes = append(allNodes, nodes...)
+	}
+	return allNodes, nil
 }
 
 // createTLSListener creates a TCP listener with TLS configured.

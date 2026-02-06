@@ -3,10 +3,14 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -16,10 +20,11 @@ import (
 
 // ProcessRuntimeConfig configures the process runtime
 type ProcessRuntimeConfig struct {
-	DataDir       string
-	LogConfig     LogConfig
-	PluginRuntime PluginRuntime
-	Logger        *slog.Logger
+	DataDir               string
+	LogConfig             LogConfig
+	PluginRuntime         PluginRuntime         // Deprecated: use PluginRuntimeProvider
+	PluginRuntimeProvider PluginRuntimeProvider // Provider to get PluginRuntime per network
+	Logger                *slog.Logger
 }
 
 // ProcessRuntime manages local processes
@@ -70,17 +75,42 @@ func (pr *ProcessRuntime) StartNode(ctx context.Context, node *types.Node, opts 
 		if status.Running {
 			return fmt.Errorf("node %s is already running", nodeID)
 		}
+		// Clean up dead supervisor before creating a new one
+		delete(pr.supervisors, nodeID)
+		pr.logManager.Close(nodeID)
 	}
 
-	// Determine command
+	// Determine PluginRuntime: opts > provider (by network) > config default
+	pluginRuntime := opts.PluginRuntime
+	if pluginRuntime == nil && pr.config.PluginRuntimeProvider != nil {
+		// Look up the node's network from the devnet
+		pluginRuntime = pr.config.PluginRuntimeProvider.GetPluginRuntime(node.Spec.Network)
+	}
+	if pluginRuntime == nil {
+		pluginRuntime = pr.config.PluginRuntime
+	}
+
+	// Determine command: PluginRuntime.StartCommand() returns args only
+	// (designed for Docker entrypoint), so we prepend the binary path for
+	// bare-metal execution.
 	var command []string
 	if override, ok := pr.cmdOverride[nodeID]; ok {
 		command = override
-	} else if pr.config.PluginRuntime != nil {
-		command = pr.config.PluginRuntime.StartCommand(node)
+	} else if pluginRuntime != nil {
+		command = append([]string{node.Spec.BinaryPath}, pluginRuntime.StartCommand(node)...)
 	} else {
-		// Default command
+		// Default command - used when PluginRuntime is not available
+		// (e.g., existing nodes without Network field in NodeSpec)
 		command = []string{node.Spec.BinaryPath, "start", "--home", node.Spec.HomeDir}
+
+		// Append chain-id: prefer NodeSpec.ChainID, fallback to genesis file
+		chainID := node.Spec.ChainID
+		if chainID == "" {
+			chainID = readChainIDFromGenesis(node.Spec.HomeDir)
+		}
+		if chainID != "" {
+			command = append(command, "--chain-id", chainID)
+		}
 	}
 
 	// Set up log writer
@@ -92,8 +122,8 @@ func (pr *ProcessRuntime) StartNode(ctx context.Context, node *types.Node, opts 
 
 	// Build environment
 	env := make(map[string]string)
-	if pr.config.PluginRuntime != nil {
-		for k, v := range pr.config.PluginRuntime.StartEnv(node) {
+	if pluginRuntime != nil {
+		for k, v := range pluginRuntime.StartEnv(node) {
 			env[k] = v
 		}
 	}
@@ -104,9 +134,9 @@ func (pr *ProcessRuntime) StartNode(ctx context.Context, node *types.Node, opts 
 	// Determine signals
 	stopSignal := syscall.SIGTERM
 	gracePeriod := 10 * time.Second
-	if pr.config.PluginRuntime != nil {
-		stopSignal = pr.config.PluginRuntime.StopSignal()
-		gracePeriod = pr.config.PluginRuntime.GracePeriod()
+	if pluginRuntime != nil {
+		stopSignal = pluginRuntime.StopSignal()
+		gracePeriod = pluginRuntime.GracePeriod()
 	}
 
 	// Create supervisor
@@ -192,10 +222,10 @@ func (pr *ProcessRuntime) GetNodeStatus(ctx context.Context, nodeID string) (*No
 // GetLogs returns logs for a node
 func (pr *ProcessRuntime) GetLogs(ctx context.Context, nodeID string, opts LogOptions) (io.ReadCloser, error) {
 	logPath := filepath.Join(pr.config.DataDir, "logs", nodeID+".log")
-	return pr.logManager.GetReader(logPath, opts)
+	return pr.logManager.GetReader(ctx, logPath, opts)
 }
 
-// Cleanup cleans up all resources
+// Cleanup cleans up all resources by stopping all processes
 func (pr *ProcessRuntime) Cleanup(ctx context.Context) error {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
@@ -207,6 +237,208 @@ func (pr *ProcessRuntime) Cleanup(ctx context.Context) error {
 
 	pr.supervisors = make(map[string]*supervisor)
 	return nil
+}
+
+// Detach detaches from all running processes without stopping them.
+// Processes continue running as orphans (reparented to PID 1).
+// Used for graceful devnetd shutdown where devnets should persist.
+func (pr *ProcessRuntime) Detach() error {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+
+	pr.config.Logger.Info("detaching from all processes", "count", len(pr.supervisors))
+
+	for nodeID, sup := range pr.supervisors {
+		sup.detach()
+		pr.logManager.Close(nodeID)
+	}
+
+	pr.supervisors = make(map[string]*supervisor)
+	return nil
+}
+
+// ReconnectNode attempts to reconnect to an already-running node process.
+// Returns true if the process is still running and was reconnected.
+// Returns false if the process is not running (caller should restart it).
+func (pr *ProcessRuntime) ReconnectNode(ctx context.Context, node *types.Node, storedPID int) (bool, error) {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+
+	nodeID := node.Metadata.Name
+
+	// Check if already managed
+	if _, exists := pr.supervisors[nodeID]; exists {
+		return true, nil
+	}
+
+	// Check if process is still alive using signal 0
+	proc, err := os.FindProcess(storedPID)
+	if err != nil {
+		pr.config.Logger.Debug("process not found",
+			"nodeID", nodeID,
+			"pid", storedPID,
+			"error", err)
+		return false, nil
+	}
+
+	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		pr.config.Logger.Debug("process not running",
+			"nodeID", nodeID,
+			"pid", storedPID,
+			"error", err)
+		return false, nil
+	}
+
+	// Validate it's the same process (guard against PID reuse)
+	if !pr.validateProcess(storedPID, node) {
+		pr.config.Logger.Warn("PID reused by different process",
+			"nodeID", nodeID,
+			"pid", storedPID)
+		return false, nil
+	}
+
+	// Reopen log writer in append mode
+	logPath := pr.logPath(node)
+	logWriter, err := pr.logManager.GetWriter(nodeID, logPath)
+	if err != nil {
+		pr.config.Logger.Warn("failed to reopen log writer",
+			"nodeID", nodeID,
+			"error", err)
+		// Continue anyway - process is running, logs might not work perfectly
+	}
+
+	// Create a monitoring-only supervisor
+	sup := newMonitoringSupervisor(storedPID, logWriter, pr.config.Logger)
+	pr.supervisors[nodeID] = sup
+
+	// Start monitoring in background
+	go sup.runMonitor(ctx)
+
+	pr.config.Logger.Info("reconnected to running process",
+		"nodeID", nodeID,
+		"pid", storedPID)
+
+	return true, nil
+}
+
+// ReconnectAll attempts to reconnect to all previously-running nodes.
+// Called at daemon startup to reattach to orphaned processes.
+// Returns the count of successfully reconnected nodes.
+func (pr *ProcessRuntime) ReconnectAll(ctx context.Context, nodes []*types.Node) (int, error) {
+	pr.config.Logger.Info("attempting to reconnect to running processes",
+		"nodeCount", len(nodes))
+
+	reconnected := 0
+	for _, node := range nodes {
+		// Skip nodes without stored PID
+		if node.Status.PID == 0 {
+			continue
+		}
+		// Skip nodes that weren't running
+		if node.Status.Phase != types.NodePhaseRunning {
+			continue
+		}
+
+		ok, err := pr.ReconnectNode(ctx, node, node.Status.PID)
+		if err != nil {
+			pr.config.Logger.Warn("failed to reconnect to node",
+				"nodeID", node.Metadata.Name,
+				"pid", node.Status.PID,
+				"error", err)
+			continue
+		}
+		if ok {
+			reconnected++
+		} else {
+			pr.config.Logger.Info("process no longer running, will be restarted by controller",
+				"nodeID", node.Metadata.Name,
+				"pid", node.Status.PID)
+		}
+	}
+
+	pr.config.Logger.Info("process reconnection complete",
+		"reconnected", reconnected,
+		"total", len(nodes))
+
+	return reconnected, nil
+}
+
+// validateProcess checks if the PID belongs to the expected node process.
+// This guards against PID reuse edge cases.
+func (pr *ProcessRuntime) validateProcess(pid int, node *types.Node) bool {
+	cmdline, err := readProcessCmdline(pid)
+	if err != nil {
+		// Can't read cmdline (permission denied, /proc not available on macOS)
+		// Fall back to less reliable validation
+		return pr.validateProcessFallback(pid, node)
+	}
+
+	if len(cmdline) == 0 {
+		return pr.validateProcessFallback(pid, node)
+	}
+
+	// Check if the command matches expected binary
+	if node.Spec.BinaryPath != "" && strings.Contains(cmdline[0], node.Spec.BinaryPath) {
+		return true
+	}
+
+	// Check if home directory appears in arguments
+	if node.Spec.HomeDir != "" {
+		for _, arg := range cmdline {
+			if strings.Contains(arg, node.Spec.HomeDir) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// validateProcessFallback uses ps command when /proc is not available (macOS)
+func (pr *ProcessRuntime) validateProcessFallback(pid int, node *types.Node) bool {
+	// Use ps to get command line
+	cmd := exec.Command("ps", "-o", "command=", "-p", fmt.Sprintf("%d", pid))
+	out, err := cmd.Output()
+	if err != nil {
+		// Can't validate, assume it's the right process
+		// (better to reconnect than to restart unnecessarily)
+		return true
+	}
+
+	cmdline := string(out)
+
+	// Check if binary path appears in command
+	if node.Spec.BinaryPath != "" && strings.Contains(cmdline, node.Spec.BinaryPath) {
+		return true
+	}
+
+	// Check if home directory appears in command
+	if node.Spec.HomeDir != "" && strings.Contains(cmdline, node.Spec.HomeDir) {
+		return true
+	}
+
+	return false
+}
+
+// readProcessCmdline reads the command line of a process from /proc (Linux only)
+func readProcessCmdline(pid int) ([]string, error) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse null-separated args
+	if len(data) == 0 {
+		return nil, nil
+	}
+
+	// Remove trailing null if present
+	if data[len(data)-1] == 0 {
+		data = data[:len(data)-1]
+	}
+
+	args := strings.Split(string(data), "\x00")
+	return args, nil
 }
 
 // ExecInNode executes a command in a running node process.
@@ -223,3 +455,23 @@ func (pr *ProcessRuntime) logPath(node *types.Node) string {
 
 // Ensure ProcessRuntime implements NodeRuntime interface
 var _ NodeRuntime = (*ProcessRuntime)(nil)
+
+// readChainIDFromGenesis reads the chain_id from the genesis.json file in the node's home directory.
+// This is used as a fallback for existing nodes that don't have PluginRuntime available.
+// Returns empty string if the file cannot be read or parsed.
+func readChainIDFromGenesis(homeDir string) string {
+	genesisPath := filepath.Join(homeDir, "config", "genesis.json")
+	data, err := os.ReadFile(genesisPath)
+	if err != nil {
+		return ""
+	}
+
+	var genesis struct {
+		ChainID string `json:"chain_id"`
+	}
+	if err := json.Unmarshal(data, &genesis); err != nil {
+		return ""
+	}
+
+	return genesis.ChainID
+}

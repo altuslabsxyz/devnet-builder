@@ -17,157 +17,58 @@ func newGetCmd() *cobra.Command {
 	var (
 		namespace string
 		output    string
-		labelSel  string
 		showNodes bool
 	)
 
 	cmd := &cobra.Command{
-		Use:   "get [resource] [name]",
-		Short: "Display devnet resources",
-		Long: `Display one or many devnet resources.
+		Use:   "get [devnet]",
+		Short: "Display devnet information",
+		Long: `Display devnet information.
 
-Resource types:
-  devnets, devnet, dn    - Devnet definitions
-  nodes, node            - Individual nodes within a devnet
+Uses the current context if no devnet is specified.
 
 Examples:
-  # List all devnets
-  dvb get devnets
-
-  # List devnets in a specific namespace
-  dvb get devnets -n production
+  # Get the current context devnet
+  dvb get
 
   # Get a specific devnet
-  dvb get devnet my-devnet
+  dvb get my-devnet
 
   # Get devnet with node details
-  dvb get devnet my-devnet --show-nodes
+  dvb get --show-nodes
 
-  # List nodes in a devnet
-  dvb get nodes --devnet my-devnet
+  # Output in yaml format
+  dvb get -o yaml
 
-  # Output in wide format
-  dvb get devnets -o wide`,
-		Args: cobra.MinimumNArgs(1),
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			if len(args) == 0 {
-				// First argument: resource type
-				return []string{
-					"devnets\tList all devnets",
-					"devnet\tGet a specific devnet",
-					"dn\tShorthand for devnet",
-					"nodes\tList nodes (use with --devnet)",
-					"node\tShorthand for nodes",
-				}, cobra.ShellCompDirectiveNoFileComp
-			}
-			// Second argument: resource name - requires daemon connection
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		},
+  # Get a devnet in a specific namespace
+  dvb get staging/my-devnet`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runGet(cmd, args, namespace, output, labelSel, showNodes)
+			if daemonClient == nil {
+				return fmt.Errorf("daemon not running - start with: devnetd")
+			}
+
+			var explicitDevnet string
+			if len(args) > 0 {
+				explicitDevnet = args[0]
+			}
+
+			ns, name, err := resolveWithSuggestions(explicitDevnet, namespace)
+			if err != nil {
+				return err
+			}
+
+			printContextHeader(explicitDevnet, currentContext)
+
+			return getDevnet(cmd, ns, name, output, showNodes)
 		},
 	}
 
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default, empty = all namespaces for list)")
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
 	cmd.Flags().StringVarP(&output, "output", "o", "", "Output format: wide, yaml, json")
-	cmd.Flags().StringVarP(&labelSel, "selector", "l", "", "Label selector (e.g., 'env=prod')")
 	cmd.Flags().BoolVar(&showNodes, "show-nodes", false, "Show nodes when getting a devnet")
-	cmd.Flags().BoolP("all-namespaces", "A", false, "List across all namespaces (no-op, for kubectl muscle memory)")
 
 	return cmd
-}
-
-func runGet(cmd *cobra.Command, args []string, namespace, output, labelSel string, showNodes bool) error {
-	if daemonClient == nil {
-		return fmt.Errorf("daemon not running - start with: devnetd")
-	}
-
-	resource := args[0]
-	var name string
-	if len(args) > 1 {
-		name = args[1]
-	}
-
-	switch resource {
-	case "devnets", "devnet", "dn":
-		if name != "" {
-			return getDevnet(cmd, namespace, name, output, showNodes)
-		}
-		return listDevnets(cmd, namespace, output, labelSel)
-	case "nodes", "node":
-		return fmt.Errorf("use 'dvb node list <devnet>' to list nodes")
-	default:
-		return fmt.Errorf("unknown resource type: %s", resource)
-	}
-}
-
-func listDevnets(cmd *cobra.Command, namespace, output, labelSel string) error {
-	devnets, err := daemonClient.ListDevnets(cmd.Context(), namespace)
-	if err != nil {
-		return err
-	}
-
-	if len(devnets) == 0 {
-		fmt.Println("No devnets found")
-		return nil
-	}
-
-	// Handle yaml/json output
-	switch output {
-	case "yaml":
-		for i, d := range devnets {
-			if i > 0 {
-				fmt.Println("---")
-			}
-			out, err := k8syaml.Marshal(protoDevnetToYAML(d))
-			if err != nil {
-				return fmt.Errorf("failed to marshal yaml: %w", err)
-			}
-			fmt.Print(string(out))
-		}
-		return nil
-	case "json":
-		out, err := json.MarshalIndent(devnets, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal json: %w", err)
-		}
-		fmt.Println(string(out))
-		return nil
-	}
-
-	// Table output
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-
-	switch output {
-	case "wide":
-		fmt.Fprintln(w, "NAMESPACE\tNAME\tPHASE\tNODES\tREADY\tHEIGHT\tMODE\tPLUGIN\tVERSION")
-		for _, d := range devnets {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\n",
-				d.Metadata.Namespace,
-				d.Metadata.Name,
-				colorPhase(d.Status.Phase),
-				d.Status.Nodes,
-				d.Status.ReadyNodes,
-				d.Status.CurrentHeight,
-				d.Spec.Mode,
-				d.Spec.Plugin,
-				d.Status.SdkVersion)
-		}
-	default:
-		fmt.Fprintln(w, "NAMESPACE\tNAME\tPHASE\tNODES\tREADY\tHEIGHT")
-		for _, d := range devnets {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%d\t%d\n",
-				d.Metadata.Namespace,
-				d.Metadata.Name,
-				colorPhase(d.Status.Phase),
-				d.Status.Nodes,
-				d.Status.ReadyNodes,
-				d.Status.CurrentHeight)
-		}
-	}
-	w.Flush()
-
-	return nil
 }
 
 func getDevnet(cmd *cobra.Command, namespace, name, output string, showNodes bool) error {
@@ -253,17 +154,43 @@ func printNodes(nodes []*v1.Node) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "INDEX\tROLE\tPHASE\tHEALTH\tHEIGHT\tPEERS")
 	for _, n := range nodes {
-		health := "Unknown"
-		if n.Status.Health != nil {
-			health = n.Status.Health.Status
+		if n == nil {
+			continue
 		}
+
+		// Safely extract fields with nil checks
+		var index int32
+		if n.Metadata != nil {
+			index = n.Metadata.Index
+		}
+
+		var role string
+		if n.Spec != nil {
+			role = n.Spec.Role
+		}
+
+		var phase, health string
+		var blockHeight int64
+		var peerCount int32
+		if n.Status != nil {
+			phase = n.Status.Phase
+			blockHeight = n.Status.BlockHeight
+			peerCount = n.Status.PeerCount
+			if n.Status.Health != nil {
+				health = n.Status.Health.Status
+			}
+		}
+		if health == "" {
+			health = "Unknown"
+		}
+
 		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%d\t%d\n",
-			n.Metadata.Index,
-			n.Spec.Role,
-			colorPhase(n.Status.Phase),
+			index,
+			role,
+			colorPhase(phase),
 			health,
-			n.Status.BlockHeight,
-			n.Status.PeerCount)
+			blockHeight,
+			peerCount)
 	}
 	w.Flush()
 }

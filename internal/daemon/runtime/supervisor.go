@@ -23,6 +23,11 @@ type supervisorConfig struct {
 	stopSignal  syscall.Signal
 	gracePeriod time.Duration
 	logger      *slog.Logger
+
+	// detachOnShutdown indicates the supervisor should detach (not kill process)
+	// when stop() is called. Used for graceful devnetd shutdown where processes
+	// should persist as orphans.
+	detachOnShutdown bool
 }
 
 // supervisor manages a single process with restart logic
@@ -42,6 +47,10 @@ type supervisor struct {
 	stoppedCh chan struct{}
 	stopOnce  sync.Once
 	mu        sync.RWMutex
+
+	// detachMode when true causes stop to detach instead of kill.
+	// Set dynamically via setDetachMode() before shutdown.
+	detachMode bool
 }
 
 // newSupervisor creates a new process supervisor
@@ -76,10 +85,10 @@ func (s *supervisor) run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			s.stopProcess()
+			s.maybeStopProcess()
 			return
 		case <-s.stopCh:
-			s.stopProcess()
+			s.maybeStopProcess()
 			return
 		default:
 		}
@@ -176,6 +185,24 @@ func (s *supervisor) startAndWait(ctx context.Context) (int, error) {
 	return exitCode, err
 }
 
+// maybeStopProcess stops the process unless detach mode is enabled.
+// In detach mode, the process continues running as an orphan.
+func (s *supervisor) maybeStopProcess() {
+	s.mu.RLock()
+	detach := s.detachMode || s.config.detachOnShutdown
+	pid := s.pid // Read PID under lock to avoid race
+	s.mu.RUnlock()
+
+	if detach {
+		if s.config.logger != nil {
+			s.config.logger.Info("detaching from process (will continue as orphan)",
+				"pid", pid)
+		}
+		return
+	}
+	s.stopProcess()
+}
+
 // stopProcess stops the running process
 // Note: This function only signals the process to stop. The actual Wait() is handled
 // by startAndWait() to avoid double-Wait on the same exec.Cmd (undefined behavior).
@@ -223,6 +250,27 @@ func (s *supervisor) forceStop() {
 		close(s.stopCh)
 	})
 	<-s.stoppedCh
+}
+
+// setDetachMode enables or disables detach mode.
+// When detach mode is enabled, stop() will detach from the process
+// instead of killing it. The process continues running as an orphan.
+func (s *supervisor) setDetachMode(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.detachMode = enabled
+}
+
+// detach marks the supervisor for detach mode.
+// When the supervisor eventually stops (process exits or stop is called),
+// it will NOT kill the process - the process continues running as an orphan.
+// This returns immediately without waiting for the supervisor goroutine.
+// Used for graceful devnetd shutdown where devnets should persist.
+func (s *supervisor) detach() {
+	s.setDetachMode(true)
+	// Don't close stopCh - let the supervisor continue monitoring.
+	// Don't wait - the process keeps running and supervisor will exit
+	// when the process eventually dies on its own.
 }
 
 // status returns the current status
@@ -279,4 +327,81 @@ func (s *supervisor) calculateBackoff(attempt int) time.Duration {
 	}
 
 	return backoff
+}
+
+// newMonitoringSupervisor creates a supervisor for an already-running process.
+// This supervisor only monitors the process - it doesn't manage lifecycle or restart.
+// Used when reconnecting to orphaned processes after devnetd restart.
+func newMonitoringSupervisor(pid int, logWriter io.Writer, logger *slog.Logger) *supervisor {
+	return &supervisor{
+		config: supervisorConfig{
+			logWriter:        logWriter,
+			logger:           logger,
+			detachOnShutdown: true, // Always detach, never kill reconnected processes
+		},
+		pid:        pid,
+		running:    true,
+		startedAt:  time.Now(), // We don't know actual start time
+		stopCh:     make(chan struct{}),
+		stoppedCh:  make(chan struct{}),
+		detachMode: true, // Always detach mode for reconnected processes
+	}
+}
+
+// runMonitor monitors an already-running process without managing its lifecycle.
+// Used for reconnected processes where we can't use cmd.Wait().
+// Polls for process death and updates running status.
+func (s *supervisor) runMonitor(ctx context.Context) {
+	defer close(s.stoppedCh)
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			// Context cancelled - just exit, don't kill the process
+			return
+		case <-s.stopCh:
+			// Stop requested - check if we should kill or detach
+			s.mu.RLock()
+			detach := s.detachMode || s.config.detachOnShutdown
+			pid := s.pid // Read PID under lock to avoid race
+			s.mu.RUnlock()
+
+			if !detach && pid > 0 {
+				// Send SIGTERM to the process
+				if proc, err := os.FindProcess(pid); err == nil {
+					_ = proc.Signal(syscall.SIGTERM)
+				}
+			}
+			return
+		case <-ticker.C:
+			// Check if process is still alive using signal 0
+			proc, err := os.FindProcess(s.pid)
+			if err != nil {
+				s.setProcessDead("process not found: " + err.Error())
+				return
+			}
+			if err := proc.Signal(syscall.Signal(0)); err != nil {
+				s.setProcessDead("process exited: " + err.Error())
+				return
+			}
+		}
+	}
+}
+
+// setProcessDead marks the process as no longer running
+func (s *supervisor) setProcessDead(reason string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pid := s.pid
+	s.running = false
+	s.pid = 0 // Clear PID to prevent stale references
+	s.lastError = reason
+	if s.config.logger != nil {
+		s.config.logger.Info("monitored process died",
+			"pid", pid,
+			"reason", reason)
+	}
 }

@@ -47,6 +47,14 @@ type NodeSpec struct {
 
 	// Desired is the desired state: "Running" or "Stopped".
 	Desired string `json:"desired"`
+
+	// ChainID is the chain ID for the node.
+	// Copied from DevnetSpec at node creation time.
+	ChainID string `json:"chainId,omitempty"`
+
+	// Network is the network/plugin name (e.g., "cosmos", "stable").
+	// Used to lookup the appropriate PluginRuntime for this node.
+	Network string `json:"network,omitempty"`
 }
 
 // NodeStatus defines the observed state of a Node.

@@ -38,10 +38,9 @@ func (m SpinnerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	switch msg := msg.(type) {
-	case spinner.TickMsg:
+	if tickMsg, ok := msg.(spinner.TickMsg); ok {
 		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
+		m.spinner, cmd = m.spinner.Update(tickMsg)
 		return m, cmd
 	}
 	return m, nil

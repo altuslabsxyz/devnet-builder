@@ -27,6 +27,9 @@ type ServerConfig struct {
 	Workers    int    `toml:"workers"`
 	Foreground bool   `toml:"foreground"`
 
+	// RuntimeMode selects the node process runtime: "process" (default), "service", "docker".
+	RuntimeMode string `toml:"runtime_mode"`
+
 	// Remote listener settings (optional - enables remote access)
 	Listen  string `toml:"listen"`   // TCP address (e.g., "0.0.0.0:9000"), empty = local only
 	TLSCert string `toml:"tls_cert"` // Path to TLS certificate file
@@ -84,11 +87,12 @@ func DefaultConfig() *Config {
 	dataDir := DefaultDataDir()
 	return &Config{
 		Server: ServerConfig{
-			Socket:     filepath.Join(dataDir, "devnetd.sock"),
-			DataDir:    dataDir,
-			LogLevel:   "info",
-			Workers:    2,
-			Foreground: true,
+			Socket:      filepath.Join(dataDir, "devnetd.sock"),
+			DataDir:     dataDir,
+			LogLevel:    "info",
+			Workers:     2,
+			Foreground:  true,
+			RuntimeMode: "process",
 		},
 		Auth: AuthConfig{
 			Enabled:  true, // Auth enabled by default when Listen is set

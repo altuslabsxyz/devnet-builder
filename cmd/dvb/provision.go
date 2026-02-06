@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,7 @@ import (
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
+	"github.com/altuslabsxyz/devnet-builder/internal/output"
 	"github.com/altuslabsxyz/devnet-builder/internal/tui"
 	"github.com/altuslabsxyz/devnet-builder/internal/tui/views"
 	tea "github.com/charmbracelet/bubbletea"
@@ -19,6 +21,9 @@ import (
 	"github.com/spf13/cobra"
 	k8syaml "sigs.k8s.io/yaml"
 )
+
+// stepSpinner is a package-level spinner for non-byte progress steps in verbose mode
+var stepSpinner *output.StatusSpinner
 
 // ProvisionMode represents the mode of operation for the provision command
 type ProvisionMode int
@@ -487,7 +492,7 @@ func executeCreate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 		fmt.Fprintf(os.Stderr, "  Namespace:    %s\n", devnet.Metadata.Namespace)
 		fmt.Fprintf(os.Stderr, "  Phase:        %s\n", devnet.Status.Phase)
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "Provisioning in background. Check status with: dvb describe %s\n", name)
+		fmt.Fprintf(os.Stderr, "Provisioning in background. Check status with: dvb status -v %s\n", name)
 		return nil
 	}
 
@@ -522,7 +527,7 @@ func executeCreate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 		fmt.Fprintf(os.Stderr, "  Full Nodes:   %d\n", devnet.Spec.FullNodes)
 	}
 	fmt.Fprintf(os.Stderr, "\n")
-	fmt.Fprintf(os.Stderr, "View status with: dvb describe %s\n", name)
+	fmt.Fprintf(os.Stderr, "View status with: dvb status -v %s\n", name)
 
 	return nil
 }
@@ -549,7 +554,7 @@ func executeUpdate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 			color.Green("Devnet %q update started", name)
 		}
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "Update in background. Check status with: dvb describe %s\n", name)
+		fmt.Fprintf(os.Stderr, "Update in background. Check status with: dvb status -v %s\n", name)
 		return nil
 	}
 
@@ -601,7 +606,7 @@ func executeUpdate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 	}
 
 	fmt.Fprintf(os.Stderr, "\n")
-	fmt.Fprintf(os.Stderr, "View status with: dvb describe %s\n", name)
+	fmt.Fprintf(os.Stderr, "View status with: dvb status -v %s\n", name)
 
 	return nil
 }
@@ -696,9 +701,21 @@ func runProvisionTUI(ctx context.Context, c *client.Client, namespace, devnetNam
 	// Create program
 	p := tea.NewProgram(model)
 
+	// Create a cancellable context for the streaming goroutine
+	// This ensures the goroutine stops when the TUI exits
+	streamCtx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
+
 	// Start log streaming in background
 	go func() {
-		err := c.StreamProvisionLogs(ctx, namespace, devnetName, func(entry *client.ProvisionLogEntry) error {
+		err := c.StreamProvisionLogs(streamCtx, namespace, devnetName, func(entry *client.ProvisionLogEntry) error {
+			// Check if context is cancelled before sending
+			select {
+			case <-streamCtx.Done():
+				return streamCtx.Err()
+			default:
+			}
+
 			p.Send(views.StepProgressMsg{
 				StepName:   entry.StepName,
 				StepStatus: entry.StepStatus,
@@ -706,12 +723,22 @@ func runProvisionTUI(ctx context.Context, c *client.Client, namespace, devnetNam
 				Total:      entry.ProgressTotal,
 				Unit:       entry.ProgressUnit,
 				Detail:     entry.StepDetail,
+				Speed:      entry.Speed,
 			})
 			return nil
 		})
-		if err != nil {
+
+		// Only send messages if context is still active
+		select {
+		case <-streamCtx.Done():
+			// Context cancelled, TUI already exited - don't send
+			return
+		default:
+		}
+
+		if err != nil && !errors.Is(err, context.Canceled) {
 			p.Send(views.ProvisionErrorMsg{Error: err})
-		} else {
+		} else if err == nil {
 			p.Send(views.ProvisionCompleteMsg{})
 		}
 	}()
@@ -722,7 +749,10 @@ func runProvisionTUI(ctx context.Context, c *client.Client, namespace, devnetNam
 		return err
 	}
 
-	pm := finalModel.(views.ProvisionModel)
+	pm, ok := finalModel.(views.ProvisionModel)
+	if !ok {
+		return fmt.Errorf("unexpected TUI model type: %T", finalModel)
+	}
 	return pm.GetError()
 }
 
@@ -755,25 +785,63 @@ func printProgressStep(entry *client.ProvisionLogEntry) {
 	switch entry.StepStatus {
 	case "running":
 		if entry.ProgressTotal > 0 && entry.ProgressUnit == "bytes" {
-			// Byte-based progress with percentage
+			// Byte-based progress: stop spinner if running, show progress bar
+			if stepSpinner != nil {
+				stepSpinner.Stop()
+				stepSpinner = nil
+			}
+
 			pct := float64(entry.ProgressCurrent) / float64(entry.ProgressTotal) * 100
 			currentMB := float64(entry.ProgressCurrent) / (1024 * 1024)
 			totalMB := float64(entry.ProgressTotal) / (1024 * 1024)
-			fmt.Fprintf(os.Stderr, "\r  %s %s... %.0f%% (%.1f/%.1f MB)    ",
-				color.CyanString("→"),
-				entry.StepName,
-				pct, currentMB, totalMB)
-		} else if entry.StepDetail != "" {
-			fmt.Fprintf(os.Stderr, "\r  %s %s... (%s)    ",
-				color.CyanString("→"),
-				entry.StepName,
-				entry.StepDetail)
+			speedMB := entry.Speed / (1024 * 1024)
+
+			// Build progress bar (width: 30 chars)
+			barWidth := 30
+			filled := int(pct / 100 * float64(barWidth))
+			if filled < 0 {
+				filled = 0
+			} else if filled > barWidth {
+				filled = barWidth
+			}
+			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+
+			// Calculate ETA
+			eta := ""
+			if entry.Speed > 0 {
+				remaining := float64(entry.ProgressTotal - entry.ProgressCurrent)
+				etaSecs := remaining / entry.Speed
+				if etaSecs < 60 {
+					eta = fmt.Sprintf("%.0fs", etaSecs)
+				} else if etaSecs < 3600 {
+					eta = fmt.Sprintf("%.1fm", etaSecs/60)
+				} else {
+					eta = fmt.Sprintf("%.1fh", etaSecs/3600)
+				}
+			}
+
+			fmt.Fprintf(os.Stderr, "\r  %s %5.1f%% | %.1f/%.1f MB | %.1f MB/s | ETA: %s    ",
+				color.CyanString(bar), pct, currentMB, totalMB, speedMB, eta)
 		} else {
-			fmt.Fprintf(os.Stderr, "\r  %s %s...    ",
-				color.CyanString("→"),
-				entry.StepName)
+			// Non-byte progress: use spinner for animated feedback
+			msg := entry.StepName
+			if entry.StepDetail != "" {
+				msg = fmt.Sprintf("%s (%s)", entry.StepName, entry.StepDetail)
+			}
+
+			if stepSpinner == nil {
+				stepSpinner = output.NewStatusSpinner()
+				stepSpinner.Start(msg)
+			} else {
+				stepSpinner.Update(msg)
+			}
 		}
 	case "completed":
+		// Stop spinner and show completion
+		if stepSpinner != nil {
+			stepSpinner.Stop()
+			stepSpinner = nil
+		}
 		clearLine()
 		if entry.StepDetail != "" {
 			fmt.Fprintf(os.Stderr, "  %s %s (%s)\n",
@@ -786,6 +854,11 @@ func printProgressStep(entry *client.ProvisionLogEntry) {
 				entry.StepName)
 		}
 	case "failed":
+		// Stop spinner and show failure
+		if stepSpinner != nil {
+			stepSpinner.Stop()
+			stepSpinner = nil
+		}
 		clearLine()
 		fmt.Fprintf(os.Stderr, "  %s %s\n",
 			color.RedString("✗"),

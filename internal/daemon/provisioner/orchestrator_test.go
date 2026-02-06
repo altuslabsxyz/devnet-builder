@@ -71,6 +71,7 @@ type mockNodeInitializer struct {
 	initializeErr error
 	nodeIDResult  string
 	nodeIDErr     error
+	nodeIDMap     map[string]string // nodeDir -> nodeID (per-node override)
 }
 
 func (m *mockNodeInitializer) Initialize(ctx context.Context, nodeDir, moniker, chainID string) error {
@@ -80,11 +81,63 @@ func (m *mockNodeInitializer) Initialize(ctx context.Context, nodeDir, moniker, 
 		chainID string
 	}{nodeDir, moniker, chainID})
 
-	// Create config directory like the real initializer does
-	// This is needed because the orchestrator writes genesis to config/genesis.json
+	// Create config directory and stub files like the real initializer does
 	if m.initializeErr == nil {
 		configDir := filepath.Join(nodeDir, "config")
 		if err := os.MkdirAll(configDir, 0755); err != nil {
+			return err
+		}
+
+		// Create a minimal priv_validator_key.json (needed by readValidatorKeys)
+		hexAddr := fmt.Sprintf("%040x", len(m.initializeCalls))
+		keyJSON := fmt.Sprintf(`{
+  "address": "%s",
+  "pub_key": {
+    "type": "tendermint/PubKeyEd25519",
+    "value": "dGVzdHB1YmtleSVk"
+  }
+}`, hexAddr)
+		if err := os.WriteFile(filepath.Join(configDir, "priv_validator_key.json"), []byte(keyJSON), 0644); err != nil {
+			return err
+		}
+
+		// Create a minimal config.toml (needed by configureNodeNetworking)
+		configTOML := `proxy_app = "tcp://127.0.0.1:26658"
+pprof_laddr = "localhost:6060"
+persistent_peers = ""
+timeout_propose = "3s"
+timeout_prevote = "1s"
+timeout_precommit = "1s"
+timeout_commit = "5s"
+
+[rpc]
+laddr = "tcp://127.0.0.1:26657"
+
+[p2p]
+laddr = "tcp://0.0.0.0:26656"
+addr_book_strict = true
+allow_duplicate_ip = false
+`
+		if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(configTOML), 0644); err != nil {
+			return err
+		}
+
+		// Create a minimal app.toml (needed by SetPortsWithHost, EnableNode0Services)
+		appTOML := `[api]
+enable = false
+address = "tcp://0.0.0.0:1317"
+enabled-unsafe-cors = false
+
+[grpc]
+enable = true
+address = "0.0.0.0:9090"
+
+[json-rpc]
+enable = false
+address = "0.0.0.0:8545"
+ws-address = "0.0.0.0:8546"
+`
+		if err := os.WriteFile(filepath.Join(configDir, "app.toml"), []byte(appTOML), 0644); err != nil {
 			return err
 		}
 	}
@@ -93,6 +146,11 @@ func (m *mockNodeInitializer) Initialize(ctx context.Context, nodeDir, moniker, 
 }
 
 func (m *mockNodeInitializer) GetNodeID(ctx context.Context, nodeDir string) (string, error) {
+	if m.nodeIDMap != nil {
+		if id, ok := m.nodeIDMap[nodeDir]; ok {
+			return id, m.nodeIDErr
+		}
+	}
 	return m.nodeIDResult, m.nodeIDErr
 }
 
@@ -1312,4 +1370,279 @@ func TestExecuteHealthPhase_DefaultTimeout(t *testing.T) {
 	// Test that zero timeout uses the default
 	assert.Equal(t, 2*time.Minute, DefaultHealthCheckTimeout)
 	assert.Equal(t, 5*time.Second, DefaultHealthCheckInterval)
+}
+
+// =============================================================================
+// Post-Init Validator Injection & Peer Configuration Tests
+// =============================================================================
+
+// mockPluginGenesisTracker implements plugintypes.PluginGenesis with call tracking.
+// Named differently from mockPluginGenesis in genesis_forker_test.go to avoid redeclaration.
+type mockPluginGenesisTracker struct {
+	patchGenesisCalls []struct {
+		opts plugintypes.GenesisPatchOptions
+	}
+	patchGenesisResult []byte
+	patchGenesisErr    error
+}
+
+func (m *mockPluginGenesisTracker) GetRPCEndpoint(networkType string) string  { return "" }
+func (m *mockPluginGenesisTracker) GetSnapshotURL(networkType string) string  { return "" }
+func (m *mockPluginGenesisTracker) ValidateGenesis(genesis []byte) error      { return nil }
+func (m *mockPluginGenesisTracker) ExportCommandArgs(homeDir string) []string { return nil }
+func (m *mockPluginGenesisTracker) BinaryName() string                        { return "testd" }
+
+func (m *mockPluginGenesisTracker) PatchGenesis(genesis []byte, opts plugintypes.GenesisPatchOptions) ([]byte, error) {
+	m.patchGenesisCalls = append(m.patchGenesisCalls, struct {
+		opts plugintypes.GenesisPatchOptions
+	}{opts})
+	if m.patchGenesisResult != nil {
+		return m.patchGenesisResult, m.patchGenesisErr
+	}
+	return genesis, m.patchGenesisErr
+}
+
+func TestReadValidatorKeys(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create two validator node directories with mock priv_validator_key.json
+	nodes := []*types.Node{
+		{
+			Metadata: types.ResourceMeta{Name: "test-validator-0"},
+			Spec: types.NodeSpec{
+				HomeDir: filepath.Join(tmpDir, "node0"),
+				Role:    "validator",
+			},
+		},
+		{
+			Metadata: types.ResourceMeta{Name: "test-validator-1"},
+			Spec: types.NodeSpec{
+				HomeDir: filepath.Join(tmpDir, "node1"),
+				Role:    "validator",
+			},
+		},
+		{
+			Metadata: types.ResourceMeta{Name: "test-fullnode-2"},
+			Spec: types.NodeSpec{
+				HomeDir: filepath.Join(tmpDir, "node2"),
+				Role:    "fullnode",
+			},
+		},
+	}
+
+	// Write mock priv_validator_key.json files for validators
+	for i, node := range nodes[:2] {
+		configDir := filepath.Join(node.Spec.HomeDir, "config")
+		require.NoError(t, os.MkdirAll(configDir, 0755))
+
+		// Use deterministic hex addresses (20 bytes = 40 hex chars)
+		hexAddr := fmt.Sprintf("%040x", i+1)
+		keyJSON := fmt.Sprintf(`{
+			"address": "%s",
+			"pub_key": {
+				"type": "tendermint/PubKeyEd25519",
+				"value": "dGVzdHB1YmtleSVk"
+			}
+		}`, hexAddr)
+		require.NoError(t, os.WriteFile(filepath.Join(configDir, "priv_validator_key.json"), []byte(keyJSON), 0644))
+	}
+
+	orch := NewProvisioningOrchestrator(OrchestratorConfig{
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Bech32Prefix: "cosmos",
+	})
+
+	validators, err := orch.readValidatorKeys(nodes)
+	require.NoError(t, err)
+
+	// Should only read validators, not fullnodes
+	require.Len(t, validators, 2)
+
+	// Check first validator
+	assert.Equal(t, "test-validator-0", validators[0].Moniker)
+	assert.Equal(t, "dGVzdHB1YmtleSVk", validators[0].ConsPubKey)
+	assert.Contains(t, validators[0].OperatorAddress, "cosmosvaloper")
+	assert.Equal(t, "1000000000000000000000", validators[0].SelfDelegation)
+
+	// Check second validator
+	assert.Equal(t, "test-validator-1", validators[1].Moniker)
+	assert.Contains(t, validators[1].OperatorAddress, "cosmosvaloper")
+}
+
+func TestReadValidatorKeys_SkipsFullnodes(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	nodes := []*types.Node{
+		{
+			Metadata: types.ResourceMeta{Name: "test-fullnode-0"},
+			Spec: types.NodeSpec{
+				HomeDir: filepath.Join(tmpDir, "node0"),
+				Role:    "fullnode",
+			},
+		},
+	}
+
+	orch := NewProvisioningOrchestrator(OrchestratorConfig{
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Bech32Prefix: "cosmos",
+	})
+
+	validators, err := orch.readValidatorKeys(nodes)
+	require.NoError(t, err)
+	assert.Empty(t, validators)
+}
+
+func TestBuildPeersExcludingSelf(t *testing.T) {
+	nodeIDs := []string{"aaa111", "bbb222", "ccc333"}
+
+	t.Run("port-offset mode (no address)", func(t *testing.T) {
+		nodes := []*types.Node{
+			{Spec: types.NodeSpec{Index: 0}},
+			{Spec: types.NodeSpec{Index: 1}},
+			{Spec: types.NodeSpec{Index: 2}},
+		}
+
+		// Exclude node 0
+		peers := buildPeersExcludingSelf(nodeIDs, nodes, 0)
+		assert.Contains(t, peers, "bbb222@127.0.0.1:36656")
+		assert.Contains(t, peers, "ccc333@127.0.0.1:46656")
+		assert.NotContains(t, peers, "aaa111")
+
+		// Exclude node 1
+		peers = buildPeersExcludingSelf(nodeIDs, nodes, 1)
+		assert.Contains(t, peers, "aaa111@127.0.0.1:26656")
+		assert.Contains(t, peers, "ccc333@127.0.0.1:46656")
+		assert.NotContains(t, peers, "bbb222")
+	})
+
+	t.Run("loopback subnet mode (with address)", func(t *testing.T) {
+		nodes := []*types.Node{
+			{Spec: types.NodeSpec{Index: 0, Address: "127.0.42.1"}},
+			{Spec: types.NodeSpec{Index: 1, Address: "127.0.42.2"}},
+			{Spec: types.NodeSpec{Index: 2, Address: "127.0.42.3"}},
+		}
+
+		peers := buildPeersExcludingSelf(nodeIDs, nodes, 0)
+		assert.Contains(t, peers, "bbb222@127.0.42.2:26656")
+		assert.Contains(t, peers, "ccc333@127.0.42.3:26656")
+		assert.NotContains(t, peers, "aaa111")
+	})
+
+	t.Run("single node returns empty", func(t *testing.T) {
+		nodes := []*types.Node{
+			{Spec: types.NodeSpec{Index: 0}},
+		}
+		peers := buildPeersExcludingSelf([]string{"aaa111"}, nodes, 0)
+		assert.Empty(t, peers)
+	})
+}
+
+func TestPostInitValidatorInjection(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Set up mock genesis
+	mockGenesis := []byte(`{"chain_id":"test-chain","app_state":{}}`)
+	patchedGenesis := []byte(`{"chain_id":"test-chain","app_state":{"staking":{"validators":[]}}}`)
+
+	pluginGenesis := &mockPluginGenesisTracker{
+		patchGenesisResult: patchedGenesis,
+	}
+
+	nodeInit := &mockNodeInitializer{
+		nodeIDMap: map[string]string{},
+	}
+
+	forker := &mockGenesisForker{
+		forkResult: &ports.ForkResult{
+			Genesis:       mockGenesis,
+			SourceChainID: "source-chain",
+			NewChainID:    "test-chain",
+		},
+	}
+
+	orch := NewProvisioningOrchestrator(OrchestratorConfig{
+		BinaryBuilder:   &mockBinaryBuilder{},
+		GenesisForker:   forker,
+		NodeInitializer: nodeInit,
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PluginGenesis:   pluginGenesis,
+		Bech32Prefix:    "cosmos",
+	})
+
+	opts := ports.ProvisionOptions{
+		DevnetName:         "test-devnet",
+		ChainID:            "test-chain",
+		NumValidators:      1,
+		BinaryPath:         "/tmp/testd",
+		DataDir:            tmpDir,
+		HealthCheckTimeout: -1, // Skip health checks
+		SkipStart:          true,
+	}
+
+	result, err := orch.Execute(context.Background(), opts)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Verify PatchGenesis was called by the post-init step
+	require.Len(t, pluginGenesis.patchGenesisCalls, 1)
+	call := pluginGenesis.patchGenesisCalls[0]
+	assert.Equal(t, "test-chain", call.opts.ChainID)
+	assert.Len(t, call.opts.Validators, 1)
+
+	// Verify the patched genesis was written to the node's config dir
+	nodeDir := filepath.Join(tmpDir, "nodes", "test-devnet-validator-0", "config", "genesis.json")
+	writtenGenesis, err := os.ReadFile(nodeDir)
+	require.NoError(t, err)
+	assert.Equal(t, patchedGenesis, writtenGenesis)
+
+	// Verify master genesis was updated
+	masterGenesis, err := os.ReadFile(filepath.Join(tmpDir, "genesis.json"))
+	require.NoError(t, err)
+	assert.Equal(t, patchedGenesis, masterGenesis)
+}
+
+func TestPostInitSkippedWhenNoPluginGenesis(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	mockGenesis := []byte(`{"chain_id":"test-chain","app_state":{}}`)
+
+	nodeInit := &mockNodeInitializer{
+		nodeIDResult: "abc123",
+	}
+
+	forker := &mockGenesisForker{
+		forkResult: &ports.ForkResult{
+			Genesis:       mockGenesis,
+			SourceChainID: "source-chain",
+			NewChainID:    "test-chain",
+		},
+	}
+
+	// No PluginGenesis set — should skip validator injection
+	orch := NewProvisioningOrchestrator(OrchestratorConfig{
+		BinaryBuilder:   &mockBinaryBuilder{},
+		GenesisForker:   forker,
+		NodeInitializer: nodeInit,
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	opts := ports.ProvisionOptions{
+		DevnetName:         "test-devnet",
+		ChainID:            "test-chain",
+		NumValidators:      1,
+		BinaryPath:         "/tmp/testd",
+		DataDir:            tmpDir,
+		HealthCheckTimeout: -1,
+		SkipStart:          true,
+	}
+
+	result, err := orch.Execute(context.Background(), opts)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Verify the original genesis (not re-patched) was written
+	nodeDir := filepath.Join(tmpDir, "nodes", "test-devnet-validator-0", "config", "genesis.json")
+	writtenGenesis, err := os.ReadFile(nodeDir)
+	require.NoError(t, err)
+	assert.Equal(t, mockGenesis, writtenGenesis)
 }

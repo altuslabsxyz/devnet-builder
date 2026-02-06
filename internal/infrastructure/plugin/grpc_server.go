@@ -32,7 +32,7 @@ type NetworkModule interface {
 	DockerImageTag(version string) string
 	DockerHomeDir() string
 	InitCommand(homeDir, chainID, moniker string) []string
-	StartCommand(homeDir string) []string
+	StartCommand(homeDir string, networkMode string) []string
 	ExportCommand(homeDir string) []string
 	DefaultNodeHome() string
 	PIDFileName() string
@@ -215,8 +215,8 @@ func (s *GRPCServer) InitCommand(ctx context.Context, req *pb.InitCommandRequest
 	return &pb.StringListResponse{Values: cmd}, nil
 }
 
-func (s *GRPCServer) StartCommand(ctx context.Context, req *pb.StringRequest) (*pb.StringListResponse, error) {
-	cmd := s.Impl.StartCommand(req.Value)
+func (s *GRPCServer) StartCommand(ctx context.Context, req *pb.StartCommandRequest) (*pb.StringListResponse, error) {
+	cmd := s.Impl.StartCommand(req.HomeDir, req.NetworkMode)
 	return &pb.StringListResponse{Values: cmd}, nil
 }
 

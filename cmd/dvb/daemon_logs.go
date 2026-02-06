@@ -125,12 +125,19 @@ func followDaemonLogs(ctx context.Context, logPath string, level string) error {
 	}
 
 	// Seek to end and read last few lines for context
-	stat, _ := file.Stat()
+	stat, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return fmt.Errorf("failed to stat log file: %w", err)
+	}
 	var startPos int64
 	if stat.Size() > 8192 {
 		startPos = stat.Size() - 8192
 	}
-	_, _ = file.Seek(startPos, 0)
+	if _, err := file.Seek(startPos, 0); err != nil {
+		file.Close()
+		return fmt.Errorf("failed to seek in log file: %w", err)
+	}
 
 	// Skip partial first line if we seeked
 	if startPos > 0 {

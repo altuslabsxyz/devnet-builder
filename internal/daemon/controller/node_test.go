@@ -72,9 +72,9 @@ func (m *mockNodeRuntime) ExecInNode(ctx context.Context, nodeID string, command
 // Ensure mockNodeRuntime implements runtime.NodeRuntime
 var _ runtime.NodeRuntime = (*mockNodeRuntime)(nil)
 
-func TestNodeController_Reconcile_PendingToStarting(t *testing.T) {
+func TestNodeController_Reconcile_PendingToRunning(t *testing.T) {
 	ms := store.NewMemoryStore()
-	nc := NewNodeController(ms, nil)
+	nc := NewNodeController(ms, nil) // No runtime, so transitions directly to Running
 
 	// Create a node in Pending phase with desired Running
 	node := &types.Node{
@@ -93,16 +93,16 @@ func TestNodeController_Reconcile_PendingToStarting(t *testing.T) {
 		t.Fatalf("CreateNode: %v", err)
 	}
 
-	// Reconcile
+	// Reconcile - should go Pending -> Starting -> Running in one call
 	err := nc.Reconcile(context.Background(), "test/0")
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	// Verify transition to Starting
+	// Verify transition to Running (without runtime, continues directly)
 	got, _ := ms.GetNode(context.Background(), "", "test", 0)
-	if got.Status.Phase != types.NodePhaseStarting {
-		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhaseStarting)
+	if got.Status.Phase != types.NodePhaseRunning {
+		t.Errorf("Phase = %q, want %q", got.Status.Phase, types.NodePhaseRunning)
 	}
 }
 
@@ -314,9 +314,9 @@ func TestNodeController_Reconcile_CrashedToStopped(t *testing.T) {
 
 func TestNodeController_Reconcile_FullLifecycle(t *testing.T) {
 	ms := store.NewMemoryStore()
-	nc := NewNodeController(ms, nil)
+	nc := NewNodeController(ms, nil) // No runtime
 
-	// Create a new node (Pending -> Starting -> Running)
+	// Create a new node (Pending -> Running in one reconcile without runtime)
 	node := &types.Node{
 		Metadata: types.ResourceMeta{Name: "test-0"},
 		Spec: types.NodeSpec{
@@ -333,46 +333,37 @@ func TestNodeController_Reconcile_FullLifecycle(t *testing.T) {
 		t.Fatalf("CreateNode: %v", err)
 	}
 
-	// Step 1: Pending -> Starting
+	// Step 1: Pending -> Starting -> Running (continues directly without runtime)
 	if err := nc.Reconcile(context.Background(), "test/0"); err != nil {
 		t.Fatalf("Reconcile 1: %v", err)
 	}
 	node, _ = ms.GetNode(context.Background(), "", "test", 0)
-	if node.Status.Phase != types.NodePhaseStarting {
-		t.Fatalf("After step 1: Phase = %q, want %q", node.Status.Phase, types.NodePhaseStarting)
-	}
-
-	// Step 2: Starting -> Running
-	if err := nc.Reconcile(context.Background(), "test/0"); err != nil {
-		t.Fatalf("Reconcile 2: %v", err)
-	}
-	node, _ = ms.GetNode(context.Background(), "", "test", 0)
 	if node.Status.Phase != types.NodePhaseRunning {
-		t.Fatalf("After step 2: Phase = %q, want %q", node.Status.Phase, types.NodePhaseRunning)
+		t.Fatalf("After step 1: Phase = %q, want %q", node.Status.Phase, types.NodePhaseRunning)
 	}
 
-	// Step 3: Request stop
+	// Step 2: Request stop
 	node.Spec.Desired = types.NodePhaseStopped
 	if err := ms.UpdateNode(context.Background(), node); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
-	// Step 4: Running -> Stopping
+	// Step 3: Running -> Stopping
+	if err := nc.Reconcile(context.Background(), "test/0"); err != nil {
+		t.Fatalf("Reconcile 2: %v", err)
+	}
+	node, _ = ms.GetNode(context.Background(), "", "test", 0)
+	if node.Status.Phase != types.NodePhaseStopping {
+		t.Fatalf("After step 3: Phase = %q, want %q", node.Status.Phase, types.NodePhaseStopping)
+	}
+
+	// Step 4: Stopping -> Stopped
 	if err := nc.Reconcile(context.Background(), "test/0"); err != nil {
 		t.Fatalf("Reconcile 3: %v", err)
 	}
 	node, _ = ms.GetNode(context.Background(), "", "test", 0)
-	if node.Status.Phase != types.NodePhaseStopping {
-		t.Fatalf("After step 4: Phase = %q, want %q", node.Status.Phase, types.NodePhaseStopping)
-	}
-
-	// Step 5: Stopping -> Stopped
-	if err := nc.Reconcile(context.Background(), "test/0"); err != nil {
-		t.Fatalf("Reconcile 4: %v", err)
-	}
-	node, _ = ms.GetNode(context.Background(), "", "test", 0)
 	if node.Status.Phase != types.NodePhaseStopped {
-		t.Fatalf("After step 5: Phase = %q, want %q", node.Status.Phase, types.NodePhaseStopped)
+		t.Fatalf("After step 4: Phase = %q, want %q", node.Status.Phase, types.NodePhaseStopped)
 	}
 }
 

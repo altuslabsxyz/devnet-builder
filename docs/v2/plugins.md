@@ -599,8 +599,15 @@ func (n *MyNetwork) InitCommand(homeDir, chainID, moniker string) []string {
     return []string{"init", moniker, "--chain-id", chainID, "--home", homeDir}
 }
 
-func (n *MyNetwork) StartCommand(homeDir string) []string {
-    return []string{"start", "--home", homeDir}
+func (n *MyNetwork) StartCommand(homeDir string, networkMode string) []string {
+    args := []string{"start", "--home", homeDir}
+    // Add chain-id based on network mode
+    if networkMode == "mainnet" {
+        args = append(args, "--chain-id", "mychain-1")
+    } else if networkMode == "testnet" {
+        args = append(args, "--chain-id", "mychain-testnet-1")
+    }
+    return args
 }
 
 func (n *MyNetwork) ExportCommand(homeDir string) []string {

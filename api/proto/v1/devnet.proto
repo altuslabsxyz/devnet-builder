@@ -187,6 +187,7 @@ message StreamProvisionLogsResponse {
   int64 progress_total = 8;   // Total bytes (0 if unknown)
   string progress_unit = 9;   // "bytes", "files", "" for indeterminate
   string step_detail = 10;    // "from cache", etc.
+  double speed = 11;          // bytes per second (for download progress)
 }
 
 // =============================================================================

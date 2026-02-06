@@ -13,6 +13,7 @@ import (
 
 	"github.com/altuslabsxyz/devnet-builder/internal/application/ports"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/provisioner"
+	daemontypes "github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/network"
 	plugintypes "github.com/altuslabsxyz/devnet-builder/internal/plugin/types"
 	pkgNetwork "github.com/altuslabsxyz/devnet-builder/pkg/network"
@@ -83,7 +84,9 @@ func (m *mockNetworkModule) DockerHomeDir() string                { return m.doc
 func (m *mockNetworkModule) InitCommand(homeDir, chainID, moniker string) []string {
 	return m.initCommand
 }
-func (m *mockNetworkModule) StartCommand(homeDir string) []string  { return m.startCommand }
+func (m *mockNetworkModule) StartCommand(homeDir string, networkMode string) []string {
+	return m.startCommand
+}
 func (m *mockNetworkModule) ExportCommand(homeDir string) []string { return m.exportCommand }
 func (m *mockNetworkModule) DefaultMoniker(index int) string       { return "node" }
 
@@ -444,6 +447,112 @@ func splitWords(s string) []string {
 		words = append(words, word)
 	}
 	return words
+}
+
+// =============================================================================
+// ensureOverwriteFlag Tests
+// =============================================================================
+
+// =============================================================================
+// moduleRuntimeAdapter Tests
+// =============================================================================
+
+func TestModuleRuntimeAdapter_StartCommand_WithChainID(t *testing.T) {
+	mock := newMockModule("test", "testd")
+	adapter := &moduleRuntimeAdapter{module: mock}
+
+	node := &daemontypes.Node{
+		Metadata: daemontypes.ResourceMeta{Name: "test-node-0"},
+		Spec: daemontypes.NodeSpec{
+			HomeDir: "/tmp/test-node",
+			ChainID: "mydevnet-1",
+		},
+	}
+
+	cmd := adapter.StartCommand(node)
+
+	// Should include base command from plugin plus --chain-id
+	assert.Contains(t, cmd, "start")
+	assert.Contains(t, cmd, "--chain-id")
+	assert.Contains(t, cmd, "mydevnet-1")
+
+	// Verify order: --chain-id should come after base args
+	chainIDIndex := -1
+	for i, arg := range cmd {
+		if arg == "--chain-id" {
+			chainIDIndex = i
+			break
+		}
+	}
+	assert.Greater(t, chainIDIndex, 0, "chain-id flag should be appended after base args")
+	assert.Equal(t, "mydevnet-1", cmd[chainIDIndex+1])
+}
+
+func TestModuleRuntimeAdapter_StartCommand_WithoutChainID(t *testing.T) {
+	mock := newMockModule("test", "testd")
+	adapter := &moduleRuntimeAdapter{module: mock}
+
+	node := &daemontypes.Node{
+		Metadata: daemontypes.ResourceMeta{Name: "test-node-0"},
+		Spec: daemontypes.NodeSpec{
+			HomeDir: "/tmp/test-node",
+			ChainID: "", // Empty chain-id
+		},
+	}
+
+	cmd := adapter.StartCommand(node)
+
+	// Should only include base command, no --chain-id
+	assert.Contains(t, cmd, "start")
+	assert.NotContains(t, cmd, "--chain-id")
+}
+
+func TestModuleRuntimeAdapter_StartCommand_DefaultHomeDir(t *testing.T) {
+	mock := newMockModule("test", "testd")
+	adapter := &moduleRuntimeAdapter{module: mock}
+
+	node := &daemontypes.Node{
+		Metadata: daemontypes.ResourceMeta{Name: "test-node-0"},
+		Spec: daemontypes.NodeSpec{
+			HomeDir: "", // Empty home dir - should use default
+			ChainID: "test-chain",
+		},
+	}
+
+	cmd := adapter.StartCommand(node)
+
+	// Should still work with default home dir
+	assert.Contains(t, cmd, "start")
+	assert.Contains(t, cmd, "--chain-id")
+	assert.Contains(t, cmd, "test-chain")
+}
+
+func TestModuleRuntimeAdapter_StartCommand_GenesisFallback(t *testing.T) {
+	// Create temp dir with genesis.json
+	tmpDir := t.TempDir()
+	configDir := tmpDir + "/config"
+	require.NoError(t, os.MkdirAll(configDir, 0o755))
+
+	genesisContent := `{"chain_id": "fallback-chain-123"}`
+	require.NoError(t, os.WriteFile(configDir+"/genesis.json", []byte(genesisContent), 0o644))
+
+	mock := newMockModule("test", "testd")
+	adapter := &moduleRuntimeAdapter{module: mock}
+
+	node := &daemontypes.Node{
+		Metadata: daemontypes.ResourceMeta{Name: "test-node-0"},
+		Spec: daemontypes.NodeSpec{
+			HomeDir: tmpDir,
+			ChainID: "", // Empty - should fallback to genesis file
+		},
+	}
+
+	cmd := adapter.StartCommand(node)
+
+	// Should read chain-id from genesis.json
+	assert.Contains(t, cmd, "start")
+	assert.Contains(t, cmd, "--chain-id")
+	assert.Contains(t, cmd, "fallback-chain-123")
 }
 
 // =============================================================================

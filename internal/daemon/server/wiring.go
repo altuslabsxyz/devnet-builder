@@ -284,23 +284,36 @@ func (a *moduleGenesisAdapter) ValidateGenesis(genesis []byte) error {
 }
 
 func (a *moduleGenesisAdapter) PatchGenesis(genesis []byte, opts plugintypes.GenesisPatchOptions) ([]byte, error) {
-	// Apply patches via the module's ModifyGenesis
 	modifyOpts := network.GenesisOptions{
 		ChainID: opts.ChainID,
+	}
+	for _, v := range opts.Validators {
+		modifyOpts.Validators = append(modifyOpts.Validators, network.GenesisValidatorInfo{
+			Moniker:         v.Moniker,
+			ConsPubKey:      v.ConsPubKey,
+			OperatorAddress: v.OperatorAddress,
+			SelfDelegation:  v.SelfDelegation,
+		})
 	}
 	return a.module.ModifyGenesis(genesis, modifyOpts)
 }
 
 func (a *moduleGenesisAdapter) PatchGenesisFile(inputPath, outputPath string, opts plugintypes.GenesisPatchOptions) (int64, error) {
-	// Check if module supports file-based modification
 	fileModifier, ok := a.module.(network.FileBasedGenesisModifier)
 	if !ok {
 		return 0, fmt.Errorf("plugin does not support file-based genesis modification")
 	}
 
-	// Use file-based modification to bypass gRPC message size limits
 	modifyOpts := network.GenesisOptions{
 		ChainID: opts.ChainID,
+	}
+	for _, v := range opts.Validators {
+		modifyOpts.Validators = append(modifyOpts.Validators, network.GenesisValidatorInfo{
+			Moniker:         v.Moniker,
+			ConsPubKey:      v.ConsPubKey,
+			OperatorAddress: v.OperatorAddress,
+			SelfDelegation:  v.SelfDelegation,
+		})
 	}
 	return fileModifier.ModifyGenesisFile(inputPath, outputPath, modifyOpts)
 }
@@ -365,7 +378,27 @@ func (a *moduleRuntimeAdapter) StartCommand(node *daemontypes.Node) []string {
 	if homeDir == "" {
 		homeDir = a.module.DefaultNodeHome()
 	}
-	return a.module.StartCommand(homeDir)
+
+	// For daemon-managed nodes, we pass empty networkMode to get the base start command.
+	// The networkMode parameter ("mainnet"/"testnet") is used by plugins to select
+	// pre-configured chain-ids for public networks. However, devnets have custom
+	// chain-ids (e.g., "mydevnet-1") that are defined at provisioning time and stored
+	// in NodeSpec.ChainID. We append this chain-id separately below.
+	args := a.module.StartCommand(homeDir, "")
+
+	// Determine chain-id: prefer NodeSpec.ChainID, fallback to genesis file.
+	// The fallback handles existing nodes provisioned before ChainID was added to NodeSpec.
+	chainID := node.Spec.ChainID
+	if chainID == "" {
+		chainID = readChainIDFromGenesis(homeDir)
+	}
+
+	// Append chain-id if available. This is required for Cosmos SDK nodes to start.
+	if chainID != "" {
+		args = append(args, "--chain-id", chainID)
+	}
+
+	return args
 }
 
 func (a *moduleRuntimeAdapter) StartEnv(node *daemontypes.Node) map[string]string {
@@ -391,6 +424,26 @@ func (a *moduleRuntimeAdapter) HealthEndpoint(node *daemontypes.Node) string {
 
 func (a *moduleRuntimeAdapter) ContainerHomePath() string {
 	return a.module.DockerHomeDir()
+}
+
+// readChainIDFromGenesis reads the chain_id from the genesis.json file in the node's home directory.
+// This is used as a fallback for existing nodes that were provisioned before ChainID was added to NodeSpec.
+// Returns empty string if the file cannot be read or parsed.
+func readChainIDFromGenesis(homeDir string) string {
+	genesisPath := filepath.Join(homeDir, "config", "genesis.json")
+	data, err := os.ReadFile(genesisPath)
+	if err != nil {
+		return ""
+	}
+
+	var genesis struct {
+		ChainID string `json:"chain_id"`
+	}
+	if err := json.Unmarshal(data, &genesis); err != nil {
+		return ""
+	}
+
+	return genesis.ChainID
 }
 
 // Ensure interface compliance
@@ -700,6 +753,29 @@ func (f *OrchestratorFactory) GetPluginRuntime(pluginName string) (runtime.Plugi
 	return &moduleRuntimeAdapter{module: module}, nil
 }
 
+// pluginRuntimeProviderAdapter wraps OrchestratorFactory to implement PluginRuntimeProvider.
+type pluginRuntimeProviderAdapter struct {
+	factory *OrchestratorFactory
+}
+
+// GetPluginRuntime implements runtime.PluginRuntimeProvider.
+// Returns nil if the network is not found.
+func (p *pluginRuntimeProviderAdapter) GetPluginRuntime(network string) runtime.PluginRuntime {
+	pr, err := p.factory.GetPluginRuntime(network)
+	if err != nil {
+		return nil
+	}
+	return pr
+}
+
+// Ensure pluginRuntimeProviderAdapter implements PluginRuntimeProvider
+var _ runtime.PluginRuntimeProvider = (*pluginRuntimeProviderAdapter)(nil)
+
+// AsPluginRuntimeProvider returns the factory as a PluginRuntimeProvider.
+func (f *OrchestratorFactory) AsPluginRuntimeProvider() runtime.PluginRuntimeProvider {
+	return &pluginRuntimeProviderAdapter{factory: f}
+}
+
 // CreateOrchestrator creates an Orchestrator for the given network.
 // In daemon mode, the orchestrator is configured to skip the start phase
 // (SkipStart=true in ProvisionOptions), so NodeRuntime is not needed.
@@ -743,8 +819,10 @@ func (f *OrchestratorFactory) CreateOrchestrator(networkName string) (provisione
 		NodeInitializer: nodeInitializer,
 		// NodeRuntime: nil - not needed, daemon skips start phase
 		// HealthChecker: nil - not needed, NodeController handles health
-		DataDir: f.dataDir,
-		Logger:  f.logger,
+		DataDir:       f.dataDir,
+		Logger:        f.logger,
+		PluginGenesis: genesisAdapter,
+		Bech32Prefix:  module.Bech32Prefix(),
 	}
 
 	return provisioner.NewProvisioningOrchestrator(config), nil

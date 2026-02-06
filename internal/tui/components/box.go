@@ -53,9 +53,8 @@ func (m BoxModel) Init() tea.Cmd {
 
 // Update implements tea.Model
 func (m BoxModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.Width = msg.Width - 4
+	if wsm, ok := msg.(tea.WindowSizeMsg); ok {
+		m.Width = wsm.Width - 4
 		if m.Width < 40 {
 			m.Width = 40
 		}

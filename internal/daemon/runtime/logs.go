@@ -3,13 +3,18 @@ package runtime
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/nxadm/tail"
 )
 
 // LogConfig configures log management
@@ -69,8 +74,15 @@ func (lm *LogManager) GetWriter(nodeID string, logPath string) (io.WriteCloser, 
 	return w, nil
 }
 
-// GetReader returns a reader for a node's logs
-func (lm *LogManager) GetReader(logPath string, opts LogOptions) (io.ReadCloser, error) {
+// GetReader returns a reader for a node's logs.
+// If opts.Follow is true, it uses nxadm/tail to follow the file for new content.
+func (lm *LogManager) GetReader(ctx context.Context, logPath string, opts LogOptions) (io.ReadCloser, error) {
+	// If follow mode, use tail package
+	if opts.Follow {
+		return lm.followFile(ctx, logPath, opts.Lines)
+	}
+
+	// Non-follow mode: return static content
 	if opts.Lines > 0 {
 		return lm.tailFile(logPath, opts.Lines)
 	}
@@ -81,6 +93,155 @@ func (lm *LogManager) GetReader(logPath string, opts LogOptions) (io.ReadCloser,
 	}
 
 	return f, nil
+}
+
+// followFile uses nxadm/tail to follow a log file for new content.
+func (lm *LogManager) followFile(ctx context.Context, logPath string, lines int) (io.ReadCloser, error) {
+	// If lines > 0, we need to first read the last N lines, then follow from end.
+	// The tail package doesn't support "last N lines" directly - Location is for byte offset.
+	var initialContent io.ReadCloser
+	if lines > 0 {
+		// Check if file has been recently modified (within last 2 seconds).
+		// If not, the content is likely stale (e.g., from before a node restart),
+		// so we skip showing initial content and just follow for new logs.
+		const freshnessThreshold = 2 * time.Second
+		showInitialContent := true
+		if info, err := os.Stat(logPath); err == nil {
+			if time.Since(info.ModTime()) > freshnessThreshold {
+				showInitialContent = false
+			}
+		}
+
+		if showInitialContent {
+			// Read the last N lines first
+			var err error
+			initialContent, err = lm.tailFile(logPath, lines)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read initial lines: %w", err)
+			}
+		}
+	}
+
+	// Always start following from the end of the file
+	cfg := tail.Config{
+		Follow:    true,
+		ReOpen:    true, // Handle log rotation
+		Poll:      true, // Use polling instead of inotify - more reliable for detecting appends after process restart
+		MustExist: true,
+		Location:  &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd},
+		Logger:    log.New(io.Discard, "", 0), // Suppress tail's internal logging
+	}
+
+	t, err := tail.TailFile(logPath, cfg)
+	if err != nil {
+		if initialContent != nil {
+			initialContent.Close()
+		}
+		return nil, fmt.Errorf("failed to tail file: %w", err)
+	}
+
+	return newTailReader(ctx, t, initialContent), nil
+}
+
+// tailReader wraps tail.Tail to implement io.ReadCloser.
+// It optionally reads from initialContent first, then follows with tail.
+type tailReader struct {
+	ctx            context.Context
+	t              *tail.Tail
+	buf            []byte
+	initialContent io.ReadCloser // Optional: content to read before following
+	lineCh         <-chan *tail.Line
+	done           chan struct{}
+	closed         bool
+	mu             sync.Mutex
+}
+
+func newTailReader(ctx context.Context, t *tail.Tail, initialContent io.ReadCloser) *tailReader {
+	return &tailReader{
+		ctx:            ctx,
+		t:              t,
+		initialContent: initialContent,
+		lineCh:         t.Lines,
+		done:           make(chan struct{}),
+	}
+}
+
+func (tr *tailReader) Read(p []byte) (int, error) {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+
+	if tr.closed {
+		return 0, io.EOF
+	}
+
+	// If we have buffered data, return it first
+	if len(tr.buf) > 0 {
+		n := copy(p, tr.buf)
+		tr.buf = tr.buf[n:]
+		return n, nil
+	}
+
+	// If we have initial content (last N lines), read from it first
+	if tr.initialContent != nil {
+		n, err := tr.initialContent.Read(p)
+		if err == io.EOF {
+			// Done with initial content, close it and switch to following
+			tr.initialContent.Close()
+			tr.initialContent = nil
+			// If we got some data before EOF, return it
+			if n > 0 {
+				return n, nil
+			}
+			// Otherwise fall through to tail following
+		} else if err != nil {
+			return n, err
+		} else {
+			return n, nil
+		}
+	}
+
+	// Wait for new line from tail
+	select {
+	case <-tr.ctx.Done():
+		return 0, tr.ctx.Err()
+	case <-tr.done:
+		return 0, io.EOF
+	case line, ok := <-tr.lineCh:
+		if !ok {
+			return 0, io.EOF
+		}
+		if line.Err != nil {
+			return 0, line.Err
+		}
+		// Add newline to match original file format
+		data := line.Text + "\n"
+		n := copy(p, data)
+		if n < len(data) {
+			tr.buf = []byte(data[n:])
+		}
+		return n, nil
+	}
+}
+
+func (tr *tailReader) Close() error {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+
+	if tr.closed {
+		return nil
+	}
+	tr.closed = true
+	close(tr.done)
+
+	// Close initial content if still open
+	if tr.initialContent != nil {
+		tr.initialContent.Close()
+		tr.initialContent = nil
+	}
+
+	err := tr.t.Stop()
+	tr.t.Cleanup()
+	return err
 }
 
 // tailFile returns the last N lines of a file

@@ -19,7 +19,7 @@ import (
 
 func TestDevnetService_Create(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewDevnetService(s, nil)
+	svc := NewDevnetService(s, nil, nil)
 
 	req := &v1.CreateDevnetRequest{
 		Name: "test-devnet",
@@ -58,7 +58,7 @@ func TestDevnetService_Create(t *testing.T) {
 
 func TestDevnetService_CreateAlreadyExists(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewDevnetService(s, nil)
+	svc := NewDevnetService(s, nil, nil)
 
 	req := &v1.CreateDevnetRequest{
 		Name: "duplicate",
@@ -91,7 +91,7 @@ func TestDevnetService_CreateAlreadyExists(t *testing.T) {
 
 func TestDevnetService_CreateMissingName(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewDevnetService(s, nil)
+	svc := NewDevnetService(s, nil, nil)
 
 	req := &v1.CreateDevnetRequest{
 		Name: "", // Missing name
@@ -116,7 +116,7 @@ func TestDevnetService_CreateMissingName(t *testing.T) {
 
 func TestDevnetService_Get(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewDevnetService(s, nil)
+	svc := NewDevnetService(s, nil, nil)
 
 	// Create a devnet
 	createReq := &v1.CreateDevnetRequest{
@@ -145,7 +145,7 @@ func TestDevnetService_Get(t *testing.T) {
 
 func TestDevnetService_GetNotFound(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewDevnetService(s, nil)
+	svc := NewDevnetService(s, nil, nil)
 
 	req := &v1.GetDevnetRequest{Name: "non-existent"}
 	_, err := svc.GetDevnet(context.Background(), req)
@@ -164,7 +164,7 @@ func TestDevnetService_GetNotFound(t *testing.T) {
 
 func TestDevnetService_List(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewDevnetService(s, nil)
+	svc := NewDevnetService(s, nil, nil)
 
 	// Create multiple devnets
 	for _, name := range []string{"devnet-1", "devnet-2", "devnet-3"} {
@@ -194,7 +194,7 @@ func TestDevnetService_List(t *testing.T) {
 
 func TestDevnetService_Delete(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewDevnetService(s, nil)
+	svc := NewDevnetService(s, nil, nil)
 
 	// Create a devnet
 	createReq := &v1.CreateDevnetRequest{
@@ -229,7 +229,7 @@ func TestDevnetService_Delete(t *testing.T) {
 
 func TestDevnetService_DeleteNotFound(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewDevnetService(s, nil)
+	svc := NewDevnetService(s, nil, nil)
 
 	req := &v1.DeleteDevnetRequest{Name: "non-existent"}
 	_, err := svc.DeleteDevnet(context.Background(), req)
@@ -248,7 +248,7 @@ func TestDevnetService_DeleteNotFound(t *testing.T) {
 
 func TestDevnetService_StartDevnet(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewDevnetService(s, nil)
+	svc := NewDevnetService(s, nil, nil)
 
 	// Create and simulate it being stopped
 	createReq := &v1.CreateDevnetRequest{
@@ -282,7 +282,7 @@ func TestDevnetService_StartDevnet(t *testing.T) {
 
 func TestDevnetService_StopDevnet(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewDevnetService(s, nil)
+	svc := NewDevnetService(s, nil, nil)
 
 	// Create a devnet
 	createReq := &v1.CreateDevnetRequest{
@@ -316,7 +316,7 @@ func TestDevnetService_StopDevnet(t *testing.T) {
 func TestDevnetService_DeleteCascade(t *testing.T) {
 	ctx := context.Background()
 	s := store.NewMemoryStore()
-	svc := NewDevnetService(s, nil)
+	svc := NewDevnetService(s, nil, nil)
 
 	// Create a devnet
 	createReq := &v1.CreateDevnetRequest{
@@ -401,7 +401,7 @@ func TestDevnetService_DeleteCascade(t *testing.T) {
 
 func TestDevnetServiceNamespaceIsolation(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewDevnetService(s, nil)
+	svc := NewDevnetService(s, nil, nil)
 	ctx := context.Background()
 
 	// Create devnet in "prod" namespace
@@ -496,7 +496,7 @@ func TestDevnetService_CreateWithAnteHandler(t *testing.T) {
 	s := store.NewMemoryStore()
 	mockNetSvc := &mockNetworkServiceForDevnetTest{}
 	anteHandler := ante.New(s, mockNetSvc)
-	svc := NewDevnetServiceWithAnte(s, nil, anteHandler, nil)
+	svc := NewDevnetServiceWithAnte(s, nil, anteHandler, nil, nil)
 
 	// Test invalid mode rejected by ante handler
 	req := &v1.CreateDevnetRequest{
@@ -565,7 +565,7 @@ func (m *mockProvisionLogsStream) RecvMsg(interface{}) error    { return nil }
 
 func TestDevnetService_StreamProvisionLogs_MissingName(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewDevnetService(s, nil)
+	svc := NewDevnetService(s, nil, nil)
 
 	req := &v1.StreamProvisionLogsRequest{
 		Name: "", // Missing name
@@ -591,7 +591,7 @@ func TestDevnetService_StreamProvisionLogs_MissingName(t *testing.T) {
 
 func TestDevnetService_StreamProvisionLogs_NoManager(t *testing.T) {
 	s := store.NewMemoryStore()
-	svc := NewDevnetService(s, nil) // No manager
+	svc := NewDevnetService(s, nil, nil) // No manager
 
 	req := &v1.StreamProvisionLogsRequest{
 		Name: "test-devnet",
@@ -621,7 +621,7 @@ func TestDevnetService_StreamProvisionLogs_ReceivesLogs(t *testing.T) {
 	devnetCtrl := controller.NewDevnetController(s, nil)
 	mgr.Register("devnets", devnetCtrl)
 
-	svc := NewDevnetService(s, mgr)
+	svc := NewDevnetService(s, mgr, nil)
 
 	req := &v1.StreamProvisionLogsRequest{
 		Name: "test-devnet",
@@ -669,7 +669,7 @@ func TestDevnetService_StreamProvisionLogs_ChannelClosed(t *testing.T) {
 	devnetCtrl := controller.NewDevnetController(s, nil)
 	mgr.Register("devnets", devnetCtrl)
 
-	svc := NewDevnetService(s, mgr)
+	svc := NewDevnetService(s, mgr, nil)
 
 	req := &v1.StreamProvisionLogsRequest{
 		Name: "test-devnet",
@@ -726,7 +726,7 @@ func TestDevnetService_StreamProvisionLogs_ContextCancelled(t *testing.T) {
 	devnetCtrl := controller.NewDevnetController(s, nil)
 	mgr.Register("devnets", devnetCtrl)
 
-	svc := NewDevnetService(s, mgr)
+	svc := NewDevnetService(s, mgr, nil)
 
 	req := &v1.StreamProvisionLogsRequest{
 		Name:      "test-devnet",

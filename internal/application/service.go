@@ -481,7 +481,8 @@ func (s *DevnetService) StartNode(ctx context.Context, nodeIndex int) (*dto.Node
 	}
 
 	// Build start command
-	args := networkModule.StartCommand(node.HomeDir)
+	// Pass empty networkMode since chain-id is explicitly appended below
+	args := networkModule.StartCommand(node.HomeDir, "")
 	args = append(args, "--chain-id", node.ChainID)
 
 	cmd := ports.Command{

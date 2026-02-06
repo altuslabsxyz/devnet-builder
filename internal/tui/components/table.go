@@ -81,9 +81,8 @@ func (m TableModel) Init() tea.Cmd {
 
 // Update implements tea.Model
 func (m TableModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.Width = msg.Width - 4
+	if wsm, ok := msg.(tea.WindowSizeMsg); ok {
+		m.Width = wsm.Width - 4
 		m.table.SetWidth(m.Width)
 	}
 	var cmd tea.Cmd
