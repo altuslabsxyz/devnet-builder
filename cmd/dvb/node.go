@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	goruntime "runtime"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -23,6 +23,43 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// nodeNamePattern matches node names like "validator-0", "fullnode-1", "unknown-0".
+var nodeNamePattern = regexp.MustCompile(`^(validator|fullnode|unknown)-\d+$`)
+
+// isNodeName returns true if s looks like a node name (role-index pattern).
+// For path-safe validation of arbitrary node names, see isValidNodeName in logs.go.
+func isNodeName(s string) bool {
+	return nodeNamePattern.MatchString(s)
+}
+
+// resolveNodeArgs parses the standard [devnet-name] [node-name] argument pattern.
+// Returns the explicit devnet (if any) and node name arg (if any).
+// The single-arg case is disambiguated: if it matches the node name pattern,
+// it is treated as a node name (requires context); otherwise as a devnet name.
+func resolveNodeArgs(args []string) (explicitDevnet, nodeNameArg string) {
+	switch len(args) {
+	case 0:
+		return "", ""
+	case 1:
+		if isNodeName(args[0]) {
+			return "", args[0]
+		}
+		return args[0], ""
+	default:
+		return args[0], args[1]
+	}
+}
+
+// resolveNodeSelection resolves a node name argument (or picker selection) to a NodeSelection.
+// If nodeNameArg is empty, invokes the interactive picker.
+// If nodeNameArg is non-empty, resolves the name to an index via ListNodes.
+func resolveNodeSelection(ctx context.Context, namespace, devnet, nodeNameArg string) (*dvbcontext.NodeSelection, error) {
+	if nodeNameArg == "" {
+		return dvbcontext.PickNode(ctx, daemonClient, namespace, devnet)
+	}
+	return dvbcontext.ResolveNodeName(ctx, daemonClient, namespace, devnet, nodeNameArg)
+}
+
 func newNodeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "node",
@@ -31,7 +68,7 @@ func newNodeCmd() *cobra.Command {
 
 Subcommands allow you to list, start, stop, restart nodes and view logs.
 When context is set (dvb use <devnet>), most commands support interactive
-node selection if no index is provided.
+node selection if no name is provided.
 
 Examples:
   # Set context first
@@ -48,9 +85,9 @@ Examples:
   dvb node stop
   dvb node restart
 
-  # Or specify index explicitly
-  dvb node logs 0
-  dvb node start 1`,
+  # Or specify node name explicitly
+  dvb node logs validator-0
+  dvb node start fullnode-1`,
 	}
 
 	cmd.AddCommand(
@@ -168,7 +205,7 @@ func runNodeListWatch(ctx context.Context, devnetName string, opts *nodeListOpti
 	}
 
 	// Track previous state for change detection
-	previousPhases := make(map[int32]string)
+	previousPhases := make(map[string]string)
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -181,7 +218,7 @@ func runNodeListWatch(ctx context.Context, devnetName string, opts *nodeListOpti
 
 	// Store initial phases
 	for _, n := range nodes {
-		previousPhases[n.Metadata.Index] = n.Status.Phase
+		previousPhases[dvbcontext.NodeName(n)] = n.Status.Phase
 	}
 
 	// Clear screen and print header
@@ -205,9 +242,10 @@ func runNodeListWatch(ctx context.Context, devnetName string, opts *nodeListOpti
 			// Check for changes
 			hasChanges := false
 			for _, n := range nodes {
-				if prev, ok := previousPhases[n.Metadata.Index]; !ok || prev != n.Status.Phase {
+				name := dvbcontext.NodeName(n)
+				if prev, ok := previousPhases[name]; !ok || prev != n.Status.Phase {
 					hasChanges = true
-					previousPhases[n.Metadata.Index] = n.Status.Phase
+					previousPhases[name] = n.Status.Phase
 				}
 			}
 
@@ -250,12 +288,14 @@ func printNodeTable(nodes []*v1.Node, wide bool) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
 	if wide {
-		fmt.Fprintln(w, "INDEX\tHEALTH\tROLE\tPHASE\tRUNTIME ID\tRPC ENDPOINT\tRESTARTS\tMESSAGE")
+		fmt.Fprintln(w, "NAME\tHEALTH\tROLE\tPHASE\tRUNTIME ID\tRPC ENDPOINT\tRESTARTS\tMESSAGE")
 	} else {
-		fmt.Fprintln(w, "INDEX\tHEALTH\tROLE\tPHASE\tRUNTIME ID\tRESTARTS")
+		fmt.Fprintln(w, "NAME\tHEALTH\tROLE\tPHASE\tRUNTIME ID\tRESTARTS")
 	}
 
 	for _, n := range nodes {
+		nodeName := dvbcontext.NodeName(n)
+
 		// Determine runtime identifier: container ID, service ID, or "-"
 		runtimeID := n.Status.ContainerId
 		if len(runtimeID) > 12 {
@@ -290,8 +330,8 @@ func printNodeTable(nodes []*v1.Node, wide bool) {
 				message = "-"
 			}
 
-			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n",
-				n.Metadata.Index,
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n",
+				nodeName,
 				healthIcon,
 				n.Spec.Role,
 				n.Status.Phase,
@@ -301,8 +341,8 @@ func printNodeTable(nodes []*v1.Node, wide bool) {
 				message,
 			)
 		} else {
-			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%d\n",
-				n.Metadata.Index,
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\n",
+				nodeName,
 				healthIcon,
 				n.Spec.Role,
 				n.Status.Phase,
@@ -362,11 +402,11 @@ func newNodeGetCmd() *cobra.Command {
 	var namespace string
 
 	cmd := &cobra.Command{
-		Use:   "get [devnet-name] [index]",
+		Use:   "get [devnet-name] [node-name]",
 		Short: "Get details of a specific node",
 		Long: `Get details of a specific node.
 
-With context set (dvb use <devnet>), the index is optional.
+With context set (dvb use <devnet>), the node name is optional.
 If not provided, an interactive picker will appear.
 
 Examples:
@@ -376,34 +416,17 @@ Examples:
 
   # Get node details using context
   dvb use my-devnet
-  dvb node get 0
+  dvb node get validator-0
 
   # Get node details (explicit devnet)
-  dvb node get my-devnet 0`,
+  dvb node get my-devnet validator-0`,
 		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			var explicitDevnet string
-			var indexArg string
-
-			if len(args) == 0 {
-				// No args - use context and picker
-			} else if len(args) == 1 {
-				// Could be index (with context) or devnet name (without index)
-				if _, err := parseNodeIndex(args[0]); err == nil {
-					// It's a valid index
-					indexArg = args[0]
-				} else {
-					// Treat as devnet name
-					explicitDevnet = args[0]
-				}
-			} else {
-				explicitDevnet = args[0]
-				indexArg = args[1]
-			}
+			explicitDevnet, nodeNameArg := resolveNodeArgs(args)
 
 			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
@@ -412,21 +435,12 @@ Examples:
 
 			printContextHeader(explicitDevnet, currentContext)
 
-			var index int
-			if indexArg == "" {
-				// Use picker
-				index, err = dvbcontext.PickNode(daemonClient, ns, devnetName)
-				if err != nil {
-					return fmt.Errorf("failed to pick node: %w", err)
-				}
-			} else {
-				index, err = parseNodeIndex(indexArg)
-				if err != nil {
-					return err
-				}
+			sel, err := resolveNodeSelection(cmd.Context(), ns, devnetName, nodeNameArg)
+			if err != nil {
+				return fmt.Errorf("failed to resolve node: %w", err)
 			}
 
-			node, err := daemonClient.GetNode(cmd.Context(), ns, devnetName, index)
+			node, err := daemonClient.GetNode(cmd.Context(), ns, devnetName, sel.Index)
 			if err != nil {
 				return err
 			}
@@ -445,11 +459,11 @@ func newNodeHealthCmd() *cobra.Command {
 	var namespace string
 
 	cmd := &cobra.Command{
-		Use:   "health [devnet-name] [index]",
+		Use:   "health [devnet-name] [node-name]",
 		Short: "Get health status of a node",
 		Long: `Display the health status of a specific node.
 
-With context set (dvb use <devnet>), the index is optional.
+With context set (dvb use <devnet>), the node name is optional.
 If not provided, an interactive picker will appear.
 
 Shows whether the node is healthy, unhealthy, stopped, or in a transitional state.
@@ -469,35 +483,20 @@ Examples:
 
   # Check health using context
   dvb use my-devnet
-  dvb node health 0
+  dvb node health validator-0
 
-  # Check health of node 0 (explicit devnet)
-  dvb node health my-devnet 0
+  # Check health of a node (explicit devnet)
+  dvb node health my-devnet validator-0
 
-  # Check health of node 1
-  dvb node health my-devnet 1`,
+  # Check health of fullnode
+  dvb node health my-devnet fullnode-0`,
 		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			var explicitDevnet string
-			var indexArg string
-
-			if len(args) == 0 {
-				// No args - use context and picker
-			} else if len(args) == 1 {
-				// Could be index (with context) or devnet name (without index)
-				if _, err := parseNodeIndex(args[0]); err == nil {
-					indexArg = args[0]
-				} else {
-					explicitDevnet = args[0]
-				}
-			} else {
-				explicitDevnet = args[0]
-				indexArg = args[1]
-			}
+			explicitDevnet, nodeNameArg := resolveNodeArgs(args)
 
 			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
@@ -506,26 +505,17 @@ Examples:
 
 			printContextHeader(explicitDevnet, currentContext)
 
-			var index int
-			if indexArg == "" {
-				index, err = dvbcontext.PickNode(daemonClient, ns, devnetName)
-				if err != nil {
-					return fmt.Errorf("failed to pick node: %w", err)
-				}
-			} else {
-				index, err = parseNodeIndex(indexArg)
-				if err != nil {
-					return err
-				}
+			sel, err := resolveNodeSelection(cmd.Context(), ns, devnetName, nodeNameArg)
+			if err != nil {
+				return fmt.Errorf("failed to resolve node: %w", err)
 			}
 
-			health, err := daemonClient.GetNodeHealth(cmd.Context(), devnetName, index)
+			health, err := daemonClient.GetNodeHealth(cmd.Context(), devnetName, sel.Index)
 			if err != nil {
 				return err
 			}
 
-			// Print health status with color
-			printHealthStatus(devnetName, index, health)
+			printHealthStatus(devnetName, sel.Name, health)
 			return nil
 		},
 	}
@@ -539,11 +529,11 @@ func newNodePortsCmd() *cobra.Command {
 	var namespace string
 
 	cmd := &cobra.Command{
-		Use:   "ports [devnet-name] [index]",
+		Use:   "ports [devnet-name] [node-name]",
 		Short: "Show port mappings for a node",
 		Long: `Display the port mappings for a specific node.
 
-With context set (dvb use <devnet>), the index is optional.
+With context set (dvb use <devnet>), the node name is optional.
 If not provided, an interactive picker will appear.
 
 Each node in a devnet has its ports offset by index * 100 to avoid conflicts.
@@ -556,35 +546,20 @@ Examples:
 
   # Show ports using context
   dvb use my-devnet
-  dvb node ports 0
+  dvb node ports validator-0
 
-  # Show ports for node 0 (host ports: 26656, 26657, 1317, 9090)
-  dvb node ports my-devnet 0
+  # Show ports for a node (explicit devnet)
+  dvb node ports my-devnet validator-0
 
-  # Show ports for node 1 (host ports: 26756, 26757, 1417, 9190)
-  dvb node ports my-devnet 1`,
+  # Show ports for fullnode
+  dvb node ports my-devnet fullnode-0`,
 		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			var explicitDevnet string
-			var indexArg string
-
-			if len(args) == 0 {
-				// No args - use context and picker
-			} else if len(args) == 1 {
-				// Could be index (with context) or devnet name (without index)
-				if _, err := parseNodeIndex(args[0]); err == nil {
-					indexArg = args[0]
-				} else {
-					explicitDevnet = args[0]
-				}
-			} else {
-				explicitDevnet = args[0]
-				indexArg = args[1]
-			}
+			explicitDevnet, nodeNameArg := resolveNodeArgs(args)
 
 			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
@@ -593,25 +568,17 @@ Examples:
 
 			printContextHeader(explicitDevnet, currentContext)
 
-			var index int
-			if indexArg == "" {
-				index, err = dvbcontext.PickNode(daemonClient, ns, devnetName)
-				if err != nil {
-					return fmt.Errorf("failed to pick node: %w", err)
-				}
-			} else {
-				index, err = parseNodeIndex(indexArg)
-				if err != nil {
-					return err
-				}
+			sel, err := resolveNodeSelection(cmd.Context(), ns, devnetName, nodeNameArg)
+			if err != nil {
+				return fmt.Errorf("failed to resolve node: %w", err)
 			}
 
-			ports, err := daemonClient.GetNodePorts(cmd.Context(), devnetName, index)
+			ports, err := daemonClient.GetNodePorts(cmd.Context(), devnetName, sel.Index)
 			if err != nil {
 				return err
 			}
 
-			fmt.Printf("Ports for %s/%d:\n\n", ports.DevnetName, ports.Index)
+			fmt.Printf("Ports for %s/%s:\n\n", ports.DevnetName, sel.Name)
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "SERVICE\tCONTAINER\tHOST\tPROTOCOL")
@@ -651,11 +618,11 @@ func newNodeStartCmd() *cobra.Command {
 	var namespace string
 
 	cmd := &cobra.Command{
-		Use:   "start [devnet-name] [index]",
+		Use:   "start [devnet-name] [node-name]",
 		Short: "Start a node",
 		Long: `Start a stopped node.
 
-With context set (dvb use <devnet>), the index is optional.
+With context set (dvb use <devnet>), the node name is optional.
 If not provided, an interactive picker will appear.
 
 Examples:
@@ -665,32 +632,17 @@ Examples:
 
   # Start node using context
   dvb use my-devnet
-  dvb node start 0
+  dvb node start validator-0
 
   # Start node (explicit devnet)
-  dvb node start my-devnet 0`,
+  dvb node start my-devnet validator-0`,
 		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			var explicitDevnet string
-			var indexArg string
-
-			if len(args) == 0 {
-				// No args - use context and picker
-			} else if len(args) == 1 {
-				// Could be index (with context) or devnet name (without index)
-				if _, err := parseNodeIndex(args[0]); err == nil {
-					indexArg = args[0]
-				} else {
-					explicitDevnet = args[0]
-				}
-			} else {
-				explicitDevnet = args[0]
-				indexArg = args[1]
-			}
+			explicitDevnet, nodeNameArg := resolveNodeArgs(args)
 
 			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
@@ -699,25 +651,17 @@ Examples:
 
 			printContextHeader(explicitDevnet, currentContext)
 
-			var index int
-			if indexArg == "" {
-				index, err = dvbcontext.PickNode(daemonClient, ns, devnetName)
-				if err != nil {
-					return fmt.Errorf("failed to pick node: %w", err)
-				}
-			} else {
-				index, err = parseNodeIndex(indexArg)
-				if err != nil {
-					return err
-				}
+			sel, err := resolveNodeSelection(cmd.Context(), ns, devnetName, nodeNameArg)
+			if err != nil {
+				return fmt.Errorf("failed to resolve node: %w", err)
 			}
 
-			node, err := daemonClient.StartNode(cmd.Context(), ns, devnetName, index)
+			node, err := daemonClient.StartNode(cmd.Context(), ns, devnetName, sel.Index)
 			if err != nil {
 				return err
 			}
 
-			color.Green("✓ Node %s/%d starting", devnetName, index)
+			color.Green("✓ Node %s/%s starting", devnetName, sel.Name)
 			fmt.Printf("  Phase: %s\n", node.Status.Phase)
 			return nil
 		},
@@ -732,11 +676,11 @@ func newNodeStopCmd() *cobra.Command {
 	var namespace string
 
 	cmd := &cobra.Command{
-		Use:   "stop [devnet-name] [index]",
+		Use:   "stop [devnet-name] [node-name]",
 		Short: "Stop a node",
 		Long: `Stop a running node.
 
-With context set (dvb use <devnet>), the index is optional.
+With context set (dvb use <devnet>), the node name is optional.
 If not provided, an interactive picker will appear.
 
 Examples:
@@ -746,32 +690,17 @@ Examples:
 
   # Stop node using context
   dvb use my-devnet
-  dvb node stop 0
+  dvb node stop validator-0
 
   # Stop node (explicit devnet)
-  dvb node stop my-devnet 0`,
+  dvb node stop my-devnet validator-0`,
 		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			var explicitDevnet string
-			var indexArg string
-
-			if len(args) == 0 {
-				// No args - use context and picker
-			} else if len(args) == 1 {
-				// Could be index (with context) or devnet name (without index)
-				if _, err := parseNodeIndex(args[0]); err == nil {
-					indexArg = args[0]
-				} else {
-					explicitDevnet = args[0]
-				}
-			} else {
-				explicitDevnet = args[0]
-				indexArg = args[1]
-			}
+			explicitDevnet, nodeNameArg := resolveNodeArgs(args)
 
 			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
@@ -780,25 +709,17 @@ Examples:
 
 			printContextHeader(explicitDevnet, currentContext)
 
-			var index int
-			if indexArg == "" {
-				index, err = dvbcontext.PickNode(daemonClient, ns, devnetName)
-				if err != nil {
-					return fmt.Errorf("failed to pick node: %w", err)
-				}
-			} else {
-				index, err = parseNodeIndex(indexArg)
-				if err != nil {
-					return err
-				}
+			sel, err := resolveNodeSelection(cmd.Context(), ns, devnetName, nodeNameArg)
+			if err != nil {
+				return fmt.Errorf("failed to resolve node: %w", err)
 			}
 
-			node, err := daemonClient.StopNode(cmd.Context(), ns, devnetName, index)
+			node, err := daemonClient.StopNode(cmd.Context(), ns, devnetName, sel.Index)
 			if err != nil {
 				return err
 			}
 
-			color.Green("✓ Node %s/%d stopping", devnetName, index)
+			color.Green("✓ Node %s/%s stopping", devnetName, sel.Name)
 			fmt.Printf("  Phase: %s\n", node.Status.Phase)
 			return nil
 		},
@@ -813,11 +734,11 @@ func newNodeRestartCmd() *cobra.Command {
 	var namespace string
 
 	cmd := &cobra.Command{
-		Use:   "restart [devnet-name] [index]",
+		Use:   "restart [devnet-name] [node-name]",
 		Short: "Restart a node",
 		Long: `Restart a node (stop then start).
 
-With context set (dvb use <devnet>), the index is optional.
+With context set (dvb use <devnet>), the node name is optional.
 If not provided, an interactive picker will appear.
 
 Examples:
@@ -827,32 +748,17 @@ Examples:
 
   # Restart node using context
   dvb use my-devnet
-  dvb node restart 0
+  dvb node restart validator-0
 
   # Restart node (explicit devnet)
-  dvb node restart my-devnet 0`,
+  dvb node restart my-devnet validator-0`,
 		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
 				return fmt.Errorf("daemon not running - start with: devnetd")
 			}
 
-			var explicitDevnet string
-			var indexArg string
-
-			if len(args) == 0 {
-				// No args - use context and picker
-			} else if len(args) == 1 {
-				// Could be index (with context) or devnet name (without index)
-				if _, err := parseNodeIndex(args[0]); err == nil {
-					indexArg = args[0]
-				} else {
-					explicitDevnet = args[0]
-				}
-			} else {
-				explicitDevnet = args[0]
-				indexArg = args[1]
-			}
+			explicitDevnet, nodeNameArg := resolveNodeArgs(args)
 
 			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
@@ -861,25 +767,17 @@ Examples:
 
 			printContextHeader(explicitDevnet, currentContext)
 
-			var index int
-			if indexArg == "" {
-				index, err = dvbcontext.PickNode(daemonClient, ns, devnetName)
-				if err != nil {
-					return fmt.Errorf("failed to pick node: %w", err)
-				}
-			} else {
-				index, err = parseNodeIndex(indexArg)
-				if err != nil {
-					return err
-				}
+			sel, err := resolveNodeSelection(cmd.Context(), ns, devnetName, nodeNameArg)
+			if err != nil {
+				return fmt.Errorf("failed to resolve node: %w", err)
 			}
 
-			node, err := daemonClient.RestartNode(cmd.Context(), ns, devnetName, index)
+			node, err := daemonClient.RestartNode(cmd.Context(), ns, devnetName, sel.Index)
 			if err != nil {
 				return err
 			}
 
-			color.Green("✓ Node %s/%d restarting", devnetName, index)
+			color.Green("✓ Node %s/%s restarting", devnetName, sel.Name)
 			fmt.Printf("  Phase: %s\n", node.Status.Phase)
 			fmt.Printf("  Restarts: %d\n", node.Status.RestartCount)
 			return nil
@@ -896,11 +794,11 @@ func newNodeExecCmd() *cobra.Command {
 	var namespace string
 
 	cmd := &cobra.Command{
-		Use:   "exec [devnet-name] [index] -- <command> [args...]",
+		Use:   "exec [devnet-name] [node-name] -- <command> [args...]",
 		Short: "Execute a command in a running node container",
 		Long: `Execute a command inside a running node container.
 
-With context set (dvb use <devnet>), the index is optional.
+With context set (dvb use <devnet>), the node name is optional.
 If not provided, an interactive picker will appear.
 
 This command allows you to run arbitrary commands inside a node's container,
@@ -915,19 +813,19 @@ Examples:
 
   # Execute using context
   dvb use my-devnet
-  dvb node exec 0 -- stabled version
+  dvb node exec validator-0 -- stabled version
 
   # Check the chain binary version (explicit devnet)
-  dvb node exec my-devnet 0 -- stabled version
+  dvb node exec my-devnet validator-0 -- stabled version
 
   # List files in the home directory
-  dvb node exec 0 -- ls -la /home/.stable
+  dvb node exec validator-0 -- ls -la /home/.stable
 
   # Query the node status via RPC
-  dvb node exec 0 -- curl -s localhost:26657/status
+  dvb node exec validator-0 -- curl -s localhost:26657/status
 
   # Run a command with a longer timeout
-  dvb node exec 0 --timeout 60 -- stabled query bank balances cosmos1...`,
+  dvb node exec validator-0 --timeout 60 -- stabled query bank balances cosmos1...`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if daemonClient == nil {
@@ -943,38 +841,18 @@ Examples:
 				}
 			}
 
-			var explicitDevnet string
-			var indexArg string
-			var command []string
-
 			if dashDashPos == -1 {
-				// No -- found, treat all args after index as command
-				// This shouldn't happen with proper usage but handle it
 				return fmt.Errorf("no command specified after --")
 			}
 
-			// Args before -- are: [devnet] [index]
-			// Args after -- are: <command> [args...]
 			beforeDash := args[:dashDashPos]
-			command = args[dashDashPos+1:]
+			command := args[dashDashPos+1:]
 
 			if len(command) == 0 {
 				return fmt.Errorf("no command specified after --")
 			}
 
-			if len(beforeDash) == 0 {
-				// No args before --, use context and picker
-			} else if len(beforeDash) == 1 {
-				// Could be index (with context) or devnet name (without index)
-				if _, err := parseNodeIndex(beforeDash[0]); err == nil {
-					indexArg = beforeDash[0]
-				} else {
-					explicitDevnet = beforeDash[0]
-				}
-			} else if len(beforeDash) >= 2 {
-				explicitDevnet = beforeDash[0]
-				indexArg = beforeDash[1]
-			}
+			explicitDevnet, nodeNameArg := resolveNodeArgs(beforeDash)
 
 			ns, devnetName, err := resolveWithSuggestions(explicitDevnet, namespace)
 			if err != nil {
@@ -983,20 +861,12 @@ Examples:
 
 			printContextHeader(explicitDevnet, currentContext)
 
-			var index int
-			if indexArg == "" {
-				index, err = dvbcontext.PickNode(daemonClient, ns, devnetName)
-				if err != nil {
-					return fmt.Errorf("failed to pick node: %w", err)
-				}
-			} else {
-				index, err = parseNodeIndex(indexArg)
-				if err != nil {
-					return err
-				}
+			sel, err := resolveNodeSelection(cmd.Context(), ns, devnetName, nodeNameArg)
+			if err != nil {
+				return fmt.Errorf("failed to resolve node: %w", err)
 			}
 
-			result, err := daemonClient.ExecInNode(cmd.Context(), devnetName, index, command, timeout)
+			result, err := daemonClient.ExecInNode(cmd.Context(), devnetName, sel.Index, command, timeout)
 			if err != nil {
 				return err
 			}
@@ -1194,17 +1064,6 @@ func getPluginInitializer(network string) (types.PluginInitializer, error) {
 	}
 }
 
-func parseNodeIndex(s string) (int, error) {
-	index, err := strconv.Atoi(s)
-	if err != nil {
-		return 0, fmt.Errorf("invalid node index %q: must be a number", s)
-	}
-	if index < 0 {
-		return 0, fmt.Errorf("invalid node index %d: must be non-negative", index)
-	}
-	return index, nil
-}
-
 func printNodeStatus(n *v1.Node) {
 	// Phase with color
 	phase := n.Status.Phase
@@ -1224,7 +1083,7 @@ func printNodeStatus(n *v1.Node) {
 	}
 
 	fmt.Printf("\nDevnet:     %s\n", n.Metadata.DevnetName)
-	fmt.Printf("Index:      %d\n", n.Metadata.Index)
+	fmt.Printf("Name:       %s\n", dvbcontext.NodeName(n))
 	fmt.Printf("Role:       %s\n", n.Spec.Role)
 
 	// Show IP address if available
@@ -1318,7 +1177,7 @@ func getNodeServiceInfo(nodeName string) *nodeServiceInfo {
 	}
 }
 
-func printHealthStatus(devnetName string, index int, health *client.NodeHealth) {
+func printHealthStatus(devnetName string, nodeName string, health *client.NodeHealth) {
 	// Print health icon and status with color
 	switch health.Status {
 	case "Healthy":
@@ -1334,7 +1193,7 @@ func printHealthStatus(devnetName string, index int, health *client.NodeHealth) 
 	}
 
 	fmt.Printf("\nDevnet:    %s\n", devnetName)
-	fmt.Printf("Node:      %d\n", index)
+	fmt.Printf("Node:      %s\n", nodeName)
 	fmt.Printf("Status:    %s\n", health.Status)
 
 	if health.Message != "" {
