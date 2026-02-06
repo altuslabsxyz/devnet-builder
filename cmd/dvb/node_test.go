@@ -2,12 +2,12 @@
 package main
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 	"time"
 
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
+	"github.com/altuslabsxyz/devnet-builder/internal/dvbcontext"
 )
 
 func TestFormatDuration(t *testing.T) {
@@ -157,63 +157,97 @@ func TestGetNodeListSummary(t *testing.T) {
 	}
 }
 
-func TestParseNodeIndex(t *testing.T) {
+func TestIsNodeName(t *testing.T) {
 	tests := []struct {
-		name    string
-		input   string
-		want    int
-		wantErr bool
+		name  string
+		input string
+		want  bool
+	}{
+		{name: "validator-0", input: "validator-0", want: true},
+		{name: "validator-1", input: "validator-1", want: true},
+		{name: "validator-10", input: "validator-10", want: true},
+		{name: "fullnode-0", input: "fullnode-0", want: true},
+		{name: "fullnode-1", input: "fullnode-1", want: true},
+		{name: "bare number", input: "0", want: false},
+		{name: "devnet name", input: "my-devnet", want: false},
+		{name: "validator only", input: "validator", want: false},
+		{name: "fullnode only", input: "fullnode", want: false},
+		{name: "unknown role", input: "unknown-0", want: true},
+		{name: "node prefix", input: "node-0", want: false},
+		{name: "empty string", input: "", want: false},
+		{name: "validator with spaces", input: "validator- 0", want: false},
+		{name: "negative index", input: "validator--1", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isNodeName(tt.input)
+			if got != tt.want {
+				t.Errorf("isNodeName(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveNodeArgs(t *testing.T) {
+	tests := []struct {
+		name            string
+		args            []string
+		wantDevnet      string
+		wantNodeNameArg string
 	}{
 		{
-			name:    "valid zero",
-			input:   "0",
-			want:    0,
-			wantErr: false,
+			name:            "no args",
+			args:            []string{},
+			wantDevnet:      "",
+			wantNodeNameArg: "",
 		},
 		{
-			name:    "valid positive",
-			input:   "5",
-			want:    5,
-			wantErr: false,
+			name:            "single arg - node name",
+			args:            []string{"validator-0"},
+			wantDevnet:      "",
+			wantNodeNameArg: "validator-0",
 		},
 		{
-			name:    "negative number",
-			input:   "-1",
-			want:    0,
-			wantErr: true,
+			name:            "single arg - fullnode name",
+			args:            []string{"fullnode-1"},
+			wantDevnet:      "",
+			wantNodeNameArg: "fullnode-1",
 		},
 		{
-			name:    "non-number",
-			input:   "abc",
-			want:    0,
-			wantErr: true,
+			name:            "single arg - devnet name",
+			args:            []string{"my-devnet"},
+			wantDevnet:      "my-devnet",
+			wantNodeNameArg: "",
 		},
 		{
-			name:    "floating point",
-			input:   "1.5",
-			want:    0,
-			wantErr: true,
+			name:            "single arg - bare number treated as devnet",
+			args:            []string{"0"},
+			wantDevnet:      "0",
+			wantNodeNameArg: "",
+		},
+		{
+			name:            "two args",
+			args:            []string{"my-devnet", "validator-0"},
+			wantDevnet:      "my-devnet",
+			wantNodeNameArg: "validator-0",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseNodeIndex(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("parseNodeIndex(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
-				return
+			gotDevnet, gotNodeNameArg := resolveNodeArgs(tt.args)
+			if gotDevnet != tt.wantDevnet {
+				t.Errorf("resolveNodeArgs(%v) devnet = %q, want %q", tt.args, gotDevnet, tt.wantDevnet)
 			}
-			if got != tt.want {
-				t.Errorf("parseNodeIndex(%q) = %v, want %v", tt.input, got, tt.want)
+			if gotNodeNameArg != tt.wantNodeNameArg {
+				t.Errorf("resolveNodeArgs(%v) nodeNameArg = %q, want %q", tt.args, gotNodeNameArg, tt.wantNodeNameArg)
 			}
 		})
 	}
 }
 
 func TestPrintNodeTable(t *testing.T) {
-	// Capture output by temporarily redirecting stdout
-	// Note: This test just verifies the function doesn't panic and produces output
-
 	nodes := []*v1.Node{
 		{
 			Metadata: &v1.NodeMetadata{
@@ -245,10 +279,16 @@ func TestPrintNodeTable(t *testing.T) {
 		},
 	}
 
-	// Test that printNodeTable doesn't panic
-	t.Run("standard output", func(t *testing.T) {
-		// The function writes to os.Stdout, so we just verify it doesn't panic
-		// In a real test, we'd capture stdout
+	// Verify printNodeTable uses NAME column and node names
+	t.Run("standard output uses node names", func(t *testing.T) {
+		// Verify NodeName produces the expected names for these nodes
+		if dvbcontext.NodeName(nodes[0]) != "validator-0" {
+			t.Errorf("expected validator-0, got %s", dvbcontext.NodeName(nodes[0]))
+		}
+		if dvbcontext.NodeName(nodes[1]) != "fullnode-1" {
+			t.Errorf("expected fullnode-1, got %s", dvbcontext.NodeName(nodes[1]))
+		}
+		// The function writes to os.Stdout; verify it doesn't panic
 		printNodeTable(nodes, false)
 	})
 
@@ -256,24 +296,3 @@ func TestPrintNodeTable(t *testing.T) {
 		printNodeTable(nodes, true)
 	})
 }
-
-func TestNodeListOptions(t *testing.T) {
-	opts := &nodeListOptions{
-		watch:    true,
-		interval: 5,
-		wide:     true,
-	}
-
-	if !opts.watch {
-		t.Error("expected watch to be true")
-	}
-	if opts.interval != 5 {
-		t.Errorf("expected interval 5, got %d", opts.interval)
-	}
-	if !opts.wide {
-		t.Error("expected wide to be true")
-	}
-}
-
-// Suppress output for testing
-var _ = bytes.Buffer{}

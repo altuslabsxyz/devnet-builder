@@ -71,17 +71,17 @@ func newNodeLogsCmd() *cobra.Command {
 	opts := &logsOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "logs [devnet] [index]",
+		Use:   "logs [devnet] [node-name]",
 		Short: "View logs from a node",
 		Long: `View logs from a node in a devnet.
 
 With context set (dvb use <devnet>):
-  dvb node logs             - Interactive picker to select node
-  dvb node logs <index>     - Show logs from a specific node
+  dvb node logs                     - Interactive picker to select node
+  dvb node logs <node-name>         - Show logs from a specific node
 
 Without context or explicit devnet:
-  dvb node logs <devnet> <index>  - Show logs from a specific node
-  dvb node logs <devnet>          - Show merged logs from all nodes
+  dvb node logs <devnet> <node-name>  - Show logs from a specific node
+  dvb node logs <devnet>              - Show merged logs from all nodes
 
 In daemon mode, streams logs from the daemon.
 In standalone mode, reads log files from the data directory.
@@ -91,12 +91,12 @@ Examples:
   dvb use my-devnet
   dvb node logs
 
-  # Set context and view logs from node 0
+  # Set context and view logs from a specific node
   dvb use my-devnet
-  dvb node logs 0
+  dvb node logs validator-0
 
   # Show logs from a specific node (explicit devnet)
-  dvb node logs my-devnet 0
+  dvb node logs my-devnet validator-0
 
   # Follow logs in real-time
   dvb node logs -f
@@ -113,14 +113,13 @@ Examples:
 			if len(args) == 0 {
 				// No args - requires context and will use picker
 				if currentContext == nil {
-					return fmt.Errorf("no devnet specified. Either:\n  - Provide devnet: dvb node logs <devnet> [index]\n  - Set context: dvb use <devnet>")
+					return fmt.Errorf("no devnet specified. Either:\n  - Provide devnet: dvb node logs <devnet> [node-name]\n  - Set context: dvb use <devnet>")
 				}
 				// nodeArg stays empty, will be picked later
 			} else if len(args) == 1 {
-				// Determine if single arg is a node identifier or devnet name.
-				// Node identifiers are: numeric (0, 1, 2) or "validator-N" pattern
-				if looksLikeNodeIdentifier(args[0]) {
-					// Treat as node - requires context
+				// Determine if single arg is a node name or devnet name.
+				if isNodeName(args[0]) {
+					// Treat as node name - requires context
 					if currentContext == nil {
 						return fmt.Errorf("no devnet specified. Either:\n  - Provide devnet: dvb node logs <devnet> %s\n  - Set context: dvb use <devnet>", args[0])
 					}
@@ -141,11 +140,11 @@ Examples:
 
 			// If context is set and no node specified, use picker
 			if currentContext != nil && nodeArg == "" && daemonClient != nil {
-				index, err := dvbcontext.PickNode(daemonClient, ns, devnetName)
+				sel, err := dvbcontext.PickNode(cmd.Context(), daemonClient, ns, devnetName)
 				if err != nil {
 					return fmt.Errorf("failed to pick node: %w", err)
 				}
-				nodeArg = fmt.Sprintf("%d", index)
+				nodeArg = sel.Name
 			}
 
 			printContextHeader(explicitDevnet, currentContext)
@@ -176,12 +175,12 @@ func runLogs(ctx context.Context, opts *logsOptions) error {
 	}
 
 	// Try daemon streaming if available and a specific node is requested
-	if daemonClient != nil && !standalone && opts.node != "" {
-		index, err := parseNodeIndex(opts.node)
-		if err == nil {
-			return streamLogsFromDaemon(ctx, opts, index)
+	if daemonClient != nil && !standalone && opts.node != "" && isNodeName(opts.node) {
+		sel, err := dvbcontext.ResolveNodeName(ctx, daemonClient, "", opts.devnet, opts.node)
+		if err != nil {
+			return err
 		}
-		// If we can't parse the index, fall through to file-based
+		return streamLogsFromDaemon(ctx, opts, sel.Index)
 	}
 
 	// Fall back to file-based logs (standalone mode or multi-node)
@@ -482,20 +481,6 @@ func tailLines(file *os.File, n int) ([]string, error) {
 	_, _ = file.Seek(0, io.SeekEnd)
 
 	return lines, nil
-}
-
-// looksLikeNodeIdentifier returns true if the string looks like a node identifier.
-// Node identifiers are: pure numeric (0, 1, 2) or "validator-N" / "node-N" patterns.
-func looksLikeNodeIdentifier(s string) bool {
-	// Pure numeric
-	if _, err := parseNodeIndex(s); err == nil {
-		return true
-	}
-	// Common node name patterns
-	if strings.HasPrefix(s, "validator-") || strings.HasPrefix(s, "node-") || strings.HasPrefix(s, "full-") {
-		return true
-	}
-	return false
 }
 
 // streamLogsFromDaemon streams logs from the daemon for a specific node.
