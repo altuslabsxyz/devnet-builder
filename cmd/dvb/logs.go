@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -507,7 +508,7 @@ func tailLines(file *os.File, n int) ([]string, error) {
 // Node identifiers are: pure numeric (0, 1, 2) or "validator-N" / "node-N" patterns.
 func looksLikeNodeIdentifier(s string) bool {
 	// Pure numeric
-	if _, err := parseNodeIndex(s); err == nil {
+	if _, err := strconv.Atoi(s); err == nil {
 		return true
 	}
 	// Common node name patterns
