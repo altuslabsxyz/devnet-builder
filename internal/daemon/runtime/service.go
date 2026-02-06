@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
@@ -85,12 +86,20 @@ func (sr *ServiceRuntime) StartNode(ctx context.Context, node *types.Node, opts 
 		pluginRuntime = sr.config.PluginRuntimeProvider.GetPluginRuntime(node.Spec.Network)
 	}
 
-	// Determine command
+	// Resolve binary path to absolute — required by systemd/launchd.
+	binaryPath, err := resolveAbsoluteBinary(node.Spec.BinaryPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve binary for node %s: %w", nodeID, err)
+	}
+
+	// Determine command: always prepend the binary path.
+	// PluginRuntime.StartCommand() returns args only (designed for Docker entrypoint),
+	// so we must prepend the binary for bare-metal execution.
 	var command []string
 	if pluginRuntime != nil {
-		command = pluginRuntime.StartCommand(node)
+		command = append([]string{binaryPath}, pluginRuntime.StartCommand(node)...)
 	} else {
-		command = []string{node.Spec.BinaryPath, "start", "--home", node.Spec.HomeDir}
+		command = []string{binaryPath, "start", "--home", node.Spec.HomeDir}
 		chainID := node.Spec.ChainID
 		if chainID == "" {
 			chainID = readChainIDFromGenesis(node.Spec.HomeDir)
@@ -310,6 +319,27 @@ func (sr *ServiceRuntime) DiscoverExisting(ctx context.Context, nodes []*types.N
 // logPath returns the log file path for a node.
 func (sr *ServiceRuntime) logPath(node *types.Node) string {
 	return filepath.Join(sr.config.DataDir, "logs", node.Metadata.Name+".log")
+}
+
+// resolveAbsoluteBinary ensures the binary path is absolute.
+// Service managers (systemd/launchd) require absolute ExecStart paths.
+// If the path is relative or just a name, it is resolved via exec.LookPath.
+func resolveAbsoluteBinary(binaryPath string) (string, error) {
+	if binaryPath == "" {
+		return "", fmt.Errorf("binary path is empty")
+	}
+	if filepath.IsAbs(binaryPath) {
+		return binaryPath, nil
+	}
+	resolved, err := exec.LookPath(binaryPath)
+	if err != nil {
+		return "", fmt.Errorf("binary %q not found in PATH: %w", binaryPath, err)
+	}
+	abs, err := filepath.Abs(resolved)
+	if err != nil {
+		return resolved, nil
+	}
+	return abs, nil
 }
 
 // Ensure ServiceRuntime implements NodeRuntime interface.

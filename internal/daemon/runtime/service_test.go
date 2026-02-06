@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -447,6 +448,31 @@ func TestServiceRuntimeServiceDefinition(t *testing.T) {
 	}
 	if v, ok := def.Environment["CUSTOM_VAR"]; !ok || v != "value" {
 		t.Errorf("Environment[CUSTOM_VAR] = %q, want %q", v, "value")
+	}
+	// Verify the binary path is the first element of the command
+	if len(def.Command) == 0 || def.Command[0] != "/usr/bin/stabled" {
+		t.Errorf("Command[0] = %q, want %q", def.Command[0], "/usr/bin/stabled")
+	}
+}
+
+func TestServiceRuntimeEmptyBinaryPath(t *testing.T) {
+	sr, _ := newTestServiceRuntime(t)
+	ctx := context.Background()
+
+	node := &types.Node{
+		Metadata: types.ResourceMeta{Name: "no-binary"},
+		Spec: types.NodeSpec{
+			BinaryPath: "", // empty
+			HomeDir:    "/tmp/test",
+		},
+	}
+
+	err := sr.StartNode(ctx, node, StartOptions{})
+	if err == nil {
+		t.Fatal("expected error for empty BinaryPath")
+	}
+	if !strings.Contains(err.Error(), "binary path is empty") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 
