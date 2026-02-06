@@ -16,6 +16,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/altuslabsxyz/devnet-builder/internal/dvbcontext"
 	"github.com/fatih/color"
+	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
 )
 
@@ -244,12 +245,12 @@ func runLogs(ctx context.Context, opts *logsOptions) error {
 	// Single node - simple output
 	if len(logFiles) == 1 {
 		for node, logFile := range logFiles {
-			return streamLogFile(ctx, logFile, node, opts)
+			return streamLogFile(ctx, logFile, node, opts, os.Stdout)
 		}
 	}
 
 	// Multiple nodes - interleaved output
-	return streamMultipleLogFiles(ctx, logFiles, opts)
+	return streamMultipleLogFiles(ctx, logFiles, opts, os.Stdout)
 }
 
 // findLogFile locates the log file for a node, with symlink protection
@@ -312,79 +313,98 @@ func verifyPathSafe(path, baseDir string) bool {
 	return isPathWithinBase(resolved, resolvedBase)
 }
 
-// streamLogFile streams a single log file to stdout
-func streamLogFile(ctx context.Context, logFile, node string, opts *logsOptions) error {
+// streamLogFile streams a single log file to the given writer
+func streamLogFile(ctx context.Context, logFile, node string, opts *logsOptions, w io.Writer) error {
 	file, err := os.Open(logFile)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
 	defer file.Close()
 
-	// If tail is requested, seek to the end and read backwards
 	if opts.tail > 0 {
 		lines, err := tailLines(file, opts.tail)
 		if err != nil {
 			return err
 		}
 		for _, line := range lines {
-			printLogLine(node, line, opts.timestamp)
+			printLogLine(w, node, line, opts.timestamp)
 		}
-		if !opts.follow {
-			return nil
+	} else {
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			printLogLine(w, node, scanner.Text(), opts.timestamp)
+		}
+		if err := scanner.Err(); err != nil {
+			return fmt.Errorf("error reading log file: %w", err)
 		}
 	}
 
-	// Read and print lines
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		printLogLine(node, scanner.Text(), opts.timestamp)
-	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading log file: %w", err)
-	}
-
-	// Follow mode
 	if opts.follow {
-		return followLogFile(ctx, file, node, opts)
+		return followLogFile(ctx, logFile, node, opts, w)
 	}
 
 	return nil
 }
 
-// followLogFile continuously reads new lines from a log file
-func followLogFile(ctx context.Context, file *os.File, node string, opts *logsOptions) error {
-	reader := bufio.NewReader(file)
+// followLogFile watches a log file for new content using fsnotify.
+// It reopens the file on each write event to handle log rotation correctly.
+func followLogFile(ctx context.Context, filePath, node string, opts *logsOptions, w io.Writer) error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("failed to create file watcher: %w", err)
+	}
+	defer watcher.Close()
+
+	if err := watcher.Add(filePath); err != nil {
+		return fmt.Errorf("failed to watch log file: %w", err)
+	}
+
+	// Get initial file size as starting position
+	stat, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to stat log file: %w", err)
+	}
+	currentPos := stat.Size()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
-		default:
-			line, err := reader.ReadString('\n')
-			if err == io.EOF {
-				// Wait a bit before checking for more data
-				time.Sleep(100 * time.Millisecond)
-				continue
+			return ctx.Err()
+		case event := <-watcher.Events:
+			if event.Op&fsnotify.Write == fsnotify.Write {
+				file, err := os.Open(filePath)
+				if err != nil {
+					continue
+				}
+				_, _ = file.Seek(currentPos, io.SeekStart)
+				scanner := bufio.NewScanner(file)
+				for scanner.Scan() {
+					printLogLine(w, node, scanner.Text(), opts.timestamp)
+				}
+				currentPos, _ = file.Seek(0, io.SeekCurrent)
+				file.Close()
 			}
-			if err != nil {
-				return fmt.Errorf("error reading log file: %w", err)
+		case err := <-watcher.Errors:
+			return fmt.Errorf("file watcher error: %w", err)
+		case <-time.After(100 * time.Millisecond):
+			// Check for file rotation or truncation
+			newStat, statErr := os.Stat(filePath)
+			if statErr != nil || newStat.Size() < currentPos {
+				currentPos = 0
+				_ = watcher.Remove(filePath)
+				_ = watcher.Add(filePath)
 			}
-			printLogLine(node, strings.TrimRight(line, "\n"), opts.timestamp)
 		}
 	}
 }
 
 // streamMultipleLogFiles streams multiple log files with node prefixes
-func streamMultipleLogFiles(ctx context.Context, logFiles map[string]string, opts *logsOptions) error {
+func streamMultipleLogFiles(ctx context.Context, logFiles map[string]string, opts *logsOptions, w io.Writer) error {
 	if opts.follow {
-		// For follow mode with multiple files, we'd need goroutines
-		// For now, just read all files sequentially
-		fmt.Println("Note: Follow mode with multiple nodes reads files sequentially.")
-		fmt.Println()
+		fmt.Fprintln(w, "Note: Follow mode with multiple nodes reads files sequentially.")
+		fmt.Fprintln(w)
 	}
 
-	// Collect all lines with timestamps for sorting
 	type logEntry struct {
 		node    string
 		line    string
@@ -412,33 +432,33 @@ func streamMultipleLogFiles(ctx context.Context, logFiles map[string]string, opt
 		file.Close()
 	}
 
-	// Sort by line number (approximation of time order for files written similarly)
 	sort.SliceStable(entries, func(i, j int) bool {
 		return entries[i].lineNum < entries[j].lineNum
 	})
 
-	// Apply tail if requested
 	if opts.tail > 0 && len(entries) > opts.tail {
 		entries = entries[len(entries)-opts.tail:]
 	}
 
-	// Print entries
 	for _, entry := range entries {
-		printLogLine(entry.node, entry.line, opts.timestamp)
+		printLogLine(w, entry.node, entry.line, opts.timestamp)
 	}
 
 	return nil
 }
 
-// printLogLine prints a log line with optional node prefix
-func printLogLine(node, line string, showTimestamp bool) {
-	if node != "" {
-		// Color-code by node name
-		nodeColor := getNodeColor(node)
-		fmt.Printf("%s %s\n", nodeColor("["+node+"]"), line)
-	} else {
-		fmt.Println(line)
+// printLogLine prints a log line with optional node prefix and timestamp
+func printLogLine(w io.Writer, node, line string, showTimestamp bool) {
+	var parts []string
+	if showTimestamp {
+		parts = append(parts, color.WhiteString(time.Now().Format(time.RFC3339)))
 	}
+	if node != "" {
+		nodeColor := getNodeColor(node)
+		parts = append(parts, nodeColor("["+node+"]"))
+	}
+	parts = append(parts, line)
+	fmt.Fprintln(w, strings.Join(parts, " "))
 }
 
 // getNodeColor returns a color function based on node name
@@ -483,19 +503,47 @@ func tailLines(file *os.File, n int) ([]string, error) {
 	return lines, nil
 }
 
+// looksLikeNodeIdentifier returns true if the string looks like a node identifier.
+// Node identifiers are: pure numeric (0, 1, 2) or "validator-N" / "node-N" patterns.
+func looksLikeNodeIdentifier(s string) bool {
+	// Pure numeric
+	if _, err := parseNodeIndex(s); err == nil {
+		return true
+	}
+	// Common node name patterns
+	if strings.HasPrefix(s, "validator-") || strings.HasPrefix(s, "node-") || strings.HasPrefix(s, "full-") {
+		return true
+	}
+	return false
+}
+
+// nodeLogStreamer streams logs from the daemon for a specific node.
+type nodeLogStreamer interface {
+	StreamNodeLogs(ctx context.Context, devnetName string, index int, follow bool, since string, tail int, callback func(*client.LogEntry) error) error
+}
+
 // streamLogsFromDaemon streams logs from the daemon for a specific node.
 func streamLogsFromDaemon(ctx context.Context, opts *logsOptions, index int) error {
+	return streamLogsFromDaemonWithClient(ctx, opts, index, daemonClient, os.Stdout)
+}
+
+// streamLogsFromDaemonWithClient is the testable implementation of streamLogsFromDaemon.
+func streamLogsFromDaemonWithClient(ctx context.Context, opts *logsOptions, index int, c nodeLogStreamer, w io.Writer) error {
+	if c == nil {
+		return fmt.Errorf("daemon client not available")
+	}
+
 	nodeColor := getNodeColor(opts.node)
 
-	return daemonClient.StreamNodeLogs(ctx, opts.devnet, index, opts.follow, "", opts.tail,
+	return c.StreamNodeLogs(ctx, opts.devnet, index, opts.follow, "", opts.tail,
 		func(entry *client.LogEntry) error {
 			if opts.timestamp && !entry.Timestamp.IsZero() {
-				fmt.Printf("%s %s %s\n",
+				fmt.Fprintf(w, "%s %s %s\n",
 					color.WhiteString(entry.Timestamp.Format(time.RFC3339)),
 					nodeColor("["+opts.node+"]"),
 					entry.Message)
 			} else {
-				fmt.Printf("%s %s\n", nodeColor("["+opts.node+"]"), entry.Message)
+				fmt.Fprintf(w, "%s %s\n", nodeColor("["+opts.node+"]"), entry.Message)
 			}
 			return nil
 		})
