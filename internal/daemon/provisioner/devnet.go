@@ -138,10 +138,11 @@ func (p *DevnetProvisioner) SetStepProgressReporterFactory(factory StepProgressR
 	p.stepProgressReporterFactory = factory
 }
 
-// eraseDevnetDir removes the entire devnet data directory to ensure a clean state.
-// Called at the start of Provision to guarantee fresh provisioning.
+// EraseDevnetDir removes the entire devnet data directory to ensure a clean state.
+// Called at the start of Provision to guarantee fresh provisioning, and also
+// during delete to clean up filesystem artifacts.
 // Handles: directory doesn't exist (no error), permission errors (returns error).
-func (p *DevnetProvisioner) eraseDevnetDir(devnetName string) error {
+func (p *DevnetProvisioner) EraseDevnetDir(devnetName string) error {
 	devnetDataDir := filepath.Join(p.dataDir, devnetName)
 
 	p.logger.Info("erasing devnet directory",
@@ -177,7 +178,7 @@ func (p *DevnetProvisioner) Provision(ctx context.Context, devnet *types.Devnet)
 		"hasSubnetAllocator", p.subnetAllocator != nil)
 
 	// Erase existing devnet directory to ensure clean state
-	if err := p.eraseDevnetDir(devnet.Metadata.Name); err != nil {
+	if err := p.EraseDevnetDir(devnet.Metadata.Name); err != nil {
 		return fmt.Errorf("failed to erase devnet directory: %w", err)
 	}
 
