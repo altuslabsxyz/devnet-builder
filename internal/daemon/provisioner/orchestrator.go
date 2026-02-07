@@ -19,6 +19,7 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/builder"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/controller"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/runtime"
+	"github.com/altuslabsxyz/devnet-builder/internal/daemon/subnet"
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	"github.com/altuslabsxyz/devnet-builder/internal/infrastructure/nodeconfig"
 	plugintypes "github.com/altuslabsxyz/devnet-builder/internal/plugin/types"
@@ -615,6 +616,12 @@ func (o *ProvisioningOrchestrator) initializeNode(ctx context.Context, opts port
 		return nil, fmt.Errorf("node initialization failed: %w", err)
 	}
 
+	// Compute node address from subnet allocation
+	var nodeAddress string
+	if opts.Subnet > 0 {
+		nodeAddress = subnet.NodeIP(opts.Subnet, index)
+	}
+
 	// Create Node resource
 	node := &types.Node{
 		Metadata: types.ResourceMeta{
@@ -626,6 +633,7 @@ func (o *ProvisioningOrchestrator) initializeNode(ctx context.Context, opts port
 			Role:       role,
 			BinaryPath: binaryPath,
 			HomeDir:    nodeDir,
+			Address:    nodeAddress,
 			Desired:    types.NodePhaseRunning,
 			ChainID:    opts.ChainID,
 			Network:    opts.Network,
