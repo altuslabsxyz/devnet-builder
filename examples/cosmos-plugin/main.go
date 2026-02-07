@@ -14,6 +14,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -194,16 +195,37 @@ func (n *CosmosNetwork) ExportCommand(homeDir string) []string {
 // ============================================
 
 func (n *CosmosNetwork) ModifyGenesis(genesis []byte, opts network.GenesisOptions) ([]byte, error) {
-	// This is a simplified example. In a real implementation,
-	// you would parse the genesis JSON, modify parameters, and return.
-	//
-	// For example:
-	// - Reduce unbonding time for faster testing
-	// - Set governance parameters for quick proposals
-	// - Configure staking parameters
-	//
-	// The genesis file is JSON bytes that can be parsed with encoding/json.
-	return genesis, nil
+	// Parse genesis JSON
+	var gen map[string]interface{}
+	if err := json.Unmarshal(genesis, &gen); err != nil {
+		return nil, fmt.Errorf("failed to parse genesis: %w", err)
+	}
+
+	// Patch chain_id if provided in options
+	if opts.ChainID != "" {
+		gen["chain_id"] = opts.ChainID
+	}
+
+	// Apply devnet-friendly parameters from GenesisConfig
+	cfg := n.GenesisConfig()
+	if appState, ok := gen["app_state"].(map[string]interface{}); ok {
+		// Set short voting period for quick governance proposals
+		if gov, ok := appState["gov"].(map[string]interface{}); ok {
+			if params, ok := gov["params"].(map[string]interface{}); ok {
+				params["voting_period"] = fmt.Sprintf("%dns", cfg.VotingPeriod.Nanoseconds())
+			}
+		}
+
+		// Set short unbonding time for faster testing
+		if staking, ok := appState["staking"].(map[string]interface{}); ok {
+			if params, ok := staking["params"].(map[string]interface{}); ok {
+				params["unbonding_time"] = fmt.Sprintf("%dns", cfg.UnbondingTime.Nanoseconds())
+			}
+		}
+	}
+
+	// Marshal back to JSON
+	return json.MarshalIndent(gen, "", "  ")
 }
 
 func (n *CosmosNetwork) GenerateDevnet(ctx context.Context, config network.GeneratorConfig, genesisFile string) error {

@@ -86,30 +86,52 @@ func (f *FetcherAdapter) exportFromBinary(ctx context.Context, homeDir string) (
 
 // extractGenesisJSON extracts valid JSON from command output.
 // The export command might include warnings/logs before the actual JSON.
+// It validates the extracted JSON is actually a genesis object by checking
+// for characteristic fields (chain_id or app_state), skipping any JSON
+// log lines that may precede the genesis output.
 func extractGenesisJSON(output []byte) ([]byte, error) {
-	// Find the start of JSON (first '{')
-	jsonStart := -1
-	for i, b := range output {
-		if b == '{' {
-			jsonStart = i
+	searchFrom := 0
+	for searchFrom < len(output) {
+		// Find the next '{' starting from searchFrom
+		jsonStart := -1
+		for i := searchFrom; i < len(output); i++ {
+			if output[i] == '{' {
+				jsonStart = i
+				break
+			}
+		}
+
+		if jsonStart == -1 {
 			break
 		}
+
+		jsonData := output[jsonStart:]
+
+		// Validate it's valid JSON
+		var js json.RawMessage
+		if err := json.Unmarshal(jsonData, &js); err != nil {
+			// Not valid JSON from this position, skip past this '{' and try next
+			searchFrom = jsonStart + 1
+			continue
+		}
+
+		// Check if this looks like a genesis object (has chain_id or app_state)
+		var probe map[string]json.RawMessage
+		if err := json.Unmarshal(jsonData, &probe); err == nil {
+			if _, hasChainID := probe["chain_id"]; hasChainID {
+				return jsonData, nil
+			}
+			if _, hasAppState := probe["app_state"]; hasAppState {
+				return jsonData, nil
+			}
+		}
+
+		// Valid JSON but not genesis, skip past this object and try next
+		searchFrom = jsonStart + len(jsonData)
 	}
 
-	if jsonStart == -1 {
-		return nil, fmt.Errorf("no JSON found in export output: %s", string(output))
-	}
-
-	// Find the matching closing brace
-	jsonData := output[jsonStart:]
-
-	// Validate it's valid JSON
-	var js json.RawMessage
-	if err := json.Unmarshal(jsonData, &js); err != nil {
-		return nil, fmt.Errorf("invalid JSON in export output: %w", err)
-	}
-
-	return jsonData, nil
+	return nil, fmt.Errorf("no genesis JSON found in export output (looked for chain_id or app_state): %s",
+		string(output[:min(len(output), 500)]))
 }
 
 func (f *FetcherAdapter) exportFromDocker(ctx context.Context, homeDir string) ([]byte, error) {

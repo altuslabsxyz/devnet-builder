@@ -4,6 +4,7 @@ package cosmos
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/altuslabsxyz/devnet-builder/internal/plugin/types"
@@ -16,6 +17,7 @@ type CosmosGenesis struct {
 	rpcEndpoints map[string]string
 	// Network-specific snapshot URLs
 	snapshotURLs map[string]string
+	logger       *slog.Logger
 }
 
 // NewCosmosGenesis creates a new Cosmos genesis handler
@@ -43,6 +45,20 @@ func (g *CosmosGenesis) WithRPCEndpoint(networkType, endpoint string) *CosmosGen
 func (g *CosmosGenesis) WithSnapshotURL(networkType, url string) *CosmosGenesis {
 	g.snapshotURLs[networkType] = url
 	return g
+}
+
+// WithLogger configures a logger for the genesis handler
+func (g *CosmosGenesis) WithLogger(logger *slog.Logger) *CosmosGenesis {
+	g.logger = logger
+	return g
+}
+
+// log returns the configured logger or the default logger
+func (g *CosmosGenesis) log() *slog.Logger {
+	if g.logger != nil {
+		return g.logger
+	}
+	return slog.Default()
 }
 
 // GetRPCEndpoint returns the RPC endpoint for a network type
@@ -121,14 +137,30 @@ func (g *CosmosGenesis) PatchGenesis(genesis []byte, opts types.GenesisPatchOpti
 	// Patch governance voting period
 	if opts.VotingPeriod > 0 {
 		if err := g.patchGovParams(appState, opts.VotingPeriod); err != nil {
-			// Non-fatal: some chains may not have gov module
+			g.log().Warn("failed to patch governance voting period",
+				"error", err,
+				"votingPeriod", opts.VotingPeriod,
+			)
 		}
 	}
 
 	// Patch staking unbonding time
 	if opts.UnbondingTime > 0 {
 		if err := g.patchStakingParams(appState, opts.UnbondingTime); err != nil {
-			// Non-fatal: some chains may not have staking module
+			g.log().Warn("failed to patch staking unbonding time",
+				"error", err,
+				"unbondingTime", opts.UnbondingTime,
+			)
+		}
+	}
+
+	// Patch mint inflation rate
+	if opts.InflationRate != "" {
+		if err := g.patchMintParams(appState, opts.InflationRate); err != nil {
+			g.log().Warn("failed to patch mint inflation rate",
+				"error", err,
+				"inflationRate", opts.InflationRate,
+			)
 		}
 	}
 
@@ -152,7 +184,6 @@ func (g *CosmosGenesis) patchGovParams(appState map[string]interface{}, votingPe
 		}
 	}
 
-	// Format as duration string (e.g., "30s")
 	params["voting_period"] = formatDuration(votingPeriod)
 	return nil
 }
@@ -173,10 +204,35 @@ func (g *CosmosGenesis) patchStakingParams(appState map[string]interface{}, unbo
 	return nil
 }
 
-// formatDuration formats a duration as a Cosmos SDK duration string (e.g., "30s")
+// patchMintParams patches mint module inflation parameters
+func (g *CosmosGenesis) patchMintParams(appState map[string]interface{}, inflationRate string) error {
+	mint, ok := appState["mint"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("mint module not found or invalid format")
+	}
+
+	// Patch the minter inflation
+	minter, ok := mint["minter"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("mint minter not found")
+	}
+	minter["inflation"] = inflationRate
+
+	// Pin inflation at the target rate by zeroing rate-of-change and
+	// setting min/max to the same value. This ensures devnet stability.
+	if params, ok := mint["params"].(map[string]interface{}); ok {
+		params["inflation_rate_change"] = "0.0"
+		params["inflation_max"] = inflationRate
+		params["inflation_min"] = inflationRate
+	}
+
+	return nil
+}
+
+// formatDuration formats a duration as a Cosmos SDK duration string.
+// Uses nanosecond format for Cosmos SDK v0.50+ compatibility.
 func formatDuration(d time.Duration) string {
-	// Cosmos SDK uses format like "1209600s" (seconds as string)
-	return fmt.Sprintf("%ds", int64(d.Seconds()))
+	return fmt.Sprintf("%dns", d.Nanoseconds())
 }
 
 // ExportCommandArgs returns the export command arguments

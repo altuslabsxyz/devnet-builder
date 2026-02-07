@@ -38,13 +38,19 @@ type ValidatorInfo struct {
 
 // GenesisPatchOptions specifies modifications to apply to genesis
 type GenesisPatchOptions struct {
-	ChainID       string          // new chain ID for the forked network
-	VotingPeriod  time.Duration   // governance voting period (e.g., 30s for devnet)
-	UnbondingTime time.Duration   // staking unbonding time (e.g., 60s for devnet)
-	InflationRate string          // inflation rate (e.g., "0.0" for no inflation)
-	MinGasPrice   string          // minimum gas price
-	BinaryVersion string          // binary version/ref used for genesis modification (e.g., "v1.0.0" or commit hash)
-	Validators    []ValidatorInfo // validator entries to inject into genesis
+	ChainID       string        // new chain ID for the forked network
+	VotingPeriod  time.Duration // governance voting period (e.g., 30s for devnet)
+	UnbondingTime time.Duration // staking unbonding time (e.g., 60s for devnet)
+	InflationRate string        // inflation rate (e.g., "0.0" for no inflation)
+	// MinGasPrice is the minimum gas price for node configuration.
+	// NOTE: This is applied via app.toml node configuration, not genesis patching.
+	// It is preserved here for completeness but not consumed by PatchGenesis.
+	MinGasPrice   string // minimum gas price (applied via app.toml, not genesis)
+	BinaryVersion string // binary version/ref used for genesis modification (e.g., "v1.0.0" or commit hash)
+	// Validators contains validator entries for genesis.
+	// NOTE: Validator injection is handled by the provisioner/generator layer,
+	// not by PatchGenesis. This field is passed through for reference.
+	Validators []ValidatorInfo // validator entries (injected by provisioner, not PatchGenesis)
 }
 
 // DefaultDevnetPatchOptions returns patch options suitable for local devnets

@@ -131,13 +131,19 @@ func (f *GenesisForker) Fork(ctx context.Context, opts ports.ForkOptions, progre
 		return nil, fmt.Errorf("failed to apply patches: %w", err)
 	}
 
-	// Apply plugin-specific patches
+	// Apply plugin-specific patches (voting period, unbonding time, inflation rate, etc.)
 	if f.config.PluginGenesis != nil {
 		patched, err = f.config.PluginGenesis.PatchGenesis(patched, opts.PatchOpts)
 		if err != nil {
 			reportStep(progress, "Applying genesis patches", "failed", err.Error())
 			return nil, fmt.Errorf("plugin patch failed: %w", err)
 		}
+	} else if opts.PatchOpts.VotingPeriod > 0 || opts.PatchOpts.UnbondingTime > 0 || opts.PatchOpts.InflationRate != "" {
+		f.logger.Warn("genesis patch options specify network parameters but no plugin is configured to apply them",
+			"votingPeriod", opts.PatchOpts.VotingPeriod,
+			"unbondingTime", opts.PatchOpts.UnbondingTime,
+			"inflationRate", opts.PatchOpts.InflationRate,
+		)
 	}
 	reportStep(progress, "Applying genesis patches", "completed", "")
 
@@ -416,9 +422,11 @@ func (f *GenesisForker) fetchGenesisHTTP(ctx context.Context, url string) ([]byt
 	return body, nil
 }
 
-// applyPatches applies generic patches to genesis
+// applyPatches applies generic patches to genesis.
+// This only handles chain_id patching. Network-specific patches (voting period,
+// unbonding time, inflation rate) are handled by the plugin's PatchGenesis method.
 func (f *GenesisForker) applyPatches(genesis []byte, opts types.GenesisPatchOptions) ([]byte, error) {
-	if opts.ChainID == "" && opts.VotingPeriod == 0 && opts.UnbondingTime == 0 {
+	if opts.ChainID == "" {
 		return genesis, nil
 	}
 
@@ -427,10 +435,7 @@ func (f *GenesisForker) applyPatches(genesis []byte, opts types.GenesisPatchOpti
 		return nil, fmt.Errorf("failed to parse genesis: %w", err)
 	}
 
-	// Patch chain_id
-	if opts.ChainID != "" {
-		gen["chain_id"] = opts.ChainID
-	}
+	gen["chain_id"] = opts.ChainID
 
 	return json.MarshalIndent(gen, "", "  ")
 }
