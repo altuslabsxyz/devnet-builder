@@ -380,6 +380,65 @@ func TestGenesisForkerNoPatchOptions(t *testing.T) {
 	}
 }
 
+func TestGenesisForkerNilPluginWithPatchOptions(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Create a test genesis file with gov and staking modules
+	testGenesis := []byte(`{
+		"chain_id": "test-chain",
+		"app_state": {
+			"gov": {"params": {"voting_period": "1209600s"}},
+			"staking": {"params": {"unbonding_time": "1814400s"}}
+		}
+	}`)
+
+	genesisPath := filepath.Join(tempDir, "genesis.json")
+	if err := os.WriteFile(genesisPath, testGenesis, 0644); err != nil {
+		t.Fatalf("Failed to write test genesis: %v", err)
+	}
+
+	config := GenesisForkerConfig{
+		DataDir:       tempDir,
+		PluginGenesis: nil, // No plugin - VotingPeriod/UnbondingTime won't be applied
+	}
+
+	forker := NewGenesisForker(config)
+
+	opts := ports.ForkOptions{
+		Source: types.GenesisSource{
+			Mode:      types.GenesisModeLocal,
+			LocalPath: genesisPath,
+		},
+		PatchOpts: types.GenesisPatchOptions{
+			ChainID:       "devnet-1",
+			VotingPeriod:  30 * time.Second,
+			UnbondingTime: 60 * time.Second,
+			InflationRate: "0.0",
+		},
+	}
+
+	ctx := context.Background()
+	result, err := forker.Fork(ctx, opts, ports.NilProgressReporter)
+	if err != nil {
+		t.Fatalf("Fork should succeed even without plugin, got: %v", err)
+	}
+
+	// Chain ID should still be patched (handled by applyPatches, not plugin)
+	if result.NewChainID != "devnet-1" {
+		t.Errorf("Expected new chain ID 'devnet-1', got '%s'", result.NewChainID)
+	}
+
+	// Genesis should contain the new chain_id
+	if !strings.Contains(string(result.Genesis), `"devnet-1"`) {
+		t.Error("Expected genesis to contain patched chain_id 'devnet-1'")
+	}
+
+	// The original voting_period should remain unchanged (plugin wasn't available to patch it)
+	if !strings.Contains(string(result.Genesis), "1209600s") {
+		t.Error("Expected original voting_period to remain unchanged when no plugin is configured")
+	}
+}
+
 func TestGenesisForkerForkFromLocalRelativePathRejected(t *testing.T) {
 	tempDir := t.TempDir()
 
