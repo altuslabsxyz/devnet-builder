@@ -187,7 +187,6 @@ func runInteractiveMode(ctx context.Context, opts *provisionOptions) error {
 		Mode:        wizardOpts.Mode,
 		SdkVersion:  wizardOpts.BinaryVersion,
 		ForkNetwork: wizardOpts.ForkNetwork,
-		ChainId:     wizardOpts.ChainID,
 	}
 
 	namespace := "default"
@@ -639,7 +638,6 @@ type YAMLProvisionSpecOutput struct {
 	Validators     int    `json:"validators" yaml:"validators"`
 	FullNodes      int    `json:"fullNodes,omitempty" yaml:"fullNodes,omitempty"`
 	Mode           string `json:"mode" yaml:"mode"`
-	ChainID        string `json:"chainId,omitempty" yaml:"chainId,omitempty"`
 	ForkNetwork    string `json:"forkNetwork,omitempty" yaml:"forkNetwork,omitempty"`
 }
 

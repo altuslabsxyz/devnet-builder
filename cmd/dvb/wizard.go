@@ -22,7 +22,6 @@ type WizardOptions struct {
 	FullNodes     int
 	ForkNetwork   string // Network to fork from (e.g., "mainnet", "testnet", ""). Empty means fresh genesis.
 	Mode          string // Execution mode: "local" or "docker"
-	ChainID       string // Chain ID for the devnet (e.g., "mainnet-1", "mydevnet-1")
 	BinaryVersion string // Binary version to use (required when forking from snapshot)
 }
 
@@ -122,32 +121,6 @@ func RunProvisionWizard(daemonClient *client.Client) (*WizardOptions, error) {
 		}
 		opts.BinaryVersion = binaryVersion
 
-		// Chain ID for forked network - must match source network's chain-id
-		defaultChainID := forkNetwork + "-1"
-		fmt.Printf("  Note: When forking, chain-id should match the source network's chain-id.\n")
-		chainIDPrompt := promptui.Prompt{
-			Label:    "Chain ID",
-			Default:  defaultChainID,
-			Validate: validateNonEmpty,
-		}
-		chainID, err := chainIDPrompt.Run()
-		if err != nil {
-			return nil, handlePromptError(err, "chain ID")
-		}
-		opts.ChainID = strings.TrimSpace(chainID)
-	} else {
-		// Fresh genesis - use devnet name as default chain-id
-		defaultChainID := opts.Name + "-1"
-		chainIDPrompt := promptui.Prompt{
-			Label:    "Chain ID",
-			Default:  defaultChainID,
-			Validate: validateNonEmpty,
-		}
-		chainID, err := chainIDPrompt.Run()
-		if err != nil {
-			return nil, handlePromptError(err, "chain ID")
-		}
-		opts.ChainID = strings.TrimSpace(chainID)
 	}
 
 	// 3. Number of Validators
@@ -183,7 +156,6 @@ func RunProvisionWizard(daemonClient *client.Client) (*WizardOptions, error) {
 	fmt.Printf("  Name:       %s\n", opts.Name)
 	fmt.Printf("  Network:    %s\n", opts.Network)
 	fmt.Printf("  Mode:       %s\n", opts.Mode)
-	fmt.Printf("  Chain ID:   %s\n", opts.ChainID)
 	fmt.Printf("  Validators: %d\n", opts.Validators)
 	fmt.Printf("  Full Nodes: %d\n", opts.FullNodes)
 	if opts.ForkNetwork != "" {

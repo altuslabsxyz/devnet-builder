@@ -26,7 +26,6 @@ func TestFormatProvisionYAML(t *testing.T) {
 		Mode:        "docker",
 		SdkVersion:  "v1.0.0",
 		ForkNetwork: "mainnet",
-		ChainId:     "mainnet-1",
 	}
 
 	var buf bytes.Buffer
@@ -74,7 +73,6 @@ func TestFormatProvisionYAML_OmitsEmptyFields(t *testing.T) {
 		"networkType:",
 		"networkVersion:",
 		"fullNodes:",
-		"chainId:",
 		"namespace:",
 		"forkNetwork:",
 	}
