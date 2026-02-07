@@ -208,7 +208,7 @@ func (p *DevnetProvisioner) Provision(ctx context.Context, devnet *types.Devnet)
 
 	// If orchestrator factory is present, execute the full provisioning flow
 	if p.orchestratorFactory != nil {
-		result, err := p.provisionWithOrchestrator(ctx, devnet)
+		result, err := p.provisionWithOrchestrator(ctx, devnet, allocatedSubnet)
 		if err != nil {
 			return err
 		}
@@ -222,7 +222,7 @@ func (p *DevnetProvisioner) Provision(ctx context.Context, devnet *types.Devnet)
 
 // provisionWithOrchestrator executes the full provisioning flow using an orchestrator.
 // Creates an orchestrator for the devnet's network type and returns the provision result.
-func (p *DevnetProvisioner) provisionWithOrchestrator(ctx context.Context, devnet *types.Devnet) (*ports.ProvisionResult, error) {
+func (p *DevnetProvisioner) provisionWithOrchestrator(ctx context.Context, devnet *types.Devnet, allocatedSubnet uint8) (*ports.ProvisionResult, error) {
 	// Determine network from devnet spec (Plugin field)
 	network := devnet.Spec.Plugin
 	if network == "" {
@@ -271,7 +271,7 @@ func (p *DevnetProvisioner) provisionWithOrchestrator(ctx context.Context, devne
 	}
 
 	// Convert devnet spec to provisioning options, using plugin defaults when URLs not specified
-	opts, err := devnetToProvisionOptions(devnet, p.dataDir, networkDefaults)
+	opts, err := devnetToProvisionOptions(devnet, p.dataDir, networkDefaults, allocatedSubnet)
 	if err != nil {
 		return nil, err
 	}
@@ -547,7 +547,7 @@ func (p *DevnetProvisioner) GetStatus(ctx context.Context, devnet *types.Devnet)
 // networkDefaults provides plugin defaults when URLs are not explicitly specified.
 //
 // Returns SnapshotVersionRequiredError if snapshot mode is detected but no binary version is set.
-func devnetToProvisionOptions(devnet *types.Devnet, dataDir string, networkDefaults *NetworkDefaults) (ports.ProvisionOptions, error) {
+func devnetToProvisionOptions(devnet *types.Devnet, dataDir string, networkDefaults *NetworkDefaults, allocatedSubnet uint8) (ports.ProvisionOptions, error) {
 	// Use spec ChainID if set, otherwise generate from devnet name
 	chainID := devnet.Spec.ChainID
 	if chainID == "" {
@@ -561,6 +561,7 @@ func devnetToProvisionOptions(devnet *types.Devnet, dataDir string, networkDefau
 		NumValidators: devnet.Spec.Validators,
 		NumFullNodes:  devnet.Spec.FullNodes,
 		DataDir:       filepath.Join(dataDir, devnet.Metadata.Name),
+		Subnet:        allocatedSubnet,
 	}
 
 	// Map BinarySource to BinaryPath/BinaryVersion

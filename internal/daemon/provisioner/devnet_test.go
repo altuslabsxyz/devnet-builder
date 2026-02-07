@@ -653,7 +653,7 @@ func TestDevnetToProvisionOptions_BasicConversion(t *testing.T) {
 		},
 	}
 
-	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -690,7 +690,7 @@ func TestDevnetToProvisionOptions_LocalBinarySource(t *testing.T) {
 		},
 	}
 
-	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -717,7 +717,7 @@ func TestDevnetToProvisionOptions_CacheBinarySource(t *testing.T) {
 		},
 	}
 
-	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -741,7 +741,7 @@ func TestDevnetToProvisionOptions_LocalGenesis(t *testing.T) {
 		},
 	}
 
-	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -769,7 +769,7 @@ func TestDevnetToProvisionOptions_SnapshotGenesis(t *testing.T) {
 		},
 	}
 
-	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -793,7 +793,7 @@ func TestDevnetToProvisionOptions_FreshGenesisDefault(t *testing.T) {
 		},
 	}
 
-	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -815,7 +815,7 @@ func TestDevnetToProvisionOptions_RPCGenesisFromSpec(t *testing.T) {
 		},
 	}
 
-	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -843,7 +843,7 @@ func TestDevnetToProvisionOptions_RPCGenesisFromDefaults(t *testing.T) {
 		RPCURL: "https://default-rpc.example.com",
 	}
 
-	opts, err := devnetToProvisionOptions(devnet, "/data", defaults)
+	opts, err := devnetToProvisionOptions(devnet, "/data", defaults, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -876,7 +876,7 @@ func TestDevnetToProvisionOptions_SnapshotGenesisFromDefaults(t *testing.T) {
 		RPCURL:      "https://default-rpc.example.com",
 	}
 
-	opts, err := devnetToProvisionOptions(devnet, "/data", defaults)
+	opts, err := devnetToProvisionOptions(devnet, "/data", defaults, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -900,7 +900,7 @@ func TestDevnetToProvisionOptions_ChainIDGeneration(t *testing.T) {
 		},
 	}
 
-	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -924,7 +924,7 @@ func TestDevnetToProvisionOptions_SnapshotRequiresVersion(t *testing.T) {
 		},
 	}
 
-	_, err := devnetToProvisionOptions(devnet, "/data", nil)
+	_, err := devnetToProvisionOptions(devnet, "/data", nil, 0)
 	if err == nil {
 		t.Fatal("Expected SnapshotVersionRequiredError, got nil")
 	}
@@ -961,7 +961,7 @@ func TestDevnetToProvisionOptions_SnapshotFromDefaultsRequiresVersion(t *testing
 		SnapshotURL: "https://default-snapshot.example.com/chain.tar.gz",
 	}
 
-	_, err := devnetToProvisionOptions(devnet, "/data", defaults)
+	_, err := devnetToProvisionOptions(devnet, "/data", defaults, 0)
 	if err == nil {
 		t.Fatal("Expected SnapshotVersionRequiredError, got nil")
 	}
@@ -990,7 +990,7 @@ func TestDevnetToProvisionOptions_EmptyTypeWithVersionSet(t *testing.T) {
 		},
 	}
 
-	opts, err := devnetToProvisionOptions(devnet, "/data", nil)
+	opts, err := devnetToProvisionOptions(devnet, "/data", nil, 0)
 	if err != nil {
 		t.Fatalf("Expected success with empty Type but Version set, got error: %v", err)
 	}
@@ -1016,7 +1016,7 @@ func TestDevnetToProvisionOptions_EmptyTypeWithoutVersion(t *testing.T) {
 		},
 	}
 
-	_, err := devnetToProvisionOptions(devnet, "/data", nil)
+	_, err := devnetToProvisionOptions(devnet, "/data", nil, 0)
 	if err == nil {
 		t.Fatal("Expected SnapshotVersionRequiredError for empty Type and Version")
 	}

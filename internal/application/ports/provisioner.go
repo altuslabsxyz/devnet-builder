@@ -192,6 +192,11 @@ type ProvisionOptions struct {
 	// Used in daemon mode where NodeController handles starting nodes
 	// via reconciliation instead of the orchestrator starting them directly.
 	SkipStart bool
+
+	// Subnet is the allocated loopback subnet for this devnet (1-254).
+	// When set, nodes bind to 127.0.{Subnet}.{nodeIndex+1} instead of 0.0.0.0.
+	// This enables multiple devnets to coexist on the same host without port conflicts.
+	Subnet uint8
 }
 
 // ProvisionResult contains the result of a full provisioning operation.
