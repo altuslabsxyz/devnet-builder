@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -502,20 +501,6 @@ func tailLines(file *os.File, n int) ([]string, error) {
 	_, _ = file.Seek(0, io.SeekEnd)
 
 	return lines, nil
-}
-
-// looksLikeNodeIdentifier returns true if the string looks like a node identifier.
-// Node identifiers are: pure numeric (0, 1, 2) or "validator-N" / "node-N" patterns.
-func looksLikeNodeIdentifier(s string) bool {
-	// Pure numeric
-	if _, err := strconv.Atoi(s); err == nil {
-		return true
-	}
-	// Common node name patterns
-	if strings.HasPrefix(s, "validator-") || strings.HasPrefix(s, "node-") || strings.HasPrefix(s, "full-") {
-		return true
-	}
-	return false
 }
 
 // nodeLogStreamer streams logs from the daemon for a specific node.
