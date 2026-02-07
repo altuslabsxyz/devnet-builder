@@ -111,22 +111,6 @@ devnet-builder apply -f devnet.yaml --dry-run -o json
 - `--force`: Force recreation of existing devnet
 - `-o, --output`: Output format (text, json)
 
-### diff
-
-Compare a YAML definition against the current state.
-
-```bash
-# Show differences
-devnet-builder diff -f devnet.yaml
-
-# Output as JSON
-devnet-builder diff -f devnet.yaml -o json
-```
-
-**Flags:**
-- `-f, --file`: Path to YAML file (required)
-- `-o, --output`: Output format (text, json)
-
 ## Examples
 
 ### Simple 4-Node Devnet
@@ -300,16 +284,7 @@ Apply the configuration:
 devnet-builder apply -f devnet.yaml
 ```
 
-### 4. Make Changes
-
-Edit the YAML file and check differences:
-
-```bash
-# Edit devnet.yaml (e.g., change validators to 4)
-devnet-builder diff -f devnet.yaml
-```
-
-### 5. Apply Updates
+### 4. Apply Updates
 
 Apply the updated configuration:
 

@@ -11,7 +11,6 @@ This documentation covers both the modern `dvb` CLI and the legacy `devnet-build
     - [apply](#apply)
     - [get](#get)
     - [delete](#delete)
-    - [diff](#diff)
     - [list](#list)
     - [status](#status)
   - [Lifecycle Commands](#lifecycle-commands)
@@ -195,36 +194,6 @@ dvb delete devnet my-devnet --force
 
 # Preview what would be deleted
 dvb delete -f devnet.yaml --dry-run
-```
-
----
-
-#### diff
-
-Show differences between a YAML configuration and the current state.
-
-```bash
-dvb diff -f <file> [flags]
-```
-
-##### Flags
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `-f, --file` | string | | Path to YAML file or directory (required) |
-| `-o, --output` | string | text | Output format: text, json |
-
-##### Examples
-
-```bash
-# Show diff for a single file
-dvb diff -f devnet.yaml
-
-# Show diff for all YAML files in a directory
-dvb diff -f ./devnets/
-
-# Output in JSON format
-dvb diff -f devnet.yaml -o json
 ```
 
 ---

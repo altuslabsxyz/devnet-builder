@@ -192,7 +192,6 @@ func main() {
 		newStatusCmd(),
 		newGetCmd(),
 		newDeleteCmd(),
-		newDiffCmd(),
 		newListCmd(),
 		newStartCmd(),
 		newStopCmd(),
