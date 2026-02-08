@@ -43,8 +43,8 @@ func newTxSubmitCmd() *cobra.Command {
 		Short: "Submit a transaction",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			// Get explicit devnet from args or flag
@@ -112,8 +112,8 @@ func newTxListCmd() *cobra.Command {
 		Aliases: []string{"ls"},
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			// Get explicit devnet from args or flag
@@ -179,8 +179,8 @@ func newTxStatusCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			tx, err := daemonClient.GetTransaction(cmd.Context(), name)
@@ -202,8 +202,8 @@ func newTxCancelCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			tx, err := daemonClient.CancelTransaction(cmd.Context(), name)
@@ -247,8 +247,8 @@ func newGovVoteCmd() *cobra.Command {
 		Short: "Submit a governance vote",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			// Get explicit devnet from args or flag
@@ -314,8 +314,8 @@ func newGovProposeCmd() *cobra.Command {
 		Short: "Submit a governance proposal",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			// Get explicit devnet from args or flag

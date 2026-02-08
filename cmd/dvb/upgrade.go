@@ -50,8 +50,8 @@ func newUpgradeCreateCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			// Resolve devnet from context if not provided
@@ -125,8 +125,8 @@ func newUpgradeListCmd() *cobra.Command {
 		Short:   "List upgrades",
 		Aliases: []string{"ls"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			upgrades, err := daemonClient.ListUpgrades(cmd.Context(), namespace)
@@ -183,8 +183,8 @@ func newUpgradeStatusCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			upgrade, err := daemonClient.GetUpgrade(cmd.Context(), namespace, name)
@@ -212,8 +212,8 @@ func newUpgradeCancelCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			upgrade, err := daemonClient.CancelUpgrade(cmd.Context(), namespace, name)
@@ -243,8 +243,8 @@ func newUpgradeRetryCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			upgrade, err := daemonClient.RetryUpgrade(cmd.Context(), namespace, name)
@@ -277,11 +277,11 @@ func newUpgradeDeleteCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
-			if !force {
+			if !force && !ShouldSkipConfirm() {
 				fmt.Printf("Are you sure you want to delete upgrade %q? [y/N] ", name)
 				var response string
 				if _, err := fmt.Scanln(&response); err != nil || (response != "y" && response != "Y") {

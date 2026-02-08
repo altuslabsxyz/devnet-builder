@@ -54,8 +54,8 @@ Examples:
 				namespace, devnetName := dvbcontext.ParseRef(ref)
 
 				// Validate devnet exists via daemon
-				if daemonClient == nil {
-					return errors.New("daemon not running, cannot validate devnet")
+				if err := requireDaemon(); err != nil {
+					return err
 				}
 
 				_, err := daemonClient.GetDevnet(cmd.Context(), namespace, devnetName)
@@ -96,13 +96,22 @@ Examples:
 			}
 
 			if len(devnets) == 0 {
-				return errors.New("no devnets found. Create one with 'dvb provision -i'")
+				return errors.New("no devnets found. Create one with 'dvb provision'")
 			}
 
-			// Build list of ref strings for picker
+			// Build list of ref strings
 			items := make([]string, len(devnets))
 			for i, d := range devnets {
 				items[i] = fmt.Sprintf("%s/%s", d.Metadata.Namespace, d.Metadata.Name)
+			}
+
+			// Non-interactive: list available devnets and return error
+			if IsNonInteractive() {
+				fmt.Println("Available devnets:")
+				for _, item := range items {
+					fmt.Printf("  %s\n", item)
+				}
+				return errors.New("no context set. Run 'dvb use <devnet>' to set context")
 			}
 
 			// Show interactive picker

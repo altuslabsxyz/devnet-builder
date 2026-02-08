@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -13,7 +14,6 @@ import (
 	"github.com/altuslabsxyz/devnet-builder/internal/daemon/types"
 	"github.com/altuslabsxyz/devnet-builder/internal/dvbcontext"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
-	"github.com/altuslabsxyz/devnet-builder/internal/tui"
 	"github.com/altuslabsxyz/devnet-builder/internal/version"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -183,6 +183,8 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(&flagServer, "server", "", "Remote devnetd server address (e.g., devnetd.example.com:9000)")
 	rootCmd.PersistentFlags().StringVar(&flagAPIKey, "api-key", "", "API key for remote server authentication")
 	rootCmd.PersistentFlags().BoolVar(&flagLocal, "local", false, "Force local Unix socket connection (ignore config)")
+	rootCmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "Auto-confirm all prompts (skip confirmations)")
+	rootCmd.PersistentFlags().BoolVar(&flagNonInteractive, "non-interactive", false, "Disable all interactive UI elements (pickers, wizards)")
 
 	// Add commands
 	rootCmd.AddCommand(
@@ -193,8 +195,6 @@ func main() {
 		newGetCmd(),
 		newDeleteCmd(),
 		newListCmd(),
-		newStartCmd(),
-		newStopCmd(),
 		newNodeCmd(),
 		newUpgradeCmd(),
 		newTxCmd(),
@@ -202,6 +202,9 @@ func main() {
 		newGenesisCmd(),
 		newProvisionCmd(),
 		newConfigCmd(),
+		newCompletionCmd(),
+		newDeprecatedStartCmd(),
+		newDeprecatedStopCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -260,20 +263,27 @@ func newVersionCmd() *cobra.Command {
 }
 
 func newListCmd() *cobra.Command {
-	var namespace string
+	var (
+		namespace string
+		output    string
+	)
 
 	cmd := &cobra.Command{
 		Use:     "list",
 		Short:   "List all devnets",
 		Aliases: []string{"ls"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			devnets, err := daemonClient.ListDevnets(cmd.Context(), namespace)
 			if err != nil {
 				return err
+			}
+
+			if output == "json" {
+				return printJSON(devnets)
 			}
 
 			if len(devnets) == 0 {
@@ -299,141 +309,47 @@ func newListCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Filter by namespace (empty = all namespaces)")
+	cmd.Flags().StringVarP(&output, "output", "o", "", "Output format: json")
 
 	return cmd
 }
 
-func newStartCmd() *cobra.Command {
-	var (
-		namespace string
-		noWait    bool
-		verbose   bool
-		force     bool
-	)
-
+// newDeprecatedStartCmd returns a hidden "start" command that tells users to use "dvb node start --all".
+func newDeprecatedStartCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "start [devnet]",
-		Short: "Start a stopped devnet",
-		Long:  "Start a stopped devnet. If already running, prompts to restart (use --force to skip prompt).",
-		Args:  cobra.MaximumNArgs(1),
+		Use:        "start",
+		Short:      "Deprecated: use 'dvb node start --all'",
+		Hidden:     true,
+		Deprecated: "use 'dvb node start --all' instead",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
-			}
-
-			// 1. Resolve devnet from args or context
-			var explicitDevnet string
-			if len(args) > 0 {
-				explicitDevnet = args[0]
-			}
-
-			ns, name, err := resolveWithSuggestions(explicitDevnet, namespace)
-			if err != nil {
-				return err
-			}
-
-			printContextHeader(explicitDevnet, currentContext)
-
-			// 2. Get current status to check if already running
-			devnet, err := daemonClient.GetDevnet(cmd.Context(), ns, name)
-			if err != nil {
-				return fmt.Errorf("failed to get devnet: %w", err)
-			}
-
-			// 3. Check if running - prompt for restart (unless --force)
-			if devnet.Status.Phase == types.PhaseRunning {
-				if !force {
-					// In non-interactive mode without --force, error out
-					if !tui.IsInteractive() {
-						return fmt.Errorf("devnet %q is already running; use --force to restart in non-interactive mode", name)
-					}
-					// Interactive mode: prompt for confirmation
-					fmt.Fprintf(os.Stderr, "Devnet %q is already running. Restart? [y/N] ", name)
-					var response string
-					if _, err := fmt.Scanln(&response); err != nil ||
-						(response != "y" && response != "Y") {
-						fmt.Fprintf(os.Stderr, "Cancelled\n")
-						return nil
-					}
-				}
-
-				// Stop for restart
-				color.Yellow("Stopping devnet %q...", name)
-				if _, err := daemonClient.StopDevnet(cmd.Context(), ns, name); err != nil {
-					return fmt.Errorf("failed to stop: %w", err)
-				}
-			}
-
-			// 4. Start the devnet
-			devnet, err = daemonClient.StartDevnet(cmd.Context(), ns, name)
-			if err != nil {
-				return fmt.Errorf("failed to start: %w", err)
-			}
-
-			// 5. Handle --no-wait
-			if noWait {
-				color.Green("✓ Devnet %q starting", name)
-				fmt.Fprintf(os.Stderr, "  Phase: %s\n", devnet.Status.Phase)
-				return nil
-			}
-
-			// 6. Handle wait behavior (same pattern as provision.go)
-			if tui.IsInteractive() && !verbose {
-				// Use TUI for interactive terminals
-				return runStartTUI(cmd.Context(), ns, name)
-			}
-			// Stream detailed status (verbose or non-interactive)
-			return pollStartStatus(cmd.Context(), ns, name)
+			return fmt.Errorf("'dvb start' has been replaced by 'dvb node start --all'\n\nUsage:\n  dvb node start --all            # start all nodes\n  dvb node start validator-0      # start a single node")
 		},
 	}
-
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
-	cmd.Flags().BoolVar(&noWait, "no-wait", false, "Return immediately without waiting")
-	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show verbose status updates")
-	cmd.Flags().BoolVarP(&force, "force", "f", false, "Force restart without confirmation prompt")
-
 	return cmd
 }
 
-func newStopCmd() *cobra.Command {
-	var namespace string
-
+// newDeprecatedStopCmd returns a hidden "stop" command that tells users to use "dvb node stop --all".
+func newDeprecatedStopCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "stop [devnet]",
-		Short: "Stop a running devnet",
-		Args:  cobra.MaximumNArgs(1),
+		Use:        "stop",
+		Short:      "Deprecated: use 'dvb node stop --all'",
+		Hidden:     true,
+		Deprecated: "use 'dvb node stop --all' instead",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
-			}
-
-			var explicitDevnet string
-			if len(args) > 0 {
-				explicitDevnet = args[0]
-			}
-
-			ns, name, err := resolveWithSuggestions(explicitDevnet, namespace)
-			if err != nil {
-				return err
-			}
-
-			printContextHeader(explicitDevnet, currentContext)
-
-			devnet, err := daemonClient.StopDevnet(cmd.Context(), ns, name)
-			if err != nil {
-				return err
-			}
-
-			color.Green("✓ Devnet %q stopped", devnet.Metadata.Name)
-			fmt.Printf("  Phase: %s\n", devnet.Status.Phase)
-
-			return nil
+			return fmt.Errorf("'dvb stop' has been replaced by 'dvb node stop --all'\n\nUsage:\n  dvb node stop --all             # stop all nodes\n  dvb node stop validator-0       # stop a single node")
 		},
 	}
-
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
-
 	return cmd
+}
+
+// printJSON marshals v to indented JSON and writes it to stdout.
+func printJSON(v interface{}) error {
+	out, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal json: %w", err)
+	}
+	fmt.Println(string(out))
+	return nil
 }
 
 // getBinaryNameFromPlugin returns the CLI binary name for a given plugin.

@@ -107,7 +107,7 @@ func runDeleteFromFile(cmd *cobra.Command, namespace, filePath string, force, dr
 	}
 
 	// Confirm if not forced
-	if !force {
+	if !force && !ShouldSkipConfirm() {
 		fmt.Printf("This will delete %d devnet(s):\n", len(devnets))
 		for i := range devnets {
 			ns := devnets[i].Metadata.Namespace
@@ -170,7 +170,7 @@ func runDeleteDevnet(cmd *cobra.Command, namespace, explicitName string, force, 
 	}
 
 	// Confirm if not forced
-	if !force {
+	if !force && !ShouldSkipConfirm() {
 		fmt.Printf("Are you sure you want to delete devnet %q (namespace: %s)? [y/N] ", name, ns)
 		var response string
 		if _, err := fmt.Scanln(&response); err != nil || (response != "y" && response != "Y") {

@@ -583,14 +583,14 @@ func printQuickActions(d *v1.Devnet) {
 
 	switch d.Status.Phase {
 	case "Running":
-		fmt.Println("  dvb stop          # Stop the devnet")
-		fmt.Println("  dvb logs -f       # Follow logs")
-		fmt.Println("  dvb status -v      # Show detailed info")
-		fmt.Println("  dvb node list     # List all nodes")
+		fmt.Println("  dvb node stop --all   # Stop all nodes")
+		fmt.Println("  dvb logs -f           # Follow logs")
+		fmt.Println("  dvb status -v         # Show detailed info")
+		fmt.Println("  dvb node list         # List all nodes")
 	case "Stopped":
-		fmt.Println("  dvb start         # Start the devnet")
-		fmt.Println("  dvb status -v      # Show detailed info")
-		fmt.Println("  dvb delete        # Delete the devnet")
+		fmt.Println("  dvb node start --all  # Start all nodes")
+		fmt.Println("  dvb status -v         # Show detailed info")
+		fmt.Println("  dvb delete            # Delete the devnet")
 	case "Pending", "Provisioning":
 		fmt.Println("  dvb status -v      # Show detailed status")
 		fmt.Println("  dvb daemon logs   # Check daemon logs")

@@ -3,6 +3,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -13,8 +15,8 @@ import (
 	v1 "github.com/altuslabsxyz/devnet-builder/api/proto/gen/v1"
 	"github.com/altuslabsxyz/devnet-builder/internal/client"
 	"github.com/altuslabsxyz/devnet-builder/internal/config"
+	"github.com/altuslabsxyz/devnet-builder/internal/dvbcontext"
 	"github.com/altuslabsxyz/devnet-builder/internal/output"
-	"github.com/altuslabsxyz/devnet-builder/internal/tui"
 	"github.com/altuslabsxyz/devnet-builder/internal/tui/views"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fatih/color"
@@ -52,6 +54,7 @@ type provisionOptions struct {
 	listPlugins   bool   // List available network plugins
 	noWait        bool   // Return immediately without waiting for provisioning
 	verbose       bool   // Stream detailed provisioner logs
+	quick         bool   // Quick mode with smart defaults
 }
 
 func newProvisionCmd() *cobra.Command {
@@ -86,6 +89,11 @@ Examples:
 
   # Provision from a YAML file
   dvb provision -f devnet.yaml
+
+  # Quick provision with smart defaults (auto-generated name, 1 validator)
+  dvb provision -q
+  dvb provision -q --name my-devnet
+  dvb provision -q --validators 4
 
   # Preview changes without applying (dry-run)
   dvb provision --name my-devnet --network stable --dry-run
@@ -135,6 +143,9 @@ Examples:
 	cmd.Flags().IntVar(&opts.fullNodes, "full-nodes", 0, "Number of full nodes")
 	cmd.Flags().StringVar(&opts.mode, "mode", "docker", "Execution mode (docker or local)")
 
+	// Quick mode
+	cmd.Flags().BoolVarP(&opts.quick, "quick", "q", false, "Quick provision with smart defaults (auto-generated name, 1 validator)")
+
 	// Wait behavior flags
 	cmd.Flags().BoolVar(&opts.noWait, "no-wait", false, "Return immediately without waiting for provisioning to complete")
 	cmd.Flags().BoolVarP(&opts.verbose, "verbose", "v", false, "Stream detailed provisioner logs")
@@ -149,11 +160,11 @@ Examples:
 
 // detectProvisionMode determines which mode to use based on flags
 func detectProvisionMode(opts *provisionOptions) ProvisionMode {
-	// Order: file > flags > interactive
+	// Order: file > quick/flags > interactive
 	if opts.file != "" {
 		return FileMode
 	}
-	if opts.name != "" {
+	if opts.quick || opts.name != "" {
 		return FlagMode
 	}
 	return InteractiveMode
@@ -161,9 +172,14 @@ func detectProvisionMode(opts *provisionOptions) ProvisionMode {
 
 // runInteractiveMode handles interactive wizard mode
 func runInteractiveMode(ctx context.Context, opts *provisionOptions) error {
+	// Interactive mode requires a TTY
+	if IsNonInteractive() {
+		return fmt.Errorf("interactive wizard requires a terminal\n\nUse flags instead:\n  dvb provision --name my-devnet --network stable\n\nOr use a YAML file:\n  dvb provision -f devnet.yaml\n\nOr use quick mode:\n  dvb provision --quick")
+	}
+
 	// Require daemon to be running
-	if daemonClient == nil {
-		return fmt.Errorf("daemon not running - start with: devnetd\n\nThe provision command requires the devnetd daemon to be running.\nNetwork plugins are loaded by the daemon from ~/.devnet-builder/plugins/")
+	if err := requireDaemon(); err != nil {
+		return err
 	}
 
 	// Run the wizard to collect options
@@ -201,8 +217,23 @@ func runInteractiveMode(ctx context.Context, opts *provisionOptions) error {
 // runFlagMode handles flag-based provisioning
 func runFlagMode(ctx context.Context, opts *provisionOptions) error {
 	// Require daemon to be running
-	if daemonClient == nil {
-		return fmt.Errorf("daemon not running - start with: devnetd\n\nThe provision command requires the devnetd daemon to be running.\nNetwork plugins are loaded by the daemon from ~/.devnet-builder/plugins/")
+	if err := requireDaemon(); err != nil {
+		return err
+	}
+
+	// Quick mode: apply smart defaults for unset values
+	if opts.quick {
+		if opts.name == "" {
+			opts.name = generateDevnetName()
+		}
+		// Quick mode defaults: 1 validator, local mode
+		// Only override if user didn't explicitly set them
+		if opts.validators == 4 { // 4 is the flag default
+			opts.validators = 1
+		}
+		if opts.mode == "docker" { // docker is the flag default
+			opts.mode = "local"
+		}
 	}
 
 	// Validate required flags
@@ -247,8 +278,8 @@ func runFlagMode(ctx context.Context, opts *provisionOptions) error {
 // runFileMode handles file-based provisioning
 func runFileMode(ctx context.Context, opts *provisionOptions) error {
 	// Require daemon to be running
-	if daemonClient == nil {
-		return fmt.Errorf("daemon not running - start with: devnetd\n\nThe provision command requires the devnetd daemon to be running.\nNetwork plugins are loaded by the daemon from ~/.devnet-builder/plugins/")
+	if err := requireDaemon(); err != nil {
+		return err
 	}
 
 	// Load and validate the YAML file
@@ -277,8 +308,8 @@ func runFileMode(ctx context.Context, opts *provisionOptions) error {
 
 // CheckDevnetExists checks if a devnet exists via the daemon
 func CheckDevnetExists(ctx context.Context, namespace, name string) (bool, *v1.Devnet, error) {
-	if daemonClient == nil {
-		return false, nil, fmt.Errorf("daemon not running")
+	if err := requireDaemon(); err != nil {
+		return false, nil, err
 	}
 
 	devnet, err := daemonClient.GetDevnet(ctx, namespace, name)
@@ -307,7 +338,7 @@ func executeUpsert(ctx context.Context, namespace, name string, spec *v1.DevnetS
 	}
 
 	// If exists and not silent update, prompt for confirmation
-	if exists && !silentUpdate {
+	if exists && !silentUpdate && !ShouldSkipConfirm() {
 		confirmed, err := ConfirmUpdate(name, currentDevnet, spec)
 		if err != nil {
 			return err
@@ -495,7 +526,7 @@ func executeCreate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 		return nil
 	}
 
-	if tui.IsInteractive() && !verbose {
+	if !IsNonInteractive() && !verbose {
 		// Use TUI for interactive terminals (unless verbose mode is explicitly requested)
 		if err := runProvisionTUI(ctx, daemonClient, namespace, name, spec.Plugin); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: TUI failed: %v\n", err)
@@ -524,6 +555,13 @@ func executeCreate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 	fmt.Fprintf(os.Stderr, "  Validators:   %d\n", devnet.Spec.Validators)
 	if devnet.Spec.FullNodes > 0 {
 		fmt.Fprintf(os.Stderr, "  Full Nodes:   %d\n", devnet.Spec.FullNodes)
+	}
+
+	// Auto-set context to newly created devnet
+	if err := dvbcontext.Save(namespace, name); err != nil {
+		fmt.Fprintf(os.Stderr, "  Warning: failed to set context: %v\n", err)
+	} else {
+		fmt.Fprintf(os.Stderr, "  Context set to %s\n", name)
 	}
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "View status with: dvb status -v %s\n", name)
@@ -563,7 +601,7 @@ func executeUpdate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 		network = resp.Devnet.Spec.Plugin
 	}
 
-	if tui.IsInteractive() && !verbose {
+	if !IsNonInteractive() && !verbose {
 		// Use TUI for interactive terminals (unless verbose mode is explicitly requested)
 		if err := runProvisionTUI(ctx, daemonClient, namespace, name, network); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: TUI failed: %v\n", err)
@@ -614,6 +652,16 @@ func executeUpdate(ctx context.Context, namespace, name string, spec *v1.DevnetS
 // Delegates to runPluginsList to avoid code duplication.
 func runListPlugins(ctx context.Context) error {
 	return runPluginsList(ctx)
+}
+
+// generateDevnetName generates a random short devnet name for quick mode.
+func generateDevnetName() string {
+	b := make([]byte, 2)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to a fixed name if crypto/rand fails
+		return "devnet-quick"
+	}
+	return "devnet-" + hex.EncodeToString(b)
 }
 
 // YAMLProvisionOutput represents a provision spec in kubectl-style YAML format

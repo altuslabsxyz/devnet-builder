@@ -241,7 +241,7 @@ Examples:
 
 			// Local connection
 			if !client.IsDaemonRunning() {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+				return errDaemonNotRunning
 			}
 
 			// Create local client and call WhoAmI

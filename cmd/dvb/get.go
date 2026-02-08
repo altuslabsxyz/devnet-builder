@@ -44,8 +44,8 @@ Examples:
   dvb get staging/my-devnet`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			var explicitDevnet string
