@@ -51,10 +51,27 @@ func resolveNodeArgs(args []string) (explicitDevnet, nodeNameArg string) {
 }
 
 // resolveNodeSelection resolves a node name argument (or picker selection) to a NodeSelection.
-// If nodeNameArg is empty, invokes the interactive picker.
+// If nodeNameArg is empty and interactive, invokes the fuzzy picker.
+// If nodeNameArg is empty and non-interactive, returns an error listing available nodes.
 // If nodeNameArg is non-empty, resolves the name to an index via ListNodes.
 func resolveNodeSelection(ctx context.Context, namespace, devnet, nodeNameArg string) (*dvbcontext.NodeSelection, error) {
 	if nodeNameArg == "" {
+		if IsNonInteractive() {
+			// List available nodes and return actionable error
+			nodes, err := daemonClient.ListNodes(ctx, namespace, devnet)
+			if err != nil {
+				return nil, fmt.Errorf("no node specified and failed to list nodes: %w", err)
+			}
+			var names []string
+			for _, n := range nodes {
+				names = append(names, dvbcontext.NodeName(n))
+			}
+			if len(names) == 0 {
+				return nil, fmt.Errorf("no node specified and no nodes found in devnet %q", devnet)
+			}
+			return nil, fmt.Errorf("no node specified. Available nodes: %s\n\nUsage: dvb node <command> [node-name]",
+				strings.Join(names, ", "))
+		}
 		return dvbcontext.PickNode(ctx, daemonClient, namespace, devnet)
 	}
 	return dvbcontext.ResolveNodeName(ctx, daemonClient, namespace, devnet, nodeNameArg)
@@ -112,6 +129,7 @@ type nodeListOptions struct {
 	watch     bool
 	interval  int
 	wide      bool
+	output    string // Output format: json, yaml
 }
 
 func newNodeListCmd() *cobra.Command {
@@ -145,8 +163,8 @@ Examples:
   dvb node list --wide`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			var explicitDevnet string
@@ -177,6 +195,7 @@ Examples:
 	cmd.Flags().BoolVarP(&opts.watch, "watch", "w", false, "Watch for changes (like kubectl -w)")
 	cmd.Flags().IntVar(&opts.interval, "interval", 2, "Watch interval in seconds (default: 2)")
 	cmd.Flags().BoolVar(&opts.wide, "wide", false, "Wide output with additional details")
+	cmd.Flags().StringVarP(&opts.output, "output", "o", "", "Output format: json")
 
 	return cmd
 }
@@ -186,6 +205,10 @@ func runNodeListOnce(ctx context.Context, devnetName string, opts *nodeListOptio
 	nodes, err := daemonClient.ListNodes(ctx, opts.namespace, devnetName)
 	if err != nil {
 		return err
+	}
+
+	if opts.output == "json" {
+		return printJSON(nodes)
 	}
 
 	if len(nodes) == 0 {
@@ -422,8 +445,8 @@ Examples:
   dvb node get my-devnet validator-0`,
 		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			explicitDevnet, nodeNameArg := resolveNodeArgs(args)
@@ -492,8 +515,8 @@ Examples:
   dvb node health my-devnet fullnode-0`,
 		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			explicitDevnet, nodeNameArg := resolveNodeArgs(args)
@@ -555,8 +578,8 @@ Examples:
   dvb node ports my-devnet fullnode-0`,
 		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			explicitDevnet, nodeNameArg := resolveNodeArgs(args)
@@ -615,17 +638,28 @@ Examples:
 }
 
 func newNodeStartCmd() *cobra.Command {
-	var namespace string
+	var (
+		namespace string
+		all       bool
+		noWait    bool
+		verbose   bool
+		force     bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "start [devnet-name] [node-name]",
-		Short: "Start a node",
-		Long: `Start a stopped node.
+		Short: "Start a node or all nodes",
+		Long: `Start a stopped node or all nodes in a devnet.
 
 With context set (dvb use <devnet>), the node name is optional.
 If not provided, an interactive picker will appear.
 
+Use --all to start all nodes in the devnet at once.
+
 Examples:
+  # Start all nodes in the devnet
+  dvb node start --all
+
   # Start node using context with picker
   dvb use my-devnet
   dvb node start
@@ -638,8 +672,8 @@ Examples:
   dvb node start my-devnet validator-0`,
 		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			explicitDevnet, nodeNameArg := resolveNodeArgs(args)
@@ -650,6 +684,13 @@ Examples:
 			}
 
 			printContextHeader(explicitDevnet, currentContext)
+
+			if all {
+				if nodeNameArg != "" {
+					return fmt.Errorf("cannot specify both --all and a node name")
+				}
+				return startAllNodes(cmd.Context(), ns, devnetName, force, noWait, verbose)
+			}
 
 			sel, err := resolveNodeSelection(cmd.Context(), ns, devnetName, nodeNameArg)
 			if err != nil {
@@ -668,22 +709,79 @@ Examples:
 	}
 
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+	cmd.Flags().BoolVar(&all, "all", false, "Start all nodes in the devnet")
+	cmd.Flags().BoolVar(&noWait, "no-wait", false, "Return immediately without waiting (with --all)")
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show verbose status updates (with --all)")
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "Force restart if already running (with --all)")
 
 	return cmd
 }
 
+// startAllNodes starts all nodes in the devnet using the devnet-level API.
+func startAllNodes(ctx context.Context, ns, devnetName string, force, noWait, verbose bool) error {
+	// Check if already running
+	devnet, err := daemonClient.GetDevnet(ctx, ns, devnetName)
+	if err != nil {
+		return fmt.Errorf("failed to get devnet: %w", err)
+	}
+
+	if devnet.Status.Phase == "Running" {
+		if !force && !ShouldSkipConfirm() {
+			fmt.Fprintf(os.Stderr, "Devnet %q is already running. Restart? [y/N] ", devnetName)
+			var response string
+			if _, err := fmt.Scanln(&response); err != nil ||
+				(response != "y" && response != "Y") {
+				fmt.Fprintf(os.Stderr, "Cancelled\n")
+				return nil
+			}
+		}
+
+		// Stop for restart
+		color.Yellow("Stopping devnet %q...", devnetName)
+		if _, err := daemonClient.StopDevnet(ctx, ns, devnetName); err != nil {
+			return fmt.Errorf("failed to stop: %w", err)
+		}
+	}
+
+	// Start all nodes
+	devnet, err = daemonClient.StartDevnet(ctx, ns, devnetName)
+	if err != nil {
+		return fmt.Errorf("failed to start: %w", err)
+	}
+
+	if noWait {
+		color.Green("✓ Devnet %q starting", devnetName)
+		fmt.Fprintf(os.Stderr, "  Phase: %s\n", devnet.Status.Phase)
+		return nil
+	}
+
+	// Wait for devnet to be running
+	if !IsNonInteractive() && !verbose {
+		return runStartTUI(ctx, ns, devnetName)
+	}
+	return pollStartStatus(ctx, ns, devnetName)
+}
+
 func newNodeStopCmd() *cobra.Command {
-	var namespace string
+	var (
+		namespace string
+		all       bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "stop [devnet-name] [node-name]",
-		Short: "Stop a node",
-		Long: `Stop a running node.
+		Short: "Stop a node or all nodes",
+		Long: `Stop a running node or all nodes in a devnet.
 
 With context set (dvb use <devnet>), the node name is optional.
 If not provided, an interactive picker will appear.
 
+Use --all to stop all nodes in the devnet at once.
+
 Examples:
+  # Stop all nodes in the devnet
+  dvb node stop --all
+
   # Stop node using context with picker
   dvb use my-devnet
   dvb node stop
@@ -696,8 +794,8 @@ Examples:
   dvb node stop my-devnet validator-0`,
 		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			explicitDevnet, nodeNameArg := resolveNodeArgs(args)
@@ -708,6 +806,13 @@ Examples:
 			}
 
 			printContextHeader(explicitDevnet, currentContext)
+
+			if all {
+				if nodeNameArg != "" {
+					return fmt.Errorf("cannot specify both --all and a node name")
+				}
+				return stopAllNodes(cmd.Context(), ns, devnetName)
+			}
 
 			sel, err := resolveNodeSelection(cmd.Context(), ns, devnetName, nodeNameArg)
 			if err != nil {
@@ -726,22 +831,45 @@ Examples:
 	}
 
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+	cmd.Flags().BoolVar(&all, "all", false, "Stop all nodes in the devnet")
 
 	return cmd
 }
 
+// stopAllNodes stops all nodes in the devnet using the devnet-level API.
+func stopAllNodes(ctx context.Context, ns, devnetName string) error {
+	devnet, err := daemonClient.StopDevnet(ctx, ns, devnetName)
+	if err != nil {
+		return err
+	}
+
+	color.Green("✓ Devnet %q stopped", devnet.Metadata.Name)
+	fmt.Printf("  Phase: %s\n", devnet.Status.Phase)
+	return nil
+}
+
 func newNodeRestartCmd() *cobra.Command {
-	var namespace string
+	var (
+		namespace string
+		all       bool
+		noWait    bool
+		verbose   bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "restart [devnet-name] [node-name]",
-		Short: "Restart a node",
-		Long: `Restart a node (stop then start).
+		Short: "Restart a node or all nodes",
+		Long: `Restart a node (stop then start) or all nodes in a devnet.
 
 With context set (dvb use <devnet>), the node name is optional.
 If not provided, an interactive picker will appear.
 
+Use --all to restart all nodes in the devnet at once.
+
 Examples:
+  # Restart all nodes in the devnet
+  dvb node restart --all
+
   # Restart node using context with picker
   dvb use my-devnet
   dvb node restart
@@ -754,8 +882,8 @@ Examples:
   dvb node restart my-devnet validator-0`,
 		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			explicitDevnet, nodeNameArg := resolveNodeArgs(args)
@@ -766,6 +894,13 @@ Examples:
 			}
 
 			printContextHeader(explicitDevnet, currentContext)
+
+			if all {
+				if nodeNameArg != "" {
+					return fmt.Errorf("cannot specify both --all and a node name")
+				}
+				return restartAllNodes(cmd.Context(), ns, devnetName, noWait, verbose)
+			}
 
 			sel, err := resolveNodeSelection(cmd.Context(), ns, devnetName, nodeNameArg)
 			if err != nil {
@@ -785,8 +920,38 @@ Examples:
 	}
 
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (defaults to server default)")
+	cmd.Flags().BoolVar(&all, "all", false, "Restart all nodes in the devnet")
+	cmd.Flags().BoolVar(&noWait, "no-wait", false, "Return immediately without waiting (with --all)")
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show verbose status updates (with --all)")
 
 	return cmd
+}
+
+// restartAllNodes restarts all nodes in the devnet (stop then start).
+func restartAllNodes(ctx context.Context, ns, devnetName string, noWait, verbose bool) error {
+	// Stop all nodes
+	color.Yellow("Stopping devnet %q...", devnetName)
+	if _, err := daemonClient.StopDevnet(ctx, ns, devnetName); err != nil {
+		return fmt.Errorf("failed to stop: %w", err)
+	}
+
+	// Start all nodes
+	devnet, err := daemonClient.StartDevnet(ctx, ns, devnetName)
+	if err != nil {
+		return fmt.Errorf("failed to start: %w", err)
+	}
+
+	if noWait {
+		color.Green("✓ Devnet %q restarting", devnetName)
+		fmt.Fprintf(os.Stderr, "  Phase: %s\n", devnet.Status.Phase)
+		return nil
+	}
+
+	// Wait for devnet to be running
+	if !IsNonInteractive() && !verbose {
+		return runStartTUI(ctx, ns, devnetName)
+	}
+	return pollStartStatus(ctx, ns, devnetName)
 }
 
 func newNodeExecCmd() *cobra.Command {
@@ -828,8 +993,8 @@ Examples:
   dvb node exec validator-0 --timeout 60 -- stabled query bank balances cosmos1...`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if daemonClient == nil {
-				return fmt.Errorf("daemon not running - start with: devnetd")
+			if err := requireDaemon(); err != nil {
+				return err
 			}
 
 			// Find the -- separator position

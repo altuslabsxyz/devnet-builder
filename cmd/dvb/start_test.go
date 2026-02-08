@@ -14,8 +14,8 @@ import (
 
 // Note: mockDaemonClient is defined in provision_test.go and shared across test files.
 
-func TestNewStartCmd_FlagRegistration(t *testing.T) {
-	cmd := newStartCmd()
+func TestNewNodeStartCmd_FlagRegistration(t *testing.T) {
+	cmd := newNodeStartCmd()
 
 	// Check that all expected flags are registered
 	flags := []struct {
@@ -23,6 +23,7 @@ func TestNewStartCmd_FlagRegistration(t *testing.T) {
 		shorthand string
 	}{
 		{"namespace", "n"},
+		{"all", ""},
 		{"no-wait", ""},
 		{"verbose", "v"},
 		{"force", "f"},
@@ -40,8 +41,8 @@ func TestNewStartCmd_FlagRegistration(t *testing.T) {
 	}
 }
 
-func TestNewStartCmd_DefaultFlags(t *testing.T) {
-	cmd := newStartCmd()
+func TestNewNodeStartCmd_DefaultFlags(t *testing.T) {
+	cmd := newNodeStartCmd()
 
 	tests := []struct {
 		name     string
@@ -49,6 +50,7 @@ func TestNewStartCmd_DefaultFlags(t *testing.T) {
 		want     string
 	}{
 		{"namespace defaults to empty", "namespace", ""},
+		{"all defaults to false", "all", "false"},
 		{"no-wait defaults to false", "no-wait", "false"},
 		{"verbose defaults to false", "verbose", "false"},
 		{"force defaults to false", "force", "false"},

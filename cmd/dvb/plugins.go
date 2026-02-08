@@ -52,8 +52,8 @@ Examples:
 
 // runPluginsList lists available network plugins from the daemon
 func runPluginsList(ctx context.Context) error {
-	if daemonClient == nil {
-		return fmt.Errorf("daemon not running - start with: devnetd")
+	if err := requireDaemon(); err != nil {
+		return err
 	}
 
 	networks, err := daemonClient.ListNetworks(ctx)
