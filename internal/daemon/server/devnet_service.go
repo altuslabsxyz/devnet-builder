@@ -213,7 +213,10 @@ func (s *DevnetService) DeleteDevnet(ctx context.Context, req *v1.DeleteDevnetRe
 	return &v1.DeleteDevnetResponse{Deleted: true}, nil
 }
 
-// StartDevnet starts a stopped devnet.
+// StartDevnet starts a stopped devnet by directly starting all its nodes.
+// Unlike provisioning, this does not rebuild binaries, fork genesis, or reinitialize
+// node directories — it simply sets existing nodes to desired=Running and lets the
+// NodeController start the processes.
 func (s *DevnetService) StartDevnet(ctx context.Context, req *v1.StartDevnetRequest) (*v1.StartDevnetResponse, error) {
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
@@ -235,20 +238,48 @@ func (s *DevnetService) StartDevnet(ctx context.Context, req *v1.StartDevnetRequ
 		return nil, status.Errorf(codes.Internal, "failed to get devnet: %v", err)
 	}
 
-	// Transition to Pending to trigger reconciliation
-	devnet.Status.Phase = types.PhasePending
-	devnet.Status.Message = "Starting devnet"
+	// List all nodes for this devnet
+	nodes, err := s.store.ListNodes(ctx, namespace, req.Name)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to list nodes: %v", err)
+	}
+	if len(nodes) == 0 {
+		return nil, status.Errorf(codes.FailedPrecondition, "devnet %q has no nodes; use 'dvb provision' to create it first", req.Name)
+	}
+
+	// Set each non-running node to desired=Running, phase=Pending for NodeController.
+	// Note: this is not atomic across nodes+devnet. A partial failure may leave some
+	// nodes updated while the devnet phase is unchanged. This is consistent with how
+	// other multi-resource operations (e.g. StopDevnet) work in this codebase.
+	for _, node := range nodes {
+		if node.Status.Phase == types.NodePhaseRunning || node.Status.Phase == types.NodePhaseStarting {
+			continue
+		}
+		node.Spec.Desired = types.NodePhaseRunning
+		node.Status.Phase = types.NodePhasePending
+		node.Status.Message = "Starting node"
+		node.Metadata.UpdatedAt = time.Now()
+		if err := s.store.UpdateNode(ctx, node); err != nil {
+			s.logger.Error("failed to update node", "devnet", req.Name, "index", node.Spec.Index, "error", err)
+			return nil, status.Errorf(codes.Internal, "failed to update node %d: %v", node.Spec.Index, err)
+		}
+	}
+
+	// Transition devnet to Running
+	devnet.Status.Phase = types.PhaseRunning
+	devnet.Status.Message = "Starting nodes"
 	devnet.Metadata.UpdatedAt = time.Now()
 
-	err = s.store.UpdateDevnet(ctx, devnet)
-	if err != nil {
+	if err = s.store.UpdateDevnet(ctx, devnet); err != nil {
 		s.logger.Error("failed to update devnet", "name", req.Name, "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to update devnet: %v", err)
 	}
 
-	// Enqueue for reconciliation with namespace/name key
+	// Enqueue each node for reconciliation by NodeController
 	if s.manager != nil {
-		s.manager.Enqueue("devnets", namespace+"/"+req.Name)
+		for _, node := range nodes {
+			s.manager.Enqueue("nodes", controller.NodeKeyWithNamespace(namespace, req.Name, node.Spec.Index))
+		}
 	}
 
 	return &v1.StartDevnetResponse{Devnet: DevnetToProto(devnet)}, nil

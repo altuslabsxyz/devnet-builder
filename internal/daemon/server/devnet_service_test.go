@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -247,36 +248,199 @@ func TestDevnetService_DeleteNotFound(t *testing.T) {
 }
 
 func TestDevnetService_StartDevnet(t *testing.T) {
+	ctx := context.Background()
 	s := store.NewMemoryStore()
 	svc := NewDevnetService(s, nil, nil)
 
-	// Create and simulate it being stopped
+	// Create and simulate it being stopped with provisioned nodes
 	createReq := &v1.CreateDevnetRequest{
 		Name: "stopped-devnet",
+		Spec: &v1.DevnetSpec{
+			Plugin:     "stable",
+			Validators: 2,
+		},
+	}
+	_, err := svc.CreateDevnet(ctx, createReq)
+	if err != nil {
+		t.Fatalf("CreateDevnet failed: %v", err)
+	}
+
+	// Manually set devnet to stopped
+	devnet, _ := s.GetDevnet(ctx, "", "stopped-devnet")
+	devnet.Status.Phase = "Stopped"
+	s.UpdateDevnet(ctx, devnet)
+
+	// Create stopped nodes (simulating previously provisioned nodes)
+	for i := 0; i < 2; i++ {
+		node := &types.Node{
+			Metadata: types.ResourceMeta{
+				Name:      fmt.Sprintf("stopped-devnet-node-%d", i),
+				Namespace: types.DefaultNamespace,
+			},
+			Spec: types.NodeSpec{
+				DevnetRef: "stopped-devnet",
+				Index:     i,
+				Role:      "validator",
+				Desired:   types.NodePhaseStopped,
+			},
+			Status: types.NodeStatus{
+				Phase:   types.NodePhaseStopped,
+				Message: "Node stopped",
+			},
+		}
+		if err := s.CreateNode(ctx, node); err != nil {
+			t.Fatalf("CreateNode %d failed: %v", i, err)
+		}
+	}
+
+	// Start it
+	resp, err := svc.StartDevnet(ctx, &v1.StartDevnetRequest{Name: "stopped-devnet"})
+	if err != nil {
+		t.Fatalf("StartDevnet failed: %v", err)
+	}
+
+	// Devnet should transition to Running (not Pending which triggers provisioning)
+	if resp.Devnet.Status.Phase != "Running" {
+		t.Errorf("expected phase Running after start, got %s", resp.Devnet.Status.Phase)
+	}
+
+	// Verify each node has desired=Running and phase=Pending
+	nodes, err := s.ListNodes(ctx, "", "stopped-devnet")
+	if err != nil {
+		t.Fatalf("ListNodes failed: %v", err)
+	}
+	for _, node := range nodes {
+		if node.Spec.Desired != types.NodePhaseRunning {
+			t.Errorf("node %d: expected desired=Running, got %s", node.Spec.Index, node.Spec.Desired)
+		}
+		if node.Status.Phase != types.NodePhasePending {
+			t.Errorf("node %d: expected phase=Pending, got %s", node.Spec.Index, node.Status.Phase)
+		}
+	}
+}
+
+func TestDevnetService_StartDevnet_NoNodes(t *testing.T) {
+	ctx := context.Background()
+	s := store.NewMemoryStore()
+	svc := NewDevnetService(s, nil, nil)
+
+	// Create devnet without any nodes (not yet provisioned)
+	createReq := &v1.CreateDevnetRequest{
+		Name: "empty-devnet",
 		Spec: &v1.DevnetSpec{
 			Plugin:     "stable",
 			Validators: 4,
 		},
 	}
-	_, err := svc.CreateDevnet(context.Background(), createReq)
+	_, err := svc.CreateDevnet(ctx, createReq)
 	if err != nil {
 		t.Fatalf("CreateDevnet failed: %v", err)
 	}
 
 	// Manually set to stopped
-	devnet, _ := s.GetDevnet(context.Background(), "", "stopped-devnet")
+	devnet, _ := s.GetDevnet(ctx, "", "empty-devnet")
 	devnet.Status.Phase = "Stopped"
-	s.UpdateDevnet(context.Background(), devnet)
+	s.UpdateDevnet(ctx, devnet)
 
-	// Start it
-	resp, err := svc.StartDevnet(context.Background(), &v1.StartDevnetRequest{Name: "stopped-devnet"})
+	// Start should fail because no nodes exist
+	_, err = svc.StartDevnet(ctx, &v1.StartDevnetRequest{Name: "empty-devnet"})
+	if err == nil {
+		t.Fatal("expected error when starting devnet with no nodes")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+	if st.Code() != codes.FailedPrecondition {
+		t.Errorf("expected FailedPrecondition, got %v", st.Code())
+	}
+}
+
+func TestDevnetService_StartDevnet_SkipsRunningNodes(t *testing.T) {
+	ctx := context.Background()
+	s := store.NewMemoryStore()
+	svc := NewDevnetService(s, nil, nil)
+
+	// Create devnet
+	createReq := &v1.CreateDevnetRequest{
+		Name: "mixed-devnet",
+		Spec: &v1.DevnetSpec{
+			Plugin:     "stable",
+			Validators: 2,
+		},
+	}
+	_, err := svc.CreateDevnet(ctx, createReq)
+	if err != nil {
+		t.Fatalf("CreateDevnet failed: %v", err)
+	}
+
+	devnet, _ := s.GetDevnet(ctx, "", "mixed-devnet")
+	devnet.Status.Phase = "Stopped"
+	s.UpdateDevnet(ctx, devnet)
+
+	// Create one running node and one stopped node
+	runningNode := &types.Node{
+		Metadata: types.ResourceMeta{
+			Name:      "mixed-devnet-node-0",
+			Namespace: types.DefaultNamespace,
+		},
+		Spec: types.NodeSpec{
+			DevnetRef: "mixed-devnet",
+			Index:     0,
+			Role:      "validator",
+			Desired:   types.NodePhaseRunning,
+		},
+		Status: types.NodeStatus{
+			Phase:   types.NodePhaseRunning,
+			Message: "Node is running",
+		},
+	}
+	stoppedNode := &types.Node{
+		Metadata: types.ResourceMeta{
+			Name:      "mixed-devnet-node-1",
+			Namespace: types.DefaultNamespace,
+		},
+		Spec: types.NodeSpec{
+			DevnetRef: "mixed-devnet",
+			Index:     1,
+			Role:      "validator",
+			Desired:   types.NodePhaseStopped,
+		},
+		Status: types.NodeStatus{
+			Phase:   types.NodePhaseStopped,
+			Message: "Node stopped",
+		},
+	}
+	if err := s.CreateNode(ctx, runningNode); err != nil {
+		t.Fatalf("CreateNode 0 failed: %v", err)
+	}
+	if err := s.CreateNode(ctx, stoppedNode); err != nil {
+		t.Fatalf("CreateNode 1 failed: %v", err)
+	}
+
+	// Start the devnet
+	_, err = svc.StartDevnet(ctx, &v1.StartDevnetRequest{Name: "mixed-devnet"})
 	if err != nil {
 		t.Fatalf("StartDevnet failed: %v", err)
 	}
 
-	// Should transition to Pending (to be reconciled)
-	if resp.Devnet.Status.Phase != "Pending" {
-		t.Errorf("expected phase Pending after start, got %s", resp.Devnet.Status.Phase)
+	// Running node should remain completely unchanged
+	node0, _ := s.GetNode(ctx, "", "mixed-devnet", 0)
+	if node0.Status.Phase != types.NodePhaseRunning {
+		t.Errorf("running node should stay Running, got %s", node0.Status.Phase)
+	}
+	if node0.Spec.Desired != types.NodePhaseRunning {
+		t.Errorf("running node desired should stay Running, got %s", node0.Spec.Desired)
+	}
+
+	// Stopped node should be set to Pending
+	node1, _ := s.GetNode(ctx, "", "mixed-devnet", 1)
+	if node1.Status.Phase != types.NodePhasePending {
+		t.Errorf("stopped node should become Pending, got %s", node1.Status.Phase)
+	}
+	if node1.Spec.Desired != types.NodePhaseRunning {
+		t.Errorf("stopped node desired should be Running, got %s", node1.Spec.Desired)
 	}
 }
 
